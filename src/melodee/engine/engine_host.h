@@ -218,6 +218,11 @@ public:
     unsigned record_track() const { return source_track.load(std::memory_order_relaxed); } // InputSource::Track: which
     bool record_post() const { return source_post.load(std::memory_order_relaxed); }      // and after its chain
     bool monitoring() const { return monitor_on.load(std::memory_order_relaxed); }
+    // Any thread: Settings' USB-C in Direct (drivers/direct_monitor.h): what a computer plays is then heard straight
+    // at the jacks, so this mix leaves it out wherever it would play it (a MIDI track's AUDIO input with MONITOR on,
+    // Input Config's Monitor, a loop on it); usb_heard() says, after each block, whether one of those wanted it.
+    void set_usb_direct(bool on) { usb_direct.store(on, std::memory_order_relaxed); }
+    bool usb_heard() const { return usb_heard_now.load(std::memory_order_relaxed); }
     bool input_taken() const { return source_taken.load(std::memory_order_relaxed); }
 
     // Feedback, any thread.
@@ -737,6 +742,8 @@ private:
     uint32_t auto_quiet = 0;       // RecordAutoEnd: a Free take ends after this long quiet (frames at the model rate; 0 never)
     float auto_silence_db = -60;   // and what quiet is
     std::atomic<bool> monitor_on {false};
+    std::atomic<bool> usb_direct {false}, usb_heard_now {false};
+    bool usb_wanted = false; // this block: a monitor wanted USB-C in, which direct monitoring plays instead
     std::atomic<bool> source_taken {false}; // InputTaken: the source's ADC side is routed elsewhere
     std::atomic<uint8_t> loop_monitor {uint8_t(Monitor::Auto)}; // Input Config's Monitor, for loops on a hardware input
     float record_gain = 1;  // linear

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the engine host's sequencer and mixer, and synth tracks as plug-ins.
+#include "drivers/direct_monitor.h"
 #include "melodee/engine/effects.h"
 #include "melodee/model/slice_banks.h"
 #include "melodee/engine/macros.h"
@@ -18560,7 +18561,118 @@ void usb_volume() {
     CHECK(knob.usb_full);
 }
 
+// Settings' USB-C in Direct (base's drivers/direct_monitor.h): what a computer plays goes straight to the jacks, just
+// ahead of the codec's DMA, and this mix leaves it out wherever it would have played it.
+void direct_monitoring() {
+    Settings fresh;
+    CHECK(fresh.usb_direct && fresh.value_text(Settings::UsbDirect) == "Direct" && std::string(Settings::row_name(Settings::UsbDirect)) == "USB-C in");
+    CHECK(fresh.value_text(Settings::DirectLevel) == "0 dB" && std::fabs(fresh.direct_gain() - 1.0f) < 1e-6f &&
+          std::string(Settings::row_name(Settings::DirectLevel)) == "Direct level");
+    Settings changed = fresh;
+    changed.step(Settings::UsbDirect, 1);
+    changed.step(Settings::DirectLevel, -1);
+    CHECK(!changed.usb_direct && changed.value_text(Settings::UsbDirect) == "Tracks" && changed.value_text(Settings::DirectLevel) == "-3 dB");
+    changed.set_choice(Settings::DirectLevel, 8);
+    CHECK(changed.value_text(Settings::DirectLevel) == "+6 dB" && std::fabs(changed.direct_gain() - 1.9953f) < 1e-3f);
+    Settings back; back.read(changed.text());
+    CHECK(!back.usb_direct && back.direct_level == 8);
+    Settings old; old.read("usb_volume=1\n"); // a file from before the rows: Direct at 0 dB
+    CHECK(old.usb_direct && old.direct_level == 6);
+
+    // The monitor: each period goes `ahead` frames in front of the DMA, added to what the app wrote there, at the gain.
+    {
+        DirectMonitor m;
+        std::vector<int32_t> buffer(2 * 384, int32_t(0.25 * 2147483648.0));
+        std::vector<float> period(2 * 64, 0.5f);
+        auto now = [] { return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
+        m.attach(buffer.data(), 384, 48000);
+        m.at(384, 0, now(), true);
+        m.add(period.data(), 64); // off: nothing
+        CHECK(m.added() == 0 && buffer[2 * DirectMonitor::ahead] == int32_t(0.25 * 2147483648.0));
+        m.set(true, 0.5f);
+        m.at(384, 0, now(), true);
+        m.add(period.data(), 64);
+        auto value = [&](unsigned frame) { return buffer[2 * frame] / 2147483648.0; };
+        unsigned lead = m.lead();
+        CHECK(m.added() == 64 && lead >= DirectMonitor::ahead && lead < DirectMonitor::ahead + 4);
+        unsigned first = 384, mixed = 0; // 0.25 written + 0.5 at gain 0.5
+        for (unsigned f = 0; f < 384; ++f) if (std::fabs(value(f) - 0.5) < 1e-6) { first = std::min(first, f); ++mixed; }
+        CHECK(mixed == 64 && first >= DirectMonitor::ahead && first < DirectMonitor::ahead + 4); // the frames before: as the app wrote them
+        // The next period follows on; the DMA a period further on, the pace kept: no slip, no nudge.
+        m.at(448, 64, now(), true);
+        m.add(period.data(), 64);
+        CHECK(m.slips() == 0 && m.nudges() == 0 && m.added() == 128);
+        // The computer a little behind (the DMA 20 frames further than it sent): a frame repeated, not a slip.
+        m.at(512, 148, now(), true);
+        m.add(period.data(), 64);
+        CHECK(m.slips() == 0 && m.nudges() == 1 && m.lead() < DirectMonitor::ahead - DirectMonitor::nudge && m.lead() > DirectMonitor::min_ahead);
+        // The DMA far ahead (the computer behind): placed afresh, a slip.
+        m.at(1000, 700, now(), true);
+        m.add(period.data(), 64);
+        CHECK(m.slips() == 1 && m.lead() >= DirectMonitor::ahead && m.lead() < DirectMonitor::ahead + 4);
+        // Never past what the app has written: those frames would be written over.
+        m.restart();
+        m.at(100, 0, now(), true);
+        m.add(period.data(), 64);
+        CHECK(m.short_writes() == 1);
+        // Waiting to start, or detached: nothing.
+        uint64_t added = m.added();
+        m.at(384, 0, now(), false);
+        m.add(period.data(), 64);
+        m.at(384, 0, now(), true);
+        m.detach();
+        m.add(period.data(), 64);
+        CHECK(m.added() == added && !m.attached());
+        // Loud on loud: clipped, not wrapped.
+        std::vector<int32_t> full(2 * 384, INT32_MAX - 10);
+        m.attach(full.data(), 384, 48000);
+        m.at(384, 0, now(), true);
+        m.add(period.data(), 64);
+        unsigned clipped = 0;
+        for (auto v : full) { CHECK(v > 0); clipped += v == INT32_MAX; }
+        CHECK(clipped == 2 * 64);
+        m.detach();
+    }
+
+    // The engine: Input Config's Monitor on a USB-C source, and a MIDI track's AUDIO input USB, are left out of the mix
+    // with Direct on, and said to be heard (usb_heard()); with it off they play here as before.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> out(256);
+    std::vector<float> usb(256, 0.5f);
+    auto loudest = [&] { int32_t m = 0; for (auto v : out) m = std::max(m, std::abs(v)); return m / 2147483647.0f; };
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::Usb)});
+    host->send({Command::Type::Monitor, 0, 0, 0, 1});
+    for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(loudest() > 0.3f && !host->usb_heard());
+    host->set_usb_direct(true);
+    for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(loudest() < 1e-4f && host->usb_heard());
+    host->send({Command::Type::Monitor, 0, 0, 0, 0});
+    for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(!host->usb_heard()); // nothing would have played it: not heard direct either
+    // A MIDI track hearing USB-C in through its AUDIO page.
+    auto midi = std::make_unique<Project>();
+    for (auto& t : midi->tracks) t.engine = EngineKind::None;
+    load_sound(midi->tracks[0], EngineKind::Midi, 0);
+    auto host2 = std::make_unique<EngineHost>();
+    host2->load(*midi, *bank);
+    host2->send({Command::Type::MidiAudio, 0, 0, 0, midi_track::AudioUsb});
+    for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    float through = loudest();
+    host2->set_usb_direct(true);
+    for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(through > 0.05f && loudest() < 1e-4f && host2->usb_heard());
+    host2->send({Command::Type::Mute, 0, 0, 0, 1}); // muted: not heard either way
+    for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(!host2->usb_heard());
+}
+
 int main() {
+    direct_monitoring();
     usb_volume();
     controls_audit();
     usage_log();

@@ -2200,6 +2200,10 @@ void EngineHost::midi_inputs(const int32_t* input, const float* usb, unsigned fr
         if (s.kind != EngineKind::Midi || s.midi.audio == midi_track::AudioNone) continue;
         s.midi.read = 0;
         float g = s.base[midi_track::AudioMonitor] ? level_gain(s.base[midi_track::AudioLevel]) : 0.0f;
+        if (s.midi.audio == midi_track::AudioUsb && usb_direct.load(std::memory_order_relaxed)) { // heard direct instead
+            if (g > 0 && heard(unsigned(&s - slots.data()))) usb_wanted = true;
+            g = 0;
+        }
         for (unsigned f = 0; f < frames && f < 128; ++f) {
             float l = 0, r = 0;
             if (s.midi.audio == midi_track::AudioUsb) { if (usb) { l = usb[2 * f]; r = usb[2 * f + 1]; } }
@@ -2670,6 +2674,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
 #endif
     }
     blocks_seen.fetch_add(1, std::memory_order_relaxed);
+    // Whether a monitor wanted USB-C in this block (direct monitoring plays it then), however the block ends.
+    usb_wanted = false;
+    struct HeardUsb { EngineHost& host; ~HeardUsb() { host.usb_heard_now.store(host.usb_wanted, std::memory_order_relaxed); } } heard_usb {*this};
     if (is_parked) { // a project load on the loader's thread (park()): silent and still until it lets go
         if (!park_over()) {
             play_parked(out, frames, stems);
@@ -3128,7 +3135,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // while it is monitored or a take waits or runs, fading in and out as Bypass does. Resample takes the mix itself,
     // so it is taken after the master (below); any other source here, so Monitor can join the mix before the master.
     const bool resampling = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Resample);
-    const bool monitored = monitor_on.load(std::memory_order_relaxed) && !resampling;
+    // A USB-C source with direct monitoring on: heard straight at the jacks, not here.
+    const bool usb_direct_source = usb_direct.load(std::memory_order_relaxed) && from_usb(InputSource(source_now.load(std::memory_order_relaxed)));
+    if (usb_direct_source && monitor_on.load(std::memory_order_relaxed)) usb_wanted = true;
+    const bool monitored = monitor_on.load(std::memory_order_relaxed) && !resampling && !usb_direct_source;
     auto take_input = [&] {
         select_input(input, usb, frames);
         auto taking = take.state();
@@ -3399,6 +3409,7 @@ void EngineHost::play_loops(unsigned frames) {
     for (unsigned n = 0; n < loop_tracks && monitor != Monitor::Off; ++n) {
         uint8_t s = loops.source(n);
         if (!looper::source_is_direct(s) || (monitor == Monitor::Auto && !loops.listening(n))) continue;
+        if (usb_direct.load(std::memory_order_relaxed) && from_usb(looper::direct_input(s))) { usb_wanted = true; continue; } // heard direct
         for (unsigned f = 0; f < std::min(frames, source_frames); ++f) { out_l[n][f] += source_l[s][f]; out_r[n][f] += source_r[s][f]; }
     }
     for (unsigned n = 0; n < loop_tracks; ++n) {

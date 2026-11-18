@@ -37,7 +37,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -98,6 +98,13 @@ struct Settings {
     // USB volume: what a computer records over USB-C (channels 1 and 2) at full main volume, the knob left out
     // (Full), or as the jacks play it (Knob).
     bool usb_full = true;
+    // USB-C in: Direct, heard straight at the jacks a few milliseconds after it comes, dry, at the direct level
+    // (drivers/direct_monitor.h), wherever Melodee would play it (a MIDI track's AUDIO input with MONITOR on, Input
+    // Config's Monitor, a loop on it); Tracks, through those, with their effects, about 8 ms later.
+    bool usb_direct = true;
+    static constexpr std::array<int8_t, 9> direct_levels {{-24, -18, -12, -9, -6, -3, 0, 3, 6}}; // dB
+    uint8_t direct_level = 6; // 0 dB
+    float direct_gain() const { return std::pow(10.0f, float(direct_levels[direct_level % direct_levels.size()]) / 20.0f); }
     // Screen Mirror: the screen offered to a computer over USB-C as a webcam, at one of ScreenMirror's sizes, the
     // screen times a whole number (0 320 x 240, 1 640 x 480, 2 1280 x 720, 3 1280 x 960), 30 or 60 fps. Off until
     // asked for: on or off, another size or rate rebinds the USB gadget (about a second without USB audio and MIDI).
@@ -135,7 +142,8 @@ struct Settings {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
-                                    "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume"};
+                                    "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
+                                    "USB-C in", "Direct level"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -179,6 +187,8 @@ struct Settings {
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
         case RecQuantize: return rec_quantize ? "On" : "Off";
         case UsbVolume: return usb_full ? "Full" : "Knob";
+        case UsbDirect: return usb_direct ? "Direct" : "Tracks";
+        case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
         default: return std::to_string(screen) + " %";
         }
     }
@@ -215,6 +225,8 @@ struct Settings {
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
         case RecQuantize: rec_quantize = !rec_quantize; break;
         case UsbVolume: usb_full = !usb_full; break;
+        case UsbDirect: usb_direct = !usb_direct; break;
+        case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
         default: break;
         }
     }
@@ -238,6 +250,7 @@ struct Settings {
         case SilenceBelow: return SamplingPrefs::silence_count;
         case MirrorSize: return ScreenMirror::size_count;
         case PadFade: return unsigned(fades.size());
+        case DirectLevel: return unsigned(direct_levels.size());
         default: return row < Rows ? 2 : 1; // On / Off, and the two-way rows
         }
     }
@@ -273,6 +286,8 @@ struct Settings {
         case SeqFollow: return seq_follow % 3u;
         case RecQuantize: return rec_quantize;
         case UsbVolume: return usb_full;
+        case UsbDirect: return usb_direct;
+        case DirectLevel: return direct_level % direct_levels.size();
         default: return 0;
         }
     }
@@ -309,6 +324,8 @@ struct Settings {
         case SeqFollow: seq_follow = uint8_t(n); break;
         case RecQuantize: rec_quantize = n; break;
         case UsbVolume: usb_full = n; break;
+        case UsbDirect: usb_direct = n; break;
+        case DirectLevel: direct_level = uint8_t(n); break;
         default: break;
         }
     }
@@ -358,7 +375,7 @@ struct Settings {
             << "\nrecall_grab=" << int(sampling.grab) << "\nrecall_gap=" << int(sampling.gap) << "\nrecall_trim=" << int(sampling.trim_end)
             << "\nauto_end=" << int(sampling.auto_end) << "\nauto_end_after=" << int(sampling.end_after)
             << "\nsilence_db=" << sampling.silence_db()
-            << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full)
+            << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
@@ -432,6 +449,8 @@ struct Settings {
             else if (key == "silence_db") sampling.silence = SamplingPrefs::silence_index(value);
             else if (key == "audio_rate") { if (std::find(rates.begin(), rates.end(), unsigned(value)) != rates.end()) audio_rate = uint32_t(value); }
             else if (key == "usb_volume") usb_full = value != 0;
+            else if (key == "usb_direct") usb_direct = value != 0;
+            else if (key == "direct_level") direct_level = uint8_t(std::clamp(value, 0, int(direct_levels.size()) - 1));
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
