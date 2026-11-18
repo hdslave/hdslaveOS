@@ -7150,8 +7150,9 @@ void midi_tracks() {
         std::vector<MidiOutEvent> all;
         for (unsigned n = 0; n < 120; ++n) for (auto& e : block()) all.push_back(e); // two sixteenths: 11025 frames
         bool on = false, off = false;
+        const uint64_t early = 2205; // 50 ms at 44.1 kHz: past the output's latency, the sequencer plays it ahead (play_ahead())
         for (auto& e : all) {
-            if (e.kind == K::NoteOn && e.a == 60) on = e.channel == 11 && e.dest == MidiDest::AllUsb && !e.live && e.frame == play_at - 384;
+            if (e.kind == K::NoteOn && e.a == 60) on = e.channel == 11 && e.dest == MidiDest::AllUsb && !e.live && e.frame == (play_at > early ? play_at - early : 0);
             if (e.kind == K::NoteOff && e.a == 60) off = true;
         }
         CHECK(on && off);
@@ -18705,7 +18706,80 @@ void direct_monitoring() {
     CHECK(!host2->usb_heard());
 }
 
+// A MIDI track's negative DELAY past the output's latency: the sequencer plays it ahead of the other tracks, so each
+// note's MIDI goes that much before its frame is heard (an instrument on a computer, heard back over USB-C, lands
+// with the rest). A launch waiting for the bar line is read ahead: its program before its notes, its notes once.
+void midi_lookahead() {
+    using K = MidiOutEvent::Kind;
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    load_sound(project->tracks[0], EngineKind::Midi, 0);
+    project->tracks[0].params[midi_track::Channel] = 3;
+    project->tempo = 1200;
+    put(bank->at[0][0], 0, 60, 100);
+    put(bank->at[0][0], 8, 62, 100); // step 8: tick 192, 44,100 frames in at 120 BPM
+    put(bank->at[0][1], 0, 64, 100);
+    bank->at[0][1].program = 9;
+    EngineHost host;
+    host.load(*project, *bank);
+    host.set_audio_format(44100, 384);
+    std::vector<int32_t> out(256);
+    uint64_t rendered = 0;
+    struct Out { MidiOutEvent e; uint64_t by; }; // by: the frames rendered when it came out
+    std::vector<Out> got;
+    auto run = [&](unsigned blocks) {
+        for (unsigned n = 0; n < blocks; ++n) {
+            host.render(out.data(), 128, 1);
+            rendered += 128;
+            MidiOutEvent e;
+            while (host.take_midi(e)) got.push_back({e, rendered});
+        }
+    };
+    host.send({Command::Type::Param, 0, 0, midi_track::Delay, -30}); // 1,323 frames: 939 past the latency, five ticks ahead
+    run(2);
+    got.clear();
+    const uint64_t play_at = rendered;
+    host.send({Command::Type::Play});
+    run(400); // past step 8
+    auto find = [&](K kind, uint8_t key) -> const Out* { for (auto& o : got) if (o.e.kind == kind && o.e.a == key) return &o; return nullptr; };
+    const Out* second = find(K::NoteOn, 62);
+    const uint64_t at = play_at + 44100 - 1323;
+    CHECK(second && second->e.frame + 3 >= at && second->e.frame <= at + 3);
+    CHECK(second && second->by <= second->e.frame + 384); // decided by the time it is to go (its frame less the latency)
+    int count62 = 0;
+    for (auto& o : got) count62 += o.e.kind == K::NoteOn && o.e.a == 62;
+    CHECK(count62 == 1);
+    // A launch on the next bar (88,200 frames, the pattern 4 bars long? its own length: one bar of 16 steps).
+    got.clear();
+    host.send({Command::Type::Pattern, 0, 0, 0, 1});
+    run(800);
+    const Out* launched = find(K::NoteOn, 64);
+    const Out* program = find(K::Program, 8);
+    CHECK(launched && program);
+    if (launched && program) {
+        size_t on = size_t(launched - got.data()), prog = size_t(program - got.data());
+        CHECK(prog < on && program->e.frame <= launched->e.frame);
+        uint64_t bar = 88200;
+        CHECK((launched->e.frame + 1323 - play_at) % bar <= 3 || (launched->e.frame + 1323 - play_at) % bar >= bar - 3); // on a bar line, less the delay
+    }
+    int count64 = 0, programs = 0;
+    for (auto& o : got) { count64 += o.e.kind == K::NoteOn && o.e.a == 64; programs += o.e.kind == K::Program; }
+    CHECK(count64 >= 1 && programs == 1); // the program once, read ahead, not again at the bar
+    // No DELAY: on its frame as before (heard then).
+    host.send({Command::Type::Param, 0, 0, midi_track::Delay, 0});
+    host.send({Command::Type::Stop});
+    run(4);
+    got.clear();
+    const uint64_t again = rendered;
+    host.send({Command::Type::Play});
+    run(4);
+    const Out* first = find(K::NoteOn, 64);
+    CHECK(first && first->e.frame == again && !first->e.live);
+}
+
 int main() {
+    midi_lookahead();
     direct_monitoring();
     usb_volume();
     controls_audit();

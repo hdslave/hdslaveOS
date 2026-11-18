@@ -122,11 +122,18 @@ and internal sounds line up. The track's `delay_ms` shifts its events:
 
 - **Positive** (late gear is early, or to nudge): `frame + ms`. No limit
   inside the range.
-- **Negative** (slow gear): can only reach as far back as the audio
-  latency, because the event is decided when its block renders. At 48 kHz
-  with the default buffer that is about 8-24 ms, depending on Settings'
-  buffer. Anything further is clamped (the Edit row shows the clamp). A
-  full −50 ms would need sequencer lookahead, which is left for later.
+- **Negative** (slow gear, or an instrument on a computer heard back over
+  USB-C, about 12 ms with Live at 128 frames and Direct): the MIDI goes
+  that much before its frame is heard, the full −50 ms. What the output's
+  latency does not cover, the sequencer plays the track ahead of the others
+  (`EngineHost::play_ahead()`): its notes and lanes run as many ticks
+  early as that takes, each tick's MIDI at its own frame less the delay, so
+  lengths, ratchets and CC lanes keep their spacing. A new start (Play, a
+  launch at once, Locate) plays from there again. Past the next bar line it
+  reads what that bar plays, a launch waiting for it included: its Note
+  Offs and program go first, there, not again at the bar. Where the next
+  bar is not known yet (Song's clips, a follow action, a chained track) it
+  waits for the bar line and sends what is due at once.
 
 Live playing (pads, keys, MIDI in, the fader's mod wheel, pressure, knobs)
 goes out at once, plus any positive delay, on a MIDI track and through Pad

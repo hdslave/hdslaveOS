@@ -375,7 +375,7 @@ private:
     struct PendingOn { int32_t key = -1; int16_t velocity = 0; int32_t from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
     // pad's semitones over it) and `midi` out, for `length` frames.
-    struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false, sound = true; int32_t samples = 0, length = 0; };
+    struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false, sound = true; int32_t samples = 0, length = 0, shift = 0; };
     // Roadmap P2, one dispatch a block: a call to a track's engine the sequencing pass made past the block's first
     // frame, kept for the track's job to make at that frame (play_calls()).
     struct EngineCall {
@@ -458,6 +458,10 @@ private:
         // Roadmap P5: a follow action (model/follow.h) due on tick `follow_at` (follow_do: the action, 0 none), planned
         // as its pattern starts; it waits while a launch is queued, and a chained track's never come.
         bool chained = false;
+        // A MIDI track ahead (play_ahead()): the next tick to play, the start and pattern read from, and a launch read
+        // ahead (the bar line it comes on, UINT32_MAX none, and its pattern).
+        uint32_t ahead_next = 0, ahead_start = UINT32_MAX, ahead_bar = UINT32_MAX;
+        uint8_t ahead_pattern = 255, ahead_queued = 255;
         uint32_t loop_from = 0, loop_ticks = 0; // an editor's loop (Command::EditLoop): only these ticks play; as written (edit_loop())
         uint8_t follow_do = 0;
         uint32_t follow_at = 0;
@@ -525,6 +529,12 @@ private:
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void tick();       // plays whatever falls on this clock tick, then moves on
+    void play_tick_notes(unsigned t, Slot& slot, uint32_t at_tick, unsigned pattern_index, uint32_t start, bool seq);
+    void play_ahead(unsigned t, Slot& slot, bool seq);
+    int64_t midi_early(unsigned t) const; // a MIDI track's negative DELAY, frames
+    int64_t midi_shift = 0;               // frames this tick's MIDI goes from its frame (play_ahead())
+    uint64_t seq_frame() const { return uint64_t(std::max<int64_t>(0, int64_t(frame_now + block_at) + midi_shift)); }
+    uint64_t early_frame(unsigned t) const { return uint64_t(std::max<int64_t>(0, int64_t(frame_now + block_at) - midi_early(t))); }
     void play_event(unsigned t, Slot& slot, const Pattern& pattern, size_t n, uint32_t at, uint32_t loop, uint32_t pass, bool sound,
                     Slot::Held& holding); // one note of the pattern on this tick (roadmap P1: a kit lane's loop its own)
     void arp_tick();   // the arps' own clock, running whether the song plays or not
@@ -601,7 +611,7 @@ private:
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
     // MIDI out and sync (parity phase 9).
     // Roadmap P4: out as late as everything heard is held back (compensation()), so outside gear lines up with it; a
-    // MIDI track's own by its DELAY too (docs/MIDI_TRACKS.md M4: early by no more than the output's latency).
+    // MIDI track's own by a positive DELAY too (a negative one: the sequencer plays it ahead, play_ahead()).
     // Played by hand (`from_hand`, while a command take_commands() marks so is applied, or a note's MIDI taken early,
     // hand_midi()): out at once instead, from the frame it was played at (send_at() plays it a block on), held back
     // only by a positive DELAY, the MIDI thread woken for it (set_hand_waker()).
@@ -637,7 +647,7 @@ private:
     // A MIDI track's own parameter beyond port and channel: a controller value goes out as a CC; bank and
     // program (any of the three) as the bank selects that are on, then the program, when it is on.
     void midi_param(unsigned t, int id, int value, uint64_t at);
-    void midi_program(unsigned t, uint64_t at, bool force = true); // force: even when it is what was sent last
+    void midi_program(unsigned t, uint64_t at, bool force = true, int pattern_index = -1); // force: even when it is what was sent last; pattern_index: that pattern's
     void midi_slot(unsigned t, int slot, int value, uint64_t at);  // a slot's value as what its address says
     void midi_thinned(unsigned frames);                            // slots' values that waited, when their time comes
     void midi_inputs(const int32_t* input, const float* usb, unsigned frames); // MIDI tracks' inputs as their sound (M5)
