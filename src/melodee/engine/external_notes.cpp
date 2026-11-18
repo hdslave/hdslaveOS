@@ -10,17 +10,26 @@ namespace melodee {
 namespace {
 constexpr unsigned turn = 5;        // milliseconds between looks at the input
 constexpr uint32_t piece = 4096;    // frames copied at a time
+constexpr float full_scale = 0.999f; // a frame at the input's top
+constexpr unsigned clip_run = 3;    // that many in a row on one side: a clip
 }
 
 bool ExternalNotes::take(uint64_t from, uint32_t frames, std::vector<float>& left, std::vector<float>& right) {
     const size_t at = left.size();
     left.resize(at + frames); right.resize(at + frames);
     if (!io.copy(from, frames, left.data() + at, right.data() + at)) { left.resize(at); right.resize(at); return false; }
-    for (size_t f = at; f < left.size(); ++f) clipping = clipping || std::fabs(left[f]) >= 0.999f || std::fabs(right[f]) >= 0.999f;
+    if (from != run_end) run_l = run_r = 0; // not straight on from the frames taken last: no run carries over
+    for (size_t f = at; f < left.size(); ++f) {
+        run_l = std::fabs(left[f]) >= full_scale ? run_l + 1 : 0;
+        run_r = std::fabs(right[f]) >= full_scale ? run_r + 1 : 0;
+        if (!clipping && (run_l >= clip_run || run_r >= clip_run)) { clipping = true; clip_key = sounding; }
+    }
+    run_end = from + frames;
     return true;
 }
 
 std::string ExternalNotes::open(uint8_t key, const std::function<bool()>& keep_going) {
+    sounding = -1;
     io.post({Command::Type::AllNotesOff, track}, io.now());
     // Silence: the input with nothing playing, 0.3 s at a time from 0.2 s on, until it has stopped dying away (what
     // was sounding has ended: a stretch within 3 dB of the one before, or nothing at all), 5 s at most.
@@ -42,6 +51,7 @@ std::string ExternalNotes::open(uint8_t key, const std::function<bool()>& keep_g
     clear = std::max(4.0f * quiet, 0.003f);
     // The delay: a quarter of a second of `key`, and where the input first rises well clear of its silence.
     const uint64_t start = io.now(), heard = start + uint64_t(0.5f * rate);
+    sounding = key;
     io.post({Command::Type::NoteOn, track, 0, key, 100}, start);
     io.post({Command::Type::NoteOff, track, 0, key}, start + uint64_t(0.25f * rate));
     while (io.now() < heard) {
@@ -83,6 +93,7 @@ NoteAudio ExternalNotes::note(uint8_t key, uint8_t velocity, uint64_t hold, floa
     // Heard from the frame it is sent: a note comes back a few milliseconds sooner or later than the one before, so
     // where its sound starts is found once it is in. Its key's release is heard about open()'s delay after it is sent.
     const uint64_t start = io.now(), let_go = hold + delay;
+    sounding = key; // its tail too, as the input settles after it
     io.post({Command::Type::NoteOn, track, 0, key, int16_t(std::max<uint8_t>(velocity, 1))}, start);
     io.post({Command::Type::NoteOff, track, 0, key}, start + hold);
     const uint64_t quiet_frames = uint64_t(0.2f * rate), most = uint64_t(std::max(0.0f, most_tail) * rate);
@@ -136,6 +147,7 @@ NoteAudio ExternalNotes::note(uint8_t key, uint8_t velocity, uint64_t hold, floa
 
 std::vector<float> ExternalNotes::notes(std::vector<ProbeNote> notes, uint64_t frames, const std::function<bool()>& keep_going) {
     const uint64_t start = io.now(), from = start + delay, until = from + frames;
+    sounding = -1; // several keys
     for (const auto& n : notes) {
         if (n.on) io.post({Command::Type::NoteOn, track, 0, n.key, int16_t(std::max<uint8_t>(n.velocity, 1))}, start + n.at);
         else io.post({Command::Type::NoteOff, track, 0, n.key}, start + n.at);

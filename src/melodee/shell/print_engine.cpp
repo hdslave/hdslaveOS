@@ -11,6 +11,7 @@
 #include "melodee/engine/loop_find.h"
 #include "melodee/engine/stream_pager.h"
 #include "melodee/engine/sample_data.h"
+#include "melodee/model/scales.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/mpc3_export.h"
 #include "melodee/shell/sample_library.h"
@@ -356,10 +357,12 @@ void PrintEngine::run() {
         if (job->autosample) { // the auto sampler: notes, not patterns
             std::string check_failed; // its check found no sound, an input that clips, or was called off: nothing is sampled
             std::unique_ptr<NoteSource> checked; // an instrument outside: the check's notes, sampled with next
+            int check_key = -1;
             if (job->probe_first) { // as the sheet does: the check first, its findings sampled with
                 AutoProbeResult heard = probe_track(*job, samples, job->external ? &checked : nullptr);
                 if (heard.error.empty()) job->sampling.found = heard.found;
                 check_failed = heard.error;
+                check_key = heard.key;
                 std::lock_guard<std::mutex> held(lock);
                 const auto& f = heard.found;
                 lines.push_back("autosample-check track=" + std::to_string(job->track + 1) + " kind=" +
@@ -375,6 +378,7 @@ void PrintEngine::run() {
             else {
                 made.project_path = job->project_path; made.track = job->track % track_count; made.name = job->sample_name;
                 made.error = check_failed;
+                made.key = check_key;
             }
             if (library) library->release_samples();
             std::lock_guard<std::mutex> held(lock);
@@ -647,6 +651,7 @@ struct NoteSource {
     virtual std::string about() const { return {}; } // for `melodee-print status`
     virtual float silence() const { return 0.000316f; } // what counts as silent (-70 dB; an input's own noise and a little more)
     virtual std::string trouble() const { return {}; }  // what went wrong meanwhile, if anything
+    virtual int trouble_key() const { return -1; }      // the key it is about (a clip), -1 none
 };
 
 namespace {
@@ -730,7 +735,12 @@ struct OutsideNotes final : NoteSource {
                       1000.0 * played.latency() / double(dsp::sample_rate()));
         return text;
     }
-    std::string trouble() const override { return played.clipped() ? "the input clips: turn the instrument down" : std::string(); }
+    std::string trouble() const override {
+        if (!played.clipped()) return {};
+        const int key = played.clipped_key();
+        return (key >= 0 ? note_name(key) : std::string("the input")) + " clips: turn the instrument down";
+    }
+    int trouble_key() const override { return played.clipped() ? played.clipped_key() : -1; }
 };
 
 // The job's notes: its plug-in track's plug-in opened in a print host, or (a MIDI track) the instrument outside,
@@ -1060,7 +1070,7 @@ AutoProbeResult PrintEngine::probe_track(const PrintJob& job, const std::array<c
             r.heard += one;
         }
     }
-    if (auto why = source->trouble(); !why.empty()) { r.error = why; return r; } // an input that clips: nothing good can be sampled
+    if (auto why = source->trouble(); !why.empty()) { r.error = why; r.key = source->trouble_key(); return r; } // an input that clips: nothing good can be sampled
     found.speed = playing > 0 ? float(played / playing) : 1.0f;
     // Velocity layers from the sixteen hits: where the tone changes (an accent starts a layer), for 1 to 8 layers,
     // and at Auto as many as the tone needs. One where the hits differ from hit to hit: takes then (an MPC plays a
@@ -1243,7 +1253,7 @@ AutoSampleResult PrintEngine::sample_track(const PrintJob& job, const std::array
             if (drums) trim_silence(audio, rate, silent); // a one shot: no silence kept for the time the key was held
             if (remove_dc(audio.left, audio.right, audio.held, rate)) ++r.centred;
             settle();
-            if (auto why = source->trouble(); !why.empty()) return fail(why);
+            if (auto why = source->trouble(); !why.empty()) { r.key = source->trouble_key(); return fail(why); }
             float peak = 0;
             for (size_t f = 0; f < audio.left.size(); ++f) peak = std::max({peak, std::fabs(audio.left[f]), std::fabs(audio.right[f])});
             {

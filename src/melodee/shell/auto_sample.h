@@ -170,6 +170,7 @@ struct AutoProbeResult {
     unsigned track = 0;
     AutoFindings found;
     std::string error;
+    int key = -1;      // the key the error is about (an input that clips there), -1 none
     std::string heard; // what it measured, for `melodee-print status`
 };
 
@@ -180,6 +181,7 @@ struct AutoSampleResult {
     std::string program; // the .xpm's path
     std::string name;
     std::string error;   // empty: made
+    int key = -1;        // the key the error is about (an input that clips there), -1 none
     unsigned samples = 0;
     unsigned loops = 0;  // samples given a loop
     unsigned centred = 0; // samples whose DC offset was taken out

@@ -481,6 +481,10 @@ struct UiState {
         // The check is still to start: once the track's plug-in is open and the print engine is free
         // (Context::autosample_tick()).
         bool check_wanted = false;
+        // Why the last check or sampling failed, its first words ("G#3 clips", "card full"), until the next starts;
+        // the key it is about (an input that clips there), -1 none.
+        char error[48] {};
+        int16_t error_key = -1;
     };
     AutoSheet auto_sheet;
     // The STEMS sheet (shell/stems_jobs.cpp): the kit pad whose sample is separated, the sample it held when the

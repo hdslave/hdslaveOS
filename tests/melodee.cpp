@@ -8943,6 +8943,7 @@ struct MadeUpInstrument final : ExternalIo {
     uint32_t delay = 300;
     float noise = 0.0005f, level = 0.5f, fall = 0.05f;
     bool mute = false;
+    std::vector<uint64_t> spikes; // frames heard at full scale whatever plays
     struct Voice { uint8_t key; float gain; double phase; uint64_t on, off; };
     std::vector<Voice> voices;
     std::vector<std::pair<uint64_t, Command>> posted;
@@ -8978,6 +8979,7 @@ struct MadeUpInstrument final : ExternalIo {
                 v.phase += 2 * M_PI * hz / rate;
                 x += g * std::sin(v.phase);
             }
+            if (std::find(spikes.begin(), spikes.end(), clock) != spikes.end()) x = 1.0;
             heard.push_back(float(std::clamp(x, -1.0, 1.0)));
         }
     }
@@ -9022,6 +9024,18 @@ void external_notes() {
         io.wait(20);
         CHECK(cut.error == "stopped" && io.offs > offs && io.all_offs > all);
     }
+    { // full scale: a flat top is a clip, on the key that made it; a peak that touches it for a frame or two is not
+        MadeUpInstrument io;
+        ExternalNotes notes(io, 0, rate);
+        CHECK(notes.open(60, {}).empty() && !notes.clipped());
+        const uint64_t at = io.clock + 4800;
+        io.spikes = {at, at + 1, at + 2400};
+        CHECK(notes.note(64, 100, uint64_t(0.2f * rate), 2.0f, {}).error.empty() && !notes.clipped() && notes.clipped_key() < 0);
+        io.level = 1.5f;
+        CHECK(notes.note(67, 100, uint64_t(0.2f * rate), 2.0f, {}).error.empty() && notes.clipped() && notes.clipped_key() == 67);
+        io.level = 0.5f; // later notes keep the first key it clipped on
+        CHECK(notes.note(72, 100, uint64_t(0.2f * rate), 2.0f, {}).error.empty() && notes.clipped_key() == 67);
+    }
     { // a note still dying away as it opens: the silence is the input's once that has ended, not the note's end
         MadeUpInstrument io;
         io.fall = 0.15f;
@@ -9040,7 +9054,7 @@ void external_notes() {
         MadeUpInstrument hot;
         hot.level = 1.5f;
         ExternalNotes loud(hot, 0, rate);
-        CHECK(loud.open(60, {}).empty() && loud.clipped());
+        CHECK(loud.open(60, {}).empty() && loud.clipped() && loud.clipped_key() == 60);
         std::string why;
         MadeUpInstrument io;
         CHECK(ExternalNotes(io, 0, rate).open(60, [] { return false; }) == "stopped");

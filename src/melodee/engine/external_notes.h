@@ -46,7 +46,10 @@ public:
     std::string open(uint8_t key, const std::function<bool()>& keep_going);
     float silence() const { return quiet; }       // what counts as silent at this input (linear, -70 dB at least)
     uint32_t latency() const { return delay; }    // frames from a note sent to its sound
-    bool clipped() const { return clipping; }     // a frame reached full scale since open()
+    // The input clipped since open(): three frames or more in a row at full scale on one side (a flat top, as a
+    // clip meter counts it); one or two frames that touch it are a peak, not a clip.
+    bool clipped() const { return clipping; }
+    int clipped_key() const { return clip_key; }  // the key sounding when it first clipped (its tail too); -1: none or unknown
 
     // Nothing playing, until the input has been silent for 0.1 s (4 s at most).
     void settle(const std::function<bool()>& keep_going);
@@ -65,6 +68,10 @@ private:
     float clear = 0.003f; // a sound has started: well over the silence
     uint32_t delay = 0;
     bool clipping = false;
+    int clip_key = -1;
+    int sounding = -1;          // the key whose note (or tail) the input hears now; -1: several or none
+    uint64_t run_end = 0;       // the frame after the last one taken: frames taken from there carry the runs on
+    unsigned run_l = 0, run_r = 0; // frames in a row at full scale, each side
 };
 
 } // namespace melodee

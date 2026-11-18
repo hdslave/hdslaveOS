@@ -245,7 +245,12 @@ listening to the input again. Each sample starts where its sound starts.
   **INPUT**.
 - **The input is not quiet**: something is sounding or humming at the input
   before the first note.
-- **The input clips**: turn the instrument down and sample again.
+- **G#3 clips** (the key named): the instrument reached full scale on that
+  key, three samples in a row or more. Turn the instrument down and sample
+  again. A peak that touches full scale for one or two samples is kept.
+- When sampling stops, the reason stays at the top of the sheet in amber,
+  with the key it stopped on in amber on the keys, until you press
+  **SAMPLE** again.
 - The program goes on the first empty track as a keygroup track with the
   MIDI track's patterns, Song clips and mix. The MIDI track stays as it was.
 

@@ -1276,7 +1276,13 @@ away, gives the silence (2.5 times its peak, -70 dB at least; over
 sent and cut to a millisecond before its own first frame over that level
 (looked for until 50 ms after the delay: the delay is never twice the
 same), and ends once the input has been under the silence for 0.2 s
-(TAIL at most). A frame at full scale fails the job ("the input clips").
+(TAIL at most). Three frames or more in a row at full scale (0.999) on one
+side fail the job, named by the key then sounding ("G#3 clips: turn the
+instrument down"; "the input clips" when several keys sound); one or two
+frames that touch it are a peak and pass. A failed check or sampling keeps
+its first words (before any ":") on the sheet as an amber chip, and the key
+in amber on the strip, until SAMPLE or the next check (UiState::AutoSheet
+error, error_key); `melodee-print status` keeps the whole line.
 The check runs first in the same job (`probe_first`), its notes played
 the same way; the sequencer starting calls the job off. The sheet has
 INPUT in TAP's place and the input's meter (IN), amber within 3 dB of

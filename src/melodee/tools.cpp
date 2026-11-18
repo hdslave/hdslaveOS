@@ -1278,6 +1278,17 @@ const Preview previews[] {
          s.ui.auto_sheet.track = 11; s.ui.auto_sheet.row = 2;
          s.take.left = 0.25f; s.take.right = 0.18f;
      }},
+    // The run failed: the input clipped on G#3, kept on the sheet, the key in amber.
+    {"autosamplemidiclip", [](Shell&, Snapshot& s) {
+         stage_midi(s, 0, 0);
+         s.project.tracks[11].params[midi_track::AudioIn] = midi_track::AudioUsb;
+         s.ui.page = PageId::AutoSample;
+         s.ui.auto_sheet = UiState::AutoSheet {};
+         s.ui.auto_sheet.track = 11; s.ui.auto_sheet.row = 0;
+         s.ui.auto_sheet.settings.low = 36; s.ui.auto_sheet.settings.high = 96; s.ui.auto_sheet.settings.step = 2;
+         std::snprintf(s.ui.auto_sheet.error, sizeof(s.ui.auto_sheet.error), "%s", "G#3 clips");
+         s.ui.auto_sheet.error_key = 56;
+     }},
     {"autosamplemidinone", [](Shell&, Snapshot& s) {
          stage_midi(s, 0, 0);
          s.ui.page = PageId::AutoSample;
