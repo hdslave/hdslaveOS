@@ -2201,7 +2201,10 @@ void EngineHost::midi_inputs(const int32_t* input, const float* usb, unsigned fr
         s.midi.read = 0;
         float g = s.base[midi_track::AudioMonitor] ? level_gain(s.base[midi_track::AudioLevel]) : 0.0f;
         if (s.midi.audio == midi_track::AudioUsb && usb_direct.load(std::memory_order_relaxed)) { // heard direct instead
-            if (g > 0 && heard(unsigned(&s - slots.data()))) usb_wanted = true;
+            if (g > 0 && heard(unsigned(&s - slots.data()))) { // at the track's level and pan (a stereo engine: unity at the centre)
+                usb_wanted = true;
+                usb_want_l += g * s.gain * s.pan_left * 1.4142f; usb_want_r += g * s.gain * s.pan_right * 1.4142f;
+            }
             g = 0;
         }
         for (unsigned f = 0; f < frames && f < 128; ++f) {
@@ -2675,8 +2678,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     blocks_seen.fetch_add(1, std::memory_order_relaxed);
     // Whether a monitor wanted USB-C in this block (direct monitoring plays it then), however the block ends.
-    usb_wanted = false;
-    struct HeardUsb { EngineHost& host; ~HeardUsb() { host.usb_heard_now.store(host.usb_wanted, std::memory_order_relaxed); } } heard_usb {*this};
+    usb_wanted = false; usb_want_l = usb_want_r = 0;
+    struct HeardUsb {
+        EngineHost& host;
+        ~HeardUsb() {
+            host.usb_gain_l.store(host.usb_want_l, std::memory_order_relaxed); host.usb_gain_r.store(host.usb_want_r, std::memory_order_relaxed);
+            host.usb_heard_now.store(host.usb_wanted, std::memory_order_relaxed);
+        }
+    } heard_usb {*this};
     if (is_parked) { // a project load on the loader's thread (park()): silent and still until it lets go
         if (!park_over()) {
             play_parked(out, frames, stems);
@@ -3137,7 +3146,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     const bool resampling = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Resample);
     // A USB-C source with direct monitoring on: heard straight at the jacks, not here.
     const bool usb_direct_source = usb_direct.load(std::memory_order_relaxed) && from_usb(InputSource(source_now.load(std::memory_order_relaxed)));
-    if (usb_direct_source && monitor_on.load(std::memory_order_relaxed)) usb_wanted = true;
+    if (usb_direct_source && monitor_on.load(std::memory_order_relaxed)) { // its input gain, at a centred pad's pan law
+        usb_wanted = true;
+        usb_want_l += record_gain * pan_centre; usb_want_r += record_gain * pan_centre;
+    }
     const bool monitored = monitor_on.load(std::memory_order_relaxed) && !resampling && !usb_direct_source;
     auto take_input = [&] {
         select_input(input, usb, frames);
@@ -3409,7 +3421,14 @@ void EngineHost::play_loops(unsigned frames) {
     for (unsigned n = 0; n < loop_tracks && monitor != Monitor::Off; ++n) {
         uint8_t s = loops.source(n);
         if (!looper::source_is_direct(s) || (monitor == Monitor::Auto && !loops.listening(n))) continue;
-        if (usb_direct.load(std::memory_order_relaxed) && from_usb(looper::direct_input(s))) { usb_wanted = true; continue; } // heard direct
+        if (usb_direct.load(std::memory_order_relaxed) && from_usb(looper::direct_input(s))) { // heard direct, at its strip's level and pan
+            const auto& strip = loop_strips[n];
+            if (!strip.mute) {
+                usb_wanted = true;
+                usb_want_l += strip.gain * strip.pan_left * 1.4142f; usb_want_r += strip.gain * strip.pan_right * 1.4142f;
+            }
+            continue;
+        }
         for (unsigned f = 0; f < std::min(frames, source_frames); ++f) { out_l[n][f] += source_l[s][f]; out_r[n][f] += source_r[s][f]; }
     }
     for (unsigned n = 0; n < loop_tracks; ++n) {

@@ -18595,13 +18595,40 @@ void direct_monitoring() {
         auto value = [&](unsigned frame) { return buffer[2 * frame] / 2147483648.0; };
         unsigned lead = m.lead();
         CHECK(m.added() == 64 && lead >= DirectMonitor::ahead && lead < DirectMonitor::ahead + 4);
-        unsigned first = 384, mixed = 0; // 0.25 written + 0.5 at gain 0.5
-        for (unsigned f = 0; f < 384; ++f) if (std::fabs(value(f) - 0.5) < 1e-6) { first = std::min(first, f); ++mixed; }
-        CHECK(mixed == 64 && first >= DirectMonitor::ahead && first < DirectMonitor::ahead + 4); // the frames before: as the app wrote them
+        // Faded in from silence (5 ms), on top of what the app wrote; the frames before as it wrote them.
+        unsigned first = 384;
+        for (unsigned f = 0; f < 384; ++f) if (value(f) > 0.25 + 1e-6) { first = f; break; }
+        CHECK(first >= DirectMonitor::ahead && first < DirectMonitor::ahead + 4);
+        CHECK(value(first) < 0.252 && value(first + 63) > value(first + 32) && value(first + 32) > value(first) && value(first + 63) < 0.5);
         // The next period follows on; the DMA a period further on, the pace kept: no slip, no nudge.
         m.at(448, 64, now(), true);
         m.add(period.data(), 64);
         CHECK(m.slips() == 0 && m.nudges() == 0 && m.added() == 128);
+        // Settled (40 ms on): at the gain, 0.25 + 0.5 x 0.5, each side its own.
+        {
+            DirectMonitor s;
+            std::vector<int32_t> ring(2 * 384, int32_t(0.25 * 2147483648.0));
+            s.attach(ring.data(), 384, 48000);
+            s.set(true, 0.5f, 0.25f);
+            for (unsigned k = 0; k < 30; ++k) {
+                if (k == 29) std::fill(ring.begin(), ring.end(), int32_t(0.25 * 2147483648.0));
+                s.at(384 + 64 * k, 64 * k, now(), true);
+                s.add(period.data(), 64);
+            }
+            unsigned at = unsigned((s.added() - 64 + DirectMonitor::ahead) % 384);
+            for (unsigned f = at; f < at + 64; ++f) {
+                CHECK(std::fabs(ring[2 * (f % 384)] / 2147483648.0 - 0.5) < 2e-3);
+                CHECK(std::fabs(ring[2 * (f % 384) + 1] / 2147483648.0 - 0.375) < 2e-3);
+            }
+            // Off: it fades out, then leaves the buffer alone.
+            s.set(false, 0.5f, 0.25f);
+            for (unsigned k = 30; k < 60; ++k) { s.at(384 + 64 * k, 64 * k, now(), true); s.add(period.data(), 64); }
+            std::fill(ring.begin(), ring.end(), int32_t(0.25 * 2147483648.0));
+            s.at(384 + 64 * 60, 64 * 60, now(), true);
+            s.add(period.data(), 64);
+            for (auto v : ring) CHECK(v == int32_t(0.25 * 2147483648.0));
+            s.detach();
+        }
         // The computer a little behind (the DMA 20 frames further than it sent): a frame repeated, not a slip.
         m.at(512, 148, now(), true);
         m.add(period.data(), 64);
@@ -18647,10 +18674,13 @@ void direct_monitoring() {
     host->send({Command::Type::RecordSource, uint8_t(InputSource::Usb)});
     host->send({Command::Type::Monitor, 0, 0, 0, 1});
     for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
-    CHECK(loudest() > 0.3f && !host->usb_heard());
+    const float monitored = loudest();
+    CHECK(monitored > 0.3f && !host->usb_heard());
     host->set_usb_direct(true);
     for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
     CHECK(loudest() < 1e-4f && host->usb_heard());
+    // Heard direct at the level Monitor gave it (its input gain at a centred pad's pan law).
+    CHECK(std::fabs(0.5f * host->usb_gain_left() - monitored) < 2e-3f && std::fabs(host->usb_gain_right() - host->usb_gain_left()) < 1e-6f);
     host->send({Command::Type::Monitor, 0, 0, 0, 0});
     for (unsigned n = 0; n < 8; ++n) host->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
     CHECK(!host->usb_heard()); // nothing would have played it: not heard direct either
@@ -18666,6 +18696,10 @@ void direct_monitoring() {
     host2->set_usb_direct(true);
     for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
     CHECK(through > 0.05f && loudest() < 1e-4f && host2->usb_heard());
+    CHECK(std::fabs(0.5f * host2->usb_gain_left() - through) < 2e-3f); // at the level the track gave it
+    host2->send({Command::Type::Pan, 0, 0, 0, -50}); // hard left: the right side silent, as through the track
+    for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
+    CHECK(host2->usb_gain_left() > 0.05f && host2->usb_gain_right() < 1e-3f);
     host2->send({Command::Type::Mute, 0, 0, 0, 1}); // muted: not heard either way
     for (unsigned n = 0; n < 8; ++n) host2->render(out.data(), 128, 1.0f, nullptr, nullptr, usb.data());
     CHECK(!host2->usb_heard());

@@ -404,10 +404,10 @@ as any other track's sound does.
 | **K3** (**LEVEL**) | The input's level in the track. |
 
 USB from a computer plays straight to the jacks while Settings' **USB-C in**
-is **Direct** (the default), without the track's level, pan or effects, so
-an instrument on the computer answers the pads sooner. **MONITOR** still
-turns it on and off, and muting the track silences it. Set **USB-C in** to
-**Tracks** to hear it through the track.
+is **Direct** (the default), at the track's **LEVEL**, level and pan but
+without its effects, so an instrument on the computer answers the pads
+sooner. **MONITOR** still turns it on and off, and muting the track fades it
+out. Set **USB-C in** to **Tracks** to hear it through the track's effects.
 
 The MPC takes sound from the mic or the rear inputs, not both at once, and
 the rear inputs come first. While another MIDI track or a Looper loop uses

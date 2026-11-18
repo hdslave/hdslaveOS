@@ -220,9 +220,14 @@ public:
     bool monitoring() const { return monitor_on.load(std::memory_order_relaxed); }
     // Any thread: Settings' USB-C in Direct (drivers/direct_monitor.h): what a computer plays is then heard straight
     // at the jacks, so this mix leaves it out wherever it would play it (a MIDI track's AUDIO input with MONITOR on,
-    // Input Config's Monitor, a loop on it); usb_heard() says, after each block, whether one of those wanted it.
+    // Input Config's Monitor, a loop on it); usb_heard() says, after each block, whether one of those wanted it, and
+    // usb_gain_left() / right() at what level each side, before main volume: what those would have given it before
+    // their effects (a MIDI track's AUDIO LEVEL, level and pan; Monitor's input gain at a centred pan; a loop's level
+    // and pan), added up.
     void set_usb_direct(bool on) { usb_direct.store(on, std::memory_order_relaxed); }
     bool usb_heard() const { return usb_heard_now.load(std::memory_order_relaxed); }
+    float usb_gain_left() const { return usb_gain_l.load(std::memory_order_relaxed); }
+    float usb_gain_right() const { return usb_gain_r.load(std::memory_order_relaxed); }
     bool input_taken() const { return source_taken.load(std::memory_order_relaxed); }
 
     // Feedback, any thread.
@@ -743,7 +748,9 @@ private:
     float auto_silence_db = -60;   // and what quiet is
     std::atomic<bool> monitor_on {false};
     std::atomic<bool> usb_direct {false}, usb_heard_now {false};
-    bool usb_wanted = false; // this block: a monitor wanted USB-C in, which direct monitoring plays instead
+    std::atomic<float> usb_gain_l {0}, usb_gain_r {0};
+    bool usb_wanted = false;              // this block: a monitor wanted USB-C in, which direct monitoring plays instead
+    float usb_want_l = 0, usb_want_r = 0; // and at what level each side
     std::atomic<bool> source_taken {false}; // InputTaken: the source's ADC side is routed elsewhere
     std::atomic<uint8_t> loop_monitor {uint8_t(Monitor::Auto)}; // Input Config's Monitor, for loops on a hardware input
     float record_gain = 1;  // linear

@@ -141,9 +141,11 @@ void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
     host.set_usb_direct(direct);
     host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames),
                 usb_full ? usb_block.data() : nullptr);
-    // Settings' USB-C in Direct: what a computer plays goes straight to the jacks, dry, at the direct level and the
-    // main volume, while something here would have played it (base's drivers/direct_monitor.h).
-    direct_monitor().set(direct && host.usb_heard(), shell.volume() * shell.usb_direct_gain());
+    // Settings' USB-C in Direct: what a computer plays goes straight to the jacks, dry, while something here would
+    // have played it, at the level it would have (before its effects), the direct level and the main volume, eased
+    // (base's drivers/direct_monitor.h).
+    const float gain = shell.volume() * shell.usb_direct_gain();
+    direct_monitor().set(direct && host.usb_heard(), gain * host.usb_gain_left(), gain * host.usb_gain_right());
 }
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
