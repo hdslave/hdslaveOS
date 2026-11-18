@@ -58,7 +58,10 @@ as MIDI passes.
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
 - **MIDI out**: pads, patterns, the arpeggiator, MIDI clock (with Start,
-  Continue, Stop and Song Position), MTC and the CV clock.
+  Continue, Stop and Song Position), MTC and the CV clock. What you play
+  (pads, keys, MIDI in, the fader, knobs) goes out at once. Patterns, the
+  arpeggiator and the clocks go out as their sound is heard, so outside
+  gear plays in time with Melodee's own tracks.
 
 ## Using a MIDI controller
 

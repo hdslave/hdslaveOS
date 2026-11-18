@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/midi_config.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -36,6 +37,9 @@ struct MidiOutEvent {
     uint64_t frame = 0; // the audio thread's frame it belongs to
     MidiDest dest = MidiDest::Config; // where it goes out (a MIDI track's own port, docs/MIDI_TRACKS.md)
     uint8_t track = 255;              // the MIDI track it is from (255: none)
+    // Played by hand (a pad, a key, MIDI in, the fader, a knob): out at once, not when its frame is heard; `frame`
+    // is then the one it was played at (plus a MIDI track's positive DELAY).
+    bool live = false;
 };
 
 // The audio clock against CLOCK_MONOTONIC. The audio thread stamps each
@@ -70,6 +74,11 @@ public:
         double ns_a_frame = 1e9 / rate.load(std::memory_order_relaxed);
         return published.load(std::memory_order_relaxed) + int64_t(double(frame + latency.load(std::memory_order_relaxed)) * ns_a_frame);
     }
+    // Any thread: when `frame` is rendered (heard_at() less the latency): for what goes out at once.
+    int64_t rendered_at(uint64_t frame) const {
+        double ns_a_frame = 1e9 / rate.load(std::memory_order_relaxed);
+        return published.load(std::memory_order_relaxed) + int64_t(double(frame) * ns_a_frame);
+    }
     // Any thread: the frame being rendered at `ns` (for what came in then).
     uint64_t frame_at(int64_t ns) const {
         double f = double(ns - published.load(std::memory_order_relaxed)) * rate.load(std::memory_order_relaxed) / 1e9;
@@ -88,6 +97,62 @@ private:
     std::atomic<double> rate {44100.0};
     std::atomic<uint64_t> latency {384};
     std::atomic<int64_t> published {0};
+};
+
+// The MIDI thread's messages waiting to go out (shell/midi_io.h), sorted by when: as their frame is heard, or at once
+// played by hand. Allocation-free.
+class MidiOutQueue {
+public:
+    struct Waiting { int64_t due = 0; MidiOutEvent event; };
+    static constexpr unsigned capacity = 512;
+    bool full() const { return count == capacity; }
+    unsigned size() const { return count; }
+    const Waiting& operator[](unsigned n) const { return items[n]; }
+    // After those due at the same time.
+    void add(const MidiOutEvent& e, int64_t due) {
+        if (full()) return;
+        unsigned at = count;
+        while (at > 0 && items[at - 1].due > due) { items[at] = items[at - 1]; --at; }
+        items[at] = {due, e};
+        ++count;
+    }
+    // A note played by hand (`e`, due at `due`) goes out ahead of the same key's sequenced notes still waiting to be
+    // heard, which the engine has already let go (a hand's Note On ends the note it replaces, whichever track's; its
+    // Note Off its own track's): their Note Ons are dropped, so none sounds on with no Off to follow; their Note Off
+    // goes first, before a hand's Note On, or not at all after its Off. Returns how many it dropped or moved.
+    unsigned supersede(const MidiOutEvent& e, int64_t due) {
+        using K = MidiOutEvent::Kind;
+        unsigned kept = 0, taken = 0;
+        bool off = false;
+        MidiOutEvent first_off;
+        for (unsigned n = 0; n < count; ++n) {
+            const auto& p = items[n].event;
+            bool same = !p.live && (p.kind == K::NoteOn || p.kind == K::NoteOff) && p.dest == e.dest && p.channel == e.channel &&
+                        p.a == e.a && (p.track == e.track || (e.kind == K::NoteOn && e.dest != MidiDest::UsbDevice));
+            if (!same) { items[kept++] = items[n]; continue; }
+            if (p.kind == K::NoteOff && !off) { off = true; first_off = p; }
+            ++taken;
+        }
+        count = kept;
+        if (off && e.kind == K::NoteOn) add(first_off, due);
+        return taken;
+    }
+    // The first `n` went out.
+    void drop_front(unsigned n) {
+        n = std::min(n, count);
+        std::copy(items.begin() + n, items.begin() + count, items.begin());
+        count -= n;
+    }
+    // Only those `keep` says.
+    template <class Keep> void keep_if(Keep&& keep) {
+        unsigned kept = 0;
+        for (unsigned n = 0; n < count; ++n) if (keep(items[n].event)) items[kept++] = items[n];
+        count = kept;
+    }
+
+private:
+    std::array<Waiting, capacity> items {};
+    unsigned count = 0;
 };
 
 // MIDI clock, MTC and the CV clock, from the tempo in samples a quarter. Not

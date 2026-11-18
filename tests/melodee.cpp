@@ -5754,6 +5754,55 @@ void midi_and_sync() {
         clock.stamp(1000000000 + 2666666 + 1000000, 128); // a block a millisecond late barely moves it
         CHECK(std::llabs(clock.heard_at(0) - 1008000000) < 10000);
     }
+    // Out at once when played by hand: when a frame is rendered, heard_at() less the latency.
+    {
+        AudioClock clock;
+        clock.set_format(48000, 384);
+        clock.stamp(1000000000, 0);
+        CHECK(clock.rendered_at(480) == 1000000000 + 10000000 && clock.heard_at(480) - clock.rendered_at(480) == 8000000);
+    }
+    // MIDI out waiting for its time, sorted; a note played by hand goes ahead of the same key's sequenced notes waiting.
+    {
+        using K = MidiOutEvent::Kind;
+        auto note = [](K kind, uint8_t key, bool live = false, uint8_t channel = 3) {
+            MidiOutEvent e; e.kind = kind; e.channel = channel; e.a = key; e.live = live; e.dest = MidiDest::External; e.track = 0;
+            return e;
+        };
+        MidiOutQueue q;
+        q.add(note(K::NoteOn, 60), 100);
+        q.add(note(K::NoteOn, 62), 100);
+        q.add(note(K::NoteOff, 60), 300);
+        q.add(note(K::NoteOn, 64), 200);
+        q.add(note(K::NoteOn, 60, false, 4), 100); // another channel
+        CHECK(q.size() == 5 && q[0].event.a == 60 && q[1].event.a == 62 && q[2].event.channel == 4 && q[3].event.a == 64 && q[4].event.kind == K::NoteOff);
+        // A hand's Note On for 60: the sequenced On waiting is dropped (nothing would end it), its Off goes first.
+        auto hand = note(K::NoteOn, 60, true);
+        CHECK(q.supersede(hand, 50) == 2);
+        q.add(hand, 50);
+        CHECK(q.size() == 5 && q[0].event.kind == K::NoteOff && q[0].event.a == 60 && q[0].due == 50 && q[1].event.live && q[1].event.kind == K::NoteOn);
+        CHECK(q[2].event.a == 62 && q[3].event.channel == 4 && q[4].event.a == 64);
+        q.drop_front(2);
+        // A hand's Note Off for 62: its sequenced On and Off waiting both go (its own Off ends the key); a hand's note
+        // still waiting (a DELAY) stays.
+        q.add(note(K::NoteOff, 62), 250);
+        q.add(note(K::NoteOn, 62, true), 400);
+        CHECK(q.supersede(note(K::NoteOff, 62, true), 60) == 2 && q.size() == 3 && q[2].event.live && q[2].event.a == 62);
+        // A MIDI track's USB device by its name: only that track's.
+        MidiOutQueue usb;
+        auto device = [&](K kind, uint8_t track, bool live) { auto e = note(kind, 70, live); e.dest = MidiDest::UsbDevice; e.track = track; return e; };
+        usb.add(device(K::NoteOn, 1, false), 100);
+        usb.add(device(K::NoteOn, 2, false), 100);
+        CHECK(usb.supersede(device(K::NoteOn, 2, true), 10) == 1 && usb.size() == 1 && usb[0].event.track == 1);
+        usb.keep_if([](const MidiOutEvent& e) { return e.kind != K::NoteOn; });
+        CHECK(usb.size() == 0);
+        // A hand's Note Off ends its own track's notes (another MIDI track on the same port and channel plays on); its
+        // Note On any track's, as the engine ends the note it replaces.
+        MidiOutQueue two;
+        auto on_track = [&](K kind, uint8_t track, bool live) { auto e = note(kind, 72, live); e.track = track; return e; };
+        two.add(on_track(K::NoteOn, 1, false), 100);
+        CHECK(two.supersede(on_track(K::NoteOff, 2, true), 10) == 0 && two.size() == 1);
+        CHECK(two.supersede(on_track(K::NoteOn, 2, true), 10) == 1 && two.size() == 0);
+    }
     // The engine host: patterns and pads out on their channel, Empty, the clocks, and following MIDI clock in.
     {
         using K = MidiOutEvent::Kind;
@@ -5778,11 +5827,13 @@ void midi_and_sync() {
         host.send({Command::Type::NoteOn, 0, 1, 51, 99});  // a note from MIDI in: never echoed
         host.render(out.data(), 128, 1);
         auto pads = drain();
-        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOn && pads[0].channel == 5 && pads[0].a == 50 && pads[0].b == 99 && pads[0].frame == 128);
+        // Played by hand: out at once, at the frame it was played (a block before the one it plays at), not when heard.
+        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOn && pads[0].channel == 5 && pads[0].a == 50 && pads[0].b == 99 && pads[0].frame == 0 && pads[0].live);
+        CHECK(host.take_hand_out() && !host.take_hand_out()); // once, for the app to wake the MIDI thread
         host.send({Command::Type::NoteOff, 0, 0, 50});
         host.render(out.data(), 128, 1);
         pads = drain();
-        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOff && pads[0].a == 50 && pads[0].frame == 256);
+        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOff && pads[0].a == 50 && pads[0].frame == 128 && pads[0].live && host.take_hand_out());
         host.send({Command::Type::Play});
         std::vector<MidiOutEvent> all;
         for (unsigned n = 0; n < 240; ++n) { host.render(out.data(), 128, 1); for (auto& e : drain()) all.push_back(e); }
@@ -5797,6 +5848,8 @@ void midi_and_sync() {
             if (e.kind == K::NoteOff && e.channel == 5 && e.a == 45) synth_off = int(e.frame - start);
         }
         CHECK(started && empty_on == 0 && synth_on >= 22050 && synth_on <= 22051 && synth_off > synth_on && synth_off < synth_on + 5513);
+        for (auto& e : all) CHECK(!e.live); // the pattern's notes and the clock: when heard
+        CHECK(!host.take_hand_out());
         CHECK(clocks >= 33 && clocks <= 34); // 30720 frames at 918.75 a pulse
         host.send({Command::Type::Stop});
         host.render(out.data(), 128, 1);
@@ -7040,7 +7093,8 @@ void midi_tracks() {
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
-        auto block = [&] { host.render(out.data(), 128, 1); return drain(); };
+        uint64_t rendered = 0;
+        auto block = [&] { host.render(out.data(), 128, 1); rendered += 128; return drain(); };
         host.send({Command::Type::MidiTrack, 1, 0, 5, 1}); // track 2 (a synth): Pad MIDI Out Always, channel 5
         host.send({Command::Type::MidiTrack, 0, 0, 3, 0}); // MIDI Config says Never for track 1: a MIDI track sends anyway
         CHECK(block().empty());
@@ -7051,10 +7105,12 @@ void midi_tracks() {
         CHECK(pads[0].kind == K::NoteOn && pads[0].channel == 10 && pads[0].a == 48 && pads[0].dest == MidiDest::UsbC);
         CHECK(pads[1].kind == K::NoteOn && pads[1].channel == 5 && pads[1].dest == MidiDest::Config);
         CHECK(pads[0].track == 0 && pads[1].track == 255); // the DEVICE picture's light: a MIDI track's own sends only
-        // A new channel ends the held note on the old one.
+        CHECK(pads[0].live && pads[1].live);                // played by hand, Pad MIDI Out too: out at once
+        // A new channel ends the held note on the old one, when heard (a sequenced Note On may still wait for it).
         host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
         auto moved = block();
         CHECK(moved.size() == 1 && moved[0].kind == K::NoteOff && moved[0].channel == 10 && moved[0].a == 48 && moved[0].dest == MidiDest::UsbC && moved[0].track == 0);
+        CHECK(!moved[0].live);
         // The same value again sends nothing; a new port ends the notes too.
         host.send({Command::Type::NoteOn, 0, 0, 49, 90});
         host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
@@ -7081,17 +7137,22 @@ void midi_tracks() {
         host.send({Command::Type::Solo, 1, 0, 0, 0});
         host.send({Command::Type::NoteOff, 1, 0, 50});
         block();
-        // Its pattern plays on its port and channel; the next pattern launched ends what the old one held.
+        // Its pattern plays on its port and channel; the next pattern launched ends what the old one held. A negative
+        // DELAY brings its sequenced notes earlier, by no more than the output's latency.
         host.send({Command::Type::Param, 0, 0, midi_track::Port, midi_track::AllUsb});
+        host.send({Command::Type::Param, 0, 0, midi_track::Delay, -50});
+        block();
+        uint64_t play_at = rendered;
         host.send({Command::Type::Play});
         std::vector<MidiOutEvent> all;
         for (unsigned n = 0; n < 120; ++n) for (auto& e : block()) all.push_back(e); // two sixteenths: 11025 frames
         bool on = false, off = false;
         for (auto& e : all) {
-            if (e.kind == K::NoteOn && e.a == 60) on = e.channel == 11 && e.dest == MidiDest::AllUsb;
+            if (e.kind == K::NoteOn && e.a == 60) on = e.channel == 11 && e.dest == MidiDest::AllUsb && !e.live && e.frame == play_at - 384;
             if (e.kind == K::NoteOff && e.a == 60) off = true;
         }
         CHECK(on && off);
+        host.send({Command::Type::Param, 0, 0, midi_track::Delay, 0});
         host.send({Command::Type::Pattern, 0, 0, 0, 1}); // pattern 2 on the next bar
         all.clear();
         for (unsigned n = 0; n < 700; ++n) for (auto& e : block()) all.push_back(e); // past the bar (88200 frames at 120 BPM)
@@ -13137,7 +13198,7 @@ void hits_on_time() {
         std::vector<uint64_t> on;
         MidiOutEvent e;
         while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
-        CHECK(on.size() == 2 && on[0] == f1 && on[1] == f2);
+        CHECK(on.size() == 2 && on[0] == f1 - EngineHost::block && on[1] == f2 - EngineHost::block); // MIDI out: as played
         auto onset = [&](const std::vector<float>& v) { for (size_t n = 0; n < v.size(); ++n) if (v[n] != 0) return n; return v.size(); };
         CHECK(onset(heard[0]) >= f1 && onset(heard[0]) <= f1 + 2);
         CHECK(onset(heard[1]) >= f2 && onset(heard[1]) <= f2 + 2);
@@ -13149,7 +13210,7 @@ void hits_on_time() {
         render();
         on.clear();
         while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
-        CHECK(on.size() == 1 && on[0] == 12 * 128 && host.timed_missed() == 1 && host.timed_worst_frames() == 12 * 128 - f1);
+        CHECK(on.size() == 1 && on[0] == 11 * 128 && host.timed_missed() == 1 && host.timed_worst_frames() == 12 * 128 - f1);
     }
 }
 
@@ -15654,7 +15715,8 @@ void delay_compensation_p4() {
     unsigned loud = 0;
     for (float x : mix) loud += std::fabs(x) > m.second * 0.3f;
     CHECK(m.first == 200 && loud == 1);
-    // The master's chain late by 50 more: MIDI out (a MIDI track's notes) goes out as late as what is heard.
+    // The master's chain late by 50 more: MIDI out (a MIDI track's notes) goes out as late as what is heard; played by
+    // hand, at once.
     LatePlugin master_late;
     master_late.instrument = false; master_late.late = 50;
     host->send({Command::Type::FxKind, uint8_t(master_chain), 0, 0, int16_t(EffectKind::Plugin)});
@@ -15670,8 +15732,15 @@ void delay_compensation_p4() {
     uint64_t before = rendered; // the note plays at the next block's first frame
     play(1, nullptr, nullptr);
     bool found = false;
-    while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn && e.a == 64) { found = true; CHECK(e.frame == before + 250); }
+    while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn && e.a == 64) { found = true; CHECK(e.live && e.frame == before - EngineHost::block); }
     CHECK(found);
+    host->send({Command::Type::Mute, 2, 0, 0, 1}); // its Note Off for the mute: as late as what is heard
+    before = rendered;
+    play(1, nullptr, nullptr);
+    found = false;
+    while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOff && e.a == 64) { found = true; CHECK(!e.live && e.frame == before + 250); }
+    CHECK(found);
+    host->send({Command::Type::Mute, 2, 0, 0, 0});
     // Taken away, every line comes back to none.
     host->send({Command::Type::FxKind, uint8_t(master_chain), 0, 0, 0});
     host->send({Command::Type::FxKind, uint8_t(bus_chain(0)), 0, 0, 0});
@@ -16139,13 +16208,15 @@ void midi_tracks_p4() {
     host->send({Command::Type::Pattern, 0, 0, 0, 0});
     run(1);
     CHECK(find(E::Program) && find(E::Program)->a == 4);
-    // DELAY: +10 ms later; -50 ms no earlier than the output's latency.
+    // DELAY, played by hand: out at once from the frame it was played at (a block before the one it plays at), +10 ms
+    // later; a negative DELAY only brings sequenced notes earlier, so played by hand it goes out at once.
     got.clear();
     host->send({Command::Type::Param, 0, 0, uint16_t(Delay), 10});
     uint64_t at = rendered;
     host->send({Command::Type::NoteOn, 0, 0, 60, 100});
     run(1);
-    CHECK(find(E::NoteOn) && find(E::NoteOn)->frame == at + uint64_t(std::lround(10 * dsp::sample_rate() / 1000.0)));
+    CHECK(find(E::NoteOn) && find(E::NoteOn)->live &&
+          find(E::NoteOn)->frame == at - EngineHost::block + uint64_t(std::lround(10 * dsp::sample_rate() / 1000.0)));
     got.clear();
     host->send({Command::Type::NoteOff, 0, 0, 60, 0});
     host->send({Command::Type::Param, 0, 0, uint16_t(Delay), -50});
@@ -16154,7 +16225,7 @@ void midi_tracks_p4() {
     at = rendered;
     host->send({Command::Type::NoteOn, 0, 0, 62, 100});
     run(1);
-    CHECK(find(E::NoteOn) && find(E::NoteOn)->frame == at - host->audio_clock().latency_frames());
+    CHECK(find(E::NoteOn) && find(E::NoteOn)->live && find(E::NoteOn)->frame == at - EngineHost::block);
     // An input as the track's sound: the rear inputs into its stem, at its LEVEL.
     host->send({Command::Type::MidiAudio, 0, 0, 0, AudioRear});
     std::vector<int32_t> input(256, int32_t(0.25 * 2147483647.0));

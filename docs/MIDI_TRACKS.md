@@ -128,10 +128,24 @@ and internal sounds line up. The track's `delay_ms` shifts its events:
   buffer. Anything further is clamped (the Edit row shows the clamp). A
   full −50 ms would need sequencer lookahead, which is left for later.
 
-Live playing (pads, MIDI in) on a MIDI track goes out at once, plus any
-positive delay. Waiting a latency to line up with internal engines only
-makes an external synth feel late under the fingers. Recording still
-stamps the frame the note was heard at.
+Live playing (pads, keys, MIDI in, the fader's mod wheel, pressure, knobs)
+goes out at once, plus any positive delay, on a MIDI track and through Pad
+MIDI Out alike. Waiting a latency (or the plug-in compensation) to line up
+with internal engines only makes an external synth feel late under the
+fingers. Recording still stamps the frame the note was heard at.
+
+How: the engine marks what it emits while applying such a command
+(`MidiOutEvent::live`, `EngineHost::by_hand()`), stamped with the frame it
+was played at; the MIDI thread sends it when that frame was rendered
+(`AudioClock::rendered_at()`, already past), and the audio thread wakes the
+MIDI thread through base's `Session::wake_midi()` in the block it takes the
+command. A note so goes out within one audio block of the press (2.9 ms at
+44.1 kHz). A hand's note supersedes the same key's sequenced notes still
+waiting to be heard (`MidiOutQueue::supersede()`): their Note On is
+dropped, their Note Off goes first, so nothing hangs. Note Offs for a mute,
+Stop or a new port or channel stay on the heard frame, behind the Note Ons
+still waiting. `status`: `melodee_midi_hand_us` (press to send, average and
+most, per 20) and `melodee_midi_superseded`.
 
 ## Ports
 

@@ -450,10 +450,7 @@ bool MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, Mid
 
 void MidiIo::panic(Context& c, MidiOutput& out) {
     // Notes waiting for their frame would start again after it: they go; their offs, the clocks and the rest stay.
-    unsigned kept = 0;
-    for (unsigned n = 0; n < pending_count; ++n)
-        if (pending[n].event.kind != MidiOutEvent::Kind::NoteOn) pending[kept++] = pending[n];
-    pending_count = kept;
+    pending.keep_if([](const MidiOutEvent& e) { return e.kind != MidiOutEvent::Kind::NoteOn; });
     for (const auto& port : out.ports()) {
         if (!port.output || port.surface) continue;
         for (int ch = 1; ch <= 16; ++ch) {
@@ -604,30 +601,33 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     int64_t now_ns = ns_of(now);
     MidiOutEvent e;
     while (c.host.take_midi(e)) {
-        int64_t due = clock.known() ? clock.heard_at(e.frame) : now_ns;
-        if (pending_count == pending.size()) { deliver(c, out, e); continue; } // no room to wait: now
-        unsigned at = pending_count;
-        while (at > 0 && pending[at - 1].due > due) { pending[at] = pending[at - 1]; --at; } // after those due at the same time
-        pending[at] = {due, e};
-        ++pending_count;
+        // Played by hand: at once (from when it was played, plus a positive DELAY); the rest when its frame is heard.
+        int64_t due = !clock.known() ? now_ns : e.live ? clock.rendered_at(e.frame) : clock.heard_at(e.frame);
+        if (e.live && (e.kind == MidiOutEvent::Kind::NoteOn || e.kind == MidiOutEvent::Kind::NoteOff))
+            superseded.fetch_add(pending.supersede(e, due), std::memory_order_relaxed);
+        if (pending.full()) { deliver(c, out, e); continue; } // no room to wait: now
+        pending.add(e, due);
     }
     // Due within a fifth of a millisecond: now (the next wake-up would be later than that); none while SysEx goes out.
     unsigned sent = 0;
-    while (!sysex.active && sent < pending_count && pending[sent].due <= now_ns + 200000) {
-        // How late this thread sends against when the frame is heard (USB or the UART add their own after).
+    while (!sysex.active && sent < pending.size() && pending[sent].due <= now_ns + 200000) {
+        // How late this thread sends against when the frame is heard, or played by hand against when it was played
+        // (USB or the UART add their own after).
         int64_t late = std::max<int64_t>(0, now_ns - pending[sent].due);
-        late_sum += late; ++late_count; late_max = std::max(late_max, late);
+        if (pending[sent].event.live) { hand_sum += late; ++hand_count; hand_max = std::max(hand_max, late); }
+        else { late_sum += late; ++late_count; late_max = std::max(late_max, late); }
         deliver(c, out, pending[sent++].event);
     }
     if (late_count >= 200) { // kept per 200 messages for `status`
         late_avg_us.store(unsigned(late_sum / late_count / 1000)); late_max_us.store(unsigned(late_max / 1000));
         late_sum = late_max = 0; late_count = 0;
     }
-    if (sent) {
-        std::copy(pending.begin() + sent, pending.begin() + pending_count, pending.begin());
-        pending_count -= sent;
+    if (hand_count >= 20) { // per 20 played by hand
+        hand_avg_us.store(unsigned(hand_sum / hand_count / 1000)); hand_max_us.store(unsigned(hand_max / 1000));
+        hand_sum = hand_max = 0; hand_count = 0;
     }
-    if (pending_count) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
+    pending.drop_front(sent);
+    if (pending.size()) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
 }
 
 std::string MidiIo::summary(const EngineHost& host) const {
@@ -659,7 +659,9 @@ std::string MidiIo::summary(const EngineHost& host) const {
            " melodee_cv_pulses=" + std::to_string(cv_pulses.load()) + " melodee_cv_ok=" + std::to_string(int(cv_ok.load())) +
            " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_track_out=" + std::to_string(track_outs.load()) +
            " melodee_midi_last_out=" + last_text(last_out.load()) + " melodee_midi_last_dest=" + std::to_string(last_dest.load()) +
-           " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
+           " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_hand_us=" + std::to_string(hand_avg_us.load()) + "/" +
+           std::to_string(hand_max_us.load()) + " melodee_midi_superseded=" + std::to_string(superseded.load()) +
+           " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
            std::to_string(late_max_us.load());
 }
 

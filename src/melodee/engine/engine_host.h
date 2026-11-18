@@ -291,6 +291,9 @@ public:
     bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
     // MIDI thread (parity phase 9): what goes out, each at its frame, and the clock that says when that frame is heard.
     bool take_midi(MidiOutEvent& event) { return midi_events.pop(event); }
+    // Audio thread, after render(): true once when what it rendered sent MIDI played by hand (the MIDI thread is to be
+    // woken for it, Session::wake_midi()).
+    bool take_hand_out() { bool sent = hand_sent; hand_sent = false; return sent; }
     const AudioClock& audio_clock() const { return clock; }
     // Audio thread, before the first block at each open of the device (and before it starts): its frames a second and
     // the frames it holds queued (MIDI out lines up with them). A new rate silences render() until the project comes
@@ -588,13 +591,25 @@ private:
     // MIDI out and sync (parity phase 9).
     // Roadmap P4: out as late as everything heard is held back (compensation()), so outside gear lines up with it; a
     // MIDI track's own by its DELAY too (docs/MIDI_TRACKS.md M4: early by no more than the output's latency).
+    // Played by hand (`from_hand`, while a command take_commands() marks so is applied): out at once instead, from the
+    // frame it was played at (send_at() plays it a block on), held back only by a positive DELAY; the app then wakes
+    // the MIDI thread (take_hand_out()).
     int64_t track_delay(unsigned t) const;
     void emit(const MidiOutEvent& e) {
         MidiOutEvent late = e;
-        late.frame += pdc.total;
-        if (late.track < track_count && late.dest != MidiDest::Config) late.frame = uint64_t(std::max<int64_t>(0, int64_t(late.frame) + track_delay(late.track)));
+        if (from_hand) {
+            late.live = true;
+            late.frame = late.frame > block ? late.frame - block : 0;
+            if (late.track < track_count && late.dest != MidiDest::Config) late.frame += uint64_t(std::max<int64_t>(0, track_delay(late.track)));
+            hand_sent = true;
+        } else {
+            late.frame += pdc.total;
+            if (late.track < track_count && late.dest != MidiDest::Config) late.frame = uint64_t(std::max<int64_t>(0, int64_t(late.frame) + track_delay(late.track)));
+        }
         if (!midi_events.push(late)) midi_lost.fetch_add(1, std::memory_order_relaxed);
     }
+    static bool by_hand(const Command& c); // its MIDI out goes at once: a note, pressure, the mod wheel, a knob, MIDI in
+    bool from_hand = false, hand_sent = false; // applying a command played by hand; MIDI out of one since take_hand_out()
     bool out_wanted(unsigned t, int key) const;                              // this note of this track goes out
     bool heard(unsigned t) const;                                            // not muted, nor silenced by another's solo
     bool is_midi(unsigned t) const { return slots[t % track_count].kind == EngineKind::Midi; }

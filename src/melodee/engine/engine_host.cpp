@@ -274,9 +274,24 @@ unsigned EngineHost::take_commands(unsigned offset, unsigned frames) {
         }
         has_waiting = false;
         block_at = offset; // MIDI out of what it plays goes at this frame
+        from_hand = by_hand(waiting);
         apply(waiting);
+        from_hand = false;
     }
     return frames;
+}
+
+// Played by hand: a pad or key (or MIDI in playing one) and its release, its pressure, the fader's mod wheel, a knob on
+// a MIDI track's page, a controller MIDI in echoes on a MIDI track. Their MIDI out goes at once, not when the frame is
+// heard (docs/MIDI_TRACKS.md "Timing").
+bool EngineHost::by_hand(const Command& c) {
+    switch (c.type) {
+    case Command::Type::NoteOn: case Command::Type::NoteOff: case Command::Type::PadNote: case Command::Type::Pressure:
+    case Command::Type::Wheel: case Command::Type::Param: case Command::Type::MidiEcho:
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool EngineHost::mid_block(Command::Type type) {
@@ -2250,11 +2265,15 @@ void EngineHost::midi_offs_due(uint64_t until) {
 }
 
 void EngineHost::midi_all_off(unsigned track, uint64_t at) {
+    // When heard, even after a knob (a port or channel changed): Note Ons still waiting go out before their Offs.
+    bool by = from_hand;
+    from_hand = false;
     for (auto& off : midi_offs)
         if (off.on && (track == 255 || off.track == track % track_count)) {
             emit(off_event(off, at));
             off.on = false;
         }
+    from_hand = by;
 }
 
 void EngineHost::sync_stop(uint64_t at) {

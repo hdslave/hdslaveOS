@@ -369,7 +369,7 @@ change rows.
 
 | Page | K1 | K2 | K3 |
 | --- | --- | --- | --- |
-| **DEVICE** | **PORT** | **CHANNEL** | **DELAY**: −50 to +50 ms |
+| **DEVICE** | **PORT** | **CHANNEL** | **DELAY**: −50 to +50 ms. What you play goes out at once, later only by a + delay |
 | **PROGRAM** | **BANK MSB** | **BANK LSB** | **PROGRAM**. Second row: this pattern's own program, sent when the pattern starts |
 | **SLOTS 1**–**8** | Three knobs a page, 24 in all. Second row: what each sends (CC, 14-bit CC, pitch bend, channel pressure or NRPN). | | |
 | **PADS** | **LAYOUT**, as on Keys | **NOTE**: on Drums, the note of the last pad played, with its General MIDI drum name | |
