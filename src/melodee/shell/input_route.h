@@ -58,6 +58,7 @@ public:
     bool speaker_quieted() const { return quieted.load(std::memory_order_relaxed); } // by the monitored mic
     bool jack_out() const { return plugged_now.load(std::memory_order_relaxed); }   // headphones or line out in
     UsbStreamState usb_state() const { return usb.state(); }
+    std::string usb_json() const { return usb.json(); } // USB-C in's counters: locked or trimmed, pitch, fill
 
 private:
     UsbAudioInput usb;

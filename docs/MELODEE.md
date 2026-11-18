@@ -2628,6 +2628,10 @@ and Melodee's:
   commit N [note]` (docs/LOOPER.md).
 - `melodee-render [serial|parallel]`: the render workers left asleep (the
   audio thread renders alone) or used again, from the next block.
+- `melodee-usb-input`: USB-C in as JSON (`UsbAudioInput::json()`): whether
+  the computer is locked to the MPC's clock, the pitch it is asked to send
+  at, the ring's target and lowest fill, underruns (base/docs/HARDWARE.md,
+  Input recording showcase).
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
   the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI
   Panic.

@@ -236,6 +236,7 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    if (action == "melodee-usb-input") return "OK " + input_route.usb_json(); // USB-C in now, as UsbAudioInput::json()
     if (action == "melodee-render") { // melodee-render serial|parallel: the render workers left asleep or used again
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
