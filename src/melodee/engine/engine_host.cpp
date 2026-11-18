@@ -256,8 +256,11 @@ void EngineHost::retire(Pattern* pattern) {
 unsigned EngineHost::take_commands(unsigned offset, unsigned frames) {
     for (unsigned n = 0; n < 4096; ++n) {
         if (park_wanted) return frames; // a Park taken: what came after it waits for the loader's project
-        if (!has_waiting && !queue.pop(waiting)) return frames;
-        has_waiting = true;
+        if (!has_waiting) {
+            if (!queue.pop(waiting)) return frames;
+            has_waiting = true;
+            hand_early = waiting.timed && hand_midi(waiting, offset);
+        }
         if (waiting.timed) {
             int32_t due = int32_t(waiting.at - uint32_t(frame_now));
             if (due > timed_reach) due = 0; // the audio clock off (just after an overrun): at once, as before
@@ -276,9 +279,29 @@ unsigned EngineHost::take_commands(unsigned offset, unsigned frames) {
         block_at = offset; // MIDI out of what it plays goes at this frame
         from_hand = by_hand(waiting);
         apply(waiting);
-        from_hand = false;
+        from_hand = hand_early = false;
     }
     return frames;
+}
+
+// A note played by hand, timed a block after it was played (send_at()) so its sound keeps its spacing to the frame:
+// its MIDI out as soon as it is taken instead, in the first block rendered after it came, not the one its frame
+// falls in; apply() then leaves the MIDI out (`hand_early`). True for a note (whatever went out), false for the rest.
+bool EngineHost::hand_midi(const Command& c, unsigned offset) {
+    using Type = Command::Type;
+    if (c.type != Type::NoteOn && c.type != Type::NoteOff && c.type != Type::PadNote) return false;
+    int32_t due = int32_t(c.at - uint32_t(frame_now)); // its frame, as take_commands() reads it
+    if (due > timed_reach || due < int32_t(offset)) due = int32_t(offset);
+    const uint64_t at = frame_now + uint64_t(due);
+    const unsigned t = c.track % track_count;
+    const auto& slot = slots[t];
+    const bool deep = slot.freeze && slot.freeze->deep; // freeze plan F2d: a deep-frozen track's pads play nothing
+    from_hand = true;
+    if (c.type == Type::NoteOn) { if (c.pattern != 1 && !deep) midi_note(t, c.index & 0xff, c.value, at, -1); }
+    else if (c.type == Type::NoteOff) { if (c.pattern != 1) midi_note_off(t, c.index & 0xff, at); }
+    else if (!deep) midi_note(t, int(sampler_first_note + c.index), c.value, at, -1);
+    from_hand = false;
+    return true;
 }
 
 // Played by hand: a pad or key (or MIDI in playing one) and its release, its pressure, the fader's mod wheel, a knob on
@@ -458,12 +481,12 @@ void EngineHost::apply(const Command& c) {
         if (slot.freeze && slot.freeze->deep) break; // freeze plan F2d: a deep-frozen track's pads play nothing
         if (slot.freeze) { wake(slot); slot.hand.set(c.index & 0xff); } // freeze plan F2b: a hand wakes a frozen track's engine
         if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_on(slot, c.index, c.value);
-        if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
+        if (c.pattern != 1 && !hand_early) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
         break;
     case Type::NoteOff:
         slot.hand.reset(c.index & 0xff);
         if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_off(slot, c.index);
-        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index & 0xff, frame_now + block_at);
+        if (c.pattern != 1 && !hand_early) midi_note_off(c.track % track_count, c.index & 0xff, frame_now + block_at);
         break;
     case Type::AllNotesOff:
         midi_all_off(c.track, frame_now);
@@ -775,7 +798,7 @@ void EngineHost::apply(const Command& c) {
             call.op = EngineCall::Op::PlayPad; call.a = c.index; call.b = c.value; call.c = int(c.pattern) - 64; call.d = int(c.position) - 1;
             if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
         }
-        midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now + block_at, -1); // 16 Levels: the pad's note
+        if (!hand_early) midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now + block_at, -1); // 16 Levels: the pad's note
         break;
     case Type::MidiTrack:
         if (!is_midi(c.track)) midi_all_off(c.track, frame_now); // what went out on the old channel ends there (a MIDI track keeps its own)

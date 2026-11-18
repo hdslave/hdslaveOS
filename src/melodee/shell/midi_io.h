@@ -81,8 +81,9 @@ private:
     int64_t late_sum = 0, late_max = 0;      // ns behind the due time, over the messages since the last report
     unsigned late_count = 0;
     int64_t hand_sum = 0, hand_max = 0;      // ns from being played by hand to sent, over the messages since the last report
+    int64_t hand_made_sum = 0, hand_woke_sum = 0; // of which: played to emitted by the audio thread, emitted to sent
     unsigned hand_count = 0;
-    std::atomic<unsigned> hand_avg_us {0}, hand_max_us {0};
+    std::atomic<unsigned> hand_avg_us {0}, hand_max_us {0}, hand_made_us {0}, hand_woke_us {0};
     std::atomic<unsigned> late_avg_us {0}, late_max_us {0}, jitter_in {0}, bunched {0}; // bunched: clock pulses in under 2 ms
     // MIDI tracks (docs/MIDI_TRACKS.md): messages sent on a track's own port, the last one (its bytes and MidiDest), panics.
     std::atomic<unsigned> track_outs {0}, last_out {0}, last_dest {0}, panics {0};

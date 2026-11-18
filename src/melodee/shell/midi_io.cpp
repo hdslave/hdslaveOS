@@ -5,6 +5,7 @@
 #include "melodee/model/print.h"
 #include "melodee/model/sampler.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/input_route.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/step_edit.h"
@@ -614,7 +615,14 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
         // How late this thread sends against when the frame is heard, or played by hand against when it was played
         // (USB or the UART add their own after).
         int64_t late = std::max<int64_t>(0, now_ns - pending[sent].due);
-        if (pending[sent].event.live) { hand_sum += late; ++hand_count; hand_max = std::max(hand_max, late); }
+        if (pending[sent].event.live) {
+            hand_sum += late; ++hand_count; hand_max = std::max(hand_max, late);
+            if (pending[sent].event.made_ns) { // played to emitted (the audio thread taking it), emitted to sent (this thread)
+                hand_made_sum += std::max<int64_t>(0, pending[sent].event.made_ns - pending[sent].due);
+                hand_woke_sum += std::max<int64_t>(0, now_ns - pending[sent].event.made_ns);
+            }
+            if (pending[sent].event.kind == MidiOutEvent::Kind::NoteOn && c.input) c.input->note_sent(ns_of(Clock::now())); // the loop probe
+        }
         else { late_sum += late; ++late_count; late_max = std::max(late_max, late); }
         deliver(c, out, pending[sent++].event);
     }
@@ -624,7 +632,8 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     }
     if (hand_count >= 20) { // per 20 played by hand
         hand_avg_us.store(unsigned(hand_sum / hand_count / 1000)); hand_max_us.store(unsigned(hand_max / 1000));
-        hand_sum = hand_max = 0; hand_count = 0;
+        hand_made_us.store(unsigned(hand_made_sum / hand_count / 1000)); hand_woke_us.store(unsigned(hand_woke_sum / hand_count / 1000));
+        hand_sum = hand_max = hand_made_sum = hand_woke_sum = 0; hand_count = 0;
     }
     pending.drop_front(sent);
     if (pending.size()) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
@@ -660,7 +669,8 @@ std::string MidiIo::summary(const EngineHost& host) const {
            " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_track_out=" + std::to_string(track_outs.load()) +
            " melodee_midi_last_out=" + last_text(last_out.load()) + " melodee_midi_last_dest=" + std::to_string(last_dest.load()) +
            " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_hand_us=" + std::to_string(hand_avg_us.load()) + "/" +
-           std::to_string(hand_max_us.load()) + " melodee_midi_superseded=" + std::to_string(superseded.load()) +
+           std::to_string(hand_max_us.load()) + " melodee_midi_hand_split_us=" + std::to_string(hand_made_us.load()) + "/" +
+           std::to_string(hand_woke_us.load()) + " melodee_midi_superseded=" + std::to_string(superseded.load()) +
            " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
            std::to_string(late_max_us.load());
 }

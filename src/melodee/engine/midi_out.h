@@ -40,6 +40,7 @@ struct MidiOutEvent {
     // Played by hand (a pad, a key, MIDI in, the fader, a knob): out at once, not when its frame is heard; `frame`
     // is then the one it was played at (plus a MIDI track's positive DELAY).
     bool live = false;
+    int64_t made_ns = 0; // played by hand: when the audio thread emitted it (CLOCK_MONOTONIC), for `status`
 };
 
 // The audio clock against CLOCK_MONOTONIC. The audio thread stamps each

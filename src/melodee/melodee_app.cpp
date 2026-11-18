@@ -66,6 +66,8 @@ MelodeeApp::MelodeeApp()
     printer.set_pager(&host.streams()); // freeze plan F2b: prints are read through the instruments' pager
     shell.set_store(&store);
     shell.set_input(&input_route);
+    // MIDI played by hand goes out as the audio thread emits it, not at the MIDI loop's next pass.
+    host.set_hand_waker([](void* app) { static_cast<MelodeeApp*>(app)->session().wake_midi(); }, this);
     // The card's settings now, not first on the service thread: the runtime opens the audio device with
     // audio_format() as it starts, and Settings' rate from that first open spares a reopen moments later
     // (the codec powered down and up again, its mute shut a second, and the USB-C gadget rebound twice).
@@ -136,7 +138,6 @@ void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
     usb_full = shell.usb_full_volume();
     host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames),
                 usb_full ? usb_block.data() : nullptr);
-    if (host.take_hand_out()) session().wake_midi(); // MIDI played by hand goes out now, not at the MIDI loop's next pass
 }
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
@@ -237,7 +238,8 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
-    if (action == "melodee-usb-input") return "OK " + input_route.usb_json(); // USB-C in now, as UsbAudioInput::json()
+    // USB-C in now, as UsbAudioInput::json(), and the round trip from a Note On played by hand to its sound back on it.
+    if (action == "melodee-usb-input") return "OK " + input_route.usb_json() + " loop=" + input_route.loop_json();
     if (action == "melodee-render") { // melodee-render serial|parallel: the render workers left asleep or used again
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";

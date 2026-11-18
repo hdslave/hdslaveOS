@@ -5818,6 +5818,8 @@ void midi_and_sync() {
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
+        int woken = 0;
+        host.set_hand_waker([](void* n) { ++*static_cast<int*>(n); }, &woken);
         host.send({Command::Type::MidiTrack, 0, 0, 5, 1}); // track 1: channel 5, always
         host.send({Command::Type::MidiTrack, 1, 0, 2, 2}); // track 2: channel 2, empty
         host.send({Command::Type::MidiSync, 0, 0, 0, 1});  // MIDI clock out
@@ -5829,11 +5831,11 @@ void midi_and_sync() {
         auto pads = drain();
         // Played by hand: out at once, at the frame it was played (a block before the one it plays at), not when heard.
         CHECK(pads.size() == 1 && pads[0].kind == K::NoteOn && pads[0].channel == 5 && pads[0].a == 50 && pads[0].b == 99 && pads[0].frame == 0 && pads[0].live);
-        CHECK(host.take_hand_out() && !host.take_hand_out()); // once, for the app to wake the MIDI thread
+        CHECK(woken == 1); // the MIDI thread woken for it
         host.send({Command::Type::NoteOff, 0, 0, 50});
         host.render(out.data(), 128, 1);
         pads = drain();
-        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOff && pads[0].a == 50 && pads[0].frame == 128 && pads[0].live && host.take_hand_out());
+        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOff && pads[0].a == 50 && pads[0].frame == 128 && pads[0].live && woken == 2);
         host.send({Command::Type::Play});
         std::vector<MidiOutEvent> all;
         for (unsigned n = 0; n < 240; ++n) { host.render(out.data(), 128, 1); for (auto& e : drain()) all.push_back(e); }
@@ -5849,7 +5851,7 @@ void midi_and_sync() {
         }
         CHECK(started && empty_on == 0 && synth_on >= 22050 && synth_on <= 22051 && synth_off > synth_on && synth_off < synth_on + 5513);
         for (auto& e : all) CHECK(!e.live); // the pattern's notes and the clock: when heard
-        CHECK(!host.take_hand_out());
+        CHECK(woken == 2);
         CHECK(clocks >= 33 && clocks <= 34); // 30720 frames at 918.75 a pulse
         host.send({Command::Type::Stop});
         host.render(out.data(), 128, 1);
@@ -13208,9 +13210,12 @@ void hits_on_time() {
         host.send_at({Command::Type::NoteOn, 0, 0, 60, 100}, uint64_t(first));
         host.send({Command::Type::Param, 1, 0, 0, project->tracks[1].params[0]}); // untimed: waits behind, still applied
         host.send_at({Command::Type::NoteOn, 1, 0, 60, 100}, uint64_t(second));
-        for (int b = 0; b < 8; ++b) render();
+        render(); // the block the first hit is taken in, a block before its frame: its MIDI out already
         std::vector<uint64_t> on;
         MidiOutEvent e;
+        while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
+        CHECK(f1 >= 640 && on.size() == 1 && on[0] == f1 - EngineHost::block);
+        for (int b = 0; b < 7; ++b) render();
         while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
         CHECK(on.size() == 2 && on[0] == f1 - EngineHost::block && on[1] == f2 - EngineHost::block); // MIDI out: as played
         auto onset = [&](const std::vector<float>& v) { for (size_t n = 0; n < v.size(); ++n) if (v[n] != 0) return n; return v.size(); };

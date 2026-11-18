@@ -137,15 +137,20 @@ fingers. Recording still stamps the frame the note was heard at.
 How: the engine marks what it emits while applying such a command
 (`MidiOutEvent::live`, `EngineHost::by_hand()`), stamped with the frame it
 was played at; the MIDI thread sends it when that frame was rendered
-(`AudioClock::rendered_at()`, already past), and the audio thread wakes the
-MIDI thread through base's `Session::wake_midi()` in the block it takes the
-command. A note so goes out within one audio block of the press (2.9 ms at
-44.1 kHz). A hand's note supersedes the same key's sequenced notes still
+(`AudioClock::rendered_at()`, already past). A note's sound waits for its
+frame (a block after it was played, so hits keep their spacing), but its
+MIDI goes as soon as the audio thread takes it (`EngineHost::hand_midi()`),
+and each message wakes the MIDI thread as it is emitted (base's
+`Session::wake_midi()`). A note so goes out within one audio block of the
+press (2.9 ms at 44.1 kHz, 1.3 on average). A hand's note supersedes the same key's sequenced notes still
 waiting to be heard (`MidiOutQueue::supersede()`): their Note On is
 dropped, their Note Off goes first, so nothing hangs. Note Offs for a mute,
 Stop or a new port or channel stay on the heard frame, behind the Note Ons
 still waiting. `status`: `melodee_midi_hand_us` (press to send, average and
-most, per 20) and `melodee_midi_superseded`.
+most, per 20), `melodee_midi_hand_split_us` (of that, press to the audio
+thread emitting it, and emitted to sent) and `melodee_midi_superseded`.
+`melodee-usb-input` adds `loop`: from a hand's Note On sent to its sound
+coming back on USB-C in (a computer's instrument), as the engine takes it.
 
 ## Ports
 
