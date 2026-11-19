@@ -67,6 +67,7 @@
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/sample_lists.h"
+#include "melodee/shell/history_list.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
 #include "melodee/shell/playheads.h"
@@ -18456,6 +18457,45 @@ void sample_lists() {
     CHECK(list_folder(starred_list) && list_folder(recent_list) && !list_folder("/media/card/STARRED"));
 }
 
+void history_list() {
+    // Shift + Minus: a tap undoes on its release; held history_hold_ms, the list opens once.
+    HistoryHold h;
+    history_press(h, 1000);
+    CHECK(!history_tick(h, 1000 + history_hold_ms - 1));
+    CHECK(history_release(h)); // a tap
+    history_press(h, 2000);
+    CHECK(history_tick(h, 2000 + history_hold_ms) && !history_tick(h, 2000 + 2 * history_hold_ms));
+    CHECK(!history_release(h)); // held: no undo on the release
+    CHECK(!history_release(h));
+    // Rows: 2 undone, 3 done, START. NOW is row 2.
+    CHECK(history_rows(2, 3) == 6 && history_now(2) == 2);
+    CHECK(history_step(2, 2) == 0 && history_step(0, 2) == 2 && history_step(1, 2) == 1);
+    CHECK(history_step(3, 2) == -1 && history_step(5, 2) == -3); // START: every step done undone
+    CHECK(history_row_dim(1, 3) && !history_row_dim(3, 3) && !history_row_dim(4, 3));
+    bool redo = false;
+    unsigned index = 9;
+    CHECK(history_edit_at(0, 2, 3, redo, index) && redo && index == 0); // the newest step undone
+    CHECK(history_edit_at(2, 2, 3, redo, index) && !redo && index == 2); // NOW: the newest step done
+    CHECK(history_edit_at(4, 2, 3, redo, index) && !redo && index == 0); // the oldest
+    CHECK(!history_edit_at(5, 2, 3, redo, index)); // START
+    CHECK(history_age(100000, 50000) == "now" && history_age(200000, 50000) == "2 min" && history_age(8000000, 0) == "2 h");
+    // The History: each edit's time, the two lists in the list's order.
+    uint32_t clock = 5000;
+    History edits;
+    edits.clock = &clock;
+    for (const char* what : {"A", "B", "C"}) { Edit e; e.what = what; edits.push(std::move(e)); clock += 1000; }
+    CHECK(edits.size() == 3 && edits.kept(2).what == "C" && edits.kept(2).at == 7000);
+    edits.undo(); edits.undo(); // C, then B
+    CHECK(edits.redos() == 2 && edits.undone(0).what == "C" && edits.undone(1).what == "B" && edits.size() == 1);
+    // Rows top down: C, B (undone), A (NOW), START.
+    CHECK(history_edit_at(0, 2, 1, redo, index) && edits.undone(index).what == "C");
+    CHECK(history_edit_at(2, 2, 1, redo, index) && !redo && edits.kept(index).what == "A");
+    Edit pad; pad.pad = 4;
+    CHECK(history_kind(pad) == HistoryKind::Pad);
+    Edit pattern; pattern.pattern = 2; pattern.pad = 4;
+    CHECK(history_kind(pattern) == HistoryKind::Pattern);
+}
+
 void usage_log() {
     UsageLog log;
     log.line(5, "nothing");
@@ -18809,6 +18849,7 @@ void midi_lookahead() {
 
 int main() {
     sample_lists();
+    history_list();
     midi_lookahead();
     direct_monitoring();
     usb_volume();

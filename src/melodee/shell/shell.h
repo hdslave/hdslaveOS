@@ -5,6 +5,7 @@
 #include "melodee/model/project.h"
 #include "melodee/shell/tap_hold.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/history_list.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/update.h"
 #include "melodee/shell/context.h"
@@ -179,6 +180,7 @@ private:
     unsigned format_seen = 0; // the engine's format_changes() the project was last sent again for
     EncoderHold enc; // the encoder's push: a tap is the page's, a hold opens the MENU (shell/menu.h)
     TapHold tap; // Tap Tempo held: the tempo on the encoder, or the Tempo page (shell/tap_hold.h)
+    HistoryHold history_hold; // Shift + Minus: a tap undoes, a hold opens the undo list (shell/history_list.h)
     // Background save (shell/autosave.h): when a control or a note last came in, and the last save that found no card.
     uint32_t last_input_ = 0, autosave_try_ = 0;
     bool autosave_failed_ = false;

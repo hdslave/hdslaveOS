@@ -83,6 +83,7 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     }
     draw_notice(p, s); // over the fader's line: a copy in hand or what an undo did comes first
     if (!sheet && s.ui.menu && s.ui.ask == UiState::Ask::None) draw_menu(p, s); // the MENU over the page (shell/menu.h)
+    else if (!sheet && s.ui.history && s.ui.ask == UiState::Ask::None) draw_history(p, s); // the undo list (shell/history_list.h)
     else if (!sheet && !tracks && !seq && !sound && s.ui.ask == UiState::Ask::None && !s.ui.shift && s.now - s.ui.key_list_at < key_list_ms) draw_key_list(p, s);
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);

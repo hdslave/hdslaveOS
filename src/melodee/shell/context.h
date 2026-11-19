@@ -47,7 +47,7 @@ struct LoadedSample;
 class Context {
 public:
     Context(Project& project, PatternBank& patterns, UiState& ui, EngineHost& host)
-        : project(project), patterns(patterns), ui(ui), host(host) { edits.gate = &Context::edit_gate; edits.gate_owner = this; }
+        : project(project), patterns(patterns), ui(ui), host(host) { edits.gate = &Context::edit_gate; edits.gate_owner = this; edits.clock = &now; }
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
     Project& project;

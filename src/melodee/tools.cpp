@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
 #include "melodee/shell/controls_rules.h"
 #include "melodee/shell/usage_log.h"
@@ -1591,6 +1592,18 @@ const Preview previews[] {
     {"undo", [](Shell&, Snapshot& s) { // Shift + Minus: what came back
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
+     }},
+    {"history", [](Shell&, Snapshot& s) { // Shift + Minus held: the undo list, two steps undone above NOW, the cursor three below
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
+         s.now = 3600000;
+         struct Row { const char* what; uint8_t track; uint32_t ago; HistoryKind kind; };
+         const Row rows[] {{"Take", 2, 20000, HistoryKind::Pattern}, {"Pitch A05", 3, 70000, HistoryKind::Pad},
+                           {"Load BREAK", 3, 130000, HistoryKind::Pad}, {"Slices to pads", 3, 250000, HistoryKind::Pattern},
+                           {"Delete A05", 3, 370000, HistoryKind::Pad}, {"Copy A01 to A02", 3, 420000, HistoryKind::Pad},
+                           {"New track", 2, 560000, HistoryKind::Track}};
+         for (const auto& r : rows) s.history.push_back({r.what, r.track, s.now - r.ago, r.kind});
+         s.history_redos = 2;
+         s.ui.history = true; s.ui.history_row = 5; // UNDO 3
      }},
     {"samples", [](Shell&, Snapshot& s) { // the browser on the card: STARRED and RECENT, folders, then files
          s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Melodee/Samples";

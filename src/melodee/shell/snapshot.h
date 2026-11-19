@@ -5,6 +5,7 @@
 #include "melodee/model/project.h"
 #include "melodee/shell/comp_trail.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/history_list.h"
 #include "melodee/shell/playheads.h"
 #include "melodee/shell/print_engine.h"
 #include "melodee/shell/project_store.h"
@@ -83,6 +84,8 @@ struct Snapshot {
     uint32_t recall_frames = 0;
     bool monitoring = false, speaker_quieted = false;
     uint8_t usb_state = 0;             // UsbStreamState
+    std::vector<HistoryRow> history;   // the undo list's rows, top down, while it is open (shell/history_list.h)
+    uint8_t history_redos = 0;         // how many of them are undone: the row of the state in hand
     std::vector<SampleFile> files;     // Samples: the folder listed
     std::string sample_root;           // the card's Samples folder, Melodee/Samples; empty: no card
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)

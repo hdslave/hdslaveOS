@@ -141,7 +141,7 @@ cards.
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: marks notes; the wheel alone walks each chord's notes, then the next step) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Patterns the track; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Patterns the track; sampler pages and Punch the bank | Undo / redo, on every page; Shift + − undoes as it is let go, and held 0.4 s opens the undo list |
 | Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into the pattern it plays when empty, else its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -2316,7 +2316,16 @@ while following.
   the pots or the fader do to it while it is held (undo while holding takes
   that step back). The note cards and Roll's NUDGE are steps like any
   pot; on Step Edit each step typed in is one. Mute, solo, mode buttons and the transport are not steps.
-  A load or a new project forgets them.
+  A load or a new project forgets them. Shift + − undoes as it is let go; held
+  0.4 s it opens the undo list (`shell/history_list.h`, `pages/history_sheet.cpp`)
+  over the page: the steps kept, newest on top, each with its glyph, its
+  track's number on its colour and how long ago; the steps undone first
+  (dim), then the steps done, then START; NOW marks the state in hand and
+  the cursor opens there. The wheel and −/+ move it, the rows above it dim;
+  Push or B3 (UNDO n, REDO n) undoes or redoes one step at a time up to it,
+  stopping where a step waits or asks first (a frozen track). B1 BACK; any
+  other button closes it and does its job; Play, Stop and Shift leave it
+  open; K1-K3 wait. Eight rows show.
 - **Takeover**: a pot drives its value once it meets it (Pickup), moves it
   part of the way (Scaled) or at once (Instant); the card shows the value
   dim with a tick where the pot sits until then.

@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/history_jobs.h"
 #include "melodee/shell/lesson_jobs.h"
 #include "melodee/shell/features.h"
 #include "melodee/engine/dsp.h"
@@ -351,6 +352,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         holds_sent = std::move(holds);
     }
     if (encoder_tick(enc, now)) menu_open(context_); // the encoder held: the MENU (shell/menu.h)
+    if (history_tick(history_hold, now)) history_open(context_); // Shift + Minus held: the undo list (shell/history_list.h)
     lesson_tick(context_, now); // a lesson: its kit loaded, or its last step done (shell/lesson_jobs.h)
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
     // Tap Tempo held half a second with nothing turned: the Tempo page; held on it, back to the page under it.

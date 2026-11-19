@@ -138,6 +138,7 @@ struct PluginSwap {
 
 struct Edit {
     std::string what;             // shown on undo and redo: "Delete A01"
+    uint32_t at = 0;              // when it was kept (History::clock, ms): the undo list's "2 min"
     uint8_t track = 0;
     int16_t pad = -1;             // a kit pad, or -1
     PadState pad_before, pad_after;
@@ -177,6 +178,7 @@ public:
     void push(Edit&& edit) {
         ++pushes;
         if (gate && !gate(gate_owner, edit)) return;
+        edit.at = clock ? *clock : 0;
         redo_.clear();
         undo_.push_back(std::move(edit));
         if (undo_.size() > depth) undo_.pop_front();
@@ -194,6 +196,11 @@ public:
     // Every edit kept, to undo and to redo (roadmap P3: which sample slots they could bring back).
     template <typename F> void each(F&& f) const { for (const auto& e : undo_) f(e); for (const auto& e : redo_) f(e); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)
+    const uint32_t* clock = nullptr; // the shell's clock (ms, Context::now): each edit's `at`
+    // The undo list (shell/history_list.h): the steps undone, the next redo last, and the steps done, the newest last.
+    size_t redos() const { return redo_.size(); }
+    const Edit& undone(size_t n) const { return redo_[n]; }
+    const Edit& kept(size_t n) const { return undo_[n]; }
 
 private:
     std::deque<Edit> undo_, redo_;
