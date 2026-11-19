@@ -8,6 +8,7 @@
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/sample_decode.h"
 #include "melodee/shell/sample_memory.h"
+#include "melodee/shell/sample_lists.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "runtime/app.h"
@@ -299,6 +300,67 @@ void SampleLibrary::remove_service() {
     if (!wanted.pending) { wanted.pending = true; wanted.up = false; wanted.drive = known.drive; wanted.folder = known.folder; }
 }
 
+void SampleLibrary::list_change(ListChange::Kind kind, const std::string& path) {
+    if (path.empty()) return;
+    std::lock_guard<std::mutex> guard(lock);
+    list_changes.push_back({kind, path});
+}
+
+// STARRED and RECENT on the card (shell/sample_lists.h): Melodee/Starred.txt and Melodee/Recent.txt, a path a line.
+void SampleLibrary::lists_read() {
+    starred_paths.clear(); recent_paths.clear();
+    std::string top;
+    { std::lock_guard<std::mutex> guard(lock); top = card_top; }
+    if (top.empty()) return;
+    auto read = [&](const char* name, size_t most) {
+        std::ifstream in(fs::path(top) / "Melodee" / name, std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        return list_read(text, top, most);
+    };
+    starred_paths = read("Starred.txt", starred_max);
+    recent_paths = read("Recent.txt", recent_max);
+}
+
+void SampleLibrary::lists_write(bool starred, bool recent) {
+    std::string top;
+    { std::lock_guard<std::mutex> guard(lock); top = card_top; }
+    if (top.empty()) return;
+    std::error_code error;
+    fs::create_directories(fs::path(top) / "Melodee", error);
+    auto write = [&](const char* name, const std::vector<std::string>& paths) {
+        std::ofstream out(fs::path(top) / "Melodee" / name, std::ios::binary | std::ios::trunc);
+        out << list_text(paths, top);
+    };
+    if (starred) write("Starred.txt", starred_paths);
+    if (recent) write("Recent.txt", recent_paths);
+}
+
+// The changes asked for, in order; the folder in view is listed again (its stars, a list's rows).
+void SampleLibrary::lists_service() {
+    std::vector<ListChange> changes;
+    std::string in_view;
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        if (list_changes.empty()) return;
+        changes.swap(list_changes);
+        in_view = known.folder;
+    }
+    bool starred = false, recent = false;
+    for (const auto& change : changes) {
+        switch (change.kind) {
+        case ListChange::Star: star_toggle(starred_paths, change.path); starred = true; break;
+        case ListChange::Use: recent_add(recent_paths, change.path); recent = true; break;
+        case ListChange::Unlist: // Erase in a list: off the one in view
+            if (in_view == starred_list) { list_remove(starred_paths, change.path); starred = true; }
+            if (in_view == recent_list) { list_remove(recent_paths, change.path); recent = true; }
+            break;
+        }
+    }
+    lists_write(starred, recent);
+    std::lock_guard<std::mutex> guard(lock);
+    if (!wanted.pending) { wanted.pending = true; wanted.up = false; wanted.drive = known.drive; wanted.folder = known.folder; }
+}
+
 void SampleLibrary::install(const std::string& path) {
     std::lock_guard<std::mutex> guard(lock);
     installs_wanted.push_back(path);
@@ -406,32 +468,51 @@ bool owned_data(const fs::path& dir) {
 }
 bool is_expansion(const fs::path& path) { return upper(path.extension().string()) == ".XPN"; } // an MPC expansion: a zip to install
 bool is_midi_file(const fs::path& path) { auto e = upper(path.extension().string()); return e == ".MID" || e == ".MIDI" || e == ".SMF"; } // roadmap P4
-// A folder's folders, sample files and bank files, appended; hidden ones and lost+found left out.
+// One entry of a folder as the browser lists it: a folder, a sample file, a bank, an instrument, a kit, an expansion,
+// an .sf2 or a MIDI file; false for what it leaves out (hidden ones, lost+found, Melodee's own folders, the card's
+// boot folder at its top, a program's own data folder, any other file).
+bool entry_of(const fs::directory_entry& it, SampleFile& f, bool card_top) {
+    std::error_code error;
+    auto name = it.path().filename().string();
+    if (name.empty() || name[0] == '.' || name == "lost+found" || (card_top && name == "autorun")) return false;
+    bool folder_here = it.is_directory(error);
+    if (folder_here && melodee_own_folder(it.path())) return false; // Melodee/Cache, Melodee/Crashes
+    if (folder_here && name == "[Previews]") return false; // an expansion's program previews: Preview plays them on the program
+    if (folder_here && owned_data(it.path())) return false;  // a program's or project's own samples: it is the row
+    bool bank = !folder_here && is_bank(it.path());
+    bool instrument = !folder_here && is_instrument(it.path());
+    bool expansion = !folder_here && is_expansion(it.path());
+    bool presets = !folder_here && is_sf2(it.path().string()); // roadmap P3: an .sf2 opens as a folder of its presets
+    bool midi = !folder_here && is_midi_file(it.path());
+    if (!folder_here && !(it.is_regular_file(error) && (is_sample_file(it.path()) || bank || instrument || expansion || presets || midi))) return false;
+    f = SampleFile {};
+    f.path = it.path().string(); f.folder = folder_here || presets; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
+    f.midi = midi;
+    f.presets = presets;
+    if (instrument && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
+    f.name = upper(folder_here ? name : it.path().stem().string()).substr(0, 26);
+    if (!folder_here) f.bytes = it.file_size(error);
+    return true;
+}
+// A folder's folders, sample files and bank files, appended (entry_of).
 // card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
 void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {
     std::error_code error;
     if (folder.empty() || !fs::is_directory(folder, error)) return;
     for (auto it = fs::directory_iterator(folder, fs::directory_options::skip_permission_denied, error);
          !error && it != fs::directory_iterator() && out.size() < 4000; it.increment(error)) {
-        auto name = it->path().filename().string();
-        if (name.empty() || name[0] == '.' || name == "lost+found" || (card_top && name == "autorun")) continue;
-        bool folder_here = it->is_directory(error);
-        if (folder_here && melodee_own_folder(it->path())) continue; // Melodee/Cache, Melodee/Crashes
-        if (folder_here && name == "[Previews]") continue; // an expansion's program previews: Preview plays them on the program
-        if (folder_here && owned_data(it->path())) continue;  // a program's or project's own samples: it is the row
-        bool bank = !folder_here && is_bank(it->path());
-        bool instrument = !folder_here && is_instrument(it->path());
-        bool expansion = !folder_here && is_expansion(it->path());
-        bool presets = !folder_here && is_sf2(it->path().string()); // roadmap P3: an .sf2 opens as a folder of its presets
-        bool midi = !folder_here && is_midi_file(it->path());
-        if (!folder_here && !(it->is_regular_file(error) && (is_sample_file(it->path()) || bank || instrument || expansion || presets || midi))) continue;
         SampleFile f;
-        f.path = it->path().string(); f.folder = folder_here || presets; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
-        f.midi = midi;
-        f.presets = presets;
-        if (instrument && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
-        f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
-        if (!folder_here) f.bytes = it->file_size(error);
+        if (entry_of(*it, f, card_top)) out.push_back(std::move(f));
+    }
+}
+// STARRED or RECENT as a folder: each file still there, as its own folder lists it, with that folder's name.
+void list_paths(const std::vector<std::string>& paths, std::vector<SampleFile>& out) {
+    for (const auto& path : paths) {
+        std::error_code error;
+        fs::directory_entry entry(path, error);
+        SampleFile f;
+        if (error || !entry.exists(error) || entry.is_directory(error) || !entry_of(entry, f, false)) continue;
+        f.where = list_where(path);
         out.push_back(std::move(f));
     }
 }
@@ -458,6 +539,7 @@ void SampleLibrary::service(Hardware& hardware) {
     bank_files();
     install_service();
     remove_service();
+    lists_service();
     if (jobs.pop(job)) make(job);
     else {
         std::string heard;
@@ -479,6 +561,7 @@ void SampleLibrary::service(Hardware& hardware) {
                 if (space.path.rfind("/media/", 0) == 0) { top = space.path; root = samples_folder(space.path); break; }
         bool changed = root != root_seen;
         if (changed) { root_seen = root; std::lock_guard<std::mutex> guard(lock); card_top = top; known.root = root; }
+        if (changed) lists_read(); // STARRED and RECENT: the new card's
         if (changed) {
             cache.set_folder(top.empty() ? std::string() : top + "/Melodee/Cache");
             if (!top.empty() && !cache_tidied) { cache_tidied = true; pool.post([this, tidied = cache] { std::lock_guard<std::mutex> one(copying); tidied.tidy(); }); } // a stat a file: not on this thread
@@ -503,7 +586,10 @@ void SampleLibrary::scan() {
     std::error_code error;
     auto start_of = [&](Drive d) { return d == Drive::Internal ? std::string() : fs::is_directory(root_seen, error) ? root_seen : card_top; };
     std::string left; // going up: the folder left, to put the cursor on
-    if (ask.pending && ask.up) {
+    if (ask.pending && ask.up && list_folder(folder)) { // out of STARRED or RECENT: back where it was opened
+        left = folder;
+        folder = list_parent;
+    } else if (ask.pending && ask.up) {
         bool at_top = drive == Drive::Internal ? folder.empty() : (folder.empty() || folder == card_top);
         if (!at_top) {
             left = folder;
@@ -511,30 +597,50 @@ void SampleLibrary::scan() {
             bool to_top = drive == Drive::Internal && std::find(tops.begin(), tops.end(), parent) != tops.end();
             folder = to_top ? std::string() : parent;
         }
+    } else if (ask.pending && list_folder(ask.folder)) { // into STARRED or RECENT, from the folder in view
+        if (!list_folder(folder)) list_parent = drive == Drive::Card && !folder.empty() ? folder : start_of(Drive::Card);
+        drive = Drive::Card;
+        folder = ask.folder;
     } else if (ask.pending) {
         drive = ask.drive;
         folder = ask.folder.empty() ? start_of(drive) : ask.folder;
     }
+    const bool in_list = list_folder(folder) && !card_top.empty(); // the lists are the card's
+    if (in_list && list_parent.empty()) list_parent = start_of(Drive::Card);
     // A card taken out, or a folder gone: back to the drive's start.
-    if (drive == Drive::Card && (card_top.empty() || folder.rfind(card_top, 0) != 0)) folder = start_of(drive);
-    if (!folder.empty() && !fs::is_directory(folder, error) && !(is_sf2(folder) && fs::is_regular_file(folder, error))) folder = start_of(drive);
+    if (!in_list && drive == Drive::Card && (card_top.empty() || folder.rfind(card_top, 0) != 0)) folder = start_of(drive);
+    if (!in_list && !folder.empty() && !fs::is_directory(folder, error) && !(is_sf2(folder) && fs::is_regular_file(folder, error))) folder = start_of(drive);
     std::vector<SampleFile> files;
-    if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
+    if (in_list) list_paths(folder == starred_list ? starred_paths : recent_paths, files);
+    else if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
     else if (is_sf2(folder)) list_presets(folder, files); // inside an .sf2: its presets
     else list_into(folder, files, drive == Drive::Card && folder == card_top);
     // MPC drum programs (kits) first, then instruments (keygroup programs, SFZ), as an expansion's folder holds
-    // them among its samples; then folders, then files.
-    std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) {
-        if (a.kit != b.kit) return a.kit;
-        if (a.instrument != b.instrument) return a.instrument;
-        return a.folder != b.folder ? a.folder : a.name != b.name ? a.name < b.name : a.path < b.path;
-    });
+    // them among its samples; then folders, then files. STARRED by name; RECENT newest first, as kept.
+    if (folder == starred_list)
+        std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) { return a.name != b.name ? a.name < b.name : a.path < b.path; });
+    else if (!in_list)
+        std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) {
+            if (a.kit != b.kit) return a.kit;
+            if (a.instrument != b.instrument) return a.instrument;
+            return a.folder != b.folder ? a.folder : a.name != b.name ? a.name < b.name : a.path < b.path;
+        });
+    for (auto& f : files) f.starred = !f.folder && std::find(starred_paths.begin(), starred_paths.end(), f.path) != starred_paths.end();
+    // STARRED and RECENT open from the card's Samples folder, where the browser starts, and from the card's top.
+    if (!in_list && drive == Drive::Card && !card_top.empty() && (folder == card_top || folder == root_seen)) {
+        SampleFile star, recent;
+        star.path = starred_list; star.name = "STARRED"; star.folder = true; star.list = 1; star.where = std::to_string(starred_paths.size());
+        recent.path = recent_list; recent.name = "RECENT"; recent.folder = true; recent.list = 2; recent.where = std::to_string(recent_paths.size());
+        files.insert(files.begin(), {star, recent});
+    }
     int came_from = -1;
     for (size_t n = 0; n < files.size() && !left.empty(); ++n) if (files[n].path == left) came_from = int(n);
-    bool top = drive == Drive::Internal ? folder.empty() : (folder.empty() || folder == card_top);
+    bool top = !in_list && (drive == Drive::Internal ? folder.empty() : (folder.empty() || folder == card_top));
     std::lock_guard<std::mutex> guard(lock);
     bool same = known.drive == drive && known.folder == folder && known.files.size() == files.size()
-        && std::equal(files.begin(), files.end(), known.files.begin(), [](const SampleFile& a, const SampleFile& b) { return a.path == b.path; });
+        && std::equal(files.begin(), files.end(), known.files.begin(), [](const SampleFile& a, const SampleFile& b) {
+               return a.path == b.path && a.starred == b.starred && a.where == b.where;
+           });
     if (same && !ask.pending) return;
     known.drive = drive; known.folder = folder; known.top = top;
     known.files = std::move(files);

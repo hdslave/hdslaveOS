@@ -1405,7 +1405,16 @@ the file holds, to the bit.
   (`SampleFill`, `AudioReader`), and the voice reads only what has landed
   (`SampleGrowth`), holding silent at that edge should the reading fall
   behind; Shift + pad loads onto the
-  next empty pad. Melodee writes only to the card. On **Pads** every pad that
+  next empty pad. Shift + B3 STAR (its LED lit on a starred file) stars or
+  unstars the file under the cursor; a starred row shows a star. The card's
+  `Melodee/Samples` and the card's top lead with two rows, STARRED (by name)
+  and RECENT (the last 16 files loaded from the browser, newest first), each
+  with how many it holds; Push opens one as a folder, its rows each with the
+  folder its file is in, B1 back to where it opened. Erase in one takes the
+  row off that list and keeps the file. They are kept on the card as
+  `Melodee/Starred.txt` and `Melodee/Recent.txt`, a path a line (a card's
+  file from the card's top, an internal one whole; `shell/sample_lists.h`);
+  a file gone from the card is left out. Melodee writes only to the card. On **Pads** every pad that
   sounds lights, with a head through its waveform as far as its newest voice
   has played through its region.
 - **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as

@@ -144,11 +144,24 @@ you hit.
 | **B1** | Go back out of a folder. At the top, **CANCEL** closes the browser. |
 | **B2** | Switch between the card (**CARD**) and the MPC's factory samples (**INTERNAL**). The key names the other drive. Each drive keeps its folder and row. The internal drive is read only. |
 | **B3** | **PREVIEW**: play each file when you move to it. Melodee keeps this setting when you restart. |
+| **SHIFT** + **B3** | **STAR**: star the file under the cursor, or take its star off. The key's light shows whether it is starred. |
 | **SHIFT** + pad | Load the file onto the next empty pad. |
-| **ERASE** | Delete the file or folder under the cursor from the card. Melodee asks first: **B3 DELETE**, **B1 CANCEL**. |
+| **ERASE** | Delete the file or folder under the cursor from the card. Melodee asks first: **B3 DELETE**, **B1 CANCEL**. In **STARRED** or **RECENT**: take the file off that list. The file stays on the card. |
 
 In a folder, MPC kits come first, then instruments, then folders, then
-samples. Push on a MIDI file (a note icon, **MIDI**) puts its notes on the
+samples.
+
+The first two rows of `Melodee/Samples`, and of the card's top folder, are
+**STARRED** and **RECENT**. Each shows how many files it holds. Push opens
+one like a folder; **B1** goes back.
+
+- **STARRED**: the files you starred, by name. A starred file shows a star
+  in every folder.
+- **RECENT**: the last 16 files you loaded from the browser, newest first.
+
+Each row shows the folder its file is in. A file deleted or moved on the
+card is left out. Melodee keeps the two lists in `Melodee/Starred.txt` and
+`Melodee/Recent.txt`. Push on a MIDI file (a note icon, **MIDI**) puts its notes on the
 track's pattern in place of the notes there.
 
 **ERASE** deletes for good; undo does not bring a file back.

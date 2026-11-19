@@ -66,6 +66,7 @@
 #include "melodee/shell/pad_colour.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/sample_lists.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
 #include "melodee/shell/playheads.h"
@@ -18427,6 +18428,34 @@ void sample_roots() {
 // The usage log (shell/usage_log.h): off until started; page changes with the time on the page left, one nojob for
 // a knob's run of steps, undo with the time since the last edit and only its first word, lesson steps, MENU picks,
 // and the lines handed over every 10 s or at 4 KB. The setting is kept with the others.
+void sample_lists() {
+    std::vector<std::string> starred;
+    CHECK(star_toggle(starred, "/media/card/Melodee/Samples/Kick.wav"));
+    CHECK(star_toggle(starred, "/content/Samples/Drums/Snare.wav"));
+    CHECK(!star_toggle(starred, "/media/card/Melodee/Samples/Kick.wav")); // again: no longer starred
+    CHECK(starred.size() == 1 && starred[0] == "/content/Samples/Drums/Snare.wav");
+    std::vector<std::string> recent;
+    for (int n = 0; n < 20; ++n) recent_add(recent, "/media/card/Melodee/Samples/" + std::to_string(n) + ".wav");
+    CHECK(recent.size() == recent_max && recent.front() == "/media/card/Melodee/Samples/19.wav" && recent.back() == "/media/card/Melodee/Samples/4.wav");
+    recent_add(recent, "/media/card/Melodee/Samples/10.wav"); // loaded again: first, once
+    CHECK(recent.size() == recent_max && recent.front() == "/media/card/Melodee/Samples/10.wav"
+          && std::count(recent.begin(), recent.end(), "/media/card/Melodee/Samples/10.wav") == 1);
+    list_remove(recent, "/media/card/Melodee/Samples/10.wav");
+    CHECK(recent.size() == recent_max - 1 && recent.front() == "/media/card/Melodee/Samples/19.wav");
+    // Kept on the card: a card's file from the card's top, an internal one whole; read back as it was.
+    const std::vector<std::string> kept {"/media/card/Melodee/Samples/Loops/Bass Loop.wav", "/content/Samples/Drums/Kick.wav"};
+    const std::string text = list_text(kept, "/media/card");
+    CHECK(text == "Melodee/Samples/Loops/Bass Loop.wav\n/content/Samples/Drums/Kick.wav\n");
+    CHECK(list_read(text, "/media/card", 100) == kept);
+    CHECK(list_read(text, "/media/other", 100)[0] == "/media/other/Melodee/Samples/Loops/Bass Loop.wav"); // another mount point
+    CHECK(list_read("a.wav\r\n\n a\na.wav\n", "/media/card", 100) == std::vector<std::string>({"/media/card/a.wav", "/media/card/ a"}));
+    CHECK(list_read("x.wav\n", "", 100).empty()); // no card: a card's path means nothing
+    CHECK(list_read("a.wav\nb.wav\nc.wav\n", "/c", 2).size() == 2);
+    CHECK(list_where("/media/card/Melodee/Samples/Loops/Bass Loop.wav") == "Loops");
+    CHECK(list_where("/media/card/A folder name too long/x.wav").empty()); // longer than fits beside a name
+    CHECK(list_folder(starred_list) && list_folder(recent_list) && !list_folder("/media/card/STARRED"));
+}
+
 void usage_log() {
     UsageLog log;
     log.line(5, "nothing");
@@ -18779,6 +18808,7 @@ void midi_lookahead() {
 }
 
 int main() {
+    sample_lists();
     midi_lookahead();
     direct_monitoring();
     usb_volume();

@@ -14,12 +14,16 @@
 // factory categories and the stock app's samples, read only), B3 hears each
 // file as the cursor lands on it. Shift + pad loads the file onto the
 // kit's next empty pad (here instead of the printed Shift + pad jobs). K1
-// jumps. The pads play the kit.
+// jumps. The pads play the kit. Shift + B3 stars the file under the cursor;
+// the card's Samples folder and its top lead with STARRED and RECENT, which
+// Push opens as folders (shell/sample_lists.h). A file loaded here goes first
+// on RECENT.
 #include "melodee/shell/smf_jobs.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/engine/dsp.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/sample_lists.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/ui/widgets.h"
@@ -33,10 +37,16 @@ using namespace ui;
 constexpr unsigned visible = list_rows;
 
 juce::String folder_title(const Snapshot& s) {
+    if (s.files_folder == starred_list) return "STARRED";
+    if (s.files_folder == recent_list) return "RECENT";
     if (s.ui.files_drive == unsigned(Drive::Internal) && s.files_top) return "CATEGORIES";
     if (s.files_folder.empty()) return "NO CARD";
     return juce::String(std::filesystem::path(s.files_folder).filename().string());
 }
+
+// What Shift + B3 can star: a file (a sample, an instrument, a kit, a bank, a MIDI file), not a folder, a list, an
+// expansion or a preset inside an .sf2.
+bool starrable(const SampleFile& f) { return !f.folder && !f.list && !f.expansion && f.path.find('#') == std::string::npos; }
 
 void draw_list(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
@@ -60,6 +70,13 @@ void draw_list(Paint& p, const Snapshot& s) {
     keys.toggles = 4; // PREVIEW names a thing that is on or off: its LED, never ON / OFF (the row fills while it sounds)
     keys.lit = s.ui.settings.preview ? 4 : 0;
     if (s.ui.sheet_open) keys = {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}; // LOAD KIT's cards
+    else if (s.ui.shift) { // Shift + B3 stars the file under the cursor: its LED says whether it is starred
+        const SampleFile* at = s.files.empty() ? nullptr : &s.files[std::min<size_t>(s.ui.files_cursor, s.files.size() - 1)];
+        keys.labels[2] = at && starrable(*at) ? "STAR" : "";
+        keys.glyphs[2] = keys.labels[2].isEmpty() ? Icon::None : Icon::Star;
+        keys.toggles = 4;
+        keys.lit = at && at->starred ? 4 : 0;
+    }
     frame(p, s, keys, h);
     if (s.files.empty()) { // a glyph and two words: no card, or nothing here
         bool no_card = drive == Drive::Card && s.sample_root.empty();
@@ -67,6 +84,7 @@ void draw_list(Paint& p, const Snapshot& s) {
         p.text(no_card ? "NO CARD" : "EMPTY", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
+    const bool in_list = list_folder(s.files_folder);
     unsigned count = unsigned(s.files.size()), cursor = std::min<unsigned>(s.ui.files_cursor, count - 1);
     unsigned first = cursor < 2 ? 0 : std::min(cursor - 2, count > visible ? count - visible : 0);
     for (unsigned row = 0; row < visible && first + row < count; ++row) {
@@ -77,7 +95,9 @@ void draw_list(Paint& p, const Snapshot& s) {
         juce::String format = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS"
                             : path.endsWithIgnoreCase(".xpn") ? "XPN" : path.endsWithIgnoreCase(".sf2") || path.contains(".sf2#") || path.contains(".SF2#") ? "SF2"
                             : path.endsWithIgnoreCase(".dspreset") ? "DS" : "SFZ";
-        if (file.folder) { r.icon = Icon::Folder; r.chevron = true; }
+        r.starred = file.starred && s.files_folder != starred_list; // on STARRED every row is
+        if (file.list) { r.icon = file.list == 1 ? Icon::Star : Icon::Clock; r.fact = juce::String(file.where); }
+        else if (file.folder) { r.icon = Icon::Folder; r.chevron = true; }
         else if (file.bank) r.icon = Icon::Layers;
         else if (file.kit) { r.icon = Icon::Pads; r.fact = format; }
         else if (file.expansion) { r.icon = Icon::ArrowDown; r.fact = format; } // Push installs it
@@ -97,6 +117,7 @@ void draw_list(Paint& p, const Snapshot& s) {
                     break;
                 }
         }
+        if (in_list && !file.where.empty()) r.fact = name_case(juce::String(file.where)); // the folder it is in
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length
             char now[16], of[24];
             std::snprintf(now, sizeof(now), "%.1f", heard.heard);
@@ -174,12 +195,14 @@ void push(Context& c) {
     auto files = c.library->files();
     if (c.ui.files_cursor >= files.size()) return;
     const auto& file = files[c.ui.files_cursor];
-    if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
+    if (file.list) c.library->browse(Drive::Card, file.path); // STARRED or RECENT
+    else if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
     else if (file.bank) c.load_bank_file(file.path, file.name);
     else if (file.kit) c.load_kit_file(file.path, file.name, c.track().engine == EngineKind::Sampler); // a kit: LOAD KIT asks which banks
     else if (file.expansion) c.library->install(file.path);
     else if (file.midi) import_midi(c, file.path); // roadmap P4: its notes onto the track's pattern
     else c.load_file(file.path, file.name, false);
+    if (!file.folder && !file.expansion && !file.midi) c.library->used(file.path); // first on RECENT
 }
 
 void soft(Context& c, int key) {
@@ -194,6 +217,12 @@ void soft(Context& c, int key) {
         c.files_row_wanted = back.set ? back.row : -1;
         ui.files_drive = uint8_t(to);
         c.library->browse(Drive(to), back.set ? back.folder : std::string());
+    }
+    if (key == 2 && ui.shift) { // Shift + B3: the file under the cursor starred, or no longer
+        auto files = c.library->files();
+        if (ui.files_cursor < files.size() && starrable(files[ui.files_cursor])) c.library->star(files[ui.files_cursor].path);
+        else c.notice("Star: a file");
+        return;
     }
     if (key == 2) { // its LED says which; kept with the settings, as it was left
         ui.settings.preview = !ui.settings.preview;
@@ -214,6 +243,7 @@ bool samples_shift_pad(Context& c) {
     if (file.expansion) { c.notice("Push installs it"); return true; }
     if (file.midi) { c.notice("Push lays it on the pattern"); return true; }
     c.load_file(file.path, file.name, true);
+    c.library->used(file.path); // first on RECENT
     return true;
 }
 

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/sample_lists.h"
 #include "melodee/shell/controls_rules.h"
 #include "melodee/shell/usage_log.h"
 #include "melodee/shell/stage_map.h"
@@ -849,6 +850,14 @@ struct Preview {
     void (*set)(Shell&, Snapshot&);
 };
 
+// The browser at the card's Samples folder: STARRED and RECENT lead it (shell/sample_lists.h).
+void preview_lists(Snapshot& s, unsigned starred, unsigned recent) {
+    SampleFile star, last;
+    star.path = starred_list; star.name = "STARRED"; star.folder = true; star.list = 1; star.where = std::to_string(starred);
+    last.path = recent_list; last.name = "RECENT"; last.folder = true; last.list = 2; last.where = std::to_string(recent);
+    s.files.push_back(star); s.files.push_back(last);
+}
+
 const Preview previews[] {
     {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1, a synth plug-in: B1 MIX
     // The place bar (shell/place_bar.h) on the kit's Pads, its pattern slot 8 made 4 bars long (no other preview
@@ -1583,14 +1592,39 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
      }},
-    {"samples", [](Shell&, Snapshot& s) { // the browser on the card: folders first, then files
-         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 3; s.sample_root = "/media/card/Melodee/Samples";
+    {"samples", [](Shell&, Snapshot& s) { // the browser on the card: STARRED and RECENT, folders, then files
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Melodee/Samples";
          s.files_folder = s.sample_root; s.files_top = false;
+         preview_lists(s, 12, 16);
          for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name, name, 0, true});
          const char* files[] {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"};
          for (auto name : files) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
-         s.files[4].path = s.project.samples[4].path;
+         s.files[6].path = s.project.samples[4].path;
+         s.files[5].starred = true;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"samplesstar", [](Shell&, Snapshot& s) { // Shift held on the browser: B3 STAR, its LED lit on a starred file
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 2; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = s.sample_root + "/Loops"; s.files_top = false;
+         for (auto name : {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"}) s.files.push_back({s.files_folder + "/" + name + ".wav", name, 0, false});
+         s.files[2].starred = true; s.files[4].starred = true;
+         s.ui.files_count = uint16_t(s.files.size());
+         s.ui.shift = true; s.ui.shift_used = true;
+     }},
+    {"samplesrecent", [](Shell&, Snapshot& s) { // RECENT: the last files loaded, newest first, each with its folder
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 0; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = recent_list; s.files_top = false;
+         struct Row { const char* name; const char* where; bool starred; };
+         const Row rows[] {{"KICK 909", "Drums", false}, {"BASS LOOP", "Loops", true}, {"VOX CHOP 3", "Edits", false},
+                           {"BREAK", "Samples", false}, {"RHODES C3", "Keys", false}, {"CLAP WIDE", "Drums", true}};
+         for (const auto& r : rows) {
+             SampleFile f;
+             f.path = std::string("/media/card/Melodee/Samples/") + r.where + "/" + r.name + ".wav"; f.name = r.name;
+             f.where = r.where; f.starred = r.starred;
+             s.files.push_back(f);
+         }
+         s.files[3].path = s.project.samples[4].path; // on a pad of this kit
+         s.ui.files_count = uint16_t(s.files.size());
      }},
     {"samplesdelete", [](Shell&, Snapshot& s) { // Erase on a row of the browser: the question (shell/delete_jobs.h), B3 DELETE
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Melodee/Samples";

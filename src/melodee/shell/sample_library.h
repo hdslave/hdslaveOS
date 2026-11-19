@@ -57,6 +57,9 @@ struct SampleFile {
     bool expansion = false;  // an MPC expansion (".xpn"): Push installs it onto the card
     bool presets = false;    // a SoundFont (".sf2", roadmap P3): listed as a folder, its presets inside it
     bool midi = false;       // a Standard MIDI File (".mid", roadmap P4): Push lays its notes on the track's pattern
+    bool starred = false;    // on STARRED (shell/sample_lists.h)
+    uint8_t list = 0;        // the row that opens STARRED (1) or RECENT (2); its path is that list's folder name
+    std::string where {};    // in a list: the folder its file is in; on a list's row: how many it holds
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -165,6 +168,12 @@ public:
     // in view is listed again. removals(): how many have been done (the plug-in picker lists again too).
     void remove(const std::string& path);
     unsigned removals() const { return removal_count.load(std::memory_order_acquire); }
+    // MIDI thread: the browser's STARRED and RECENT (shell/sample_lists.h). star(): Shift + B3, starred or no
+    // longer; used(): a file loaded from the browser, first on RECENT; unlist(): Erase in a list, off it, the
+    // file kept. Done on the service thread, which keeps them on the card and lists the folder in view again.
+    void star(const std::string& path) { list_change(ListChange::Star, path); }
+    void used(const std::string& path) { list_change(ListChange::Use, path); }
+    void unlist(const std::string& path) { list_change(ListChange::Unlist, path); }
     // MIDI thread: an MPC expansion (.xpn) to install onto the card (shell/expansion_install.h);
     // done() says when it starts and ends, and the browser then shows its folder.
     void install(const std::string& path);
@@ -469,6 +478,15 @@ private:
     std::vector<std::string> removals_wanted; // under `lock`: paths to delete
     std::atomic<unsigned> removal_count {0};
     void remove_service();
+    // STARRED and RECENT: what the MIDI thread asked, under `lock`; the lists themselves, the service thread's.
+    struct ListChange { enum Kind : uint8_t { Star, Use, Unlist } kind = Star; std::string path; };
+    void list_change(ListChange::Kind kind, const std::string& path);
+    std::vector<ListChange> list_changes;
+    std::vector<std::string> starred_paths, recent_paths;
+    std::string list_parent; // the folder a list was opened from: B1 goes back to it
+    void lists_read();       // the card's Melodee/Starred.txt and Recent.txt, when a card comes
+    void lists_write(bool starred, bool recent);
+    void lists_service();    // the changes asked for, kept on the card
     std::vector<BankBytes> banks_read;    // under `lock`: what came of them
     bool preview_pending = false;
     // A load timed for the journal, from the first file asked for until nothing is left to read or hand on: how
