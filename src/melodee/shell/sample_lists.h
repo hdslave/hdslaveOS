@@ -20,10 +20,11 @@ inline bool list_folder(const std::string& folder) { return folder == starred_li
 constexpr size_t recent_max = 16;
 constexpr size_t starred_max = 500;
 
-// Shift + B3: starred if it was not, else no longer. True when it is starred now.
+// Shift + B3: starred if it was not, else no longer. True when it is starred now. Taken off with a range erase, not
+// erase(at): GCC 12 at -O2 reads erase(at) on a list it sees empty as a write before the list (-Warray-bounds).
 inline bool star_toggle(std::vector<std::string>& starred, const std::string& path) {
-    auto at = std::find(starred.begin(), starred.end(), path);
-    if (at != starred.end()) { starred.erase(at); return false; }
+    auto kept = std::remove(starred.begin(), starred.end(), path);
+    if (kept != starred.end()) { starred.erase(kept, starred.end()); return false; }
     if (starred.size() >= starred_max) return false;
     starred.push_back(path);
     return true;
