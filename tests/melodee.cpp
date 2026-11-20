@@ -591,7 +591,9 @@ void arrange() {
         auto bank = std::make_unique<PatternBank>();
         setup(*project, *bank);
         project->song.place({0, 0, 1, 1, false});
-        EngineHost host;
+        // Each host here on the heap: an EngineHost is 3.4 MB, three on this frame overflow an 8 MB stack.
+        auto kept = std::make_unique<EngineHost>();
+        EngineHost& host = *kept;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Play, 0, 0, 0, 1});
@@ -639,7 +641,8 @@ void arrange() {
         setup(*project, *bank);
         bank->at[0][1].length = 2 * project->bar_ticks();
         project->song.place({0, 0, 0, 8, false});
-        EngineHost host;
+        auto kept = std::make_unique<EngineHost>();
+        EngineHost& host = *kept;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Play, 0, 0, 0, 1});
@@ -657,7 +660,8 @@ void arrange() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         setup(*project, *bank);
-        EngineHost host;
+        auto kept = std::make_unique<EngineHost>();
+        EngineHost& host = *kept;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Play});
