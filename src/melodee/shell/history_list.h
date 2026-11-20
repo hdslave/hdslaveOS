@@ -63,7 +63,7 @@ inline std::string history_age(uint32_t now, uint32_t at) {
 enum class HistoryKind : uint8_t { Other, Pad, Pattern, Sound, Mix, Effects, Chop, Tempo, Song, Track, Plugin };
 inline HistoryKind history_kind(const Edit& e) {
     if (e.plugin) return HistoryKind::Plugin;
-    if (e.track_before || e.swap_a >= 0) return HistoryKind::Track;
+    if (e.track_before || e.swap_a >= 0 || e.name_before) return HistoryKind::Track;
     if (e.chop_before) return HistoryKind::Chop;
     if (e.song_before) return HistoryKind::Song;
     if (e.tempo_before) return HistoryKind::Tempo;

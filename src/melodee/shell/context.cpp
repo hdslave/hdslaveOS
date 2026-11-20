@@ -545,7 +545,7 @@ void Context::load_sound(unsigned t, EngineKind kind, unsigned sound) {
     const auto& info = engine_info(kind);
     const UserSound* own = sound >= info.sound_count ? user_sound(kind, sound - info.sound_count) : nullptr;
     if (own) { // a sound of one's own: its values and routes, as saved
-        tr.engine = kind; tr.preset = uint16_t(sound); tr.params = own->params; tr.mods = own->mods; tr.set_name(own->name);
+        tr.engine = kind; tr.preset = uint16_t(sound); tr.params = own->params; tr.mods = own->mods; tr.name_from(own->name);
         if (engine_changed) send({Type::Engine, uint8_t(t), 0, uint16_t(kind), 0});
         for (unsigned p = 0; p < info.param_count; ++p) send({Type::Param, uint8_t(t), 0, uint16_t(p), tr.params[p]});
         for (unsigned r = 0; r < mod_routes; ++r) { Command c {Type::Mod, uint8_t(t), 0, uint16_t(r)}; c.route = tr.mods[r]; send(c); }
@@ -1166,7 +1166,7 @@ void Context::finish_name() {
     case NameTarget::Sound: {
         auto& t = track();
         if (!store || t.engine == EngineKind::None || t.sampled()) break;
-        t.set_name(text.c_str());
+        t.name_from(text.c_str());
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
         break;
     }
@@ -1179,6 +1179,19 @@ void Context::finish_name() {
     }
     case NameTarget::Mixdown: mixdown(text); break;
     case NameTarget::Scene: project.scenes[name_scene_at % pattern_count].set_name(text.c_str()); dirty = true; break; // roadmap P5
+    case NameTarget::Track: { // one undo step: the name alone, nothing sent to the engine
+        auto& tr = project.tracks[name_track_at % track_count];
+        if (!tr.used()) break;
+        auto name_of = [&] { auto n = std::make_unique<TrackName>(); std::copy(tr.name, tr.name + name_length, n->text); n->named = tr.named; return n; };
+        Edit edit = begin_edit(("Name track " + std::to_string(name_track_at % track_count + 1)).c_str(), name_track_at, -1, false);
+        edit.name_before = name_of();
+        tr.set_name(text.c_str());
+        tr.named = true;
+        edit.name_after = name_of();
+        edits.push(std::move(edit));
+        dirty = true;
+        break;
+    }
     case NameTarget::None: break;
     }
 }
@@ -1604,6 +1617,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (e.chain >= 0 && chain) restore_chain(unsigned(e.chain), *chain);
     if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
     if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
+    if (const auto& m = after ? e.name_after : e.name_before) { auto& tr = project.tracks[e.track % track_count]; tr.set_name(m->text); tr.named = m->named; }
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
     if (e.pattern_was >= 0 && e.pattern >= 0) { // the pattern it played before, or the one the edit made it play

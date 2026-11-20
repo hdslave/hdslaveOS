@@ -60,6 +60,11 @@ struct MixState {
     std::array<uint8_t, bus_count> returns {};
     bool operator==(const MixState& o) const { return level == o.level && sends == o.sends && pan == o.pan && returns == o.returns; }
 };
+// A track's name and whether it is one of its own (Tracks, Shift + Push): nothing else of the track changes with it.
+struct TrackName {
+    char text[name_length] {};
+    bool named = false;
+};
 // A track's sound: its engine's values and its mod routes.
 struct SoundState {
     std::array<int16_t, max_params> params {};
@@ -163,6 +168,7 @@ struct Edit {
     std::unique_ptr<Chain> chain_before, chain_after;
     std::unique_ptr<MixState> mix_before, mix_after;
     std::unique_ptr<SoundState> sound_before, sound_after;
+    std::unique_ptr<TrackName> name_before, name_after; // a track named (`track`)
     std::unique_ptr<MasterState> master_before, master_after;
     std::unique_ptr<ChopState> chop_before, chop_after;
     std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo

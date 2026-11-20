@@ -30,7 +30,7 @@ KitImport import_kit(const Project& from, unsigned track, Track& into, const std
     into.engine = EngineKind::Sampler;
     into.preset = src.preset;
     into.params = src.params;
-    into.set_name(src.name);
+    into.name_from(src.name);
     into.pad_fx = src.pad_fx;
     into.pad_mutes = {};
     into.bank = 0; into.last_pad = 0; into.levels = false;

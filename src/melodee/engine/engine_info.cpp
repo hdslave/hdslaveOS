@@ -226,7 +226,7 @@ void load_sound(Track& track, EngineKind kind, unsigned sound) {
     track.engine = kind;
     track.preset = uint16_t(sound < info.sound_count ? sound : 0);
     sound_values(info, track.preset, track.params);
-    track.set_name(info.sound_count ? info.sounds[track.preset].name : "");
+    track.name_from(info.sound_count ? info.sounds[track.preset].name : "");
 }
 
 std::string decibels(int level) {

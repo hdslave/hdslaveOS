@@ -52,6 +52,7 @@ from 60 %, red from 85 %).
 | **SHIFT** + **K1** | Track speed: ×½, ×¾, ×1, ×1½ or ×2. The track's patterns play that much slower or faster. |
 | Fader | Level of the selected track. |
 | Encoder push | Open the track's Stage. |
+| **SHIFT** + encoder push | Name the track (see [Naming](projects-and-files.md#naming)). The name stays when you pick another sound or plug-in. Undo takes it back. |
 | **B1** | Come back to Tracks from Sends or an effect chain. |
 | **B2** | Open Sends (Full only). |
 | **B3** | Open the effect chains (press again for the next chain). |

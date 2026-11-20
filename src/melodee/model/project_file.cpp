@@ -383,6 +383,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (const auto& tr : project.tracks) w.u8(tr.speed);
         w.end(at);
     }
+    bool named = false; // tracks with a name of their own (Tracks, Shift + Push), kept when their sound changes
+    for (const auto& tr : project.tracks) named |= tr.named;
+    if (named) {
+        at = w.begin("TNAM");
+        w.u8(1); // the section's version
+        w.u8(track_count);
+        for (const auto& tr : project.tracks) w.u8(tr.named);
+        w.end(at);
+    }
     at = w.begin("TIME"); // time signature, BPM per pattern (P1-P16, as older builds read it)
     w.u8(project.signature); w.u8(project.seq_tempo);
     for (unsigned n = 0; n < legacy_patterns; ++n) w.u16(project.pattern_tempo[n]);
@@ -1060,6 +1069,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
+            }
+        } else if (name == "TNAM") { // tracks named on the Name sheet; without it, each named after its sound
+            unsigned version = r.u8(), count = r.u8();
+            for (unsigned k = 0; k < count && r.ok && version >= 1; ++k) {
+                bool own = r.u8() != 0;
+                if (k < track_count && r.ok) project->tracks[k].named = own;
             }
         } else if (name == "TSPD") { // the tracks' playback speeds (roadmap P1); without it every track at x1
             unsigned count = r.u8();

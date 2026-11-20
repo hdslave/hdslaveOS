@@ -65,6 +65,13 @@ void Context::name_scene(unsigned scene) {
     open_name(NameTarget::Scene, s.name[0] ? std::string(s.name) : "SEQ " + std::to_string(name_scene_at + 1), sizeof(Scene::name) - 1, true);
 }
 
+void Context::name_track(unsigned t) {
+    name_track_at = uint8_t(t % track_count);
+    const auto& track = project.tracks[name_track_at];
+    if (!track.used()) return;
+    open_name(NameTarget::Track, track.name[0] ? std::string(track.name) : "TRACK " + std::to_string(name_track_at + 1), name_length - 1, true);
+}
+
 void Context::clear_scene(unsigned scene) {
     auto& s = project.scenes[scene % pattern_count];
     if (s.plain()) { notice("SEQ " + std::to_string(scene % pattern_count + 1) + " has no name or tempo"); return; }

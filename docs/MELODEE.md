@@ -392,7 +392,9 @@ beat; the meters show the mix.
   play that much faster or slower against the tempo, their notes and
   motion as written, ×1½ turning sixteenths into sixteenth triplets; the
   header names it, Patterns too; kept in TSPD);
-  the wheel or −/+ the track, Push its Stage; the fader is its level. The MIX
+  the wheel or −/+ the track, Push its Stage, Shift + Push its name (the
+  Name sheet, one undo step; a name of its own stays when its sound or
+  plug-in changes, kept in TNAM); the fader is its level. The MIX
   hub's keys, **B1 TRACKS**, **B2 SENDS**, **B3 FX** (Tracks, Sends and the
   chains share them; FX steps track, bus, master, a kit's pad); with Shift,
   **MOVE** and **COPY** (below). Pad Bank

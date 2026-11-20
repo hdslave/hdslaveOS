@@ -39,6 +39,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
         break;
     }
     case NameTarget::Scene: what = "SEQUENCE " + juce::String(s.ui.scene % pattern_count + 1); break; // roadmap P5
+    case NameTarget::Track: what = "TRACK " + juce::String(s.ui.track % track_count + 1); break;
     case NameTarget::None: break;
     }
     Header h = header_of(s);

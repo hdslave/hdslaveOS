@@ -264,6 +264,7 @@ struct Track {
     EngineKind engine = EngineKind::None;
     uint16_t preset = 0;
     char name[name_length] {};
+    bool named = false;   // its name given on the Name sheet (Tracks, Shift + Push): kept when its sound changes
     std::array<int16_t, max_params> params {};
     Mix mix;
     uint8_t pattern = 0;  // the pattern playing
@@ -347,6 +348,8 @@ struct Track {
         for (; n + 1 < name_length && text[n]; ++n) name[n] = text[n];
         std::fill(name + n, name + name_length, '\0');
     }
+    // The name of its sound, plug-in or kit, unless it has one of its own (named).
+    void name_from(const char* text) { if (!named) set_name(text); }
 };
 
 // Time signatures the project can take (Shift + K2 on Patterns), as on the

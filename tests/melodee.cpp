@@ -19027,6 +19027,30 @@ void audio_monitor_choice() {
     CHECK(unsigned(TrackMonitor::Auto) == 1);
 }
 
+void track_names() {
+    // A name of its own (Tracks, Shift + Push): kept when the track's sound, plug-in or kit changes, saved in TNAM.
+    Track t;
+    t.name_from("KIT");
+    CHECK(std::string(t.name) == "KIT" && !t.named);
+    t.set_name("LEAD"); t.named = true;
+    t.name_from("PIANO");
+    load_sound(t, EngineKind::Sampler, 0);
+    CHECK(std::string(t.name) == "LEAD");
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[1].engine = EngineKind::Sampler; project->tracks[1].set_name("DRUMS"); project->tracks[1].named = true;
+    project->tracks[2].engine = EngineKind::Sampler; project->tracks[2].set_name("KIT");
+    auto bytes = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    CHECK(load_project(bytes, *back, *bank).empty());
+    CHECK(back->tracks[1].named && std::string(back->tracks[1].name) == "DRUMS" && !back->tracks[2].named);
+    project->tracks[1].named = false; // none named: no TNAM, as older builds wrote
+    const auto plain = save_project(*project, *bank);
+    const std::string tag = "TNAM";
+    CHECK(std::search(plain.begin(), plain.end(), tag.begin(), tag.end()) == plain.end());
+    CHECK(std::search(bytes.begin(), bytes.end(), tag.begin(), tag.end()) != bytes.end());
+}
+
 void stems_lookup() {
     // The stem separator: in the card folder the app was copied from (sd-folder beside its copy in RAM), a boot
     // menu's as a release's, else the fixed folders. Nowhere else on the card.
@@ -19067,6 +19091,7 @@ void stems_lookup() {
 
 int main() {
     audio_monitor_choice();
+    track_names();
     pad_value_erase();
     stems_lookup();
     sample_lists();

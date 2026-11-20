@@ -290,6 +290,7 @@ public:
     void launch_scene(unsigned scene, bool quiet = false); // pattern `scene` on every used track: a sequence (shell/sequences.h); quiet: no notice (the chain)
     void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
     void name_scene(unsigned scene);                  // the Name sheet
+    void name_track(unsigned t);                      // the Name sheet: a name of its own, kept when its sound changes
     void clear_scene(unsigned scene);
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
     void follow_to_column();                          // and onto every track's pattern in its column, one undo
@@ -298,6 +299,7 @@ public:
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
     uint8_t name_scene_at = 0;
+    uint8_t name_track_at = 0;
     // Roadmap P5 (shell/scene_jobs.cpp): the song's tempo lane, a point at `bar` (0 tenths: none there), its shape.
     void set_song_tempo(unsigned bar, int tenths);
     void set_song_tempo_shape(unsigned bar, bool ramp);

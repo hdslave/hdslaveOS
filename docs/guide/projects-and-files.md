@@ -73,8 +73,8 @@ out and back in.
 
 ## Naming
 
-The Name sheet opens when you save or rename a project, sample, sound, bank
-or marker.
+The Name sheet opens when you save or rename a project, sample, sound, bank,
+marker, sequence or track.
 
 ![The Name sheet](../images/screens/nameproject.png)
 

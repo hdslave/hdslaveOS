@@ -152,7 +152,7 @@ void Context::choose_plugin(const PluginFile& file) {
         else if (tr.layout == PadLayout::Drums) tr.layout = PadLayout::Scale; // a drum machine's pads, gone with it
         std::string name = file.name;
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return char(std::toupper(ch)); });
-        tr.set_name(name.c_str());
+        tr.name_from(name.c_str());
         if (made) {
             if (!made->plugin) stage_go(ui, 0, 0); // a new track: B1, its PRESETS (or its face), as a new kit's TRIM
             made->track_after = std::make_unique<TrackState>(track_state(*this, t));
