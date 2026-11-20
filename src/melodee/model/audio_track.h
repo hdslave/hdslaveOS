@@ -24,9 +24,11 @@
 // at the device's rate as it was recorded.
 namespace melodee {
 
-// What the track hears of its input: On while it is armed or recording (as the MPC's Auto), Off never.
-enum class TrackMonitor : uint8_t { Off, On, Count };
-inline const char* track_monitor_name(TrackMonitor m) { return m == TrackMonitor::Off ? "Off" : "On"; }
+// What the track hears of its input, in Input Config's words: Auto while it is armed or recording (the MPC's Auto), On
+// all the time (the MPC's In; also while a track that is not an audio track is selected, shell/audio_monitor.h), Off
+// never. Saved as a number: Auto is what older builds called On.
+enum class TrackMonitor : uint8_t { Off, Auto, On, Count };
+inline const char* track_monitor_name(TrackMonitor m) { return m == TrackMonitor::On ? "On" : m == TrackMonitor::Auto ? "Auto" : "Off"; }
 
 // The sources an audio track records from, in the order K1 turns through them: the inputs and USB-C (Melodee's own
 // mix and tracks are Resample's and the Track source's, on Sample Record).
@@ -50,7 +52,7 @@ inline const char* audio_source_label(InputSource s) {
 // An audio track's own settings (AUDT): where it records from and whether its input is heard.
 struct AudioTrackSettings {
     InputSource source = InputSource::Rear;
-    TrackMonitor monitor = TrackMonitor::On;
+    TrackMonitor monitor = TrackMonitor::Auto;
     bool operator==(const AudioTrackSettings& o) const { return source == o.source && monitor == o.monitor; }
 };
 

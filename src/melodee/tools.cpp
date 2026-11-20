@@ -534,7 +534,7 @@ void audio_scene(Snapshot& s, bool take) {
     auto& t = s.project.tracks[12];
     t = Track {};
     t.engine = EngineKind::Audio; t.set_name("VOX");
-    t.audio.source = InputSource::Mic; t.audio.monitor = TrackMonitor::On;
+    t.audio.source = InputSource::Mic; t.audio.monitor = TrackMonitor::Auto;
     const unsigned bar = s.project.bar_ticks();
     s.pattern = Pattern {};
     s.pattern.length = 2 * bar;

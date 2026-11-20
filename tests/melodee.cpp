@@ -39,6 +39,7 @@
 #include "melodee/engine/release_fit.h"
 #include "melodee/model/card_folders.h"
 #include "melodee/shell/stems_find.h"
+#include "melodee/shell/audio_monitor.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/engine/loop_find.h"
 #include "melodee/engine/engine_host.h"
@@ -18984,6 +18985,48 @@ void pad_value_erase() {
     CHECK(binding_lane(kit, Binding {Kind::PadCloud, 2, 0, 100, 0}) == motion_lane(motion_pad_param(PadParam::CloudSize), 8));
 }
 
+void audio_monitor_choice() {
+    // An audio track's Monitor (shell/audio_monitor.h): Auto heard while Seq Record arms it or it records, On all the
+    // time and also while a track that is not an audio track is selected, Off never; one input at a time.
+    auto project = std::make_unique<Project>();
+    project->tracks[0].engine = EngineKind::Sampler;
+    project->tracks[2].engine = EngineKind::Audio; project->tracks[2].audio.monitor = TrackMonitor::Auto;
+    project->tracks[4].engine = EngineKind::Audio; project->tracks[4].audio.monitor = TrackMonitor::On;
+    project->tracks[5].engine = EngineKind::Audio; project->tracks[5].audio.monitor = TrackMonitor::On;
+    auto pick = [&](int take, unsigned selected, bool armed, bool record) { return audio_monitor_pick(*project, take, selected, armed, record); };
+    CHECK(AudioTrackSettings {}.monitor == TrackMonitor::Auto && std::string(track_monitor_name(TrackMonitor::On)) == "On");
+    auto p = pick(-1, 2, false, false);
+    CHECK(p.track == 2 && !p.heard);                  // Auto, not armed: its source, not heard
+    p = pick(-1, 2, true, false);
+    CHECK(p.track == 2 && p.heard);                   // armed
+    p = pick(2, 0, false, false);
+    CHECK(p.track == 2 && p.heard);                   // its take waits or runs, whatever is selected
+    p = pick(-1, 4, false, false);
+    CHECK(p.track == 4 && p.heard);                   // On: stopped, not armed
+    p = pick(-1, 0, false, false);
+    CHECK(p.track == 4 && p.heard);                   // a kit selected: the first audio track set to On
+    p = pick(-1, 0, false, true);
+    CHECK(p.track == -1 && !p.heard);                 // the Record page: Input Config's
+    p = pick(-1, 7, false, false);
+    CHECK(p.track == 4);                              // an empty track selected too
+    project->tracks[4].audio.monitor = TrackMonitor::Off;
+    p = pick(-1, 4, true, false);
+    CHECK(p.track == 4 && !p.heard);                  // Off: never, armed or not
+    p = pick(-1, 0, false, false);
+    CHECK(p.track == 5 && p.heard);
+    project->tracks[5].audio.monitor = TrackMonitor::Auto;
+    p = pick(-1, 0, true, false);
+    CHECK(p.track == -1 && !p.heard);                 // no audio track set to On
+
+    // Saved as a number: Auto is what older builds called On (1); On is new (2) and kept.
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[2].audio.monitor = TrackMonitor::On;
+    auto back = std::make_unique<Project>();
+    CHECK(load_project(save_project(*project, *bank), *back, *bank).empty());
+    CHECK(back->tracks[2].audio.monitor == TrackMonitor::On && back->tracks[5].audio.monitor == TrackMonitor::Auto);
+    CHECK(unsigned(TrackMonitor::Auto) == 1);
+}
+
 void stems_lookup() {
     // The stem separator: in the card folder the app was copied from (sd-folder beside its copy in RAM), a boot
     // menu's as a release's, else the fixed folders. Nowhere else on the card.
@@ -19023,6 +19066,7 @@ void stems_lookup() {
 }
 
 int main() {
+    audio_monitor_choice();
     pad_value_erase();
     stems_lookup();
     sample_lists();
