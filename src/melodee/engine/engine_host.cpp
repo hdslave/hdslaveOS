@@ -152,6 +152,7 @@ void EngineHost::play_parked(int32_t* out, unsigned frames, float* stems) {
     frames = std::min(frames, block);
     std::fill(out, out + 2 * frames, 0);
     if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
+    silence_live_stems();
     for (auto* level : {&out_levels[0], &out_levels[1], &in_levels[0], &in_levels[1]}) level->store(0, std::memory_order_relaxed);
     parked_frames += frames;
 }
@@ -2229,28 +2230,42 @@ void EngineHost::midi_inputs(const int32_t* input, const float* usb, unsigned fr
     }
 }
 
-// Roadmap P4, stems to the card: each track as it joins the mix (after its chain, level, pan and mute, eased as heard)
-// and each bus's return, the same frames as the mixdown.
+// Roadmap P4, stems to the card: each track as it joins the mix (after its chain, level, pan and mute, eased as heard,
+// with the kit pad that keys the Sidechain, which joins after the ducking) and each bus's return, the same frames as
+// the mixdown. The same rows, every block, into set_live_stems()'s (the Ableton Move's USB submixes): one
+// computation, so the two never differ.
 void EngineHost::take_stems(unsigned frames) {
     StemRing* ring = stem_ring.load(std::memory_order_acquire);
     unsigned from = 0, to = 0;
-    if (!ring || !render_out.span(frames, from, to)) return;
-    static thread_local float l[StemRing::stem_count][block], r[StemRing::stem_count][block];
+    const bool bouncing = ring && render_out.span(frames, from, to);
+    if (!bouncing && !live_stems) return;
+    static thread_local float own[StemRing::stem_count * 2][block];
+    float* rows = live_stems ? live_stems : &own[0][0];
+    auto row = [&](unsigned stem, unsigned side) { return rows + size_t(stem * 2 + side) * block; };
+    const uint32_t ring_mask = bouncing ? ring->mask() : 0, wanted = live_stems ? ~0u : ring_mask;
     std::array<const float*, StemRing::stem_count> left {}, right {};
-    uint32_t mask = ring->mask();
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& slot = slots[t];
-        if (!((mask >> t) & 1) || !slot.engine) continue;
-        for (unsigned f = 0; f < frames; ++f) { float a = slot.audible.at(f); l[t][f] = slot.left[f] * a; r[t][f] = slot.right[f] * a; }
-        left[t] = l[t]; right[t] = r[t];
+        if (!((wanted >> t) & 1)) continue;
+        float *l = row(t, 0), *r = row(t, 1);
+        if (!slot.engine) { // silent, and so left out of the render's
+            std::fill(l, l + frames, 0.0f);
+            std::fill(r, r + frames, 0.0f);
+            continue;
+        }
+        for (unsigned f = 0; f < frames; ++f) { float a = slot.audible.at(f); l[f] = slot.left[f] * a; r[f] = slot.right[f] * a; }
+        if (keyed_pad == int(t) && !slot.audible.silent()) // as the mix has it (render())
+            for (unsigned f = 0; f < frames; ++f) { float a = slot.audible.at(f); l[f] += key_l[f] * a; r[f] += key_r[f] * a; }
+        if ((ring_mask >> t) & 1) { left[t] = l; right[t] = r; }
     }
     for (unsigned b = 0; b < bus_count; ++b) {
         unsigned s = track_count + b;
-        if (!((mask >> s) & 1)) continue;
-        for (unsigned f = 0; f < frames; ++f) { float g = returns_now[b].at(f); l[s][f] = bus_l[b][f] * g; r[s][f] = bus_r[b][f] * g; }
-        left[s] = l[s]; right[s] = r[s];
+        if (!((wanted >> s) & 1)) continue;
+        float *l = row(s, 0), *r = row(s, 1);
+        for (unsigned f = 0; f < frames; ++f) { float g = returns_now[b].at(f); l[f] = bus_l[b][f] * g; r[f] = bus_r[b][f] * g; }
+        if ((ring_mask >> s) & 1) { left[s] = l; right[s] = r; }
     }
-    ring->write(left.data(), right.data(), from, to);
+    if (bouncing) ring->write(left.data(), right.data(), from, to);
 }
 
 int64_t EngineHost::track_delay(unsigned t) const {
@@ -2811,6 +2826,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         std::fill(out, out + 2 * frames, 0);
         if (fixed) std::fill(fixed, fixed + 2 * frames, 0);
         if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
+        silence_live_stems();
         for (auto* level : {&out_levels[0], &out_levels[1], &in_levels[0], &in_levels[1]}) level->store(0, std::memory_order_relaxed);
         frame_now += frames;
         if (park_wanted) { park_gain = Ease {0, 0, 0}; go_parked(); } // silent already: no fade to wait for
@@ -3297,6 +3313,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (park_fading && stems)
         for (unsigned t = 0; t < track_count; ++t)
             for (unsigned f = 0; f < frames; ++f) stems[size_t(t) * block + f] *= park_gain.at(f);
+    if (park_fading && live_stems)
+        for (unsigned n = 0; n < 2 * StemRing::stem_count; ++n)
+            for (unsigned f = 0; f < frames; ++f) live_stems[size_t(n) * block + f] *= park_gain.at(f);
     float peak = 0, out_l = meter_from(out_levels[0]), out_r = meter_from(out_levels[1]);
     for (unsigned f = 0; f < frames; ++f) {
         if (click_wait) --click_wait;

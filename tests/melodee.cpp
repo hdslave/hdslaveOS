@@ -16387,6 +16387,9 @@ void exports_p4() {
         auto ring = std::make_unique<StemRing>();
         ring->arm(1u << 0 | 1u << 5);
         host->set_stems(ring.get());
+        // Live stems beside it, every block: what the render's stems get, the same values.
+        std::vector<float> live(size_t(StemRing::stem_count) * 2 * EngineHost::block, 9.0f);
+        host->set_live_stems(live.data());
         Command arm {Command::Type::BounceArm, 0, 0, 0, 0};
         arm.position = ticks_per_quarter / 2; // an eighth: a quarter of a second at 120
         host->send(arm);
@@ -16401,9 +16404,54 @@ void exports_p4() {
         float loud = 0, quiet = 0;
         for (unsigned f = 0; f < frames; ++f) { loud = std::max(loud, std::fabs(got[2 * f])); quiet = std::max(quiet, std::fabs(got[size_t(5) * 2 * 65536 + 2 * f])); }
         CHECK(loud > 0.1f && quiet == 0);
+        // The tone holds still, so the last block's live stem is the level the ring got; track 6 silent in both.
+        CHECK(std::fabs(live[0] - got[2 * (frames - 1)]) < 1e-6f && live[size_t(5) * 2 * EngineHost::block] == 0.0f);
+        host->set_live_stems(nullptr);
         host->set_stems(nullptr);
         CHECK(host->offer_plugin(0, nullptr));
         host->render(out.data(), 128, 1);
+    }
+    // Live stems alone, no render running (the Ableton Move's USB submixes): a track as it joins the mix, the
+    // tracks with no engine silent, a bus's return at its level, a muted track silent once its mute has eased in,
+    // and nothing written once they are let go.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[0].engine = EngineKind::Plugin; project->tracks[0].plugin = 0;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        FakePlugin tone;
+        CHECK(host->offer_plugin(0, &tone));
+        std::vector<float> rows(size_t(StemRing::stem_count) * 2 * EngineHost::block, 9.0f);
+        host->set_live_stems(rows.data());
+        host->send({Command::Type::Send, 0, 0, 0, 100});   // track 1 into bus A
+        host->send({Command::Type::Return, 0, 0, 0, 100}); // bus A's return up
+        host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+        std::vector<int32_t> out(256);
+        auto play = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) host->render(out.data(), 128, 1); };
+        auto peak = [&](unsigned stem) {
+            float most = 0;
+            for (unsigned side = 0; side < 2; ++side)
+                for (unsigned f = 0; f < EngineHost::block; ++f) most = std::max(most, std::fabs(rows[size_t(stem * 2 + side) * EngineHost::block + f]));
+            return most;
+        };
+        play(40);
+        CHECK(peak(0) > 0.05f && peak(track_count) > 0.01f); // track 1, bus A
+        bool rest_silent = peak(track_count + 1) == 0;
+        for (unsigned s = 1; s < track_count; ++s) rest_silent = rest_silent && peak(s) == 0;
+        CHECK(rest_silent);
+        host->send({Command::Type::Return, 0, 0, 0, 0});
+        play(40);
+        CHECK(peak(track_count) == 0 && peak(0) > 0.05f);
+        host->send({Command::Type::Mute, 0, 0, 0, 1});
+        play(40);
+        CHECK(peak(0) == 0);
+        host->set_live_stems(nullptr);
+        std::fill(rows.begin(), rows.end(), 9.0f);
+        play(1);
+        CHECK(rows.front() == 9.0f && rows.back() == 9.0f);
+        CHECK(host->offer_plugin(0, nullptr));
+        play(1);
     }
 }
 

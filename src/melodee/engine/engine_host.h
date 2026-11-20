@@ -196,6 +196,12 @@ public:
     Bounce& bounce() { return render_out; }
     // Roadmap P4: stems beside the next render (StemRing, the service thread's; nullptr: none), taken while it runs.
     void set_stems(StemRing* ring) { stem_ring.store(ring, std::memory_order_release); }
+    // Live stems, every block (the Ableton Move's USB submixes): the same stems a render's StemRing gets, each
+    // track as it joins the mix (after its chain, level, pan and mute, eased as heard, its key pad with it) and
+    // each bus's return, written into `rows[(stem * 2 + side) * block + f]`: stems 0-15 the tracks, 16-19 buses
+    // A-D, side 0 left. A track with no engine is silent; a Park's fade is kept, as the stems have it. Audio
+    // thread, before render(), as often as it likes; nullptr (the default): none taken, nothing spent.
+    void set_live_stems(float* rows) { live_stems = rows; }
     const Bounce& bounce() const { return render_out; }
     // A print host: track `track` taken each block as the Track input source does, after its chain (`post`) or as its
     // engine left it; print_left() / print_right() hold the block just rendered.
@@ -756,7 +762,9 @@ private:
     Bounce render_out;      // Resample and the song's mixdown
     Bounce audio_in;        // freeze plan F3: an audio track's take, from the input as Sample Record hears it
     std::atomic<StemRing*> stem_ring {nullptr}; // roadmap P4: stems beside it (each track as it joins the mix, the returns)
+    float* live_stems = nullptr;                // audio thread: set_live_stems()'s rows
     void take_stems(unsigned frames);
+    void silence_live_stems() { if (live_stems) std::fill(live_stems, live_stems + size_t(StemRing::stem_count) * 2 * block, 0.0f); }
     std::atomic<unsigned> source_now {1};
     std::atomic<unsigned> source_track {0};
     std::atomic<bool> source_post {true};
