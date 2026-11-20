@@ -215,11 +215,10 @@ public:
     void stop_stems() { separator.cancel(); }
     StemsProgress stems_progress() const { return separator.progress(); }
     bool take_stems(StemsResult& out);
-    // Where the separating program is: the release's folder on the card (autorun/melodee/stems), the folder
-    // `device.py install-sd` starts the app from (autorun/sample-base/stems, or sample-base/stems at the card's top
-    // for an install from before), the folder the app runs from, else a stems folder on the card three folders deep
-    // (shell/stems_find.h); or $MELODEE_STEMS_ENGINE. Empty when there is none. Its model is the
-    // file spleeter-4stems.f16 beside it, or $MELODEE_STEMS_MODEL.
+    // Where the separating program is: the stems folder of the card folder the app was copied from (a release's
+    // autorun/melodee, or where a boot menu keeps it), else autorun/melodee/stems, autorun/sample-base/stems or
+    // sample-base/stems at the card's top (shell/stems_find.h); or $MELODEE_STEMS_ENGINE. Empty when there is none.
+    // Its model is the file spleeter-4stems.f16 beside it, or $MELODEE_STEMS_MODEL.
     static std::string stems_program(const std::string& card_top);
 
     // The Looper (docs/LOOPER.md, shell/looper_files.cpp). Commit to pad: loop `loop` into slot `slot`, as

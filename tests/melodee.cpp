@@ -18903,33 +18903,41 @@ void pad_value_erase() {
 }
 
 void stems_lookup() {
-    // The stem separator on the card: a release's folder first, then the app's own folder (a boot menu's), then the
-    // card's folders three deep, Melodee's own and hidden ones left out.
+    // The stem separator: in the card folder the app was copied from (sd-folder beside its copy in RAM), a boot
+    // menu's as a release's, else the fixed folders. Nowhere else on the card.
     namespace fs = std::filesystem;
     const fs::path card = fs::temp_directory_path() / ("melodee-stems-card-" + std::to_string(::getpid()));
+    const fs::path ram = fs::temp_directory_path() / ("melodee-stems-ram-" + std::to_string(::getpid()));
     std::error_code error;
     fs::remove_all(card, error);
+    fs::remove_all(ram, error);
     auto put = [&](const fs::path& folder) {
         fs::create_directories(folder / "stems");
         std::ofstream(folder / "stems" / stems_program_name) << "x";
         return (folder / "stems" / stems_program_name).string();
     };
     fs::create_directories(card / "Melodee/Samples");
+    fs::create_directories(ram);
     CHECK(find_stems_program("").empty() && find_stems_program(card.string()).empty());
-    put(card / "Melodee"); // never looked for in Melodee's own folder
-    put(card / ".hidden");
-    CHECK(find_stems_program(card.string()).empty());
-    const auto deep = put(card / "SimpleBoot/apps/melodee"); // a boot menu's folder, three deep
-    CHECK(find_stems_program(card.string()) == deep);
-    put(card / "a/b/c/d"); // four deep: too far
-    CHECK(find_stems_program(card.string()) == deep);
-    const auto boot = put(card / "autorun/boot/melodee"); // autorun is read first
-    CHECK(find_stems_program(card.string()) == boot);
-    const auto app = put(card / "elsewhere/app");
-    CHECK(find_stems_program(card.string(), (card / "elsewhere/app").string()) == app); // beside the app before a search
-    const auto release = put(card / "autorun/melodee"); // the release's own folder before all
-    CHECK(find_stems_program(card.string(), (card / "elsewhere/app").string()) == release);
+    CHECK(release_sd_folder(ram).empty()); // started by device.py start: no sd-folder
+    std::ofstream(ram / "sd-folder") << "relative/melodee\n";
+    CHECK(release_sd_folder(ram).empty()); // only a whole path
+    const fs::path mod = card / "autorun/mods/Melodee 0.5.1/melodee"; // SampleBoot, a space in the name
+    std::ofstream(ram / "sd-folder") << mod.string() << "\n";
+    CHECK(release_sd_folder(ram) == mod.string());
+    put(card / "autorun/mods/Melodee 0.3.0/melodee"); // another version beside it: never searched for
+    CHECK(find_stems_program(card.string(), release_sd_folder(ram)).empty());
+    const auto installed = put(card / "sample-base"); // an install from before
+    CHECK(find_stems_program(card.string(), release_sd_folder(ram)) == installed);
+    const auto dev = put(card / "autorun/sample-base");
+    CHECK(find_stems_program(card.string()) == dev);
+    const auto release = put(card / "autorun/melodee");
+    CHECK(find_stems_program(card.string()) == release);
+    const auto own = put(mod); // the folder it was started from before the fixed ones
+    CHECK(find_stems_program(card.string(), release_sd_folder(ram)) == own);
+    CHECK(find_stems_program("", release_sd_folder(ram)) == own);
     fs::remove_all(card, error);
+    fs::remove_all(ram, error);
 }
 
 int main() {

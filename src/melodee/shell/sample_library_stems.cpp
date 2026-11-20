@@ -32,11 +32,11 @@ std::string file_name(const char* name) {
 
 std::string SampleLibrary::stems_program(const std::string& card_top) {
     if (const char* named = std::getenv("MELODEE_STEMS_ENGINE"); named && *named) return named;
-    // A release's folder (tools/make_release.py), the one `device.py install-sd` starts the app from, the folder the
-    // app runs from (a boot menu's), else the card's folders (shell/stems_find.h).
+    // The card folder the app was copied from, which sd-worker.sh writes beside its copy in RAM, else the fixed
+    // folders (shell/stems_find.h).
     std::error_code error;
     const auto exe = fs::read_symlink("/proc/self/exe", error);
-    return find_stems_program(card_top, error ? std::string() : exe.parent_path().string());
+    return find_stems_program(card_top, error ? std::string() : release_sd_folder(exe.parent_path()));
 }
 
 bool SampleLibrary::take_stems(StemsResult& out) {
