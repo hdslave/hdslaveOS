@@ -794,7 +794,7 @@ void SamplerEngine::silence() {
 }
 bool SamplerEngine::sounding() const {
     for (auto& v : voices) if (v.pad >= 0) return true;
-    for (auto& g : grains) if (g.sample) return true;
+    if (grains_live) for (auto& g : grains) if (g.sample) return true;
     return false;
 }
 
@@ -813,6 +813,7 @@ void SamplerEngine::spawn(Voice& v) {
     Grain* g = nullptr;
     for (auto& grain : grains) if (!grain.sample) { g = &grain; break; }
     if (!g) return;
+    grains_live = true;
     seed = seed * 1664525u + 1013904223u;
     float random = int32_t(seed) / 2147483648.0f;
     // An instrument's clouds stay in what is held of a zone; a long sample's in the first of its region, held while a cloud.
@@ -1619,7 +1620,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     retune_voices();
     // Portamento: each sliding voice a block nearer its key (its usual 8 ms glide smooths the steps between blocks).
     for (auto& v : voices) {
-        if (v.porta == 0.0f || v.pad < 0 || v.pad >= int(sampler_pads) || v.choked) continue;
+        if (v.pad < 0 || v.porta == 0.0f || v.pad >= int(sampler_pads) || v.choked) continue; // pad first: a free voice's first line only
         const float by = v.porta_rate * float(frames);
         v.porta = std::fabs(v.porta) <= by ? 0.0f : v.porta - std::copysign(by, v.porta);
         refresh(v);
@@ -1637,22 +1638,27 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         double every = dsp::sample_rate() / std::max(1, int(1 + own.cloud_density * 0.99));
         while (v.next_grain <= 0) { spawn(v); v.next_grain += every; }
     }
-    for (auto& g : grains) {
-        if (!g.sample) continue;
-        const float* l = g.l;
-        const float* r = g.r;
-        const double span = double(g.top - g.low);
-        for (unsigned f = 0; f < frames && g.age < g.length; ++f, ++g.age) {
-            // Only a region shorter than the grain gets this far: round inside it.
-            if (g.position >= g.top) g.position -= span * std::floor((g.position - g.low) / span);
-            unsigned i = unsigned(g.position);
-            float frac = float(g.position - i);
-            unsigned j = i + 1 < g.top ? i + 1 : g.low;
-            float w = std::sin(dsp::pi * float(g.age) / float(g.length)) * g.gain * 0.5f; // a smooth window
-            left[f] += (l[i] + (l[j] - l[i]) * frac) * w * g.left; right[f] += (r[i] + (r[j] - r[i]) * frac) * w * g.right;
-            g.position += g.step;
+    if (grains_live) { // none started since they last all ended: nothing to read
+        bool live = false;
+        for (auto& g : grains) {
+            if (!g.sample) continue;
+            const float* l = g.l;
+            const float* r = g.r;
+            const double span = double(g.top - g.low);
+            for (unsigned f = 0; f < frames && g.age < g.length; ++f, ++g.age) {
+                // Only a region shorter than the grain gets this far: round inside it.
+                if (g.position >= g.top) g.position -= span * std::floor((g.position - g.low) / span);
+                unsigned i = unsigned(g.position);
+                float frac = float(g.position - i);
+                unsigned j = i + 1 < g.top ? i + 1 : g.low;
+                float w = std::sin(dsp::pi * float(g.age) / float(g.length)) * g.gain * 0.5f; // a smooth window
+                left[f] += (l[i] + (l[j] - l[i]) * frac) * w * g.left; right[f] += (r[i] + (r[j] - r[i]) * frac) * w * g.right;
+                g.position += g.step;
+            }
+            if (g.age >= g.length) g.sample = nullptr;
+            else live = true;
         }
-        if (g.age >= g.length) g.sample = nullptr;
+        grains_live = live;
     }
     // Each pad with a chain or sends of its own renders on its own lane (blocks of 128 at most here).
     bool laned = frames <= 128;
@@ -1826,7 +1832,7 @@ void SamplerEngine::taps(TrackTaps& out) const {
     // The newest grains (a partial sort of pointers, on the stack), each where it began and where it reads now.
     std::array<const Grain*, std::tuple_size_v<decltype(grains)>> playing {};
     unsigned count = 0;
-    for (const auto& g : grains) if (g.sample) playing[count++] = &g;
+    if (grains_live) for (const auto& g : grains) if (g.sample) playing[count++] = &g;
     unsigned kept = std::min<unsigned>(count, TrackTaps::grains);
     std::partial_sort(playing.begin(), playing.begin() + kept, playing.begin() + count,
                       [](const Grain* a, const Grain* b) { return int32_t(a->serial - b->serial) > 0; });

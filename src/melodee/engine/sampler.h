@@ -331,6 +331,9 @@ private:
     };
     void spawn(Voice& v);
     std::array<Grain, 48> grains {};
+    // Some grain may be playing: spawn() starts one, the render that sees none left clears it. While it is clear nothing
+    // reads the grains (3 kB a kit each block, waited for on a cold cache).
+    bool grains_live = false;
     uint32_t grain_serial = 0;
     unsigned tempo = 1200;
     uint32_t seed = 99;
