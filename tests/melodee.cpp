@@ -6307,14 +6307,14 @@ void projects_and_polish() {
         for (PageId page : {PageId::Pads, PageId::Tempo}) {
             ui.page = page;
             auto shifted = page_bindings(*p, ui, pattern, true);
-            CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == 12);
+            CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == int(scales().size()) - 1);
         }
         // 16 Levels held, on any page (no page of its own): K1 the type; of type Scale K2 the root and K3 the scale,
         // of the others the two ends. Let go, the page's own cards; of type Loop, none of its own.
         ui.page = PageId::Stage; ui.levels_held = true;
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Scale);
         auto levels = page_bindings(*p, ui, pattern, false);
-        CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::Root && levels[2].kind == K::Scale && levels[2].max == 12);
+        CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::Root && levels[2].kind == K::Scale && levels[2].max == int(scales().size()) - 1);
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Tune);
         levels = page_bindings(*p, ui, pattern, false);
         CHECK(levels[1].kind == K::LevelsLow && levels[2].kind == K::LevelsHigh && levels[2].value == 12);
