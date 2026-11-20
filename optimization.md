@@ -1,26 +1,28 @@
 # Melodee optimization audit
 
-A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the `melodee-hdslave` fork changes as a result. Written on 2026-11-20.
+A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the `melodee-hdslave` fork changes as a result. Written on 2026-11-20, in two passes: an audit by reading, then a second pass for speed alone, measured with a profiler.
 
 Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app and the sample-base runtime under it (`base/`). The fork keeps his copyright headers, credits and licence.
 
-**Nothing here has been run on an MPC Sample.** Every cost and saving is an estimate from reading the code or a figure worked out from the hardware's published operating points, unless a line says it was measured. What was measured, on the build machine, is that the fork still builds, passes every test and plays the same audio to the bit.
+**Nothing here has been run on an MPC Sample.** Every cost and saving is an estimate from reading the code or a figure worked out from the hardware's published operating points, unless a line says it was measured. What was measured, on the build machine, is that the fork still builds, passes every test and plays the same audio to the bit, and, in the second pass, how many instructions the engine runs for a benchmark project before and after each change.
 
 ## Summary
 
 - **128 findings**: 127 from eleven auditors, each covering one part of the code, and one found while implementing. I checked each against the code. 95 are confirmed, 27 turned out to be the same issue reported by a second auditor, 5 are partly confirmed and 1 could not be checked without the compiler's output. None was rejected outright, but one recommended compiler flag turned out to change the audio and was dropped (BASE-5).
-- **The largest battery levers are not in the audio engine.** They are the processor's fixed top speed, a screen that redraws in full 60 times a second whenever one pixel moves, lights and backlight that never dim, and background threads that poll.
-- **The fork implements 20 findings**, six of them in part. They add four power settings and remove wasted work. The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
-- **The largest saving left on the table** is letting silent tracks and effect chains rest (HOST-1). It needs listening tests on the device, so it was not attempted.
+- **The processor's speed is left alone.** The first pass built a CPU speed setting that held the cores at a lower clock and voltage to save battery. It was removed at the owner's request before the fork was ever run: the four cores stay at the kernel's 1.8 GHz, as under the stock app, and nothing in the fork touches the clocks.
+- **The fork implements 23 findings**, eight of them in part. They remove wasted work in the engine and around it and add three settings (Refresh, Dim after, Pad brightness). The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
+- **Second pass, for speed:** the engine runs **23 % fewer instructions** for the benchmark's busy 16-track project and **12 % fewer** for the same project stopped, playing the same to the bit. Most of it comes from one loop in the sampler.
+- **The largest saving left on the table** is letting silent tracks and effect chains rest (HOST-1). A stopped project still costs the engine about half of what a busy one playing does. Resting a chain cannot be made bit-exact as the effects are written, so it was not attempted.
 
 ### The levers, in order of likely value
 
 | # | Lever | Finding | In the fork |
 | --- | --- | --- | --- |
-| 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | CPU speed setting, Auto by default |
+| 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | Not used. Built, then removed at the owner's request: full speed always |
 | 2 | Any changed pixel bought 30 more full redraws at 60 fps. The place bar moves on every page while playing, so every page was redrawn 60 times a second. | BASE-2, UI-1, UI-4 | Refresh setting (30 fps by default), shorter tail, event-driven wake |
 | 3 | Nothing dims: backlight at its level and 16 RGB pads plus about 25 button lights on for hours. | BASE-3, LIGHT-4 | Dim after and Pad brightness settings |
 | 4 | Silent tracks, buses and the master still run every effect in their chains on every block. | HOST-1 | Not implemented |
+| 4a | Half of a busy project's engine time is the sampler's plain voice loop, most of it for voices that only hold their level. | SMP-9 | Fixed in the second pass: 17 % of the engine's instructions |
 | 5 | Background polling: about 715 of the runtime's 1,060 wakeups a second at rest are polls, plus 1,000 a second from Melodee's stream reader. | SMP-1, BASE-2, BASE-6, BASE-7 | Stream reader and screen thread fixed; service and lights loops unchanged |
 | 6 | Needless saves to the card: some commands marked the project changed with no edit, in one case once a second for ever; each save re-read every project in the folder. | SHELL-1, LIGHT-6, IO-1 | Fixed |
 | 7 | An external MIDI clock kept a still screen drawing at 60 fps. | BASE-4 | Fixed |
@@ -30,7 +32,6 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 
 | Change | Findings | Where |
 | --- | --- | --- |
-| **CPU speed** setting (AUDIO): Auto, Full, Balanced, Eco. Auto holds 1.4 GHz and goes to 1.8 GHz when a block has taken half its time, after a dropout, or while a load, print, export or stems job runs; back after eight calm seconds. | BASE-1 | `base/src/drivers/platform.*`, `melodee_app.cpp` (`power_service`), `shell/settings.h` |
 | **Refresh** setting (SCREEN): 60, 30 or 20 fps while the picture moves by itself. A control in use is answered at 60 fps. The loop sleeps between frames and is woken by input. | BASE-2, BASE-4, UI-1, UI-3, UI-4 | `base/src/runtime/run_app.cpp`, `session.h`, `controller.cpp`, `app.h` |
 | **Dim after** setting (SCREEN): Off, 1, 2, 5, 10 min with no control used and nothing playing (a Looper loop still heard counts), recording or working. Backlight to its lowest lit level, pads to a sixth, bright buttons to dim. | BASE-3, LIGHT-4 | `shell/lights.cpp` (`power_tick`), `melodee_app.cpp`, `base/src/surface/leds.h` |
 | **Pad brightness** setting (PADS): 100, 75, 50, 25 %. | LIGHT-4 | `shell/settings.h`, `base/src/surface/leds.h` |
@@ -45,7 +46,11 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 | Kit lanes: one lookup removed from the tick loop. | MODEL-5 | `engine/engine_host.cpp` |
 | Screen Mirror's frame timer stops with the stream. | BASE-13 | `base/src/drivers/screen_mirror.cpp` |
 | Build: `-mcpu=cortex-a55`, `-fno-trapping-math`, eager binding (`-z now`). | BASE-5, BASE-8 | `base/base.mk` |
-| Crash recovery puts the CPU limit and backlight back: the recovery script when the app's service stops, and the runtime itself as the next app starts, should one have been killed in between. | BASE-1, BASE-3 | `base/install/restore-stock.sh`, `base/src/drivers/platform.*` (`recover()`) |
+| A sampler voice that holds its level plays its frames without the tests and the envelope step that cannot change. | SMP-9 | `engine/sampler.cpp` (`held_run`) |
+| A Pad FX that is off moves its history on in one or two copies, not a frame at a time. | SMP-3 | `engine/punch.cpp` |
+| The echoes look their SYNC up once a call, not once a frame. | FX-4 | `engine/effects.cpp` |
+| The mixer reads a gain that is not moving once a block. | HOST-4 | `engine/engine_host.cpp` |
+| Crash recovery puts the backlight back: the recovery script when the app's service stops, and the runtime itself as the next app starts, should one have been killed in between. | BASE-3 | `base/install/restore-stock.sh`, `base/src/drivers/platform.*` (`recover()`) |
 
 Changes to `base/` are on a branch named `hdslave` inside the submodule, since the project's own rule is to change the base in sample-base and not from Melodee's tree.
 
@@ -53,8 +58,8 @@ Changes to `base/` are on a branch named `hdslave` inside the submodule, since t
 
 - The place bar, play head and meters step at 30 fps when your hands are off the controls. Set **Refresh** to 60 to get the old look.
 - After two minutes untouched and stopped, the screen and lights go low. Any control brings them back and still does its job.
-- **CPU speed** shows Auto. If a heavy project crackles, set it to Full: that is exactly the original behaviour.
-- The settings file gains four lines (`cpu_speed`, `refresh`, `dim_after`, `pad_level`). The original Melodee ignores lines it does not know, so the file still works there.
+- The processor runs at its full speed at all times, as it does under the stock app. No setting changes that.
+- The settings file gains three lines (`refresh`, `dim_after`, `pad_level`). The original Melodee ignores lines it does not know, so the file still works there.
 - A project is no longer marked unsaved after you only played pads with Note Repeat or the arpeggiator, or ran from an external clock.
 
 ## How this was done
@@ -78,7 +83,7 @@ Before committing I read every changed line again, against the code around it an
 
 What my own read changed:
 
-- **A killed app could leave the CPU limit or the dimmed backlight behind.** The recovery script runs when the app's service stops, but not when one app is swapped for another or updated in place. An app killed during such a stop left its changes, and the next one took the changed values for the MPC's own and "restored" those on leaving. The runtime now puts back what the notes in `/run` hold as it starts (`Platform::recover()`), with a test.
+- **A killed app could leave the CPU limit or the dimmed backlight behind.** The recovery script runs when the app's service stops, but not when one app is swapped for another or updated in place. An app killed during such a stop left its changes, and the next one took the changed values for the MPC's own and "restored" those on leaving. The runtime now puts back what the notes in `/run` hold as it starts (`Platform::recover()`), with a test. (The CPU limit was removed altogether afterwards; the backlight's recovery stays.)
 - **A control touched while a frame was being drawn could wait 100 ms for its picture** on a still screen. The original loop had the same gap. Such a control now gets a frame of its own at the fast rate.
 - **Start, Continue and Stop from outside wake the screen again**, so a transport started by another machine shows at once. MTC quarter frames joined the clock and Active Sensing as bytes that do not: they come a hundred times a second while timecode runs.
 - **A Looper loop that is still heard keeps the lights up.** Dim after looked at the sequencer and at recording, not at a loop playing by itself.
@@ -96,7 +101,45 @@ What my read confirmed, where I had relied on an assumption:
 - **The dimmed backlight is lit, not off.** The MPC Sample's device tree gives the backlight seven levels (0, 8, 16, 32, 64, 128, 255 of 255); Dim after uses level 1, which is also what Brightness at 20 % sets.
 - **None of the thirteen commands that no longer mark the project changed carries an edit.** I read each one's senders: each mirrors a value kept elsewhere (a track parameter, an Input Config setting, a sample's root note) or passes a gesture on. Input Config is saved by its own timer, not by the project's.
 - **The project-list cache is touched by one thread only**: saves and scans both run on the service thread.
-- **The recovery script's new lines** were run under the container's `sh` against stand-in files: the limit and backlight went back, a line naming another device or carrying no number wrote nothing.
+- **The recovery script's new lines** were run under the container's `sh` against stand-in files: the backlight went back, a line naming another device or carrying no number wrote nothing. (Run again after the CPU limit's part was removed.)
+
+## Second pass: speed, measured
+
+The owner asked for the CPU speed feature to be removed and for more speed with nothing lost. "Nothing lost" was taken strictly: the same features, and the same audio to the bit. The first pass was done by reading; this one was done by measuring.
+
+**How it was measured.** The DSP bench (`--melodee-dsp-bench`) plays a busy project: sixteen kits, three hits on every sixteenth, two effects on each track, four buses of reverbs and echoes, the master compressor. It gained three options (`pace=0`, `guard=0`, `play=0`) so that it can run under a profiler, where time means nothing: the blocks one after another, the overload guard off so that what is played cannot depend on how long a block took, and optionally stopped. Run that way under callgrind it gives an exact count of the instructions the engine executes, the same on every run, and a list of where they go. Each change was kept only if the bench's output hash stayed the same, playing and stopped.
+
+**Where the engine's time goes** (the busy project playing, before the changes):
+
+| Share of instructions | Where |
+| --- | --- |
+| 37 % | `SamplerEngine::run_plain`, the short loop every plain sampler voice takes |
+| 13 % | the rest of the sampler: voices near their start or end, the kit filter, pad chains |
+| about 30 % | the effects, spread thinly over many kinds; a third of it is `std::sin` for slow swings and the code round each call |
+| about 10 % | the mixer: pan, sends, buses, the master |
+| 2 % | ten Pad FX histories recording the master while off |
+| 2 % | the echoes looking up their SYNC setting for every frame |
+
+A stopped project ran 46 % as many instructions as the playing one: every effect on every track and bus still works on silence (HOST-1).
+
+**What was changed, and what each measured** (instructions for three seconds of the bench, single thread):
+
+| Step | Playing | Stopped | Output |
+| --- | --- | --- | --- |
+| Before | 3,011 million | 1,398 million | reference |
+| A sampler voice holding its level skips the tests and the envelope step that cannot change (SMP-9) | 2,494 million (−17.2 %) | 1,398 million | same |
+| Pad FX off: the history moved in one copy (SMP-3). Echo SYNC looked up once a call (FX-4). Mixer gains that are not moving read once (HOST-4) | 2,321 million (**−22.9 %**) | 1,225 million (**−12.4 %**) | same |
+
+Each count includes about 78 million instructions of the benchmark's own setup and its second of warming up is engine work too, so the engine's own saving is slightly larger than the table's: 23.5 % playing and 13.1 % stopped.
+
+**What was tried and not kept:**
+
+- **`-O3` for the engine.** 4 % fewer instructions, and the bench played different bits. Not used.
+- **Working the swings' sines out ahead of the frames (FX-3).** The profile showed heavy code round every `std::sin` call in Chorus, Flanger and the tape effects. Moving the calls out of the frame loop, with the same arguments, changed what three of those effects played against the original build and saved nothing. Inside one build the old and new ways agreed exactly, so the cause is the compiler fusing the surrounding sums differently once the code moved. Reverted. It shows how narrow "the same to the bit" is in this code: an edit that leaves every expression alone can still move a rounding.
+
+**What these numbers are and are not.** They are instruction counts for one benchmark on the build machine's compiler output, which is the same code the MPC runs. They are not times on the MPC's Cortex-A55: a block's time there also depends on cache misses and on which instructions they are. A project of plug-in instruments gains nothing from the sampler change; a project of kits and samples gains about what the bench does.
+
+**What is left, by weight.** The effects are now the largest share, and each kind is a little of it. The exact savings left there are small and each needs its own proof (FX-4's other sites, FX-9). Resting silent chains (HOST-1) is the big one, and it is not exact: a chorus's sweep keeps moving through silence, so a chain that slept would come back at a different point of its sweep. Outside the engine, the screen thread's copy of the whole project for every frame (MODEL-1) is the next largest cost that could go without anything being lost.
 
 ## Tests
 
@@ -106,12 +149,13 @@ All run in the project's own build container (Debian 12, arm64) on an Apple Sili
 | --- | --- |
 | Build with `-Wall -Wextra -Werror` | clean |
 | Melodee's test suite (44 tests, including the 18,000-line engine and shell test) | all pass |
-| New assertions: the four settings (defaults, every value, round trip through the settings file, older files) | pass |
-| sample-base's whole suite, with new cases for the CPU limit, backlight recovery, recovery after a killed app, LED scale and rest | 56 pass; 13 skipped, which need a built sample-base app or tools the container lacks |
+| New assertions: the three settings (defaults, every value, round trip through the settings file, older files); no setting writes a CPU speed | pass |
+| sample-base's whole suite, with new cases for backlight recovery, recovery after a killed app, LED scale and rest | 56 pass; 13 skipped, which need a built sample-base app or tools the container lacks |
 | Monkey test (12 seeds × 3,000 random control moves) | 0 failures |
 | Page previews | all 777 render; AUDIO and SCREEN checked by eye |
 | Self-test audio (6 s render), SHA-256 against the unmodified build | identical |
-| DSP bench output hash (16 busy tracks, 10 s), new flags against old | identical, in four runs of the final build |
+| DSP bench output hash (16 busy tracks, 10 s) against the original build's, playing and stopped, on one thread and with three workers | identical |
+| The sampler's held runs against the loop frame by frame (`held_runs` off), kits and keygroups | identical |
 | Compressor shortcut against the original expressions | 370,217,204 gains identical |
 
 Two notes on the test setup:
@@ -119,30 +163,29 @@ Two notes on the test setup:
 - The engine test keeps whole projects on the stack and crashes under a container's default 8 MB stack limit. That happens on the unmodified code too. `build.sh` now passes `--ulimit stack=268435456`.
 - The DSP bench's hash only compares when its line says `guard=0/0`. When the build machine hiccups, the overload guard steals a voice and the output legitimately differs.
 
-On the build machine the bench's mean block time is the same before and after (about 240 µs). That says nothing about the MPC: the compiler flags tune for the Cortex-A55, and the other changes save work outside the audio blocks.
+The bench's own block times on the build machine vary too much from run to run (100 to 500 µs with the machine's other work) to show a saving of this size, which is why the second pass counts instructions instead. Neither says what a block takes on the MPC: the compiler flags tune for the Cortex-A55, and the other changes save work outside the audio blocks.
 
 ## Before you install it
 
-The package is `dist/Melodee-MPC-Sample-v0.5.1-hdslave.1-unsigned.zip`, made by `tools/package_unsigned.py`. It has the same files and boot checks as a release, without the update signature (only the author has that key). So it installs by hand only, and Melodee's own updater will not accept it.
+The package is `dist/Melodee-MPC-Sample-v0.5.1-hdslave.2-unsigned.zip`, made by `tools/package_unsigned.py`. It has the same files and boot checks as a release, without the update signature (only the author has that key). So it installs by hand only, and Melodee's own updater will not accept it.
 
 Things only the device can tell:
 
-1. **Whether the CPU limit takes effect.** Check `melodee_cpu_limit=` in the status line (below). `-1` means the kernel refused or has no cpufreq; the setting then does nothing.
-2. **Whether Auto ever drops out.** The step up to full speed happens within one service pass (5 ms) of a block taking half its time, and three blocks are queued ahead of the jacks. A project whose load more than doubles inside one block could still glitch once. If you hear it, use Full and please note what the project was doing.
-3. **How much battery each setting saves.** Run the same project from full to empty at Full and at Eco, screen at the same brightness, and time it.
-4. **How the dimmed state looks** in a dark room and in daylight, and whether a sixth of the pads' light is the right resting level.
-5. **Whether 30 fps is acceptable** on the pages you use most.
+1. **What a block now takes.** Settings > AUDIO shows the share of each block's time a project takes (DSP); the status line has it as `melodee_render_load=`. The same project under the original Melodee and under the fork, playing and stopped, is the measurement this document cannot make.
+2. **Whether anything sounds different.** It should not: the bench and the self-test play the same bits. A project that uses effects the bench does not (the bench has fifteen kinds) rests on the tests and on the changes leaving those effects' code alone.
+3. **How the dimmed state looks** in a dark room and in daylight, and whether a sixth of the pads' light is the right resting level.
+4. **Whether 30 fps is acceptable** on the pages you use most.
 
-Going back is one setting each: CPU speed Full, Refresh 60, Dim after Off, Pad brightness 100 %.
+Going back is one setting each: Refresh 60, Dim after Off, Pad brightness 100 %.
 
 ## Not done, in order of likely value
 
-1. **HOST-1 / FX-1: rest silent chains.** Largest remaining saving when stopped or in sparse arrangements. Needs a tail rule longer than the longest echo and listening tests.
+1. **HOST-1 / FX-1: rest silent chains.** Largest remaining saving when stopped or in sparse arrangements: a stopped project still runs about half the instructions of a busy one. Needs a tail rule longer than the longest echo and listening tests, and is not bit-exact (a sleeping chain's sweeps stop).
 2. **UI-5: skip drawing a screen that cannot have changed.** Would take the resting state from 10 full redraws a second to none. Needs three checks moved out of the screen thread's snapshot and a dependency list per page.
 3. **MODEL-1: stop copying the whole project every frame.** Needs change counters on every writer.
 4. **BASE-6, BASE-7, LIGHT-3: slow the 5 ms service and lights loops when nothing happens.** Needs every pass-counting timer converted to clock time first.
 5. **IO-3: write only the loops that changed** when saving.
-6. **SMP-2, SMP-4, SMP-3, FX-3, FX-4: exact or near-exact DSP savings** in the Looper, the punch histories and the modulation effects.
+6. **SMP-2, SMP-4, FX-4's other sites, FX-9: exact DSP savings** in the Looper and the effects. Each is small, and each must be shown to leave the output's bits alone (see FX-3 in the second pass).
 7. **HOST-2: tune when rendering goes parallel.** The author measured this on the device; so should any change.
 8. **IO-4, IO-5, PLUG-5: cache analysis results and plug-in probes** to shorten loading.
 
@@ -155,7 +198,7 @@ Going back is one setting each: CPU speed Full, Refresh 60, Dim after Off, Pad b
 
 | ID | Finding | Gain | Sound or behaviour | Verified | In the fork |
 | --- | --- | --- | --- | --- | --- |
-| BASE-1 | No CPU power policy: the cluster sits at 1800 MHz and 1.10 V all the time | battery High (the largest software lever on SoC power I found). | bit-exact. | Confirmed | Implemented |
+| BASE-1 | No CPU power policy: the cluster sits at 1800 MHz and 1.10 V all the time | battery High (the largest software lever on SoC power I found). | bit-exact. | Confirmed | Removed |
 | BASE-2 | The idle screen loop polls at 250 Hz and redraws the whole screen 10 times a second; busy is always 60 fps | battery High idle, CPU Medium busy. | steps 1 and 2 none; step 3 visible (30 fps animation; a … | Confirmed | Implemented in part |
 | BASE-3 | The backlight never dims or blanks, and the base has no idle signal for it | battery High (estimate). | visible; make it a setting. | Confirmed | Implemented |
 | BASE-4 | MIDI clock or Active Sensing from an external device keeps the screen at 60 fps | battery Medium (only with such a device attached). | none. | Confirmed | Implemented |
@@ -178,7 +221,7 @@ Going back is one setting each: CPU speed Full, Refresh 60, Dim after Off, Pad b
 | HOST-1 | Track, bus, loop and master chains never rest; a silent track costs its full strip every block | battery High; CPU High while stopped or in sparse arrangements; no … | steps 1 and 3 bit-exact (they skip additions of +0.0). Step … | Confirmed | Not implemented |
 | HOST-2 | The pool goes to four cores at 150 µs of track work, about 5 % of a block | battery Medium to High for light and medium projects; none for heavy … | bit-exact (the pool sums results in a fixed order whoever … | Confirmed | Not implemented |
 | HOST-3 | Workers spin 200 µs each for a second run that does not come | CPU and battery Medium in those setups; none elsewhere. | bit-exact. | Confirmed | Implemented in part |
-| HOST-4 | The host's strip and mix loops are compiled scalar | CPU Medium (per-frame cost of every sounding track); battery Low to … | intended bit-exact: element-wise vector code keeps IEEE … | Partly confirmed | No change |
+| HOST-4 | The host's strip and mix loops are compiled scalar | CPU Medium (per-frame cost of every sounding track); battery Low to … | intended bit-exact: element-wise vector code keeps IEEE … | Partly confirmed | Implemented in part |
 | HOST-5 | A compensation line that starts clears 128 kB on the audio thread; all lines start together | latency (dropout risk) Medium; CPU none in steady state. | bit-exact (the same zeros are read). | Confirmed | No change |
 | HOST-6 | Ten punch histories record the master every block, a frame at a time | CPU Low; battery Low. | bit-exact (the same samples reach the history; no other … | Merged | See SMP-3 |
 | HOST-7 | Fixed work repeated every block that can be kept or skipped | CPU Low; battery Low (it is part of the idle floor). | bit-exact for 1, 2, 4, 6, 7 (the same expressions … | Partly confirmed | No change |
@@ -192,13 +235,13 @@ Going back is one setting each: CPU speed Full, Refresh 60, Dim after Off, Pad b
 | --- | --- | --- | --- | --- | --- |
 | SMP-1 | The stream pager's thread wakes 1,000 times a second for as long as the app runs | battery Medium; CPU Low. | none. A voice opened with nothing held (`safe` 0: a … | Confirmed | Implemented |
 | SMP-2 | A stretched loop's window search runs about half a millisecond in one block, calls `fmod` 24,640 times, and all four loops search in the same block | latency (dropout risk) High if the estimate holds; CPU Medium. | step 1 bit-exact. Step 2 not bit-exact: the same windows … | Confirmed | No change |
-| SMP-3 | Ten Punch histories record the master every block, frame by frame, with nothing held | battery Low to Medium; CPU Low (A). Memory Low (B). | A bit-exact. | Confirmed | No change |
+| SMP-3 | Ten Punch histories record the master every block, frame by frame, with nothing held | battery Low to Medium; CPU Low (A). Memory Low (B). | A bit-exact. | Confirmed | Implemented in part |
 | SMP-4 | A playing loop works out one `fmod` and four double divisions per frame from values that do not change in the block | CPU Low to Medium (about 1 % of a core with four loops playing). | the first step bit-exact; the second rounding only (the … | Confirmed | No change |
 | SMP-5 | A kit track with nothing sounding still walks its voices four times and filters silence; there is no early return | battery Low to Medium (it grows with the number of kit tracks); CPU … | bit-exact (zeros through a filter at rest are zeros). | Confirmed | No change |
 | SMP-6 | A voice whose envelope has decayed to a sustain of 0 plays on in silence | CPU and battery Medium where such envelopes are used; voices freed … | bit-exact while parked (the voice only ever added `x * 0`). … | Confirmed | No change |
 | SMP-7 | Each cloud grain calls `std::sin` and divides once per frame | CPU Medium while a Cloud pad plays; none otherwise. | rounding only (the window differs by about 1e-6 with the … | Confirmed | No change |
 | SMP-8 | The pad filter and the kit filter divide two to six times a frame by values that change at most every 16 frames | CPU Low to Medium. | rounding only (a product in place of a quotient: the last … | Confirmed | No change |
-| SMP-9 | The short voice loop still runs the envelope's state machine and three exit tests on every frame | CPU Low to Medium (about 40 % off an unfiltered voice; about 1 % of a … | bit-exact (the same operations in the same order on the … | Confirmed | No change |
+| SMP-9 | The short voice loop still runs the envelope's state machine and three exit tests on every frame | CPU Low to Medium (about 40 % off an unfiltered voice; about 1 % of a … | bit-exact (the same operations in the same order on the … | Confirmed | Implemented |
 | SMP-10 | A mono sample is held twice | memory Medium; CPU Low. | bit-exact (the voice reads the same values). | Confirmed | No change |
 | SMP-11 | The Looper's block runs in full when the Looper is off, and frame by frame when its loops are empty | battery Low. | bit-exact. | Confirmed | No change |
 | SMP-12 | About 68 MB is made and zeroed at start-up for features that may never be used | memory Low. | none. | Confirmed | No change |
@@ -210,8 +253,8 @@ Going back is one setting each: CPU speed Full, Refresh 60, Dim after Off, Pad b
 | --- | --- | --- | --- | --- | --- |
 | FX-1 | Track, bus, master and loop chains never rest: every effect runs every block, on silence too | battery Medium: about a tenth of one core for a project with many … | not bit-exact. Tails are cut once they are under -100 dBFS … | Merged | See HOST-1 |
 | FX-2 | The slot Compressor calls `log10f` and `powf` on every sample, also when it is not compressing | CPU Medium. The Compressor drops from "heavy" to "cheap" for every … | bit-exact. | Confirmed | Implemented |
-| FX-3 | Slow LFOs are computed with `std::sin` on every sample in ten effects and in the master compressor's Color | CPU Medium for the modulation effects (about half their time), Low … | rounding only. Because the rotation restarts from the true … | Confirmed | No change |
-| FX-4 | Values that are constant for the whole block are recomputed on every sample | CPU Low to Medium, spread over about twenty effects. | bit-exact, as long as each hoisted value is a whole … | Partly confirmed | No change |
+| FX-3 | Slow LFOs are computed with `std::sin` on every sample in ten effects and in the master compressor's Color | CPU Medium for the modulation effects (about half their time), Low … | rounding only. Because the rotation restarts from the true … | Confirmed | Tried and withdrawn |
+| FX-4 | Values that are constant for the whole block are recomputed on every sample | CPU Low to Medium, spread over about twenty effects. | bit-exact, as long as each hoisted value is a whole … | Partly confirmed | Implemented in part |
 | FX-5 | Every sample load re-runs the full onset, beat and auto-chop analysis; nothing is kept | load time Medium (High for projects with long files), battery Low to … | none (1 changes when the work happens; 2 and 3 are … | Merged | See IO-4 |
 | FX-6 | The master compressor does its full work on silence, and Color adds a `sin` and five divisions per sample | CPU Low; battery Low (it is one instance). | (a) bit-exact, (b) rounding only, (c) rounding only (the … | Merged | See HOST-9 |
 | FX-7 | Stereo filter chains run as two scalar passes although both sides use the same coefficients | CPU Medium for these kinds (perhaps 30 to 45 % of their time), Low … | rounding only at worst. The arithmetic per lane is the … | Confirmed | No change |
@@ -363,7 +406,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### BASE-1: No CPU power policy: the cluster sits at 1800 MHz and 1.10 V all the time
 
 - **Verification:** Confirmed. No file in the fork mentions cpufreq or a governor (grep). The vendor `az07_defconfig` sets `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y`, and `rk356x.dtsi` gives 0.90 V up to 1416 MHz and 1.10 V at 1800 MHz. Not checked on the device: the governor in effect at run time.
-- **In the fork:** Implemented. New `Platform::cpu_limit()` and `cpu_speed()` in sample-base, restored on exit and by `restore-stock.sh` after a crash. New setting AUDIO > CPU speed (Auto, Full, Balanced, Eco); Auto is the default. Not tested on a device. If an app is killed with the limit set and the next one starts without the recovery script in between (an app swapped or updated in place), the runtime puts the limit back as it starts (`Platform::recover()`, added in the review before the commit).
+- **In the fork:** Removed. Built in the first pass as a CPU speed setting (Auto, Full, Balanced, Eco) and taken out again at the owner's request before the fork was ever run: the cores stay at the kernel's 1.8 GHz, as under the stock app. Nothing in the fork touches cpufreq, and `Platform::cpu_limit()` is gone from the base.
 
 - **Where:** nowhere, which is the finding. `grep -rniE "cpufreq|governor|scaling_(max|min|gov)|schedutil"` over the repository (without `.git`, `.local`) returns nothing. The place a policy fits: `base/src/drivers/platform.cpp:108-124` (`Platform::~Platform`, `Platform::brightness`), `base/install/restore-stock.sh:99-104`.
 - **Thread and frequency:** whole system, always.
@@ -490,7 +533,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### BASE-5: Build flags: no `-mcpu`, math functions keep errno, no eager binding, no section garbage collection
 
 - **Verification:** Confirmed. `base.mk:21-23`: `-O2` only, plain `$(CXX) $(OBJECTS) $(LDLIBS)` link.
-- **In the fork:** Implemented in part. `-mcpu=cortex-a55`, `-fno-trapping-math` and `-Wl,-z,now` are on. **`-fno-math-errno` is left out: measured, it changes the DSP bench's output**, so the auditor's "bit-exact expected" was wrong for that flag. With the two kept flags the bench output and the self-test audio are identical to the original build's. Section garbage collection was not tried.
+- **In the fork:** Implemented in part. `-mcpu=cortex-a55`, `-fno-trapping-math` and `-Wl,-z,now` are on. **`-fno-math-errno` is left out: measured, it changes the DSP bench's output**, so the auditor's "bit-exact expected" was wrong for that flag. With the two kept flags the bench output and the self-test audio are identical to the original build's. Section garbage collection was not tried. Second pass: `-O3` for the engine was measured too. It ran 4 % fewer instructions and changed the bench's output, so the engine stays at `-O2`.
 
 - **Where:** `base/base.mk:21-23, 36`
 - **Thread and frequency:** every thread; build time.
@@ -840,7 +883,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### HOST-4: The host's strip and mix loops are compiled scalar
 
 - **Verification:** Partly confirmed. The flags are as stated (`base.mk:21`) and the mix loops have the shape described (for example `engine_host.cpp:2982-2989`). Whether GCC 12 vectorises them at `-O2` was not checked in the assembly.
-- **In the fork:** No change.
+- **In the fork:** Implemented in part. Second pass. Step 3 for four loops: a gain that does not move in the block is read once (the track's pan stage, its way to the master and Knob FX, its sends, the buses' returns). Same sums, same output. No flag change: `-O3` on the engine was measured, saved 4 % and changed what the bench played, so it is not used.
 
 - **Where:** `base/base.mk:21` (`CXXFLAGS := -std=c++17 -O2 -pthread -MMD -MP`); loops at `src/melodee/engine/engine_host.cpp:2879`, `:2881-2884`, `:2890`, `:2894`, `:2971-2974`, `:2982-2989`, `:2993-2996`, `:3004-3007`, `:3031`, `:3034`, `:3061`, `:3067-3070`, `:3079`, `:3083`, `:3105`, `:3367`, `:3384-3392`; `compensation.h:44-58`; `engine_host.h:52` (`Ease::at`).
 - **Thread and frequency:** audio thread and workers, per frame, per track.
@@ -1055,7 +1098,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### SMP-3: Ten Punch histories record the master every block, frame by frame, with nothing held
 
 - **Verification:** Confirmed. `Punch::process` loops frame by frame and writes its history whenever `left` is allocated, held or not; `run_live(255, …)` and the song's punch run on the master every block (`punch.cpp:97-108`, `engine_host.cpp:2286-2289, 3109, 3119`).
-- **In the fork:** No change.
+- **In the fork:** Implemented in part. Second pass. Step A: a Pad FX that is off moves its history on in one or two copies instead of a frame at a time. Measured with the two changes below it in the table of the second pass. Step B (one shared history) is not done.
 
 - **Where:** `src/melodee/engine/punch.cpp:97` (`Punch::process`); called from `engine_host.cpp:2287-2288` (`run_live`), `3109` and `3118`. Every slot starts on the master: `engine_host.h:743` (`uint8_t punch_target = 255;`), `748` and `774` (`uint8_t target = 255`).
 - **Thread and frequency:** audio, every block, per frame, for ten `Punch` objects (the song's punch, Flex Beat, four live Pad FX slots, four kept pattern slots), playing or stopped.
@@ -1215,7 +1258,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### SMP-9: The short voice loop still runs the envelope's state machine and three exit tests on every frame
 
 - **Verification:** Confirmed. `run_plain` calls `env.next()` and tests the end, the loop and `env.active()` on every frame (`sampler.cpp:973-990`).
-- **In the fork:** No change.
+- **In the fork:** Implemented. Second pass. `held_run()` in `sampler.cpp` plays the frames of a voice that holds its sustain, forwards and unfiltered, without the per-frame tests and the envelope's step, for `run_plain()` and `zone_run_plain()`. Measured: 17 % fewer instructions for the bench's busy project, the output the same to the bit. The tests compare it with the loop frame by frame (`held_runs` off) for kits and keygroups.
 
 - **Where:** `src/melodee/engine/sampler.cpp:973-990` (`run_plain`) and `1524-1544` (`zone_run_plain`).
 - **Thread and frequency:** audio, per frame, per voice: the common path (a drum hit with the default envelope is in Sustain from about its ninth frame to its end).
@@ -1369,7 +1412,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### FX-3: Slow LFOs are computed with `std::sin` on every sample in ten effects and in the master compressor's Color
 
 - **Verification:** Confirmed. For example Chorus/Flanger call `std::sin` twice per frame (`effects.cpp:476`). I read three of the eleven sites.
-- **In the fork:** No change.
+- **In the fork:** Tried and withdrawn. Second pass. Working the swings' sines out ahead of the frames, with the same arguments, changed what Chorus, Flanger and Tape echo played against the original build (the two ways agreed with each other inside one build: the compiler fused the surrounding sums differently once the code had moved) and saved no instructions. Reverted.
 
 - **Where:** `engine/effects.cpp:462` (Tape echo), `:476` (Chorus, Flanger: two calls), `:498` (Auto-pan), `:504` (Tremolo), `:521` (Tape); `engine/effects_extra.cpp:307` (Ensemble: six calls), `:322` (Multi-chorus: one call per voice, 3, 4 or 6), `:370` (Vinyl), `:398` (Tape emulator); `engine/master_comp.cpp:40` (Color).
 - **Thread and frequency:** audio per sample.
@@ -1400,7 +1443,7 @@ How each could block instead is in BASE-2 (screen), BASE-6 (service), BASE-7 (MI
 ### FX-4: Values that are constant for the whole block are recomputed on every sample
 
 - **Verification:** Partly confirmed. I read the echo case: `0.6f / fs()` and `sync_back()` run per frame (`effects.cpp:461-462`). The other sites in the list were not read one by one.
-- **In the fork:** No change.
+- **In the fork:** Implemented in part. Second pass. The echoes' SYNC look-up (`sync_back()`, two calls into another file for every frame) is made once a call in Echo, Tape echo and Ping pong; each frame keeps its glide. The other sites are unchanged: each has to be shown to compile to the same sums, and the one tried next did not (FX-3).
 
 - **Where:** the per-frame loops of `frames_of` (`engine/effects.cpp:357`) and `extra_frames_of` (`engine/effects_extra.cpp:180`), and `MasterCompressor::colour` (`engine/master_comp.cpp:38`); the sites are listed under Now.
 - **Thread and frequency:** audio per sample.
@@ -3906,15 +3949,15 @@ Everything below needs Melodee running on the MPC and a shell on it (root SSH ov
 
 | Question | How |
 | --- | --- |
-| Is the CPU limit in effect? | `cat /sys/devices/system/cpu/cpufreq/policy0/scaling_{governor,max_freq,cur_freq}`; the status line's `melodee_cpu_limit=` (kHz; 0 no limit; −1 not set) |
-| Does Auto step up and down? | Watch `melodee_cpu_limit=` and `melodee_render_load=` (tenths of a percent of a block) while starting and stopping a busy project |
+| Are the clocks untouched? | `cat /sys/devices/system/cpu/cpufreq/policy0/scaling_{governor,max_freq,cur_freq}`: `performance`, 1800000, 1800000, as under the stock app |
+| What does a block take? | `melodee_render_load=` in the status line (tenths of a percent of a block), the same project under the original Melodee and under the fork, playing and stopped |
 | Dropouts | Settings > AUDIO shows them; the status line has the audio `xruns` count, `melodee_dropout_track=` and `melodee_guard=` |
 | Screen thread cost | `screen_presented` (frames drawn), `screen_pushed` (frames that changed) and `screen_draw_us` (last draw) in the status line, read twice ten seconds apart on each page, stopped and playing |
 | Is the screen dimmed? | `melodee_dimmed=` in the status line |
 | Per-thread CPU | `top -H -p $(pidof sample-base)` for a minute, stopped and playing: the screen, service, MIDI and pager threads should be near zero when stopped |
 | Wakeups | `grep ctxt /proc/$(pidof sample-base)/task/*/status` twice, a minute apart |
 | Needless saves | Leave the device untouched for a minute and check the project file's time does not move |
-| Battery life | Same project, same brightness, from full until it switches off: once at CPU speed Full, once at Eco. The supply voltage is in `/sys/class/power_supply/mains-power/voltage_now`; logging it once a minute gives the first discharge curve anyone has published for this device |
+| Battery life | Same project, same brightness, from full until it switches off: once under the original Melodee, once under the fork. The supply voltage is in `/sys/class/power_supply/mains-power/voltage_now`; logging it once a minute gives the first discharge curve anyone has published for this device |
 
 # How this document is made
 
