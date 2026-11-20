@@ -149,10 +149,15 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     auto keep = ui.pots;
     auto settings = ui.settings; // Melodee's own: they belong to no project
     auto pads_down = ui.held_pads; // the hand on the pads stays where it is
+    // The browser's rows, cursor and drive: the library's folder in view, which a project does not change. The shell
+    // copies them in only when the listing changes, so a new UiState would show an empty folder until then.
+    const auto files_cursor = ui.files_cursor, files_count = ui.files_count;
+    const auto files_drive = ui.files_drive;
     ui = UiState {};
     ui.pots = keep;
     ui.held_pads = pads_down;
     ui.settings = settings;
+    ui.files_cursor = files_cursor; ui.files_count = files_count; ui.files_drive = files_drive;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
     edits.clear();                            // its edits were made to another project
     chain_lead = -1;                          // and its chain of sequences
