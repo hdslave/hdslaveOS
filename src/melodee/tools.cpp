@@ -103,7 +103,7 @@ void starter_project(Project& project, PatternBank& patterns) {
     drum_kit(project, 5);                                   // drums, with a beat
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
     project.tracks[2].octave = 4; project.tracks[3].octave = 4;
-    patterns = PatternBank {};
+    patterns.clear();
     auto note = [](Pattern& p, unsigned step, uint8_t key, uint8_t velocity, unsigned length) {
         Event e;
         e.tick = step * sixteenth_ticks; e.length = uint16_t(length * sixteenth_ticks); e.key = key; e.velocity = velocity;
