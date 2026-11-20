@@ -38,6 +38,7 @@
 #include "melodee/engine/external_notes.h"
 #include "melodee/engine/release_fit.h"
 #include "melodee/model/card_folders.h"
+#include "melodee/shell/stems_find.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/engine/loop_find.h"
 #include "melodee/engine/engine_host.h"
@@ -18901,8 +18902,39 @@ void pad_value_erase() {
     CHECK(binding_lane(kit, Binding {Kind::PadCloud, 2, 0, 100, 0}) == motion_lane(motion_pad_param(PadParam::CloudSize), 8));
 }
 
+void stems_lookup() {
+    // The stem separator on the card: a release's folder first, then the app's own folder (a boot menu's), then the
+    // card's folders three deep, Melodee's own and hidden ones left out.
+    namespace fs = std::filesystem;
+    const fs::path card = fs::temp_directory_path() / ("melodee-stems-card-" + std::to_string(::getpid()));
+    std::error_code error;
+    fs::remove_all(card, error);
+    auto put = [&](const fs::path& folder) {
+        fs::create_directories(folder / "stems");
+        std::ofstream(folder / "stems" / stems_program_name) << "x";
+        return (folder / "stems" / stems_program_name).string();
+    };
+    fs::create_directories(card / "Melodee/Samples");
+    CHECK(find_stems_program("").empty() && find_stems_program(card.string()).empty());
+    put(card / "Melodee"); // never looked for in Melodee's own folder
+    put(card / ".hidden");
+    CHECK(find_stems_program(card.string()).empty());
+    const auto deep = put(card / "SimpleBoot/apps/melodee"); // a boot menu's folder, three deep
+    CHECK(find_stems_program(card.string()) == deep);
+    put(card / "a/b/c/d"); // four deep: too far
+    CHECK(find_stems_program(card.string()) == deep);
+    const auto boot = put(card / "autorun/boot/melodee"); // autorun is read first
+    CHECK(find_stems_program(card.string()) == boot);
+    const auto app = put(card / "elsewhere/app");
+    CHECK(find_stems_program(card.string(), (card / "elsewhere/app").string()) == app); // beside the app before a search
+    const auto release = put(card / "autorun/melodee"); // the release's own folder before all
+    CHECK(find_stems_program(card.string(), (card / "elsewhere/app").string()) == release);
+    fs::remove_all(card, error);
+}
+
 int main() {
     pad_value_erase();
+    stems_lookup();
     sample_lists();
     history_list();
     midi_lookahead();
