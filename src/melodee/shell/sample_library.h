@@ -388,6 +388,11 @@ private:
     MidiQueue<8, SampleJob> jobs;    // the same
     MidiQueue<8, Done> finished;     // service thread produces, MIDI thread consumes
     std::atomic<bool> scan_wanted {true};
+    // The browser's folder is listed again every few seconds only while something reads the listing (files(): the
+    // Samples page does every frame). With no page showing it, a card change, a file Melodee wrote or a browse
+    // still lists it at once, and so does the first read after a while (melodee-hdslave; optimization.md IO-2).
+    mutable std::atomic<bool> viewed {false};
+    bool viewing = false; // service thread: read since the last look
     std::atomic<unsigned> changes {0};
     std::atomic<unsigned> preview_count {0};
     std::atomic<unsigned> take_count {0};

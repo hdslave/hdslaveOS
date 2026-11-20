@@ -401,6 +401,7 @@ void ProjectStore::run(Request& r) {
         }
         fs::rename(temporary, r.path, error);
         if (error) { publish_message("Could not save"); return; }
+        scanned.erase(r.path); // read again whatever its time says: a card's clock steps two seconds at a time
         if (!r.from.empty() && r.from != r.path) copy_prints(r.from, r.path); // Save As (freeze plan F2d)
         remember(r.path); // only the open project is saved, and before the count moves, so a leave after it keeps it
         saved.fetch_add(1, std::memory_order_release);
@@ -536,10 +537,17 @@ void ProjectStore::scan() {
                 e.projects = projects_in(item.path(), extension);
             } else if (item.path().extension() == extension) {
                 e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count());
-                // Its size in tracks and its tempo, read from the file itself.
-                auto project = std::make_unique<Project>();
-                auto patterns = std::make_unique<PatternBank>();
-                if (load_project(read_file(e.path), *project, *patterns).empty()) { e.tracks = project->used_tracks(); e.tempo = project->tempo; }
+                // Its size in tracks and its tempo, read from the file itself: once for the file as it stands (its
+                // time and size), not again for every other file saved beside it.
+                const uint64_t bytes = uint64_t(item.file_size(error));
+                auto& known = scanned[e.path];
+                if (!known.ok || known.modified != e.modified || known.bytes != bytes) {
+                    known = {e.modified, bytes, 0, 0, false};
+                    auto project = std::make_unique<Project>();
+                    auto patterns = std::make_unique<PatternBank>();
+                    if (load_project(read_file(e.path), *project, *patterns).empty()) { known.tracks = project->used_tracks(); known.tempo = project->tempo; known.ok = true; }
+                }
+                if (known.ok) { e.tracks = known.tracks; e.tempo = known.tempo; }
             } else if (is_mpc_project(e.path)) {
                 e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count()); // read only when opened: 10 MB of JSON
             } else {

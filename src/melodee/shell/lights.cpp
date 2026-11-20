@@ -81,6 +81,32 @@ void Shell::autosave_tick(uint32_t now) {
     autosave_try_ = now;
 }
 
+// Power (melodee-hdslave; optimization.md): the settings the other threads act on, and Dim after. The screen's
+// light and the CPUs' speed are the service thread's to set (MelodeeApp::service()); the pads' and buttons' lights
+// are scaled here, before this pass sets them. Dimmed: Dim after's minutes with no control used or note come in,
+// while nothing plays, records or works. Any control lights everything again on the next pass, and is acted on as
+// ever: nothing is swallowed to wake the screen.
+void Shell::power_tick(SurfaceLights& lights, uint32_t now) {
+    const auto& ui = ui_;
+    const auto& set = ui.settings;
+    const auto& host = context_.host;
+    cpu_wanted.store(set.cpu_speed, std::memory_order_relaxed);
+    refresh_wanted.store(uint8_t(set.refresh_fps()), std::memory_order_relaxed);
+    const bool working = ui.loading || context_.samples_to_load < sample_slots || (context_.printer && context_.printer->busy())
+                      || ui.print_sheet.printing || ui.auto_sheet.sampling || ui.auto_sheet.checking || (store_ && store_->exporting())
+                      || ui.update.phase != 0 || (library_ && library_->stems_progress().busy);
+    working_.store(working, std::memory_order_relaxed);
+    const bool running = host.playing() || host.song_playing() || host.looper().recording() || host.looper().armed() || host.looper().sounding() || ui.recording
+                      || ui.rec_armed || host.recorder().state() != TakeRecorder::State::Idle || ui.audio_rec_running;
+    if (running || working || !last_busy_) last_busy_ = now ? now : 1;
+    const uint32_t wait = set.dim_ms();
+    const bool dim = wait && now - last_input_ >= wait && now - last_busy_ >= wait;
+    dimmed_.store(dim, std::memory_order_relaxed);
+    // Dimmed, the pads keep a sixth of their light (never under 4 %), enough to see the machine is on.
+    lights.scale(dim ? std::max(4u, set.pad_percent() / 6) : set.pad_percent());
+    lights.rest(dim);
+}
+
 void Shell::update_tick() {
     std::string text;
     if (update_link.take_note(text)) context_.notice(text);
@@ -189,6 +215,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     update_tick();
     autosave_tick(now);
+    power_tick(lights, now); // after autosave_tick(): a held control counts as one in use
     usage_tick(now);
     context_.chop_tick(now); // Chop: a moved cut heard once, gone still
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
@@ -364,6 +391,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { // a second press while it is open closes it, as B1 STAY does
         power_seen = presses;
+        last_input_ = now; // a control as the surface's are, though it comes by the service thread: Dim after ends
         if (ui_.exit_open) { ui_.exit_open = ui_.exit_off = ui_.exit_saved = false; leave_after_save = -1; off_after_save = false; }
         else { ui_.exit_pick = 0; ui_.exit_open = true; } // the wheel starts on STAY
     }
@@ -481,7 +509,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
-            for (const auto& ref : project_->samples) used += ref.used();
+            for (size_t n = 0, span = project_->samples.span(); n < span; ++n) used += project_->samples[n].used(); // not all 8192 slots, every tick
             bool taking = chop_take_playing(*project_, ui_, now); // Manual's take still playing (shell/zoom_view.h)
             chop_bits.store((uint32_t(ui_.chop_mode) & 3) | (uint32_t(ui_.chop_mode) >> 2 & 1) << 4 | uint32_t(chop_armed(ui_)) << 2 | uint32_t(taking) << 3 | uint32_t(ui_.slices.count & 0xff) << 8
                             | uint32_t(ui_.chop_slice) << 16 | uint32_t(used) << 24, std::memory_order_relaxed);

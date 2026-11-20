@@ -151,10 +151,14 @@ int dsp_bench(int argc, char** argv) {
     double cpu0 = cpu_seconds(RUSAGE_SELF), own0 = thread_seconds();
     auto wall0 = std::chrono::steady_clock::now();
     unsigned over = 0;
+    // What it played, as one number (FNV-1a over every sample): two builds that print the same played the same,
+    // to the bit, as long as the guard stole nothing (guard=0/0), since what it steals depends on the time taken.
+    uint64_t heard = 1469598103934665603ull;
     for (unsigned n = 0; n < blocks; ++n) {
         auto t0 = std::chrono::steady_clock::now();
         host.render(out.data(), frames, 0.7f);
         float us = std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - t0).count();
+        for (int32_t sample : out) { heard ^= uint32_t(sample); heard *= 1099511628211ull; }
         took.push_back(us);
         if (us * 1000 > period_ns) ++over;
         next.tv_nsec += period_ns;
@@ -182,10 +186,10 @@ int dsp_bench(int argc, char** argv) {
     auto at = [&](double q) { return sorted.empty() ? 0.0f : sorted[std::min(sorted.size() - 1, size_t(q * sorted.size()))]; };
     std::printf("MELODEE_DSP_BENCH guard=%u/%u mode=%s linger=%d pin=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
                 "mean_us=%.0f p50_us=%.0f p99_us=%.0f max_us=%.0f over=%u cpu_pct=%.1f audio_thread_pct=%.1f workers_pct=%.1f "
-                "parallel_blocks=%llu calls_lost=%u\n",
+                "parallel_blocks=%llu calls_lost=%u heard=%016llx\n",
                 host.guard_steals(), host.guard_blocks(), whole ? "whole" : "split", int(linger), int(pinned), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
                 at(0.99), sorted.empty() ? 0.0f : sorted.back(), over, 100 * cpu / wall, 100 * own / wall, 100 * (cpu - own) / wall,
-                (unsigned long long)host.render_parallel_blocks(), host.calls_lost());
+                (unsigned long long)host.render_parallel_blocks(), host.calls_lost(), (unsigned long long)heard);
     return 0;
 }
 

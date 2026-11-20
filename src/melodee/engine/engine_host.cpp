@@ -2544,7 +2544,7 @@ void EngineHost::tick() {
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n)
             if (!lanes || !pattern.own_lane(events[n].key)) play_event(t, slot, pattern, n, at, length, pass, seq, holding);
         for (const auto& l : pattern.lanes) { // kit lanes of their own length (roadmap P1): each loops, and counts its passes, alone
-            uint32_t loop = pattern.lane_length(l.key);
+            uint32_t loop = std::max<uint32_t>(std::min(l.length, pattern.length), 1); // lane_length(l.key), without looking l up again
             if (loop >= length) continue;
             uint32_t lane_at = elapsed % loop;
             for (size_t n = pattern.lower(lane_at); n < events.size() && events[n].tick == lane_at; ++n)
@@ -2940,7 +2940,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     std::array<uint8_t, track_count> waiting {}; // roadmap P4: the keyed run, the tracks keyed by tracks
     unsigned waiting_count = 0;
     for (unsigned i = 0; i < active; ++i) if (keyed_track[sounding_tracks[i]]) waiting[waiting_count++] = sounding_tracks[i];
-    if (parallel) workers.run(active + 1, first_job, waiting_count || (whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true));
+    // The workers stay awake only for a run that will be handed to them: the keyed one when two tracks or more wait
+    // (one is done here, below), or the second. Told to wait for one that never comes, each spins its 200 us out.
+    if (parallel) workers.run(active + 1, first_job, waiting_count > 1 || (whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true));
     else for (unsigned i = 0; i < active + 1; ++i) first_job(i);
     if (waiting_count) {
         auto keyed_job = [&](unsigned i) { chain_of(waiting[i]); };

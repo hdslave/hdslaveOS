@@ -257,7 +257,11 @@ std::string SampleLibrary::folder() const { std::lock_guard<std::mutex> guard(lo
 Drive SampleLibrary::drive() const { std::lock_guard<std::mutex> guard(lock); return known.drive; }
 bool SampleLibrary::top() const { std::lock_guard<std::mutex> guard(lock); return known.top; }
 int SampleLibrary::came_from() const { std::lock_guard<std::mutex> guard(lock); return known.came_from; }
-std::vector<SampleFile> SampleLibrary::files() const { std::lock_guard<std::mutex> guard(lock); return known.files; }
+std::vector<SampleFile> SampleLibrary::files() const {
+    viewed.store(true, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> guard(lock);
+    return known.files;
+}
 std::string SampleLibrary::previewed() const { std::lock_guard<std::mutex> guard(lock); return preview_heard; }
 
 void SampleLibrary::browse(Drive drive, const std::string& folder) {
@@ -471,7 +475,10 @@ void SampleLibrary::service(Hardware& hardware) {
     // browsing starts at the card's top.
     bool browse_wanted;
     { std::lock_guard<std::mutex> guard(lock); browse_wanted = wanted.pending; }
-    if (++ticks % 600 == 1 || scan_wanted.load() || browse_wanted) {
+    const bool periodic = ++ticks % 600 == 1;
+    const bool opened = !viewing && viewed.load(std::memory_order_relaxed); // a page began to show the folder
+    if (opened) viewing = true;
+    if (periodic || scan_wanted.load() || browse_wanted || opened) {
         std::string root, top;
         if (const char* forced = std::getenv("MELODEE_SAMPLES")) root = top = forced;
         else
@@ -483,8 +490,9 @@ void SampleLibrary::service(Hardware& hardware) {
             cache.set_folder(top.empty() ? std::string() : top + "/Melodee/Cache");
             if (!top.empty() && !cache_tidied) { cache_tidied = true; pool.post([this, tidied = cache] { std::lock_guard<std::mutex> one(copying); tidied.tidy(); }); } // a stat a file: not on this thread
         }
-        scan_wanted.store(false);
-        scan();
+        const bool asked = scan_wanted.exchange(false) || browse_wanted || changed || opened;
+        if (periodic) viewing = viewed.exchange(false, std::memory_order_relaxed);
+        if (asked || viewing) scan();
     }
 }
 

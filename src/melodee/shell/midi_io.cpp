@@ -627,7 +627,9 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
         std::copy(pending.begin() + sent, pending.begin() + pending_count, pending.begin());
         pending_count -= sent;
     }
-    if (pending_count) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
+    // While SysEx goes out nothing above is sent, so a message already due would wake this thread again at once,
+    // and again, for as long as the SysEx takes: woken a millisecond on instead.
+    if (pending_count) out.wake_at(Clock::time_point(std::chrono::nanoseconds(sysex.active ? std::max(pending[0].due, now_ns + 1000000) : pending[0].due)));
 }
 
 std::string MidiIo::summary(const EngineHost& host) const {

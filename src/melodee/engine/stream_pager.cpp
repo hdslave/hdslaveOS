@@ -12,6 +12,8 @@
 #include <thread>
 #include <unistd.h>
 #if defined(__linux__)
+#include <ctime>
+#include <linux/futex.h>
 #include <sys/syscall.h>
 #endif
 
@@ -234,7 +236,21 @@ void StreamPager::start() {
 
 void StreamPager::stop() {
     if (!running.exchange(false)) return;
+    kick();
     if (thread.joinable()) thread.join();
+}
+
+void StreamPager::kick() {
+    kicks.fetch_add(1, std::memory_order_seq_cst);
+#if defined(__linux__)
+    if (resting.load(std::memory_order_seq_cst))
+        syscall(SYS_futex, reinterpret_cast<uint32_t*>(&kicks), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
+#endif
+}
+
+bool StreamPager::following() const {
+    for (const auto& w : work) if (w.part && !w.dead) return true;
+    return false;
 }
 
 void StreamPager::run() {
@@ -247,8 +263,25 @@ void StreamPager::run() {
     // its first level, for this thread. Best effort: the card's scheduler has to know classes (bfq does).
     syscall(SYS_ioprio_set, 1 /* this thread */, 0, (1 /* real-time */ << 13) | 0);
 #endif
-    while (running.load(std::memory_order_relaxed))
-        if (!pump()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    while (running.load(std::memory_order_relaxed)) {
+        const uint32_t seen = kicks.load(std::memory_order_seq_cst); // before the look: a kick after it is not slept through
+        if (pump()) continue;
+#if defined(__linux__)
+        if (!following()) {
+            // No stream open: nothing moves until a message comes. The kernel compares the word with `seen` before
+            // it sleeps; the limit is only for a wake that went missing, never needed in the ordinary run.
+            timespec limit {0, 250 * 1000 * 1000};
+            resting.store(1, std::memory_order_seq_cst);
+            if (running.load(std::memory_order_relaxed))
+                syscall(SYS_futex, reinterpret_cast<uint32_t*>(&kicks), FUTEX_WAIT_PRIVATE, seen, &limit, nullptr, 0);
+            resting.store(0, std::memory_order_seq_cst);
+            continue;
+        }
+#else
+        (void)seen;
+#endif
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }
 
 int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed, uint32_t safe) {
@@ -266,6 +299,7 @@ int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed,
         m.kind = Message::Open; m.stream = int16_t(n); m.reverse = reverse; m.part = &part; m.frame = frame; m.speed = speed;
         m.serial = ++s.serial;
         if (!messages.push(m)) { s.used = false; return -1; }
+        kick();
         return int(n);
     }
     return -1;
@@ -280,6 +314,7 @@ void StreamPager::restart(int stream, uint32_t frame, uint32_t safe) {
     m.kind = Message::Restart; m.stream = int16_t(stream); m.frame = frame; m.reverse = s.reverse;
     m.serial = ++s.serial;
     messages.push(m); // on overflow the head still plays, and a gap follows
+    kick();
 }
 
 uint32_t StreamPager::head_of(uint32_t frame, uint32_t safe, bool reverse, uint32_t total) {
@@ -301,6 +336,7 @@ void StreamPager::close(int stream) {
     m.kind = Message::Close; m.stream = int16_t(stream);
     if (messages.push(m)) { s.used = false; s.closing = false; }
     else s.closing = true;
+    kick();
 }
 
 void StreamPager::block() { // close() takes the lock for each
@@ -310,6 +346,7 @@ void StreamPager::block() { // close() takes the lock for each
 void StreamPager::flush() {
     if (!running.load(std::memory_order_relaxed)) { pump(); return; }
     uint64_t asked = flush_asked.fetch_add(1, std::memory_order_acq_rel) + 1;
+    kick();
     for (unsigned n = 0; n < 2000 && flush_done.load(std::memory_order_acquire) < asked; ++n) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 

@@ -503,9 +503,40 @@ void MelodeeApp::read_machine(Hardware& hardware) {
     machine.card_total.store(card ? card->total_bytes : 0, std::memory_order_relaxed);
 }
 
+// The CPUs' speed limit (Settings > AUDIO > CPU speed). The MPC's kernel holds its four cores at their top speed,
+// 1.8 GHz at 1.10 V, whether or not there is work. 1.416 GHz is the fastest speed at the lowest voltage, 0.90 V:
+// the same work then takes about a third less energy and a quarter more time. Full, Balanced and Eco hold one
+// speed. Auto holds the low one and goes to full speed while the audio blocks need it: at once when a block has
+// taken half its time, a dropout has come or a job works (a load, a print, an export, stems); back down once
+// the blocks have stayed under three tenths of their time, at full speed, for eight seconds. Three tenths at full
+// speed is about four tenths at the low one, still under the half that sends it up again, so the two do not
+// chase each other. The limit is the platform's to put back when Melodee leaves (Platform::cpu_limit()).
+void MelodeeApp::power_service(Hardware& hardware) {
+    using melodee::Settings;
+    const uint32_t now = now_ms();
+    const unsigned xruns = session().audio.xruns.load(std::memory_order_relaxed);
+    const bool dropout = xruns != cpu_xruns_seen;
+    cpu_xruns_seen = xruns;
+    const float load = host.render_load(); // the recent peak share of a block, falling slowly
+    if (dropout || shell.working() || load >= 0.5f) { cpu_boosted = true; cpu_calm_since = now; }
+    else if (load >= 0.3f) cpu_calm_since = now;
+    else if (cpu_boosted && now - cpu_calm_since >= 8000) cpu_boosted = false;
+    long wanted = 0; // no limit
+    switch (shell.cpu_speed()) {
+    case Settings::CpuBalanced: wanted = Settings::cpu_balanced_khz; break;
+    case Settings::CpuEco: wanted = Settings::cpu_eco_khz; break;
+    case Settings::CpuAuto: wanted = cpu_boosted ? 0 : long(Settings::cpu_eco_khz); break;
+    default: break;
+    }
+    if (wanted == cpu_limit_wanted) return;
+    cpu_limit_wanted = wanted;
+    cpu_limit_now.store(hardware.platform.cpu_limit(wanted) ? wanted : -1, std::memory_order_relaxed);
+}
+
 void MelodeeApp::service(Hardware& hardware) {
     keep_rest_off();
     note_dropout();
+    power_service(hardware);
     read_machine(hardware);
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
@@ -526,12 +557,20 @@ void MelodeeApp::service(Hardware& hardware) {
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();
     if (!hardware.power.pressed()) { power_presses = presses; power_known = true; }
-    // Settings' Screen row: the backlight, as a share of its range.
+    // Settings' Screen row: the backlight, as a share of its range. Dimmed (Settings' Dim after, Shell::dimmed()):
+    // its lowest light, until a control is used. The backlight is left as the stock app had it until either asks.
     unsigned screen = shell.screen();
-    if (screen && screen != screen_applied) {
+    const bool dimmed = shell.dimmed();
+    if (dimmed != screen_dimmed || (screen && screen != screen_applied)) {
         auto backlight = hardware.platform.backlight();
-        if (backlight.maximum > 0) hardware.platform.brightness(unsigned(std::max(1L, backlight.maximum * long(screen) / 100)));
-        screen_applied = screen;
+        if (backlight.maximum > 0) {
+            if (dimmed && !screen_dimmed) screen_before_dim = backlight.brightness; // as it stood, whoever set it
+            const long level = dimmed ? std::min(1L, backlight.maximum)
+                             : screen ? std::max(1L, backlight.maximum * long(screen) / 100) : screen_before_dim;
+            if (level >= 0) hardware.platform.brightness(unsigned(std::min(level, backlight.maximum)));
+        }
+        screen_dimmed = dimmed;
+        if (screen) screen_applied = screen;
     }
 }
 
@@ -616,6 +655,8 @@ std::string MelodeeApp::status() const {
          + " melodee_guard=" + std::to_string(host.guard_steals()) + "/" + std::to_string(host.guard_blocks()) // voices stolen / blocks eased
          + " melodee_update=" + std::to_string(int(const_cast<melodee::Shell&>(shell).updates().phase())) // UpdatePhase
          + " melodee_update_offer=" + std::to_string(int(update_offered.load()))
+         + " melodee_cpu_limit=" + std::to_string(cpu_limit_now.load(std::memory_order_relaxed)) // kHz; 0 none, -1 not set
+         + " melodee_dimmed=" + std::to_string(int(shell.dimmed()))
          + " " + shell.summary();
 }
 

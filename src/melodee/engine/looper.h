@@ -178,6 +178,10 @@ public:
     uint8_t peak(unsigned loop, unsigned column) const { return loops_view[loop % loop_tracks].peaks[column % looper::peak_columns].load(std::memory_order_relaxed); }
     bool armed() const { return any_armed.load(std::memory_order_relaxed); }       // a loop waits for its take
     bool recording() const { return any_recording.load(std::memory_order_relaxed); } // a take or an overdub runs
+    bool sounding() const { // any thread: a loop is heard
+        for (const auto& v : loops_view) if (v.sounding.load(std::memory_order_relaxed)) return true;
+        return false;
+    }
     unsigned quantize() const { return quantize_now.load(std::memory_order_relaxed); }
     unsigned then() const { return then_now.load(std::memory_order_relaxed); }
     unsigned transport() const { return transport_now.load(std::memory_order_relaxed); }

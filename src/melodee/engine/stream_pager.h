@@ -144,6 +144,13 @@ private:
     std::atomic<uint64_t> flush_asked {0}, flush_done {0};
     std::atomic<bool> running {false};
     std::thread thread;
+    // The thread's rest (melodee-hdslave; optimization.md SMP-1). With a stream open it looks every millisecond, as
+    // it always did: a voice moves on by itself and its reads must stay ahead. With none it has nothing to follow,
+    // and sleeps until kick() says a message waits (a stream opened, restarted or closed, a flush, stop()).
+    // kick() is for any thread and never blocks: it wakes the thread only while it rests.
+    std::atomic<uint32_t> kicks {0}, resting {0};
+    void kick();
+    bool following() const; // the pager's thread: some stream has reads to keep ahead
 };
 
 } // namespace melodee

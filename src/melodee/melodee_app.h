@@ -18,7 +18,9 @@
 #include "drivers/usb_audio.h"
 #include "runtime/app.h"
 #include <array>
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -41,6 +43,8 @@ public:
     void midi_lost() override;                                             // MIDI thread
     void midi_output(MidiOutput& out, Clock::time_point now) override;   // MIDI thread: MIDI out and the sync jack, timed
     void draw(juce::Graphics& g) override;                              // screen thread
+    // Screen thread: Settings' Refresh, the frames a second while the picture moves with no control in use.
+    std::chrono::microseconds frame_interval() const override { return std::chrono::microseconds(1000000 / std::max(shell.refresh_fps(), 10u)); }
     void service(Hardware& hardware) override;                          // service thread
     void jack(const JackEvent& event, Hardware& hardware) override;     // service thread
     std::string command(const std::string& action, const std::string& argument, Hardware&) override;
@@ -51,6 +55,13 @@ public:
 
 private:
     uint32_t now_ms() const;
+    // Service thread: the CPUs' speed limit as Settings' CPU speed has it (melodee-hdslave; optimization.md).
+    void power_service(Hardware& hardware);
+    long cpu_limit_wanted = -1;          // kHz last asked of the platform; -1: none yet, 0: no limit
+    bool cpu_boosted = true;             // Auto: at full speed (the start is)
+    uint32_t cpu_calm_since = 0;         // Auto: since when the load has been low enough for the low speed
+    unsigned cpu_xruns_seen = 0;
+    std::atomic<long> cpu_limit_now {-1}; // for `status`: kHz, 0 no limit, -1 not set (no cpufreq, or not yet)
     void card_access(Hardware& hardware); // service thread: SD card access (parity phase 10b)
     Clock::time_point started = Clock::now();
     melodee::EngineHost host;
@@ -132,6 +143,8 @@ private:
     uint64_t update_scans = 0;                 // card checks done, for the web page
     std::string update_declined;               // the zip LATER was pressed on, no longer shown as asked on the web page
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
+    bool screen_dimmed = false;  // service thread: the backlight at its lowest for Dim after
+    long screen_before_dim = -1; // and what it was at before
     // The web page (web/web_app.h), on its own thread; the service thread tells it about the card and updates.
     void web_service(Hardware& hardware);
     std::string web_card;                      // service thread: the card's top folder while home

@@ -354,6 +354,11 @@ void Effect::frames_of(float* left, float* right, unsigned frames, const float* 
     }
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
+    // Compressor: an envelope at or under comp_quiet cannot be over the threshold (1 % under it, far more than the
+    // logarithm's rounding). There it passes at its gain alone, as the sums below would have it, their log and power
+    // left out. No shortcut with a threshold under -119 dB, where the envelope's floor of 1e-6 could be over it.
+    const bool comp_short = Kind == K::Compressor && a > -119.0f;
+    const float comp_quiet = comp_short ? db(a) * 0.99f : 0.0f;
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f], r = right[f], wet_l = l, wet_r = r;
         switch (Kind) {
@@ -553,9 +558,12 @@ void Effect::frames_of(float* left, float* right, unsigned frames, const float* 
         case K::Compressor: {
             float level = std::max(std::fabs(heard_l[f]), std::fabs(heard_r[f]));
             env = level > env ? level + (env - level) * d : level + (env - level) * e;
-            float over = 20 * std::log10(std::max(env, 1e-6f)) - a;
-            float reduce = over > 0 ? over * (1 - 1 / b) : 0;
-            float g = db(-reduce) * c;
+            float reduce = 0;
+            if (!(comp_short && env <= comp_quiet)) { // near the threshold or over it (or not a number): worked out as ever
+                float over = 20 * std::log10(std::max(env, 1e-6f)) - a;
+                reduce = over > 0 ? over * (1 - 1 / b) : 0;
+            }
+            float g = reduce != 0 ? db(-reduce) * c : c; // db(-0) is 1 exactly
             wet_l = l * g; wet_r = r * g;
             break;
         }
