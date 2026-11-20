@@ -12,12 +12,19 @@
 namespace melodee {
 
 struct Scale { const char* name; uint16_t mask; }; // bit n: n semitones above the root
-// New scales go on the end: project files keep the index.
-inline const std::array<Scale, 13>& scales() {
-    static const std::array<Scale, 13> list {{
+// New scales go on the end: project files keep the index. After Chromatic, the rest of the scales Ableton's Live 12,
+// Push 3 and Move list (melodee-move's Keys & Scale shows them in Ableton's order).
+inline const std::array<Scale, 36>& scales() {
+    static const std::array<Scale, 36> list {{
         {"Major", 0xAB5}, {"Minor", 0x5AD}, {"Dorian", 0x6AD}, {"Phrygian", 0x5AB}, {"Lydian", 0xAD5},
         {"Mixolydian", 0x6B5}, {"Locrian", 0x56B}, {"Harm minor", 0x9AD}, {"Mel minor", 0xAAD},
         {"Major pent", 0x295}, {"Minor pent", 0x4A9}, {"Blues", 0x4E9}, {"Chromatic", 0xFFF},
+        {"Whole tone", 0x555}, {"Half-whole", 0x6DB}, {"Whole-half", 0xB6D}, {"Harm major", 0x9B5},
+        {"Dorian #4", 0x6CD}, {"Phryg dom", 0x5B3}, {"Lydian aug", 0xB55}, {"Lydian dom", 0x6D5},
+        {"Super Locr", 0x55B}, {"8-tone Span", 0x57B}, {"Bhairav", 0x9B3}, {"Hung minor", 0x9CD},
+        {"Hirajoshi", 0x18D}, {"In-Sen", 0x4A3}, {"Iwato", 0x463}, {"Kumoi", 0x28D},
+        {"Pelog Selis", 0x18B}, {"Pelog Temb", 0x1A3}, {"Messiaen 3", 0xDDD}, {"Messiaen 4", 0x9E7},
+        {"Messiaen 5", 0x8E3}, {"Messiaen 6", 0xD75}, {"Messiaen 7", 0xBEF},
     }};
     return list;
 }
