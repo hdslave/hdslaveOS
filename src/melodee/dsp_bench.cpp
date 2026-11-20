@@ -94,11 +94,14 @@ double thread_seconds() {
 // Arguments as key=value: seconds (10), rate (48000), threads (3 workers), mode (whole: one dispatch a block; split:
 // the old way), spin (µs the workers wait awake for a run that follows within the block), linger (1: after every
 // run; with mode=split spin=200, the way it was before roadmap P2), pin (1: this thread on core 1, the workers on
-// cores 2, 3, ...; give threads=2), tracks (16).
+// cores 2, 3, ...; give threads=2), tracks (16). For counting what the engine does under a profiler, where time
+// means nothing: pace (0: the blocks one after another, with no wait for the period), guard (0: the overload guard
+// off, so that what is played does not depend on how long a block took), play (0: the project stopped, the cost
+// of a block with nothing sounding).
 int dsp_bench(int argc, char** argv) {
     double seconds = 10;
     unsigned rate = 48000, threads = 3, spin = 200, tracks = track_count;
-    bool whole = true, linger = false, pinned = false;
+    bool whole = true, linger = false, pinned = false, paced = true, guarded = true, playing = true;
     for (int n = 2; n < argc; ++n) {
         std::string arg = argv[n];
         auto eq = arg.find('=');
@@ -112,6 +115,9 @@ int dsp_bench(int argc, char** argv) {
         else if (key == "linger") linger = value == "1";
         else if (key == "pin") pinned = value == "1";
         else if (key == "tracks") tracks = std::min<unsigned>(unsigned(std::atoi(value.c_str())), track_count);
+        else if (key == "pace") paced = value != "0";
+        else if (key == "guard") guarded = value != "0";
+        else if (key == "play") playing = value != "0";
         else { std::fprintf(stderr, "dsp-bench: no key %s\n", key.c_str()); return 1; }
     }
     auto project = std::make_unique<Project>();
@@ -123,7 +129,7 @@ int dsp_bench(int argc, char** argv) {
     host.set_render_threads(threads, 150000, pinned);
     host.set_one_dispatch(whole);
     host.set_render_spin(spin, linger);
-    host.set_overload_guard(true); // as Melodee runs
+    host.set_overload_guard(guarded); // on, as Melodee runs, unless guard=0
     host.load(*project, *bank);
     host.set_audio_format(rate, 384);
     {
@@ -133,7 +139,7 @@ int dsp_bench(int argc, char** argv) {
     }
     for (unsigned s = 0; s < 4; ++s) host.offer_sample(s, &samples[s]);
     host.send({Command::Type::Compressor, 0, 0, 0, 1});
-    host.send({Command::Type::Play});
+    if (playing) host.send({Command::Type::Play});
     // As the audio thread: real-time, a block every period.
     sched_param priority {};
     priority.sched_priority = 30;
@@ -161,6 +167,7 @@ int dsp_bench(int argc, char** argv) {
         for (int32_t sample : out) { heard ^= uint32_t(sample); heard *= 1099511628211ull; }
         took.push_back(us);
         if (us * 1000 > period_ns) ++over;
+        if (!paced) continue;
         next.tv_nsec += period_ns;
         while (next.tv_nsec >= 1000000000L) { next.tv_nsec -= 1000000000L; ++next.tv_sec; }
 #if defined(__linux__)

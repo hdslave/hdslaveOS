@@ -97,6 +97,21 @@ float Punch::read(const float* line, double back) const {
 void Punch::process(float* l, float* r, unsigned frames) {
     if (!left) return;
     constexpr float two_pi = 2 * dsp::pi;
+    // Off, as each of them is nearly always: nothing below changes what is heard, and only the history moves on,
+    // so it takes the block in one or two copies. The loop below does the same a frame at a time (its `amount`
+    // is this one in every frame, as nothing in that case changes `fading`): melodee-hdslave, optimization.md SMP-3.
+    if (!held && fading * depth <= 0) {
+        frozen = false;
+        for (unsigned done = 0; done < frames;) {
+            const unsigned n = std::min(frames - done, history - write);
+            std::copy(l + done, l + done + n, left.get() + write);
+            std::copy(r + done, r + done + n, right.get() + write);
+            write = write + n >= history ? 0 : write + n;
+            done += n;
+        }
+        fresh = std::min(history, fresh + frames);
+        return;
+    }
     for (unsigned f = 0; f < frames; ++f) {
         float dry_l = l[f], dry_r = r[f];
         // Held, it comes in over seam_seconds (a filter or a crusher switched in at once would step); let go, it fades.

@@ -359,6 +359,17 @@ void Effect::frames_of(float* left, float* right, unsigned frames, const float* 
     // left out. No shortcut with a threshold under -119 dB, where the envelope's floor of 1e-6 could be over it.
     const bool comp_short = Kind == K::Compressor && a > -119.0f;
     const float comp_quiet = comp_short ? db(a) * 0.99f : 0.0f;
+    // The echoes' SYNC: its note value and the tempo stand for the whole call, so what sync_back() looked up for
+    // every frame is looked up once; each frame keeps only its glide (melodee-hdslave; optimization.md FX-4).
+    const bool syncs = Kind == K::Echo || Kind == K::TapeEcho || Kind == K::PingPong;
+    const float sync_limit = float(DelayPool::half - 64);
+    double sync_quarters = 0;
+    float sync_target = 0;
+    if (syncs) {
+        int index = delay_sync_param(current);
+        sync_quarters = index >= 0 ? delay_sync_quarters(p[size_t(index)]) : 0;
+        if (sync_quarters > 0) sync_target = std::clamp(float(sync_quarters * effect_clock_now->quarter), 2.0f, sync_limit);
+    }
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f], r = right[f], wet_l = l, wet_r = r;
         switch (Kind) {
@@ -463,7 +474,13 @@ void Effect::frames_of(float* left, float* right, unsigned frames, const float* 
             break;
         }
         case K::Echo: case K::TapeEcho: case K::PingPong: {
-            float back = sync_back(float(DelayPool::half - 64)); // SYNC: a note value (roadmap P4); else TIME
+            float back; // SYNC: a note value (roadmap P4); else TIME. As sync_back(), its look-ups taken before the loop.
+            if (sync_quarters <= 0) { synced = 0; back = float(delay); }
+            else {
+                if (synced <= 0) synced = sync_target;
+                synced += (sync_target - synced) * glide[1]; // about 50 ms to a new tempo
+                back = synced;
+            }
             if (Kind == K::TapeEcho) { lfo += 0.6f / fs(); lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
             float dl = delayed(line_l, write, back), dr = delayed(line_r, write, back);
             tone_l += (dl - tone_l) * b; tone_r += (dr - tone_r) * b;

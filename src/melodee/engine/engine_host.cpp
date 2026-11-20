@@ -2876,7 +2876,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (asleep) {
             // left and right were cleared at the block's start
         } else if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
-            for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= slot.mix_l.at(f); slot.right[f] *= slot.mix_r.at(f); }
+            // A gain that does not move in this block (all but the 10 ms after a change) is the same number in
+            // every frame: taken once, the products are the same to the bit (melodee-hdslave; optimization.md HOST-4).
+            if (slot.mix_l.flat() && slot.mix_r.flat()) {
+                const float gl = slot.mix_l.at(0), gr = slot.mix_r.at(0);
+                for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= gl; slot.right[f] *= gr; }
+            } else {
+                for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= slot.mix_l.at(f); slot.right[f] *= slot.mix_r.at(f); }
+            }
         } else {
             for (unsigned f = 0; f < frames; ++f) {
                 float x = slot.buffer[f];
@@ -2981,8 +2988,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 float* rest_r = keying ? aside_r : master_r;
                 knob_fed |= !slot.knob_share.silent();
                 float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f); // a centred mono track's stem sums to itself
+                const bool steady = slot.audible.flat() && slot.knob_share.flat(); // as above: the same sums, the gains read once
+                const float steady_a = slot.audible.at(0), steady_k = slot.knob_share.at(0);
                 for (unsigned f = 0; f < frames; ++f) {
-                    float a = slot.audible.at(f), k = slot.knob_share.at(f);
+                    float a = steady ? steady_a : slot.audible.at(f), k = steady ? steady_k : slot.knob_share.at(f);
                     float l = slot.left[f] * a, r = slot.right[f] * a;
                     knob_l[f] += l * k; knob_r[f] += r * k;
                     rest_l[f] += l - l * k; rest_r[f] += r - r * k;
@@ -2992,6 +3001,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 for (unsigned b = 0; b < bus_count; ++b) { // into each bus as much as its send
                     const auto& send = slot.sends_now[b];
                     if (send.silent()) continue;
+                    if (slot.audible.flat() && send.flat()) {
+                        const float g = slot.audible.at(0) * send.at(0);
+                        for (unsigned f = 0; f < frames; ++f) { bus_l[b][f] += slot.left[f] * g; bus_r[b][f] += slot.right[f] * g; }
+                        continue;
+                    }
                     for (unsigned f = 0; f < frames; ++f) {
                         float g = slot.audible.at(f) * send.at(f);
                         bus_l[b][f] += slot.left[f] * g; bus_r[b][f] += slot.right[f] * g;
@@ -3060,6 +3074,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (unsigned b = 0; b < bus_count; ++b) {
         auto& back = returns_now[b];
         back.aim(returns[b], frames, snap_mix);
+        if (back.flat()) {
+            const float g = back.at(0);
+            for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * g; master_r[f] += bus_r[b][f] * g; }
+            continue;
+        }
         for (unsigned f = 0; f < frames; ++f) { float g = back.at(f); master_l[f] += bus_l[b][f] * g; master_r[f] += bus_r[b][f] * g; }
     }
     // Knob FX into the master. After its targets let go it rings on until its tail has been quiet a while, or at

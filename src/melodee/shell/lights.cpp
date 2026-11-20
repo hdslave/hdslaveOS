@@ -82,20 +82,18 @@ void Shell::autosave_tick(uint32_t now) {
 }
 
 // Power (melodee-hdslave; optimization.md): the settings the other threads act on, and Dim after. The screen's
-// light and the CPUs' speed are the service thread's to set (MelodeeApp::service()); the pads' and buttons' lights
-// are scaled here, before this pass sets them. Dimmed: Dim after's minutes with no control used or note come in,
-// while nothing plays, records or works. Any control lights everything again on the next pass, and is acted on as
-// ever: nothing is swallowed to wake the screen.
+// light is the service thread's to set (MelodeeApp::service()); the pads' and buttons' lights are scaled here,
+// before this pass sets them. The CPUs' speed is never touched: the cores stay at the kernel's full speed.
+// Dimmed: Dim after's minutes with no control used or note come in, while nothing plays, records or works. Any
+// control lights everything again on the next pass, and is acted on as ever: nothing is swallowed to wake the screen.
 void Shell::power_tick(SurfaceLights& lights, uint32_t now) {
     const auto& ui = ui_;
     const auto& set = ui.settings;
     const auto& host = context_.host;
-    cpu_wanted.store(set.cpu_speed, std::memory_order_relaxed);
     refresh_wanted.store(uint8_t(set.refresh_fps()), std::memory_order_relaxed);
     const bool working = ui.loading || context_.samples_to_load < sample_slots || (context_.printer && context_.printer->busy())
                       || ui.print_sheet.printing || ui.auto_sheet.sampling || ui.auto_sheet.checking || (store_ && store_->exporting())
                       || ui.update.phase != 0 || (library_ && library_->stems_progress().busy);
-    working_.store(working, std::memory_order_relaxed);
     const bool running = host.playing() || host.song_playing() || host.looper().recording() || host.looper().armed() || host.looper().sounding() || ui.recording
                       || ui.rec_armed || host.recorder().state() != TakeRecorder::State::Idle || ui.audio_rec_running;
     if (running || working || !last_busy_) last_busy_ = now ? now : 1;

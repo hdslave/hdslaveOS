@@ -962,6 +962,33 @@ bool SamplerEngine::plain_run(const Voice& v, unsigned frames) const {
     return true;
 }
 
+namespace {
+// The frames of a voice that plays forwards, unfiltered, its envelope holding its sustain, for as long as it surely
+// stays clear of `limit` (the last place it may read from with its neighbour above it): most of what a kit plays.
+// Nothing changes there from frame to frame but the place, so the tests of the loops below and the envelope's step
+// are taken once for the run; each frame's sums are theirs, in the same order, so it plays the same to the bit
+// (melodee-hdslave; optimization.md SMP-9). `a` is what env.next() * gain * fade gives while the envelope holds.
+// Returns the frames played from `f` (0: too near `limit`, or too slow to count frames safely).
+inline unsigned held_run(double& position, double step, double limit, float a, float pan_l, float pan_r,
+                         const float* l, const float* r, float* to_l, float* to_r, unsigned f, unsigned frames) {
+    if (!(step >= 1e-3)) return 0;
+    const double clear = (limit - position) / step - 2; // frames before the limit, two to spare for the sums' rounding
+    if (!(clear >= 1)) return 0;
+    const unsigned run = unsigned(std::min<double>(clear, double(frames - f)));
+    double at = position;
+    for (const unsigned end = f + run; f < end; ++f) {
+        unsigned i = unsigned(at);
+        float frac = float(at - i);
+        float sl = l[i] + (l[i + 1] - l[i]) * frac, sr = r[i] + (r[i + 1] - r[i]) * frac;
+        to_l[f] += sl * a * pan_l;
+        to_r[f] += sr * a * pan_r;
+        at += step;
+    }
+    position = at;
+    return run;
+}
+}
+
 // The full loop below with what plain_run() ruled out taken away; the same arithmetic in the same order.
 void SamplerEngine::run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames, double span) {
     const bool filtered = v.filter != PadFilter::Off;
@@ -970,7 +997,15 @@ void SamplerEngine::run_plain(Voice& v, const float* l, const float* r, float* t
     const float gain = v.gain, fade = v.fade, pan_l = v.left, pan_r = v.right;
     double position = v.position;
     dsp::Envelope env = v.env;
+    const bool holds = !filtered && !reverse && held_runs;
     for (unsigned f = from; f < frames; ++f) {
+        if (holds && env.stage == dsp::Envelope::Stage::Sustain) { // clear of the end (the loop's too): no wrap, no last frame
+            if (unsigned run = held_run(position, step, double(v.end) - 1, v.shape.sustain * gain * fade, pan_l, pan_r, l, r, to_l, to_r, f, frames)) {
+                env.level = v.shape.sustain; // as env.next() leaves it
+                ++held_taken;
+                if ((f += run) >= frames) break;
+            }
+        }
         if (loop) {
             if (reverse) while (position < v.loop_at) { position += span; v.wrapped = v.turned = true; }
             else while (position >= v.end) { position -= span; v.wrapped = v.turned = true; }
@@ -1521,7 +1556,17 @@ void SamplerEngine::zone_run_plain(Voice& v, const float* l, const float* r, flo
     const double step = v.step;
     const float gain = v.gain, fade = v.fade, pan_l = v.left, pan_r = v.right;
     dsp::Envelope env = v.env;
+    const bool holds = !filtered && !reverse && held_runs;
+    // The last place a held run may read from: under the loop's top while it goes round, under the zone's end.
+    const double limit = double(round ? std::min(v.loop_hi, v.end) : v.end) - 1;
     for (unsigned f = from; f < frames; ++f) {
+        if (holds && env.stage == dsp::Envelope::Stage::Sustain) {
+            if (unsigned run = held_run(v.position, step, limit, v.shape.sustain * gain * fade, pan_l, pan_r, l, r, to_l, to_r, f, frames)) {
+                env.level = v.shape.sustain;
+                ++held_taken;
+                if ((f += run) >= frames) break;
+            }
+        }
         if (round && v.position >= v.loop_hi) {
             while (v.position >= v.loop_hi) v.position -= double(v.loop_hi - v.loop_at);
             came_round(v);

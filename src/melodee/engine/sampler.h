@@ -41,6 +41,10 @@ public:
     // The short loop for plain runs (run_plain()); off, every frame takes the full one (the tests compare the two).
     static inline bool plain_runs = true;
     static inline thread_local unsigned plain_taken = 0; // runs it played, on this thread (for the tests)
+    // Within a short run, the frames of a voice that only holds its sustain, without the tests that cannot change
+    // (held_run() in sampler.cpp). Off: frame by frame as before, for the tests that compare the two.
+    static inline bool held_runs = true;
+    static inline thread_local unsigned held_taken = 0;
     static constexpr unsigned max_voices = 32;
     // Past max_voices a new voice takes the oldest's place, which fades out (a choke's quick fade) in one of
     // these spare voices instead of stopping dead (a click).
