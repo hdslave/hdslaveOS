@@ -18714,11 +18714,18 @@ void direct_monitoring() {
                 CHECK(std::fabs(ring[2 * (f % 384)] / 2147483648.0 - 0.5) < 2e-3);
                 CHECK(std::fabs(ring[2 * (f % 384) + 1] / 2147483648.0 - 0.375) < 2e-3);
             }
-            // Off: it fades out, then leaves the buffer alone.
+            // Off: it fades out, not cut; the first period off starts at about the gain and ends lower.
             s.set(false, 0.5f, 0.25f);
-            for (unsigned k = 30; k < 60; ++k) { s.at(384 + 64 * k, 64 * k, now(), true); s.add(period.data(), 64); }
             std::fill(ring.begin(), ring.end(), int32_t(0.25 * 2147483648.0));
-            s.at(384 + 64 * 60, 64 * 60, now(), true);
+            s.at(384 + 64 * 30, 64 * 30, now(), true);
+            s.add(period.data(), 64);
+            at = unsigned((s.added() - 64 + DirectMonitor::ahead) % 384);
+            const double fade_from = ring[2 * at] / 2147483648.0, fade_to = ring[2 * ((at + 63) % 384)] / 2147483648.0;
+            CHECK(fade_from < 0.5 && fade_from > 0.49 && fade_to < fade_from - 0.04 && fade_to > 0.4);
+            // Then, silent (under 1e-5 of the gain: from 0.5 on a 5 ms ease, 41 periods, 55 ms), it leaves the buffer alone.
+            for (unsigned k = 31; k < 90; ++k) { s.at(384 + 64 * k, 64 * k, now(), true); s.add(period.data(), 64); }
+            std::fill(ring.begin(), ring.end(), int32_t(0.25 * 2147483648.0));
+            s.at(384 + 64 * 90, 64 * 90, now(), true);
             s.add(period.data(), 64);
             for (auto v : ring) CHECK(v == int32_t(0.25 * 2147483648.0));
             s.detach();
