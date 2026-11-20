@@ -1696,7 +1696,8 @@ the file holds, to the bit.
   New MIDI Track, a note for each slice where it falls, at the pad's speed
   (Warp's Seq or Follow: the region's own tempo; 50-200 %; else as
   recorded), KIT's on its sound's pad, into the track's pattern when empty,
-  else the first empty one, which then plays; one undo step with the pads)
+  else the first empty one, which then plays; one undo step with the pads,
+  a Seq Record take ended first as Undo ends it)
   and lays the slices on pads, B1 CANCEL drops
   the chop. As on the MPC, slices belong to the sample and live in its WAV
   file (the `atem` and `slic` chunks, `shell/mpc_wav_slices.cpp`; beside

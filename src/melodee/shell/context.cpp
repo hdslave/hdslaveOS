@@ -1904,6 +1904,10 @@ void Context::chop_to_pads(SlicePlay play, bool with_pattern) {
     const uint8_t group = slice_group(parent, t.pads); // MONO and THRU: one at a time; KIT: the hats
     std::array<int, max_slices> keys; // each slice's note, for the pattern
     keys.fill(-1);
+    // A Seq Record take ends first, as Undo ends it: kept open, it would go into the history after this step, with the
+    // slices' pattern in it, and Undo would take the pattern back and leave the pads.
+    if (ui.recording) set_recording(false);
+    end_take(); // and a Chop take
     Edit edit = begin_edit("Slices to pads", ui.track, -1, false); // one undo: the pads, the pattern and which plays
     auto lay = [&](unsigned pad, const PadSound& one) {
         edit.pads_before.emplace_back(uint8_t(pad), pad_state(t, pad));

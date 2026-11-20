@@ -445,7 +445,8 @@ With KIT, each slice's note plays the pad of its sound. The pattern goes into
 the track's pattern if that is empty, else into the first empty one, which
 then plays. The notes follow how the pads play: with Warp or Follow at the
 loop's own tempo, else as it was recorded. Undo takes back the pads, the
-pattern and which pattern plays in one step.
+pattern and which pattern plays in one step. If Seq Record is on, TO PADS
+turns it off first, so the recording is a step of its own before it.
 
 ### Slices in the WAV file
 
