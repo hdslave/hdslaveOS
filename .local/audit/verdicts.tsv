@@ -1,0 +1,129 @@
+# ID | verdict (Confirmed / Partly confirmed / Not confirmed / Rejected / Merged) | verification note | fork status
+BASE-1|Confirmed|No file in the fork mentions cpufreq or a governor (grep). The vendor `az07_defconfig` sets `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y`, and `rk356x.dtsi` gives 0.90 V up to 1416 MHz and 1.10 V at 1800 MHz. Not checked on the device: the governor in effect at run time.|
+BASE-2|Confirmed|Read `run_app.cpp:120-158`: 16.7 ms busy interval, 100 ms idle interval after 500 ms without a changed frame, and a 4 ms `sleep_for` poll of three input counters while idle.|
+BASE-3|Confirmed|The only writer of the backlight is `MelodeeApp::service` applying the Brightness setting (`melodee_app.cpp:529-535`). No idle timer reaches it.|
+BASE-4|Confirmed|`Controller::midi_packet` increments `external_events` for every external packet, clock and Active Sensing included (`controller.cpp:195`), and the screen loop counts that as input (`run_app.cpp:128, 157`).|
+BASE-5|Confirmed|`base.mk:21-23`: `-O2` only, plain `$(CXX) $(OBJECTS) $(LDLIBS)` link.|
+BASE-6|Confirmed|`Controller::run` loops on `server.serve(5, …)` and calls `poll_platform()` on every pass (`controller.cpp:32-38, 85-100`).|
+BASE-7|Confirmed|`run_midi` sets `lights_due = now + 5 ms` and sleeps until the earliest of lights, app output, audition release and port scan (`controller.cpp:153-161`).|
+BASE-8|Confirmed|The link line has no `-Wl,-z,now`; `mlockall` appears nowhere in the fork; the audio thread asks for `SCHED_FIFO` 30 (`audio.cpp:109-110`) while PREEMPT_RT interrupt threads default to 50.|
+BASE-9|Confirmed|`UsbAudioOutput::run` sleeps 20 ms per pass with no stream and calls `find_target()` every 250 ms (`usb_audio.cpp:287-318`). `push()` returns at once while no computer records (`usb_audio.cpp:230`), so the audio thread pays nothing.|
+BASE-11|Confirmed|`sd-worker.sh` hashes the stock binary, checks `SHA256SUMS` on the card, copies to RAM and hashes both copies again, then runs `--self-test` before every start.|
+BASE-12|Confirmed|`Display::present` compares each row with `memcmp` and copies changed rows, then copies the whole frame into `pending`; the worker's `display_damage::plan` compares `pending` with `shown` again (`display.cpp:90-101, 138`).|
+BASE-14|Confirmed|`run_midi` calls `midi.rescan()` once a second (`controller.cpp:129-134`).|
+IO-1|Confirmed|`ProjectStore::run` ends with `scan()` for every request that does not return early, and `scan()` calls `load_project` on every project file in the folder (`project_store.cpp:499-500, 521-542`).|
+IO-2|Confirmed|`SampleLibrary::service` runs `scan()` every 600 passes regardless of the page shown (`sample_library.cpp:474-488`); `list_into` calls `is_drum_program` for every instrument file.|
+IO-3|Confirmed|`save_loop_files` queues every kept loop for writing on every save with no change test (`looper_files.cpp:70-86`).|
+IO-7|Confirmed|`AudioTracks::run` waits with a 25 ms timeout for ever (`audio_tracks.cpp:148-158`). The inherited real-time priority is not checked on the device.|
+IO-10|Confirmed|Both loops use `poll(..., 250)` (`web_server.cpp:208-209`, `mdns.cpp:216-217`).|
+SHELL-1|Confirmed|`Context::send` sets `dirty` for every command type outside its exempt list (`context.cpp:53-61`); `midi_audio_tick` re-sends `MidiAudio` once a second for a MIDI track with an audio input (`midi_track_jobs.cpp:110-121`); `autosave_due` then fires as soon as the controls have been still for 3 s.|
+SHELL-2|Merged|Same issue as IO-3.|
+SHELL-4|Merged|Same issue as IO-1.|
+SHELL-5|Merged|Same issue as MODEL-1.|
+SHELL-10|Merged|Same issue as IO-2.|
+MODEL-1|Confirmed|`Shell::snapshot` does `out.project = *project_` and loops over all 16 × 128 patterns to rebuild their sketches, inside `Shell::lock` (`shell.cpp:804-815, 878-894`). The 539 KB figure is the auditor's `sizeof` probe; I did not repeat it.|
+SMP-1|Confirmed|`StreamPager::run` is `while (running) if (!pump()) sleep_for(1 ms)` at `SCHED_FIFO` 20 (`stream_pager.cpp:240-251`).|
+SMP-2|Confirmed|`LoopStretch::best` tries 385 offsets × 64 taps, each through `wrap()`, which is `std::fmod` (`looper.cpp:21-24, 42-60`). The time per call is the auditor's estimate.|
+SMP-3|Confirmed|`Punch::process` loops frame by frame and writes its history whenever `left` is allocated, held or not; `run_live(255, …)` and the song's punch run on the master every block (`punch.cpp:97-108`, `engine_host.cpp:2286-2289, 3109, 3119`).|
+SMP-4|Confirmed|`Looper::play_frame` calls `index_at()` per frame: one `fmod` and a division by `l.ticks` (`looper.cpp:149-152, 494-505`).|
+SMP-5|Confirmed|`SamplerEngine::render_stereo` starts straight into its voice and grain loops with no "nothing sounding" test (`sampler.cpp:1615-1640`).|
+SMP-11|Confirmed|`Looper::run` clears eight output buffers and carries on without testing whether the Looper is on (`looper.cpp:583-600`).|
+LIGHT-1|Confirmed|`for (const auto& ref : project_->samples) used += ref.used();` walks all 8192 slots on every `lights()` call (`lights.cpp:485-486`); `SlotTable::span()` exists for exactly this (`slot_table.h:66-68`).|
+LIGHT-5|Confirmed|`MidiIo::pump` skips delivery while `sysex.active` but still calls `out.wake_at(pending[0].due)` with a time already past (`midi_io.cpp:616, 630`), so the MIDI thread's wait returns at once and the loop spins.|
+LIGHT-6|Confirmed|Same mechanism as SHELL-1: `Context::send` exempts only 17 command types (`context.cpp:55-60`). `ExtSync`, `RepeatKey`, `ArpKey` and the punch commands are not among them.|
+LIGHT-7|Merged|Same root cause as MODEL-1 (the screen thread's hold of `Shell::lock`).|
+LIGHT-10|Merged|Same issue as BASE-14.|
+SHELL-6|Merged|Same issue as LIGHT-1.|
+SHELL-3|Merged|Same issue as BASE-3 and LIGHT-4; see IDLE-1 for the design used in the fork.|
+BASE-15|Merged|Same issue as LIGHT-5.|
+PLUG-1|Confirmed|`IdleGate::asleep` returns false for an instrument whenever `playing` is true (`idle_gate.h:62`). The header comment shows this is the author's choice, for plug-ins that run their own sequencer or arpeggiator from the transport.|
+PLUG-2|Confirmed|The host spins 20,000 loads before sleeping on the futex (`vst2_bridge_instance.cpp:221-223`); the bridge spins 4,000 and its `futexWait` has a 100 ms timeout (`vst2_bridge32.cpp:38-41, 280-283`). The comments show the spins were chosen on purpose; whether a wake costs more than the spin is unmeasured.|
+PLUG-3|Confirmed|`processBlock` takes `connection->lock` with a plain `lock_guard` (`vst2_bridge_instance.cpp:302`), the same lock `Connection::call` holds for a whole round trip (`:213`).|
+PLUG-8|Confirmed|The gate uses one fixed `quiet_seconds = 0.5` for instruments and effects and never asks the plug-in for its tail (`idle_gate.h:21-22, 53-68`).|
+IO-6|Confirmed|`Context::sample_slot` and the reload loop in `Shell::lights` both call `read_mpc_slices`, which opens the file and parses its chunks (`context.cpp:1828`, `lights.cpp:329`, `mpc_wav_slices.cpp:87-97`). Both run on the MIDI thread.|
+IO-9|Confirmed|Six call sites of `platform.storage()` on timers (`melodee_app.cpp:499, 546, 698, 750`, `sample_library.cpp:478`, `project_store.cpp:248`).|
+IO-11|Confirmed|`SampleCache::ready` calls `utimes()` on every hit (`sample_cache.cpp:75`).|
+IO-12|Confirmed|`SampleLibrary::files()` returns the vector by value under its lock (`sample_library.cpp:260`), and `Shell::snapshot` calls it every frame on the Samples page (`shell.cpp:874-875`).|
+SHELL-8|Merged|Same issue as IO-12 (plus the Project list, copied the same way at `shell.cpp:847`).|
+SHELL-9|Merged|Same issue as IO-9 for the app side and BASE-6 for the loop itself.|
+SHELL-11|Merged|Same issue as IO-6.|
+SHELL-12|Merged|Its three parts are SMP-1 (stream pager), IO-7 (audio tracks) and IO-10 (web server and mDNS).|
+SHELL-13|Confirmed|`change_setting` calls `store->save_settings()` on every step (`context.cpp:1030-1034`), and `write_settings` truncates and rewrites the file in place with no temporary file (`project_store.cpp:510-518`).|
+BASE-10|Confirmed|`SincResampler::feed` mixes every channel for every output frame with no test for silent ones (`frame_ring.h:166-168`). Only while a computer records.|
+BASE-13|Confirmed|`stream_on` arms the timerfd (`screen_mirror.cpp:344-346`); `stream_off` never disarms it (`:369-380`), and the worker's `poll` includes the timer (`:533`).|
+HOST-1|Confirmed|`run_chain` runs every packed slot of a chain with no test of its input (`engine_host.cpp:1305-1317`), and `chain_of` calls it for every track that is not a frozen track asleep (`:2891`).|
+HOST-2|Confirmed|`parallel` needs only `track_work_ns >= parallel_from_ns` (`engine_host.cpp:2669`), and the app sets that to 150,000 ns (`melodee_app.cpp:86`).|
+HOST-3|Confirmed|With exactly one keyed track the first `workers.run` is told another run follows (`waiting_count ||`), but the keyed run then goes serially because it needs `waiting_count > 1` (`engine_host.cpp:2943-2947`). The workers linger for `spin_us` for nothing (`render_pool.cpp:150-153`).|
+HOST-5|Confirmed|A line idle since the previous block clears both of its buffers with `memset` on the audio thread (`compensation.h:38-41`).|
+HOST-6|Merged|Same issue as SMP-3.|
+HOST-8|Confirmed|`MelodeeApp::render` always passes the stem block, so the mix loops fill `stem[f]` every block (`engine_host.cpp:2988, 3014`); the full-volume copy is made whenever USB volume is Full (`:3174-3177`).|
+HOST-9|Confirmed|`MasterCompressor::colour` calls `std::sin` per frame for a 0.6 Hz wobble, and `process` calls `log10` every fourth frame (`master_comp.cpp:37-50, 71-80`).|
+HOST-10|Confirmed|`flush_denormals()` runs once per thread, behind a `thread_local` flag on the audio thread and at the top of each worker (`engine_host.cpp:2621-2624`, `render_pool.cpp:136`). So denormals are already handled; the finding is only that a plug-in could switch the mode back.|
+FX-1|Merged|Same issue as HOST-1.|
+FX-2|Confirmed|The Compressor case computes `log10` and then `db(-reduce)` for every frame, with no shortcut when `over <= 0` (`effects.cpp:553-560`).|
+FX-3|Confirmed|For example Chorus/Flanger call `std::sin` twice per frame (`effects.cpp:476`). I read three of the eleven sites.|
+FX-6|Merged|Same issue as HOST-9.|
+FX-7|Confirmed|EQ runs three biquads on the left and then three on the right as separate scalar chains (`effects.cpp:533-534`).|
+FX-8|Confirmed|Formant divides by `(1 + g * (g + formant_k))` six times per frame (`effects.cpp:452`); the sampler's pad filter has the same shape (`sampler.cpp:919`).|
+FX-10|Confirmed|Shimmer's two taps each call `std::fmod` and `std::sin` per frame (`effects.cpp:376-378`).|
+FX-11|Confirmed|Chorus and Flanger wrap their write index at `DelayPool::half` though they read at most a few milliseconds back (`effects.cpp:479`).|
+SMP-6|Confirmed|`Envelope::next` parks in `Stage::Sustain` at `level = s.sustain` (`dsp.h:162-166`); with a sustain of 0 the level is 0 but the stage is not `Off`, so `env.active()` stays true and the voice keeps running.|
+SMP-7|Confirmed|`std::sin(pi * age / length)` per grain per frame (`sampler.cpp:1651`).|
+SMP-8|Confirmed|The state-variable stage divides by `(1 + g * (g + k))` on every call (`sampler.cpp:919`).|
+SMP-9|Confirmed|`run_plain` calls `env.next()` and tests the end, the loop and `env.active()` on every frame (`sampler.cpp:973-990`).|
+SMP-10|Confirmed|`read_wav` always sizes both `l` and `r` to the frame count (`sample_data.cpp:23-25`).|
+SMP-12|Confirmed|`TakeRecorder` allocates and zeroes two buffers of 60 s at the highest rate at construction (`take_recorder.h:34, 39-40`): 2 × 5.76 M floats = 46 MB.|
+SMP-13|Confirmed|A held Low/High/Phone/Wobble/Sweep punch computes `std::tan` (and `exp2`, `sin` for the swept kinds) per frame (`punch.cpp:168-171`).|
+IO-13|Merged|Same issue as SMP-10.|
+HOST-4|Partly confirmed|The flags are as stated (`base.mk:21`) and the mix loops have the shape described (for example `engine_host.cpp:2982-2989`). Whether GCC 12 vectorises them at `-O2` was not checked in the assembly.|
+HOST-7|Partly confirmed|I read two of the listed sites (the per-track meter fall at `engine_host.cpp:3025-3026`). The others were not read one by one.|
+FX-4|Partly confirmed|I read the echo case: `0.6f / fs()` and `sync_back()` run per frame (`effects.cpp:461-462`). The other sites in the list were not read one by one.|
+FX-5|Merged|Same issue as IO-4 and IO-5.|
+FX-9|Not checked|A claim about what the compiler does with member loads in `frames_of`; it needs the generated assembly, which I did not read.|
+PLUG-4|Confirmed|JUCE's LV2 worker sleeps 1 ms in a loop when it has no work (`juce_LV2PluginFormatImpl.h:1155-1163`) and its VST3 parameter dispatcher starts a 60 Hz timer (`juce_VST3PluginFormatImpl.h:148`).|
+PLUG-5|Confirmed|`probe_listed` probes every loadable file not yet in `known`, and `known` lives only in memory (`plugin_rack.cpp:935-961`).|
+PLUG-6|Confirmed|`read_drums` reads up to 32 MB of the library file to look for a drum map (`plugin_files.cpp:101-112`).|
+PLUG-7|Confirmed|`stage_copy` copies the plug-in to the RAM folder before it is opened (`plugin_rack.cpp:107-114`). I did not check what real bundles contain.|
+PLUG-9|Confirmed|`PluginRack::panel` reads each shown parameter's name, value, text, default and step count on every call (`plugin_rack.cpp:641-652`).|
+PLUG-10|Confirmed|`PluginRack::run` wakes every 50 ms (`plugin_rack.cpp:791`), and `plugins_tick` calls `set_card` and `sync` on every MIDI pass (`plugin_jobs.cpp:287-291`).|
+PLUG-11|Confirmed|A zip is removed only when every step succeeded (`plugin_files.cpp:311`), so one that fails part-way is unzipped again at the next listing.|
+SHELL-7|Confirmed|`plugins_tick` and the other housekeeping ticks are called from `Shell::lights` on every pass, inside `Shell::lock` (`lights.cpp:180-282`, `plugin_jobs.cpp:287-291`).|
+LIGHT-2|Partly confirmed|`plugins_tick` runs every pass as described. I did not read the pad-light and 16 Levels sites in the list.|
+LIGHT-3|Confirmed|Same lines as BASE-7; `Shell::lights` has no early return for an unchanged state.|
+LIGHT-4|Confirmed|Pad levels are fixed constants (`pad_light.h:23`), and `SurfaceLights::rgb` stores what it is given with only a clamp to 127 (`leds.h:147-151`). No setting scales them.|
+LIGHT-8|Confirmed|`SurfaceLights::update` sends one message per light whose stored value differs from the last sent (`leds.h:125-143`); nothing quantises a fade's steps.|
+LIGHT-9|Confirmed|`Context::pressure` sends one `Pressure` command per held key for every pressure message (`context.cpp:1195-1201`).|
+LIGHT-11|Confirmed|`HardwareMidi::read` tries every input port on every pass, and `wait` rebuilds its `pollfd` list each time (`hardware_midi.cpp:118-139`).|
+IO-4|Confirmed|The load task runs `analyse_sample` before it pushes the sample to `files_loaded` (`sample_library.cpp:1083-1088`), and nothing stores the result.|
+IO-5|Confirmed|`stream_shape` opens the file and walks all of it to build the overview and hits (`sample_library.cpp:1126-1173`); there is no cache of the result.|
+IO-8|Partly confirmed|`Shell::lights` takes `Shell::lock` on every pass (`lights.cpp:180`). I did not count the other eleven mutexes.|
+UI-1|Merged|Same issue as BASE-2.|
+UI-2|Merged|Same issue as MODEL-1.|
+UI-3|Merged|Same issue as BASE-4.|
+UI-4|Merged|Same issue as BASE-2 (the 500 ms tail at 60 fps).|
+UI-5|Merged|Same issue as BASE-2 (the 10 redraws a second at rest). Skipping `draw()` altogether first needs `edit_loop_check`, `check_pickup` and `fader_check` moved out of `Shell::snapshot` (`shell.cpp:806-809`), which only the screen thread calls.|
+UI-6|Merged|Same issues as IO-12 (lists) and PAGE-5 (zoomed peaks).|
+UI-7|Merged|Same issue as PAGE-12.|
+UI-8|Confirmed|`input_meter` draws its bar `w * level` wide with a fractional width (`input_meter.cpp:23-25`), so any change in level changes pixels.|
+UI-9|Confirmed|`icon()` copies the stroke path, transforms it and strokes it on every call (`glyphs.cpp:237-249`).|
+UI-10|Merged|Same issue as BASE-12.|
+UI-11|Confirmed|`Paint::fill` sends any radius above zero to `fillRoundedRectangle` (`paint.cpp:245-249`).|
+UI-12|Confirmed|The font, width and layout caches are cleared whole when they reach their limit (`paint.cpp:119-132`).|
+UI-13|Confirmed|`BootAnimation::compose` recomposes all 320 columns whenever the millisecond changes (`boot.cpp:63-70`). Start-up only.|
+PAGE-1|Confirmed|The lesson ring's alpha alternates every 250 ms from the clock (`overlays.cpp:98`), and the input meter's width follows the level continuously (`input_meter.cpp:22-25`). I did not read the Settings load bars or the Mod LFO line.|
+PAGE-2|Confirmed|Pads draws 32 bars per pad with a 0.5 px radius, so each goes through the rounded-rectangle path (`pads_page.cpp:52-55`, `paint.cpp:247`).|
+PAGE-3|Confirmed|`zone_tiles` loops over every zone shape and fills or rings each one, every frame (`instrument_map.cpp:89-102`).|
+PAGE-4|Confirmed|Motion builds a `juce::Path` per lane from the pattern's Motion points on every frame (`motion_page.cpp:50-62`).|
+PAGE-5|Confirmed|`SampleLibrary::detail` scans the sample's frames for each column under the library lock (`sample_library.cpp:186-196`), called from `Shell::snapshot` every frame while zoomed (`shell.cpp:861-866`).|
+PAGE-6|Merged|Same issue as IO-12.|
+PAGE-7|Confirmed|`draw_clip` loops over a clip's passes from its start, not from the first one in view (`song_page.cpp:67-68`).|
+PAGE-8|Confirmed|Roll's foot strip fills one rectangle per event of the whole pattern (`roll_page.cpp:186-190`).|
+PAGE-9|Confirmed|`draw_ring` builds and strokes a path for each loop every frame (`looper_page.cpp:80-95`). I did not read the Compressor's ghost bar.|
+PAGE-10|Confirmed|Trim's time readout is rebuilt as a new string every frame while a voice is heard (`stage_page.cpp:754-759`).|
+PAGE-11|Confirmed|Auto Sample's running light is placed from `s.now` and so moves every frame (`auto_sample_page.cpp:200-204`).|
+PAGE-12|Confirmed|`MelodeeApp::draw` draws the page and then `draw_overlays`, whose update and loading sheets return after covering the whole screen (`melodee_app.cpp:465-466`, `overlays.cpp:63-64`).|
+MODEL-2|Confirmed|`set_signature` calls `sync_pattern` for every whole-bar pattern, up to 2048 (`context.cpp:1774-1781`); the engine's retire queue holds 1024 patterns plus 64 in limbo, and `retire` leaks past that (`engine_host.cpp:246-250`, `engine_host.h:703-704`).|
+MODEL-3|Confirmed|`sync_pattern` allocates `new Pattern(played_pattern(…))`, and `played_pattern` is `speed_pattern(feel_pattern(p), speed)`, two functions that each return a pattern by value (`context.cpp:1225-1231`, `pattern.cpp:293`).|
+MODEL-4|Confirmed|`Pattern::lane_value` walks Motion backwards from the playhead until it finds a point on the lane (`pattern.cpp:123-127`).|
+MODEL-5|Confirmed|The tick loop calls `pattern.lane_length(l.key)` for each lane, and `lane_length` itself searches the lanes (`engine_host.cpp:2546-2547`, `pattern.h:272-275`).|
+IO-14|Confirmed|Found by me while implementing IO-7, not by an auditor. `take_wanted` stays true from `record()` until the take's file is closed (`audio_tracks.cpp:77, 258, 301`), and the wait's predicate returns true whenever it is set (`:158`), so the loop never waits during a take.|

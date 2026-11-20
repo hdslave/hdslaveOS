@@ -1,5 +1,14 @@
 build/
-.local/
+# .local holds working files. Kept in the repository: the audit's sources (optimization.md is made from them by
+# .local/audit/build_doc.py) and the scripts that build, check and measure. Logs and profiler output stay out.
+.local/*
+!.local/audit/
+!.local/checks/
+!.local/profiler/
+!.local/*.sh
+!.local/prof/
+.local/prof/*
+!.local/prof/*.py
 __pycache__/
 *.py[cod]
 *.so
