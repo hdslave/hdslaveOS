@@ -574,7 +574,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool erase_pots = false;
     {
         auto bindings = page_bindings(project, ui, context_.pattern());
-        for (const auto& b : bindings) erase_pots |= b.kind == Binding::Kind::Param;
+        for (const auto& b : bindings) erase_pots |= erase_resets(b);
     }
     bool kit = kit_pads();
     uint64_t levels = 0; // two bits a button, for `status`

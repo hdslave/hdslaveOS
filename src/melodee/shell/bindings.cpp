@@ -264,16 +264,35 @@ Binding nudge_card(const Pattern& pattern, const Event& e) {
     return {Kind::EventNudge, 0, -(q / 2), (q + 1) / 2 - 1, int(e.tick) - int(nudge_base(pattern, e))};
 }
 
+// The kit pad value a card turns (model/pad_params.h), -1 for any other card.
+static int card_pad_param(const Binding& b) {
+    for (unsigned p = 0; p < pad_param_count; ++p)
+        if (pad_kind(PadParam(p)) == b.kind && (b.kind != Kind::PadSend || p == unsigned(PadParam::SendA) + unsigned(b.id) % bus_count)
+            && (b.kind != Kind::PadCloud || cloud_id(PadParam(p)) == b.id))
+            return int(p);
+    return -1;
+}
+
 int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
     if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
     if (!track.sampled()) return -1;
-    for (unsigned p = 0; p < pad_param_count; ++p) // a kit pad's own value: its lane on the last pad hit
-        if (pad_kind(PadParam(p)) == b.kind && (b.kind != Kind::PadSend || p == unsigned(PadParam::SendA) + unsigned(b.id) % bus_count)
-            && (b.kind != Kind::PadCloud || cloud_id(PadParam(p)) == b.id))
-            return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);
+    if (int p = card_pad_param(b); p >= 0) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads); // on the last pad hit
     return -1;
+}
+
+bool pad_reset_value(const Binding& b, int& value) {
+    static const PadSound fresh {};
+    if (b.kind == Kind::PadWarp) { value = warp_card(fresh.warp); return true; }
+    if (b.kind == Kind::PadLoopXfade) { value = fresh.loop_xfade; return true; }
+    if (int p = card_pad_param(b); p >= 0) { value = pad_param_value(fresh, PadParam(p)); return true; }
+    return false;
+}
+
+bool erase_resets(const Binding& b) {
+    int value = 0;
+    return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || pad_reset_value(b, value);
 }
 
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern) {

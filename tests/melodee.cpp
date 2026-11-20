@@ -18847,7 +18847,62 @@ void midi_lookahead() {
     CHECK(first && first->e.frame == again && !first->e.live);
 }
 
+void pad_value_erase() {
+    // Erase + pot on a kit pad's own values: back to a new pad's value, as an engine's parameter goes back to its initial.
+    using Kind = Binding::Kind;
+    auto project = std::make_unique<Project>();
+    auto& kit = project->tracks[3];
+    load_sound(kit, EngineKind::Sampler, 0);
+    auto& pad = kit.pads[8];
+    pad.sample = 0; kit.last_pad = 8;
+    pad.pitch = 7; pad.fine = -20; pad.level = 30; pad.pan = 40; pad.warp = 150; pad.attack = 60; pad.decay = 10;
+    pad.velocity_sense = 5; pad.cutoff = 12; pad.resonance = 70; pad.filter_attack = 30; pad.filter_decay = 90; pad.filter_amount = 80;
+    pad.cloud_position = 90; pad.cloud_size = 1; pad.cloud_density = 99; pad.sends[1] = 77; pad.loop_xfade = 30;
+    const PadSound fresh {};
+    UiState ui;
+    ui.track = 3;
+    Pattern none;
+    // Every card with a knob range on Tune, Mix, Amp Env, Filter, Filt Env, Cloud and the Pads page; Filter's type and
+    // Cloud on or off are choices, which Erase leaves alone.
+    int resets = 0;
+    for (PageId page : {PageId::PadPage, PageId::PadMix, PageId::EnvelopePage, PageId::PadFilterPage, PageId::FilterEnvPage,
+                        PageId::CloudPage, PageId::Pads}) {
+        ui.page = page;
+        for (bool row2 : {false, true}) {
+            ui.sampler_row = row2;
+            for (const auto& b : page_bindings(*project, ui, none, false)) {
+                if (!b.bound()) continue;
+                int value = -999;
+                const bool choice = b.kind == Kind::PadFilterType || (b.kind == Kind::PadCloud && b.id == 0);
+                CHECK(pad_reset_value(b, value) == !choice && erase_resets(b) == !choice);
+                if (choice) continue;
+                CHECK(value >= b.min && value <= b.max);
+                ++resets;
+            }
+        }
+    }
+    CHECK(resets >= 20);
+    int value = -999;
+    CHECK(pad_reset_value(Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, value) && value == fresh.pitch && value == 0);
+    CHECK(pad_reset_value(Binding {Kind::PadLevel, 0, 0, 127, pad.level}, value) && value == fresh.level);
+    CHECK(pad_reset_value(Binding {Kind::PadCutoff, 0, 0, 100, pad.cutoff}, value) && value == fresh.cutoff);
+    CHECK(pad_reset_value(Binding {Kind::PadSend, 1, 0, 100, pad.sends[1]}, value) && value == fresh.sends[1]);
+    CHECK(pad_reset_value(Binding {Kind::PadCloud, 2, 0, 100, pad.cloud_size}, value) && value == fresh.cloud_size);
+    CHECK(pad_reset_value(Binding {Kind::PadWarp, 0, 0, warp_card_seq, warp_card(pad.warp)}, value) && warp_of_card(value) == fresh.warp);
+    CHECK(pad_reset_value(Binding {Kind::PadLoopXfade, 0, 0, int(max_loop_xfade), pad.loop_xfade}, value) && value == fresh.loop_xfade);
+    // Trim's handles, toggles and choices: no value to go back to.
+    for (Kind kind : {Kind::PadStart, Kind::PadEnd, Kind::PadLoopPoint, Kind::PadLoop, Kind::PadReverse, Kind::PadMono, Kind::PadPlayMode,
+                      Kind::PadGroup, Kind::PadLink, Kind::PadBeats, Kind::PadColour, Kind::PadDecayFrom, Kind::Level, Kind::Pan})
+        CHECK(!pad_reset_value(Binding {kind, 0, 0, 16, 1}, value) && !erase_resets(Binding {kind, 0, 0, 16, 1}));
+    CHECK(erase_resets(Binding {Kind::Param, 0, 0, 127, 1}) && erase_resets(Binding {Kind::KnobParam, 0, 0, 127, 1})
+          && erase_resets(Binding {Kind::PluginParam, 0, 0, 127, 1}));
+    // Seq Record still finds each pad value's lane on the last pad.
+    CHECK(binding_lane(kit, Binding {Kind::PadSend, 1, 0, 100, 0}) == motion_lane(motion_pad_param(PadParam::SendB), 8));
+    CHECK(binding_lane(kit, Binding {Kind::PadCloud, 2, 0, 100, 0}) == motion_lane(motion_pad_param(PadParam::CloudSize), 8));
+}
+
 int main() {
+    pad_value_erase();
     sample_lists();
     history_list();
     midi_lookahead();

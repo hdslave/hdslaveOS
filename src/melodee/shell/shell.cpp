@@ -630,6 +630,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    if (int initial = 0; ui_.erase && pad_reset_value(b, initial)) { // a kit pad's own value: back to a new pad's
+        context_.apply(b, initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
     learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
     int value = 0;
     if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);
