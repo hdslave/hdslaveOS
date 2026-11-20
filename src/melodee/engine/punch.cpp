@@ -96,6 +96,20 @@ float Punch::read(const float* line, double back) const {
 
 void Punch::process(float* l, float* r, unsigned frames) {
     if (!left) return;
+    // Silent all block (neither held nor fading: nothing below moves `held`, `fading` or `begun` while it is): the
+    // sound passes untouched and the history only records it, a block at a time instead of a frame at a time.
+    if ((held ? depth * float(std::min(1.0, double(begun + 1) / ease_in)) : fading * depth) <= 0) {
+        frozen = false;
+        for (unsigned f = 0; f < frames;) {
+            unsigned n = std::min(frames - f, history - write);
+            std::copy(l + f, l + f + n, left.get() + write);
+            std::copy(r + f, r + f + n, right.get() + write);
+            write = write + n >= history ? 0 : write + n;
+            f += n;
+        }
+        fresh = unsigned(std::min<uint64_t>(history, uint64_t(fresh) + frames));
+        return;
+    }
     constexpr float two_pi = 2 * dsp::pi;
     for (unsigned f = 0; f < frames; ++f) {
         float dry_l = l[f], dry_r = r[f];
