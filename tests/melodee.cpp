@@ -13299,6 +13299,29 @@ void audio_quality() {
         run(4);
         CHECK(largest_step(l, steal - 1, at) < 2 * natural); // it jumped 25 times the sine's own step
     }
+    // An empty pad takes no voice: hit with 32 sounding, it fades none of them out (the oldest went quiet).
+    {
+        SampleData tone = sine(88200, 200, 0.5f), quiet = sine(88200, 200, 0);
+        SamplerEngine::Table table {};
+        table[0] = &tone; table[1] = &quiet;
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound a; a.sample = 0;
+        e.set_pad(0, a);
+        PadSound b; b.sample = 1;
+        for (unsigned p = 1; p < 32; ++p) e.set_pad(p, b);
+        std::vector<float> l(128 * 100, 0.0f), r(128 * 100, 0.0f);
+        unsigned at = 0;
+        auto run = [&](unsigned blocks) { for (unsigned k = 0; k < blocks; ++k, at += 128) e.render_stereo(l.data() + at, r.data() + at, 128); };
+        e.note_on(int(sampler_first_note), 127);
+        run(4);
+        for (unsigned p = 1; p < 32; ++p) { e.note_on(int(sampler_first_note + p), 127); run(1); }
+        e.note_on(int(sampler_first_note + 45), 127); // pad 46: nothing on it
+        run(60);
+        float peak = 0;
+        for (unsigned k = at - 128 * 4; k < at; ++k) peak = std::max(peak, std::fabs(l[k]));
+        CHECK(peak > 0.1f); // the tone, the oldest, still plays
+    }
     // Cloud grains read between frames, and never off their region's end (round to the file's start, as they did).
     {
         SampleData high = sine(44100, 5000, 0.5f);

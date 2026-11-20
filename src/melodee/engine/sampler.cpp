@@ -619,7 +619,7 @@ void SamplerEngine::layers_on(const PadSound& sound, int pad, int velocity, int 
 void SamplerEngine::play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
     if (auto* multi = multi_of(sound)) zones_on(*multi, sound, pad, velocity, semitones, cutoff, trigger);
     else if (sound.layered() && samples) layers_on(sound, pad, velocity, semitones, cutoff, trigger);
-    else start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger);
+    else if (sound.used()) start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger); // an empty pad takes no voice (nor chokes the oldest for one)
 }
 
 // A kit pad hit: a one shot that loops stops instead when it is playing;

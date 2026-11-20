@@ -480,12 +480,12 @@ void EngineHost::apply(const Command& c) {
     case Type::NoteOn:
         if (slot.freeze && slot.freeze->deep) break; // freeze plan F2d: a deep-frozen track's pads play nothing
         if (slot.freeze) { wake(slot); slot.hand.set(c.index & 0xff); } // freeze plan F2b: a hand wakes a frozen track's engine
-        if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_on(slot, c.index, c.value);
+        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) engine_note_on(slot, c.index, c.value); // none: nothing to call
         if (c.pattern != 1 && !hand_early) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
         break;
     case Type::NoteOff:
         slot.hand.reset(c.index & 0xff);
-        if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_off(slot, c.index);
+        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) engine_note_off(slot, c.index);
         if (c.pattern != 1 && !hand_early) midi_note_off(c.track % track_count, c.index & 0xff, frame_now + block_at);
         break;
     case Type::AllNotesOff:
