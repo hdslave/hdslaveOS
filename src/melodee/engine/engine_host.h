@@ -389,15 +389,26 @@ private:
     };
     static constexpr unsigned calls_a_block = 384; // a track's, more than a pattern's start (every value back) needs
     struct Slot {
+        // What every block reads of every track, an empty one too (render()'s passes over the tracks, run_hits(),
+        // next_hit(), arp_live()): first and side by side. A slot is over 100 kB (the sampler most of it), so these
+        // apart would be ten lines far apart in each slot for a block on a cold cache to wait for, not a few.
         EngineKind kind = EngineKind::None;
+        bool mute = false, solo = false;
+        bool knob_pad_fed = false; // some sub-block of this block put something in knob_pad_l / knob_pad_r
+        bool print_fed = false;    // this block's print is in print_l / print_r (freeze plan F2b, below)
+        Engine* engine = nullptr;
+        unsigned hits_waiting = 0;                   // ratchets' hits (`hits`) still to come
+        int32_t repeat_late = -1, repeat_length = 0; // a swung step of Note Repeat: frames to it, and its notes' length
+        PendingOn arp_late;
+        PrintPlayer print; // the track's prints, their voices (freeze plan F2b, below)
+        Arp arp;
+        NoteRepeat repeat;
         SamplerEngine sampler;
         MidiEngine midi; // silent: a MIDI track (docs/MIDI_TRACKS.md)
         PluginEngine plugin;             // a PLUGIN track: the rack's plug-in for `plugin_entry`
         uint8_t plugin_entry = no_plugin;
-        Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f;
         std::array<float, bus_count> sends {}; // into each bus A-D (round 2: four sends a track)
-        bool mute = false, solo = false;
         // As the block plays them (Ease): level and pan on each side, heard (1) or muted / soloed out (0),
         // into Knob FX (1) or not, and each send.
         Ease mix_l, mix_r, audible, knob_share;
@@ -429,17 +440,11 @@ private:
         unsigned locks_on = 0;
         float buffer[block] {};
         float left[block] {}, right[block] {};
-        float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them
-        bool knob_pad_fed = false;                         // and some sub-block of this block put something there
+        float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them (knob_pad_fed)
         struct PadSendBuffers { float l[bus_count][block] {}, r[bus_count][block] {}; };
         std::unique_ptr<PadSendBuffers> pad_sends = std::make_unique<PadSendBuffers>(); // a kit's pad sends, each bus apart (heap: 4 kB a track)
         unsigned send_pad_fed = 0;                                                // a bit a bus: something there this block
-        Arp arp;
-        PendingOn arp_late;
-        NoteRepeat repeat;
-        int32_t repeat_late = -1, repeat_length = 0; // a swung step of Note Repeat: frames to it, and its notes' length
-        std::array<PendingHit, 32> hits {}; // ratchets' hits to come, each on its frame
-        unsigned hits_waiting = 0;
+        std::array<PendingHit, 32> hits {}; // ratchets' hits to come, each on its frame (hits_waiting)
         // Trig conditions (model/trig.h): how the last weighed note went, on the track and on each key (a kit's
         // lanes), and whether one has been weighed since Play (none yet: counted as played, for NEI).
         bool weighed = false, went = false;
@@ -466,20 +471,18 @@ private:
         uint8_t follow_do = 0;
         uint32_t follow_at = 0;
         // Freeze plan F2b: the track's prints (none: it plays live), and ones unfrozen whose voices still fade; the
-        // voices; whether the print plays the pattern now (its notes then sequence nothing on the engine), the engine
-        // awake (hand notes or a live pattern; asleep its render and, after the print, its chain are skipped), the
-        // frames it has been quiet, keys held by hand; this block's print (print_l / print_r: its rows of
-        // EngineHost::print_frames, on the heap, so a host on a test's stack stays as small as it was) and its level
-        // and pan.
+        // voices (`print`, at the top); whether the print plays the pattern now (its notes then sequence nothing on
+        // the engine), the engine awake (hand notes or a live pattern; asleep its render and, after the print, its
+        // chain are skipped), the frames it has been quiet, keys held by hand; this block's print (print_l / print_r:
+        // its rows of EngineHost::print_frames, on the heap, so a host on a test's stack stays as small as it was;
+        // `print_fed`, at the top) and its level and pan.
         FreezePack* freeze = nullptr;
         FreezePack* freeze_leaving = nullptr;
-        PrintPlayer print;
         bool print_on = false, awake = true, print_post = true; // print_post: its prints' tap (kept for a fade's end)
         uint32_t quiet = 0;
         std::bitset<256> hand {};
         float* print_l = nullptr;
         float* print_r = nullptr;
-        bool print_fed = false;
         Ease print_mix_l, print_mix_r;
         // Freeze plan F3: an AUDIO track's engine (its takes' voices), its patterns' takes, ones replaced whose voices
         // still fade, and the pattern tick it followed last (a jump when the next is not the one after).
