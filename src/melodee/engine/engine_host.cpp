@@ -2122,11 +2122,16 @@ void EngineHost::midi_note(unsigned t, int key, int velocity, uint64_t at, int64
         if (own) e.track = uint8_t(t);
         emit(e);
     };
-    for (auto& off : midi_offs) // a retrigger ends the note it replaces first
-        if (off.on && off.channel == channel && off.key == key && off.dest == dest) { event(MidiOutEvent::Kind::NoteOff, 0, at); off.on = false; }
+    if (midi_offs_held)
+        for (auto& off : midi_offs) // a retrigger ends the note it replaces first
+            if (off.on && off.channel == channel && off.key == key && off.dest == dest) { event(MidiOutEvent::Kind::NoteOff, 0, at); off.on = false; }
     event(MidiOutEvent::Kind::NoteOn, uint8_t(std::clamp(velocity, 1, 127)), at);
     for (auto& off : midi_offs)
-        if (!off.on) { off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0), dest}; return; }
+        if (!off.on) {
+            off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0), dest};
+            midi_offs_held = true;
+            return;
+        }
     if (length >= 0) event(MidiOutEvent::Kind::NoteOff, 0, at + uint64_t(length)); // no room: its off now, timed
 }
 
@@ -2276,6 +2281,7 @@ void EngineHost::midi_program(unsigned t, uint64_t at, bool force, int pattern_i
 }
 
 void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
+    if (!midi_offs_held) return;
     for (auto& off : midi_offs)
         if (off.on && off.track == t % track_count && off.key == key) {
             emit(off_event(off, at));
@@ -2285,17 +2291,24 @@ void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
 
 bool EngineHost::midi_hold(unsigned t, int key, int64_t length, uint64_t at) {
     if (!out_wanted(t, key)) return true; // nothing went out to hold
+    if (!midi_offs_held) return false;
     for (auto& off : midi_offs)
         if (off.on && off.track == t % track_count && off.key == key) { off.at = at + uint64_t(std::max<int64_t>(length, 0)); return true; }
     return false;
 }
 
 void EngineHost::midi_offs_due(uint64_t until) {
-    for (auto& off : midi_offs)
+    if (!midi_offs_held) return;
+    bool held = false;
+    for (auto& off : midi_offs) {
         if (off.on && off.at < until) { emit(off_event(off, off.at)); off.on = false; }
+        held |= off.on;
+    }
+    midi_offs_held = held;
 }
 
 void EngineHost::midi_all_off(unsigned track, uint64_t at) {
+    if (!midi_offs_held) return;
     // When heard, even after a knob (a port or channel changed): Note Ons still waiting go out before their Offs.
     bool by = from_hand;
     from_hand = false;

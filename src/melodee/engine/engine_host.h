@@ -684,6 +684,9 @@ private:
         return e;
     }
     std::array<MidiOff, 128> midi_offs {};
+    // Some off may be on in midi_offs (only midi_note() puts one there). Without one nothing reads them: 3 kB each
+    // block and on every note let go, which a block on a cold cache waits for while Pad MIDI Out is off.
+    bool midi_offs_held = false;
     SyncOut sync;
     bool sync_started = false;                                                // the song's clocks are going (after any count-in)
     bool sync_clock = false, sync_mtc = false, sync_cv = false;
