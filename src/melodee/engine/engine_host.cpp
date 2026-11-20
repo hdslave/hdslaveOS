@@ -2825,6 +2825,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (auto& strip : loop_strips) solo |= strip.solo && loops.on();
     for (auto& slot : slots) {
         solo |= slot.solo;
+        // An empty track (no engine, no print sounding) is read by nothing this block (every reader asks for its
+        // engine first): its buffers are left as they are, and cleared again once it plays.
+        if (!slot.engine && !slot.print.sounding()) { slot.knob_pad_fed = false; slot.print_fed = false; continue; }
         std::fill(slot.buffer, slot.buffer + frames, 0.0f);
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
         slot.knob_pad_fed = false;
