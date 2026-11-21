@@ -7,7 +7,8 @@ full text is in `LICENSE`.
 
 ## Boot film
 
-melodee-hdslave's boot animation is its own film, the hdslave intro: its
+melodee-hdslave's boot animation is its own film, the hdslave intro and
+its blow-away into dust (recorded from the game that draws it): its
 frames (`src/melodee/ui/boot_film.cpp` and `boot_film_*.cpp`, written by
 `tools/boot_film.py`) are Copyright (C) 2026 hdslave, all rights reserved,
 and are not covered by the AGPL or licensed with this code. The code that
