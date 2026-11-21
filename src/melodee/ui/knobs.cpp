@@ -31,13 +31,31 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
         float x = zone::pad + n * (w + gap);
         using State = KnobCard::State;
         if (c.state == State::Idle) continue; // a pot with no job draws nothing: no empty box
-        if (c.state == State::Turning) {
-            p.fill(x, top, w, h, colour::bg, 3);
-            p.fill(x, top, w, h, c.track.withAlpha(0x38 / 255.0f), 3);
-            p.ring(x, top, w, h, c.shade, 3);
+        if (palette().contour_print) {
+            // A single soft reflection across the card, rasterised once at LCD size.
+            static const juce::Image violet = [] {
+                juce::Image face(juce::Image::RGB, int(w), int(h), false);
+                juce::Graphics g(face);
+                // The solid ink inside the selected Audio tile, held under the value.
+                const auto shadow = hex(0x1F0B38);
+                juce::ColourGradient wash(shadow, 4, h, hex(0x432054), w - 4, 0, false);
+                wash.addColour(0.26, shadow);
+                wash.addColour(0.62, hex(0x2A1040));
+                g.setGradientFill(wash);
+                g.fillRect(face.getBounds());
+                return face;
+            }();
+            p.g.setOpacity(1.0f);
+            p.g.drawImageAt(violet, int(x), int(top));
         } else {
-            p.fill(x, top, w, h, colour::surf, 3);
-            if (c.focus && c.state == State::Rest) p.ring(x + 0.5f, top + 0.5f, w - 1, h - 1, c.shade.withAlpha(0.6f), 3); // the wheel's card
+            p.fill(x, top, w, h, c.state == State::Turning ? colour::bg : colour::surf, 3);
+        }
+        if (c.state == State::Turning) {
+            const float tint = palette().contour_print ? 0.045f : 0x38 / 255.0f;
+            p.fill(x, top, w, h, c.track.withAlpha(tint), 3);
+            p.ring(x, top, w, h, c.shade, 3);
+        } else if (c.focus && c.state == State::Rest) {
+            p.ring(x + 0.5f, top + 0.5f, w - 1, h - 1, c.shade.withAlpha(0.6f), 3); // the wheel's card
         }
         float inner = x + 6, iw = w - 12;
         float lw = iw - (c.shift ? 9 : 0) - (c.knob_fx ? 12 : 0) - (c.fader ? 12 : 0);

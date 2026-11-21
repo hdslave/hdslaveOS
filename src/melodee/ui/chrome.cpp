@@ -42,7 +42,7 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
         float gw = glyph ? 10 + (tw > 0 ? 3 : 0) : 0;
         float w = gw + tw + 8;
         if (!measure_only) {
-            p.fill(x, top, w, item_h, it.kind == Kind::Pill ? colour::surf : it.colour, 3);
+            p.label_plate(x, top, w, item_h, it.kind == Kind::Pill ? colour::surf : it.colour);
             if (glyph && it.icon == Icon::DeepSnow && it.kind == Kind::Chip) deep_snow(p, x + 4, header_mid - 5, 10, colour::bg, it.colour, 1.5f); // on the chip's fill
             else if (glyph) icon(p, it.icon, x + 4, header_mid - 5, 10, style.colour, 1.5f);
             if (tw > 0) p.text(it.text, x + 4 + gw, top, tw + 1, item_h, style);
@@ -63,7 +63,7 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
         float box = std::max(item_h, p.width(number, digits) + 6);
         float w = box + (ew > 0 ? 4 + ew : 0) + (nw > 0 ? 4 + nw : 0);
         if (!measure_only) {
-            p.fill(x, top, box, item_h, it.colour, 3);
+            p.label_plate(x, top, box, item_h, it.colour);
             p.text(number, x, top, box, item_h, digits, juce::Justification::centred);
             float at = x + box + 4;
             if (ew > 0) { p.text(it.engine, at, top, ew + 1, item_h, engine); at += ew + 4; }
@@ -95,7 +95,7 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
         bool toggle = (keys.toggles >> n) & 1, lit = (keys.lit >> n) & 1;
         bool on = n == keys.active || lit;
         float x = n * column, cx = x + column / 2;
-        if (on && !toggle) p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
+        if (on && !toggle && !palette().contour_print) p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
         const auto& text = keys.labels[k];
         auto tint = keys.tints[k];
         auto style = caps_text(!tint.isTransparent() ? tint : on ? colour::text : colour::mid, type::soft);
@@ -106,6 +106,14 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
         bool has_after = keys.after[k] != Icon::None;
         float gw = has_glyph ? 10.5f + (tw > 0 ? 3.5f : 0) : 0, lw = toggle ? 4 + 6 : 0, aw = has_after ? 3.5f + 10.5f : 0;
         float left = cx - (gw + tw + lw + aw) / 2;
+        if (on && !toggle && palette().contour_print) {
+            // A reverse-ink tab. Leave the page dots and the transport strip clear.
+            const float width = std::clamp(gw + tw + aw + 16, 56.0f, column - 4);
+            auto ink = tint.isTransparent() ? keys.accent : tint;
+            p.label_plate(cx - width / 2 + 2, mid - 6, width, 14, colour::line);
+            p.label_plate(cx - width / 2, mid - 7, width, 14, ink.withAlpha(1.0f).interpolatedWith(colour::sec, 0.60f));
+            style.colour = colour::bg;
+        }
         if (has_glyph) icon(p, glyph, left, mid - 5.5f, 10.5f, style.colour, 1.5f);
         if (tw > 0) p.text(text, left + gw, label_y, tw + 1, zone::soft_h, style);
         if (has_after) icon(p, keys.after[k], left + gw + tw + 3.5f, mid - 5.5f, 10.5f, style.colour, 1.5f);

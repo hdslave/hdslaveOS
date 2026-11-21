@@ -4,7 +4,7 @@
 
 ![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
 
-> **melodee-hdslave** is a local fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds three settings (Refresh, Dim after, Pad brightness). The processor always runs at its full speed, and Melodee plays the same, to the bit. Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
+> **melodee-hdslave** is a local fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners. Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a
@@ -196,8 +196,8 @@ Melodee is made by Kerem Kiliç (Ellic Studio).
 
 Melodee is licensed under AGPL-3.0-only ([LICENSE](LICENSE)). It uses JUCE
 under the AGPLv3, and the Rubik typeface and the other screen fonts under the
-SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)). The boot animation's logo and backdrop
-are not covered by the AGPL.
+SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)). melodee-hdslave's boot film, the
+hdslave intro, is not covered by the AGPL (all rights reserved); it replaces Melodee's own boot art.
 
 Melodee is not affiliated with or endorsed by inMusic or Akai Professional.
 MPC and MPC Sample are trademarks of inMusic Brands.

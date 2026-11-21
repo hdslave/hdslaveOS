@@ -38,7 +38,7 @@ struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume,
-                         Refresh, DimAfter, PadLevel, Rows };
+                         CpuSpeed, Refresh, DimAfter, PadLevel, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -99,8 +99,14 @@ struct Settings {
     // USB volume: what a computer records over USB-C (channels 1 and 2) at full main volume, the knob left out
     // (Full), or as the jacks play it (Knob).
     bool usb_full = true;
-    // Power (melodee-hdslave; optimization.md). None of them changes what is heard, and none slows the CPUs: their
-    // speed is left at the kernel's, the fastest they go.
+    // Power (melodee-hdslave; optimization.md). None of them changes what is heard.
+    // CPU speed: the CPUs' top speed. Full (the default) leaves them at the kernel's, the fastest they go; only a
+    // lower one picked here slows them. Auto holds 1.4 GHz, the fastest at the lowest CPU voltage, and goes to full
+    // speed while a block takes a good share of its time (MelodeeApp::power_service()); Balanced (1.6 GHz) and Eco
+    // (1.4 GHz) hold one speed. The numbers are saved (cpu_speed=): keep their order.
+    enum : uint8_t { CpuAuto, CpuFull, CpuBalanced, CpuEco, CpuCount };
+    static constexpr uint32_t cpu_eco_khz = 1416000, cpu_balanced_khz = 1608000;
+    uint8_t cpu_speed = CpuFull;
     // Refresh: frames a second while the screen changes by itself (a play head, a meter). A control used is
     // answered at 60 whatever this says (App::frame_interval()).
     static constexpr std::array<uint8_t, 3> refresh_rates {{60, 30, 20}};
@@ -153,7 +159,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "Refresh", "Dim after", "Pad brightness"};
+                                    "CPU speed", "Refresh", "Dim after", "Pad brightness"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -197,6 +203,7 @@ struct Settings {
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
         case RecQuantize: return rec_quantize ? "On" : "Off";
         case UsbVolume: return usb_full ? "Full" : "Knob";
+        case CpuSpeed: { static const char* speeds[] {"Auto", "Full", "Balanced", "Eco"}; return speeds[cpu_speed % CpuCount]; }
         case Refresh: return std::to_string(refresh_fps()) + " fps";
         case DimAfter: return dim_ms() ? std::to_string(dim_minutes[dim_after % dim_minutes.size()]) + " min" : "Off";
         case PadLevel: return std::to_string(pad_percent()) + " %";
@@ -236,6 +243,7 @@ struct Settings {
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
         case RecQuantize: rec_quantize = !rec_quantize; break;
         case UsbVolume: usb_full = !usb_full; break;
+        case CpuSpeed: cpu_speed = uint8_t(step_in(cpu_speed % CpuCount, CpuCount, way)); break;
         case Refresh: refresh = uint8_t(step_in(refresh % refresh_rates.size(), unsigned(refresh_rates.size()), way)); break;
         case DimAfter: dim_after = uint8_t(step_in(dim_after % dim_minutes.size(), unsigned(dim_minutes.size()), way)); break;
         case PadLevel: pad_level = uint8_t(step_in(pad_level % pad_levels.size(), unsigned(pad_levels.size()), way)); break;
@@ -262,6 +270,7 @@ struct Settings {
         case SilenceBelow: return SamplingPrefs::silence_count;
         case MirrorSize: return ScreenMirror::size_count;
         case PadFade: return unsigned(fades.size());
+        case CpuSpeed: return CpuCount;
         case Refresh: return unsigned(refresh_rates.size());
         case DimAfter: return unsigned(dim_minutes.size());
         case PadLevel: return unsigned(pad_levels.size());
@@ -300,6 +309,7 @@ struct Settings {
         case SeqFollow: return seq_follow % 3u;
         case RecQuantize: return rec_quantize;
         case UsbVolume: return usb_full;
+        case CpuSpeed: return cpu_speed % CpuCount;
         case Refresh: return unsigned(refresh % refresh_rates.size());
         case DimAfter: return unsigned(dim_after % dim_minutes.size());
         case PadLevel: return unsigned(pad_level % pad_levels.size());
@@ -339,6 +349,7 @@ struct Settings {
         case SeqFollow: seq_follow = uint8_t(n); break;
         case RecQuantize: rec_quantize = n; break;
         case UsbVolume: usb_full = n; break;
+        case CpuSpeed: cpu_speed = uint8_t(n); break;
         case Refresh: refresh = uint8_t(n); break;
         case DimAfter: dim_after = uint8_t(n); break;
         case PadLevel: pad_level = uint8_t(n); break;
@@ -393,7 +404,7 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nrefresh=" << int(refresh_fps()) << "\ndim_after=" << int(dim_minutes[dim_after % dim_minutes.size()])
+            << "\ncpu_speed=" << int(cpu_speed) << "\nrefresh=" << int(refresh_fps()) << "\ndim_after=" << int(dim_minutes[dim_after % dim_minutes.size()])
             << "\npad_level=" << int(pad_percent()) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
@@ -471,6 +482,7 @@ struct Settings {
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
             else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
+            else if (key == "cpu_speed") cpu_speed = uint8_t(std::clamp(value, 0, int(CpuCount) - 1));
             // By their values, not their places in the lists: the nearest one this build has.
             else if (key == "refresh") refresh = value >= 45 ? 0 : value >= 25 ? 1 : 2;
             else if (key == "dim_after") { dim_after = 0; for (unsigned n = 0; n < dim_minutes.size(); ++n) if (value >= int(dim_minutes[n])) dim_after = uint8_t(n); }

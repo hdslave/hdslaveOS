@@ -229,7 +229,7 @@ juce::Path svg_path(const char* data) {
 
 void deep_snow(Paint& p, float x, float y, float size, juce::Colour tile, juce::Colour flake, float stroke) {
     p.g.setColour(tile);
-    p.g.fillRoundedRectangle(x, y, size, size, size * 0.22f);
+    p.g.fillRoundedRectangle(x, y, size, size, corner(size * 0.22f));
     float in = size * 0.14f;
     icon(p, Icon::Snow, x + in, y + in, size - 2 * in, flake, std::max(1.0f, stroke * 0.9f));
 }

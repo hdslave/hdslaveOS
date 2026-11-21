@@ -120,11 +120,12 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(note_name(key), 0, top + r * row_h - 2, gutter - 4, row_h + 3, plain(pitch == root ? c : colour::dim, type::small, Weight::SemiBold),
                juce::Justification::centredRight);
     }
+    const auto grid = sequence_grid();
     p.fill(gutter - 1, top, 1, height, colour::line);
     for (unsigned k = 1; k < columns; ++k) {
         uint32_t tick = (first + k) * q;
         bool on_bar = tick % bar == 0, on_beat = tick % beat == 0;
-        p.fill(gutter + k * column, top, on_beat ? 1 : 0.5f, height, on_bar ? colour::mid.withAlpha(0.45f) : on_beat ? colour::line : colour::bg);
+        p.fill(gutter + k * column, top, on_beat ? 1 : 0.5f, height, on_bar ? colour::mid.withAlpha(0.45f) : on_beat ? colour::line : grid.division);
     }
     // The cursor: its step's column and its pitch's row.
     if (cursor >= first && cursor < first + columns) p.fill(gutter + (cursor - first) * column, top, column, height, c.withAlpha(0.12f));
@@ -151,7 +152,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (muted) { // kept, not played: hollow
             p.ring(x, y, w, hgt, on ? colour::text : c.withAlpha(0.6f), 2.5f, 1.0f);
         } else if (hits == 1) {
-            p.fill(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
+            p.note_block(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
         } else { // a ratchet: its hits along the note, each as strong as it plays (the ramp)
             float each = float(e.length) / float(hits) / float(q) * column;
             for (unsigned k = 0; k < hits; ++k) {
@@ -159,7 +160,7 @@ void draw(Paint& p, const Snapshot& s) {
                 if (hxe <= gutter || hx >= right + 1) continue;
                 hx = std::max(hx, gutter + 1);
                 float v = e.hit_velocity(e.velocity, k) / 127.0f;
-                p.fill(hx, y, std::max(hxe - hx, 1.0f), hgt, on ? colour::text : c.withAlpha(0.4f + v * 0.6f), 1.5f);
+                p.note_block(hx, y, std::max(hxe - hx, 1.0f), hgt, on ? colour::text : c.withAlpha(0.4f + v * 0.6f), 1.5f);
             }
         }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);

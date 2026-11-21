@@ -5,22 +5,33 @@
 Melodee: Copyright (C) 2026 Kerem Kilic (Ellic Studio), AGPL-3.0-only. The
 full text is in `LICENSE`.
 
-## Boot art
+## Boot film
 
-The boot animation's two images are not covered by the AGPL, and neither
-is licensed with this code:
+melodee-hdslave's boot animation is its own film, cut from the hdslave
+intro and a shot rendered from the intro's own scene, graded purple,
+with a VHS glitch outro: its
+frames (`src/melodee/ui/boot_film.cpp` and `boot_film_*.cpp`, written by
+`tools/boot_film.py`) are Copyright (C) 2026 hdslave, all rights reserved,
+and are not covered by the AGPL or licensed with this code. The code that
+plays it (`src/melodee/ui/boot.cpp`, `boot.h`, `boot_film.h`) and the tool
+are AGPL-3.0-only like the rest.
 
-- The Melodee logo (`src/melodee/ui/boot_logo.cpp`): Copyright (C) 2026
-  Kerem Kilic (Ellic Studio), all rights reserved.
-- The night city backdrop (`src/melodee/ui/boot_backdrop.cpp`): Copyright
-  (C) Yasmine Elsen (https://www.smallcutekitty.net), all rights reserved.
-  Made for Kerem Kilic (Ellic Studio), the only one permitted to use it.
+The film replaces Melodee's own boot art, which this fork no longer
+contains: the Melodee logo (Copyright (C) 2026 Kerem Kilic (Ellic Studio),
+all rights reserved) and the night city backdrop (Copyright (C) Yasmine
+Elsen, https://www.smallcutekitty.net, all rights reserved, made for Kerem
+Kilic alone). Neither may be part of any public release of a fork.
 
-A fork may keep both files as they are. No public release of a fork, or of
-any other project built from this code (a binary, an SD card zip, an image
-or any other download), may contain either one: before releasing, replace
-both files with art of the fork's own (`tools/boot_art.py` writes them from
-any two 320 x 240 PNGs).
+A project built from this code may not ship the hdslave film either: before
+releasing, write a film of its own with `tools/boot_film.py VIDEO` (any
+video; its options set the cut, the speed and the framing).
+
+## HDSLAVE screen art
+
+The static purple flare in `src/melodee/ui/hdslave_flare.h` is original
+art generated for hdslave's Melodee fork. Copyright (C) 2026 hdslave.
+All rights reserved (LicenseRef-Hdslave-Flare). The fork may include the
+art in its source and builds. The code that displays it uses the project licence.
 
 ## sample-base
 

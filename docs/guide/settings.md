@@ -50,15 +50,16 @@ choices made outside Settings are kept there too:
 
 ## Power
 
-Three settings trade a little light or screen smoothness for battery life and processor time. None of them changes what you hear, and none slows the processor: it always runs at its full speed, as under the stock app. They are in this fork (melodee-hdslave) only.
+Four settings trade a little speed or light for battery life. None of them changes what you hear, and the processor stays at its full speed unless you pick a lower **CPU speed**. They are in this fork (melodee-hdslave) only.
 
 | Setting | Page | Values | What it does |
 | --- | --- | --- | --- |
-| **Refresh** | SCREEN | 60, 30, 20 fps | How often the screen is drawn while something on it moves by itself, such as the place bar or a meter. Every frame is a full redraw, so fewer frames leave more processor time for the sound while a project plays. A control you use is always answered at 60 fps. The default is 30. |
+| **CPU speed** | AUDIO | Auto, Full, Balanced, Eco | The processor's top speed. **Eco** holds 1.4 GHz, the fastest speed at the processor's lowest voltage, where the same work takes about a third less energy and a quarter more time. **Balanced** holds 1.6 GHz and **Full** (the default) 1.8 GHz, the MPC's own speed, as under the stock app. **Auto** holds 1.4 GHz and goes to 1.8 GHz while the project needs it: when a block of audio has taken half its time, after a dropout, and while loading, printing, exporting or separating stems. It goes back after eight calm seconds. |
+| **Refresh** | SCREEN | 60, 30, 20 fps | How often the screen is drawn while something on it moves by itself, such as the place bar or a meter. Every frame is a full redraw, so fewer frames save processor time while a project plays. A control you use is always answered at 60 fps. The default is 30. |
 | **Dim after** | SCREEN | Off, 1, 2, 5, 10 min | After this long with no control used, and nothing playing, recording or working, the screen goes to its lowest light and the pads and buttons go low. Any control brings them back and is acted on as usual. The default is 2 minutes. |
 | **Pad brightness** | PADS | 100, 75, 50, 25 % | The light of the pads and the fader. |
 
-The MPC gets its own backlight level back when you leave Melodee.
+If a heavy project crackles on **Auto** or **Eco**, set **CPU speed** to **Full**: AUDIO's DSP line shows the share of each block's time the project takes. The MPC gets its own speed and backlight back when you leave Melodee.
 
 ## Basic and Full
 
@@ -106,10 +107,20 @@ Press **Push** or **B3 KEEP** to keep it, or **B1 BACK** to go back to the
 one you had.
 
 Palettes: NIGHT (the default), DAY, CONTRAST, SUNSET, OCEAN, NEON, CANDY,
-LO-FI and LCD. LCD looks like an old sampler's backlit LCD: dark letters on a
-grey-green screen, no colour, always in the Melodee Pixel font. Each track keeps its colour family in every palette, so track 1 is
-always coral; on DAY and CANDY the colours are darker so they read on the
-light screen. The pads keep their own colours.
+LO-FI, LCD, MONO and HDSLAVE. LCD looks like an old sampler's backlit LCD: dark letters on a
+grey-green screen, no colour, always in the Melodee Pixel font. MONO is a
+black-and-white dark mode: white and grey on black, no colour, square corners
+and no shadows, in the font you chose. On LCD and MONO every track is drawn in
+the same ink, so a track shows by its number.
+
+HDSLAVE uses the font you chose, with square panels, lavender labels and a
+static deep-purple flare on black. Violet contour lines mark selected menu
+tiles and browser rows. The knob cards shade from the same deep purple to a softer violet.
+The active page tab uses reversed ink. Track 1 is orchid, track 2 is acid
+yellow and recording is red. Step Edit marks each group of four with a lavender edge
+and outlines the current step in amber. The other colour palettes keep track 1 coral. DAY and
+CANDY use darker track colours on their light screens. The pads keep their own
+colours in every palette.
 
 Fonts: Rubik (the default), Inter Tight, Atkinson, Space Grotesk, IBM Plex
 and Manrope, and two pixel fonts: Melodee Pixel and VT323. Melodee Pixel is

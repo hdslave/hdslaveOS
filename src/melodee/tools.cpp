@@ -2126,7 +2126,15 @@ const Preview previews[] {
      }},
     {"settingslcd", [](Shell&, Snapshot& s) { // LCD: no colour, Melodee Pixel
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
-         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palettes.size() - 1);
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("LCD"));
+     }},
+    {"settingsmono", [](Shell&, Snapshot& s) { // MONO: black and white, square corners
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("MONO"));
+     }},
+    {"settingshdslave", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("HDSLAVE"));
      }},
     {"settingsfont", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Font;
@@ -2724,7 +2732,7 @@ void draw(juce::Graphics& g, const Snapshot& s) {
     ui::use_palette(s.ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : s.ui.settings.font); // LCD sets its own
     ui::Paint p(g);
-    g.fillAll(ui::colour::bg);
+    p.background();
     page_spec(s.ui.page).draw(p, s);
     draw_overlays(p, s);
 }
@@ -2755,7 +2763,8 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         const Pattern before = snapshot->pattern;
         preview.set(shell, *snapshot);
         // MELODEE_PALETTE / MELODEE_FONT: every page in another of Settings' palettes or faces (by number).
-        if (auto* v = std::getenv("MELODEE_PALETTE"); v && !snapshot->ui.settings_look) snapshot->ui.settings.palette = uint8_t(std::atoi(v));
+        const bool palette_picker = snapshot->ui.settings_look && snapshot->ui.settings_cursor == Settings::Palette;
+        if (auto* v = std::getenv("MELODEE_PALETTE"); v && !palette_picker) snapshot->ui.settings.palette = uint8_t(std::atoi(v));
         if (auto* v = std::getenv("MELODEE_FONT"); v && !snapshot->ui.settings_look) snapshot->ui.settings.font = uint8_t(std::atoi(v));
         // The pattern in view follows the track the preview picked (unless it set one of its own).
         const auto& track = snapshot->project.tracks[snapshot->ui.track];
@@ -2938,7 +2947,8 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
 }
 
 // The boot animation at 30 frames a second, fading out over the starting
-// project's first page, as DIR/boot-NNN.png.
+// project's first page, as DIR/boot-NNN.png; with the time each of the boot's
+// draws took (a frame of the film decoded where one is due), slowest and mean.
 int boot_frames(const std::string& folder) {
     EngineHost host;
     Shell shell(host);
@@ -2951,19 +2961,25 @@ int boot_frames(const std::string& folder) {
     snapshot->pattern = shell.patterns().at[snapshot->ui.track][track.pattern];
     ui::BootAnimation boot;
     unsigned written = 0;
+    double slowest = 0, total = 0;
     for (uint32_t ms = 0;; ms += 1000 / 30) {
         juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
         {
             juce::Graphics g(image);
-            if (boot.covers(ms)) boot.draw(g, ms);
-            else { draw(g, *snapshot); boot.draw(g, ms); }
+            const bool covers = boot.covers(ms);
+            if (!covers) draw(g, *snapshot);
+            const auto began = std::chrono::steady_clock::now();
+            boot.draw(g, ms);
+            const double took = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+            slowest = std::max(slowest, took);
+            total += took;
         }
         char name[32];
         std::snprintf(name, sizeof name, "/boot-%03u.png", written++);
         save_png(image, folder + name);
         if (boot.finished(ms)) break;
     }
-    std::cout << "MELODEE_BOOT frames=" << written << '\n';
+    std::cout << "MELODEE_BOOT frames=" << written << " draw_ms_max=" << slowest << " draw_ms_mean=" << (written ? total / written : 0) << '\n';
     return written > 1 ? 0 : 1;
 }
 

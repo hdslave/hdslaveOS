@@ -47,6 +47,13 @@ public:
     // still does not fit is left for the audit to report when drawn.
     juce::StringArray wrap(const juce::String& value, Text& style, float w, int most) const;
 
+    // The fixed contour print on selected menu tiles and browser rows.
+    void contour_panel(int x, int y, int w, int h);
+    void label_plate(float x, float y, float w, float h, juce::Colour ink);
+    void note_block(float x, float y, float w, float h, juce::Colour ink, float radius);
+
+    // Restore the static backdrop (or the solid ground) across a band of the LCD.
+    void background(int y = 0, int height = zone::height);
     void fill(float x, float y, float w, float h, juce::Colour c, float radius = 0);
     void ring(float x, float y, float w, float h, juce::Colour c, float radius, float thickness = 1);
     void circle(float cx, float cy, float r, juce::Colour c);

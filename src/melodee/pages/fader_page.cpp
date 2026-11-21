@@ -105,7 +105,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (shown.waiting) {
             float hand = top + slot_h * (1 - std::clamp(shown.card.pot, 0.0f, 1.0f));
             p.g.setColour(colour::mid);
-            p.g.drawRoundedRectangle(sx + 0.5f, hand - 4, 23, 8, 2, 1.2f);
+            p.g.drawRoundedRectangle(sx + 0.5f, hand - 4, 23, 8, corner(2), 1.2f);
             float mid = (hand + at) / 2;
             icon(p, hand < at ? Icon::ArrowDown : Icon::ArrowUp, sx + 28, mid - 7, 14, colour::amber, 1.8f);
         }

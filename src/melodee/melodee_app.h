@@ -55,6 +55,13 @@ public:
 
 private:
     uint32_t now_ms() const;
+    // Service thread: the CPUs' speed limit as Settings' CPU speed has it (melodee-hdslave; optimization.md).
+    void power_service(Hardware& hardware);
+    long cpu_limit_wanted = -1;          // kHz last asked of the platform; -1: none yet, 0: no limit
+    bool cpu_boosted = true;             // Auto: at full speed (the start is)
+    uint32_t cpu_calm_since = 0;         // Auto: since when the load has been low enough for the low speed
+    unsigned cpu_xruns_seen = 0;
+    std::atomic<long> cpu_limit_now {-1}; // for `status`: kHz, 0 no limit, -1 not set (no cpufreq, or not yet)
     void card_access(Hardware& hardware); // service thread: SD card access (parity phase 10b)
     Clock::time_point started = Clock::now();
     melodee::EngineHost host;
@@ -89,7 +96,7 @@ private:
     std::atomic<unsigned> dropout_track {0}, dropout_load {0}; // tenths of a percent
     void note_dropout();     // service thread
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
-    melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
+    melodee::ui::BootAnimation boot;          // screen thread: the boot film, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
