@@ -57,7 +57,8 @@ Sus2, Sus4, Power, Dia 9), **K2** voicing (Close, Open, Drop 2, Spread),
 ![CHORD](../images/screens/stagechord.png)
 
 **FX**: the track's effect chain. The cards edit the selected slot. Push the
-encoder for the next slot. With no effects, push opens the effect picker.
+encoder for the next slot. After the last effect comes the **+**: push there
+to open the effect picker and add one at the end.
 
 ## Keygroup tracks
 

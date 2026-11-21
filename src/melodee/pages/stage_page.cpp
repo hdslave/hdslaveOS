@@ -12,7 +12,8 @@
 // B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
 // chord, B3 EDIT (the Edit page); an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESETS: walks the presets; EDIT: the rows; an empty track: walks its list), Push moves to the next card
-// (PRESETS: the whole list; FX: the next effect, or with none yet the effect picker; an empty track: makes it),
+// (PRESETS: the whole list; FX: the next effect, then the open slot, where Push opens the effect picker; an empty
+// track: makes it),
 // Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
@@ -427,12 +428,14 @@ void chord_picture(Paint& p, const Snapshot& s) {
 }
 
 // FX: the track's whole chain as a strip of six slots, then the one in hand: its name, family, and what it does
-// drawn (pages/fx_drawing.cpp, as FX Select draws it). An empty chain: Push and a plus.
+// drawn (pages/fx_drawing.cpp, as FX Select draws it). The open slot after the last (an empty chain's first): Push and
+// a plus.
 void fx_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
-    unsigned slot = s.ui.fx_cursor[UiState::cursor_of(s.ui.track)];
-    fx_strip(p, t.fx, std::min<unsigned>(slot, t.fx.count()), colour_of(s), top + 6);
-    fx_in_hand(p, s, t.fx, t.fx.count() ? std::min<unsigned>(slot, t.fx.count() - 1) : 0, colour_of(s), top + 54, bottom - 4);
+    const unsigned count = t.fx.count(), last = count < t.fx.size ? count : count - 1;
+    const unsigned slot = std::min<unsigned>(s.ui.fx_cursor[UiState::cursor_of(s.ui.track)], last);
+    fx_strip(p, t.fx, slot, colour_of(s), top + 6);
+    fx_in_hand(p, s, t.fx, slot, colour_of(s), top + 54, bottom - 4);
 }
 
 juce::String seconds(uint32_t frames) {
@@ -1278,16 +1281,17 @@ void push(Context& c) {
     const auto& page = stage_page_now(c.ui, t, stage_skip(c.project, c.ui, t));
     if (!t.used()) { new_track_push(c); return; } // the card in the middle: a type's sources, or the track made
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
-    if (page.kind == StageKind::Fx && !t.fx.count()) { // nothing yet: the picker on the track's chain, to add the first
-        c.ui.fx_loop = -1;
-        c.open(PageId::Rack);
-        c.ui.fx_cursor[UiState::cursor_of(c.ui.track)] = 0;
-        c.ui.picker_open = true; c.ui.picker_items = false; c.ui.picker_replaces = false;
-        return;
-    }
-    if (page.kind == StageKind::Fx && t.fx.count()) { // the next effect of the chain
+    if (page.kind == StageKind::Fx) { // the chain's effects, then its open slot (the plus), where Push adds one
         auto& slot = c.ui.fx_cursor[UiState::cursor_of(c.ui.track)];
-        slot = uint8_t((slot + 1) % t.fx.count());
+        const unsigned count = t.fx.count(), open = count < t.fx.size ? 1u : 0u;
+        if (open && slot >= count) { // the plus, or an empty chain: the picker on the track's chain, to add after the last
+            c.ui.fx_loop = -1;
+            c.open(PageId::Rack);
+            c.ui.fx_cursor[UiState::cursor_of(c.ui.track)] = uint8_t(count);
+            c.ui.picker_open = true; c.ui.picker_items = false; c.ui.picker_replaces = false;
+            return;
+        }
+        slot = uint8_t((slot + 1) % (count + open));
         return;
     }
     if (page.kind == StageKind::PluginSound) { // the whole list (PRESETS; B1 there comes back)
