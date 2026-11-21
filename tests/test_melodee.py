@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Melodee's model, engine host, sequencer and mixer, built for the host."""
+"""Melodee's tests that need its shell (the core's own are core/tests), built for the host."""
 import os
 from pathlib import Path
 import subprocess
