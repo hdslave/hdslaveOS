@@ -103,6 +103,7 @@ def collect(binary, version, commit, stems=ROOT / "build/stems"):
     licenses = f"{PACKAGE}/licenses"
     files[f"{licenses}/LICENSE-AGPL-3.0.txt"] = (ROOT / "LICENSE").read_bytes()
     files[f"{licenses}/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
+    files[f"{licenses}/ellic-core-LICENSE.txt"] = (ROOT / "core/LICENSE").read_bytes() # the core/ submodule, MIT
     files[f"{licenses}/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()
     for face in sorted((ROOT / "build/deps/fonts").glob("*/OFL.txt")): # Settings > SCREEN > Font (src/melodee/dependencies.py FACES)
         files[f"{licenses}/fonts/{face.parent.name}-OFL.txt"] = face.read_bytes()

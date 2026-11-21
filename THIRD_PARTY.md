@@ -28,6 +28,14 @@ The runtime, drivers, build and install scripts come from sample-base
 (https://github.com/keremimo/sample-base), the `base/` submodule, under
 AGPL-3.0-only. Its own `THIRD_PARTY.md` lists its sources.
 
+## ellic-core
+
+Melodee's engine, model and shared files come from ellic-core
+(https://github.com/keremimo/ellic-core), the `core/` submodule: Copyright
+(c) 2026 Kerem Kilic (Ellic Studio), MIT. Its licence is in release zips as
+`licenses/ellic-core-LICENSE.txt`; its own `THIRD_PARTY.md` lists its
+sources.
+
 ## JUCE
 
 JUCE 9.0.5, Raw Material Software Limited, pinned commit
