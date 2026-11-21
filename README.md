@@ -4,7 +4,7 @@
 
 ![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
 
-> **hdslaveOS** (first called melodee-hdslave) is hdslave's fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners, and a new card starts in HDSLAVE. A CLAP plug-in can draw its own page on the screen (the `com.hdslave.melodee.screen/1` extension, [docs/MELODEE.md](docs/MELODEE.md)), and a sleeping CLAP plug-in wakes when one of its knobs is turned. Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
+> **hdslaveOS** (first called melodee-hdslave) is hdslave's fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners, and a new card starts in HDSLAVE. A CLAP plug-in can draw its own page on the screen (the `com.hdslave.melodee.screen/1` extension, [docs/MELODEE.md](docs/MELODEE.md)), and a sleeping CLAP plug-in wakes when one of its knobs is turned. The master compressor's Sidechain can be keyed by a CLAP plug-in's second output (Foundry's SC Key: its kick alone). Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a
@@ -93,14 +93,21 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Install
 
-1. Download the latest `Melodee-MPC-Sample-<version>.zip` from
-   [Releases](https://github.com/keremimo/melodee-sample/releases).
-2. Back up the card. If the card already has an `autorun` folder at its top
+hdslaveOS has no signed releases (Melodee's updater takes only its author's),
+so it is installed by hand from an unsigned package
+(`hdslaveOS-MPC-Sample-<version>-unsigned.zip`, see
+[Build from source](#build-from-source)). Melodee's own
+[Releases](https://github.com/keremimo/melodee-sample/releases) install
+stock Melodee, not this fork.
+
+1. Back up the card. If the card already has an `autorun` folder at its top
    level, move it somewhere safe.
-3. Unzip it. The zip holds one folder, `autorun`. Copy that folder to the
-   top level of the card. Do not edit or rename anything inside it.
-4. Put the card in the MPC and switch it on. The stock app starts first.
-   A few seconds later Melodee starts.
+2. Unzip the package. It holds one folder, `autorun`. Copy that folder to the
+   top level of the card (or, under a boot menu such as SampleBoot, its
+   contents into that menu's folder for it). Do not edit or rename anything
+   inside it.
+3. Put the card in the MPC and switch it on. The stock app starts first.
+   A few seconds later hdslaveOS starts.
 
 The [quickstart](docs/QUICKSTART.md) has the full steps, with screenshots.
 
@@ -140,14 +147,27 @@ built. They are for developers; the user guide covers both.
 
 ## Build from source
 
-Melodee is built for linux/arm64 in a Docker image. You need Docker and
+hdslaveOS is built for linux/arm64 in a Docker image. You need Docker and
 Python 3.
 
 ```sh
-git clone --recurse-submodules https://github.com/keremimo/melodee-sample.git
-cd melodee-sample
+git clone --recurse-submodules -b hdslave https://github.com/hdslave/hdslaveOS.git
+cd hdslaveOS
 ./build.sh
 ```
+
+To make an unsigned package from a committed tree, build with the version,
+strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
+signed releases and needs its author's key):
+
+```sh
+MELODEE_VERSION=v0.5.1-hdslave.16 ./build.sh
+docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
+    sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
+python3 tools/package_unsigned.py v0.5.1-hdslave.16
+```
+
+This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.
 
 `./build.sh` builds `build/melodee`, then runs the tests, a sound
 self-test, a monkey test and the page previews (`build/melodee-preview/`).
@@ -170,18 +190,16 @@ python3 device.py start
 `screenshot` talk to the running app. `install-sd` starts it from the card at
 every boot.
 
-To make a release zip from a committed tree:
+Melodee's signed release zip (`./release.sh VERSION`,
+`dist/Melodee-MPC-Sample-<version>.zip`) needs its author's key; this fork
+makes the unsigned package above instead.
+
+To move the base to its latest commit (this fork's base is the `hdslave`
+branch of [hdslave/sample-base](https://github.com/hdslave/sample-base); its
+`main` lacks the fork's CPU-speed commits):
 
 ```sh
-./release.sh v0.3.0
-```
-
-This writes `dist/Melodee-MPC-Sample-<version>.zip`.
-
-To move the base to its latest commit:
-
-```sh
-git -C base pull origin main
+git -C base pull origin hdslave
 git add base
 ```
 

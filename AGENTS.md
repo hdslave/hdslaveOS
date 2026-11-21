@@ -11,7 +11,7 @@ here too.
   runtime. Melodee includes the base layers `surface/`, `dsp/`, `drivers/`,
   `runtime/` and itself, nothing else (`tests/test_layout.py`).
 - Change the base in sample-base itself, then move the submodule
-  (`git -C base pull origin main && git add base`). Never edit files under
+  (`git -C base pull origin hdslave && git add base`: this fork's base is sample-base's `hdslave` branch, whose CPU-speed commits `main` lacks). Never edit files under
   `base/` from this repository.
 - The DSP engines are written from scratch for this app; never compile or
   emulate the FM-1 firmware or its DSP sources.

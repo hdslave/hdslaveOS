@@ -247,7 +247,7 @@ Press **SHIFT** + **Pad 5** for the master compressor.
   drum machine's **SC Key**: its kick alone), triggers the compressor from
   that output instead of the whole track. The header shows **SC** beside the
   track number, for example **6 SC Foundry**. The plug-in track itself is
-  not ducked, as with any trigger track. This fork (melodee-hdslave) only;
+  not ducked, as with any trigger track. This fork (hdslaveOS) only;
   CLAP plug-ins only.
 
 The picture shows one bar: the gain reduction across it and the trigger

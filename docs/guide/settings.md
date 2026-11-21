@@ -50,7 +50,7 @@ choices made outside Settings are kept there too:
 
 ## Power
 
-Four settings trade a little speed or light for battery life. None of them changes what you hear, and the processor stays at its full speed unless you pick a lower **CPU speed**. They are in this fork (melodee-hdslave) only.
+Four settings trade a little speed or light for battery life. None of them changes what you hear, and the processor stays at its full speed unless you pick a lower **CPU speed**. They are in this fork (hdslaveOS) only.
 
 | Setting | Page | Values | What it does |
 | --- | --- | --- | --- |

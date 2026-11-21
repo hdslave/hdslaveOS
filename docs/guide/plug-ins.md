@@ -116,6 +116,12 @@ on Stage (**EDIT**) to see the same parameters there.
   light is on by default. Turn it off for a plug-in with its own sequencer
   or arpeggiator, so that only the track's notes play it. It still follows
   the tempo.
+- In hdslaveOS a CLAP plug-in made for it (the hdslave synths, drum
+  machines and Cortex Filter) can draw its own page here and on Stage's
+  **EDIT** in place of the list. **K1**–**K3** then turn the controls the
+  page names, and the encoder, **Push** and **−** / **+** work as the page
+  says. A plug-in that went to sleep on silence wakes when one of its pots
+  turns, so its page follows the pot at once.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **K1**–**K3** still set
