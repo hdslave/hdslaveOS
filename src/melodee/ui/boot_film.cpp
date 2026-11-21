@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-hdslave-Boot-Film
 // Copyright (C) 2026 hdslave. All rights reserved.
 // The boot film is not covered by the AGPL; see THIRD_PARTY.md, Boot film.
-// hdslave_boot_shot.mkv 0-1 s at 1.25x, hdslave_intro.ogv 4-5.25 s at 1.25x, hdslave_intro.ogv 5.25-7 s at 1.5x, hdslave_intro.ogv 7-7.74 s at 0.6x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
+// hdslave_boot_slide.mkv 0-2.25 s at 1.5x, hdslave_intro.ogv 5.25-7 s at 1.5x, hdslave_intro.ogv 7-7.74 s at 0.6x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
 // Written by tools/boot_film.py; run it again rather than editing this file.
 #include "melodee/ui/boot_film.h"
 
@@ -124,15 +124,6 @@ extern const char boot_film_113[];
 extern const char boot_film_114[];
 extern const char boot_film_115[];
 extern const char boot_film_116[];
-extern const char boot_film_117[];
-extern const char boot_film_118[];
-extern const char boot_film_119[];
-extern const char boot_film_120[];
-extern const char boot_film_121[];
-extern const char boot_film_122[];
-extern const char boot_film_123[];
-extern const char boot_film_124[];
-extern const char boot_film_125[];
 
 const char* const frames[count] = {
     boot_film_000,
@@ -252,15 +243,6 @@ const char* const frames[count] = {
     boot_film_114,
     boot_film_115,
     boot_film_116,
-    boot_film_117,
-    boot_film_118,
-    boot_film_119,
-    boot_film_120,
-    boot_film_121,
-    boot_film_122,
-    boot_film_123,
-    boot_film_124,
-    boot_film_125,
 };
 
 } // namespace melodee::ui::boot_film
