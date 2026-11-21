@@ -1255,6 +1255,13 @@ void EngineHost::render_engine(unsigned t, Slot& slot, unsigned at, unsigned fra
     if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + at, slot.right + at, frames);
     else slot.engine->render(slot.buffer + at, frames);
     if (slot.engine == &slot.sampler) { slot.knob_pad_fed |= slot.sampler.knob_fed(); slot.send_pad_fed |= slot.sampler.sends_fed(); }
+    if (keyed_plugin == int(t)) plugin_key(slot, at, frames);
+}
+
+// The Sidechain's key track's plug-in key port, for the frames it just played (melodee-hdslave).
+void EngineHost::plugin_key(Slot& slot, unsigned at, unsigned frames) {
+    PluginRunner* runner = slot.engine == &slot.plugin ? slot.plugin.attached() : nullptr;
+    if (runner && runner->has_key()) runner->key(key_pad_l + at, key_pad_r + at, frames);
 }
 
 // A track's engine over the whole block (its job): in runs from one kept call to the next, each call made on its frame.
@@ -1572,12 +1579,13 @@ void EngineHost::keep_keys(unsigned frames) {
 // allocates: the lines were made at start and only change where they read.
 void EngineHost::plan_compensation() {
     Compensation plan;
-    std::array<unsigned, track_count> own {};
+    std::array<unsigned, track_count> own {}, engine_own_of {};
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& slot = slots[t];
         if (!slot.engine) continue;
         unsigned engine_own = slot.engine == &slot.plugin && slot.plugin.attached() ? slot.plugin.attached()->latency() : 0;
         pdc_engines[t].store(engine_own, std::memory_order_relaxed);
+        engine_own_of[t] = engine_own;
         own[t] = chain_latency(t) + engine_own;
         // Freeze plan F2b: a print starts on its pattern's first tick, its track's latency taken out; at Pre FX the
         // chain after it is still late by its own.
@@ -1600,7 +1608,12 @@ void EngineHost::plan_compensation() {
     for (unsigned b = 0; b < bus_count; ++b) plan.delay[CompensationLines::bus0 + b] = plan.returns - std::min(bus_own[b], plan.returns);
     plan.delay[CompensationLines::knob] = plan.returns - knob_own;
     plan.delay[CompensationLines::direct] = plan.delay[CompensationLines::aside] = plan.delay[CompensationLines::key] = plan.returns;
-    plan.delay[CompensationLines::knob_pads] = plan.delay[CompensationLines::key_pad] = plan.tracks;
+    plan.delay[CompensationLines::knob_pads] = plan.tracks;
+    // The key pad, or a plug-in's key port (melodee-hdslave), left its track before the chain but after its engine: as
+    // late as the latest track, less the key track's engine's own latency (a kit's engine has none, so a pad waits
+    // for the latest track whole, as before; a plug-in's port is already as late as its main output).
+    unsigned key_engine = comp.keyed() ? engine_own_of[comp.key() % track_count] : 0;
+    plan.delay[CompensationLines::key_pad] = plan.tracks - std::min(key_engine, plan.tracks);
     for (unsigned b = 0; b < bus_count; ++b) plan.delay[CompensationLines::pad_sends0 + b] = plan.tracks; // they leave before the chain
     // On while anything is late, and for one block after it all came back to none (the lines ease back).
     bool late = plan.tracks || plan.returns;
@@ -2784,13 +2797,24 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         }
     }
 
-    // Sidechain on one kit pad: the sampler plays that pad apart, into key_pad_l / key_pad_r.
-    int pad_keyed = -1; // the key track, when its key is one of its pads
-    if (comp.keyed() && comp.key_pad() < sampler_pads) {
-        auto& ks = slots[comp.key() % track_count];
-        if (ks.engine == &ks.sampler) pad_keyed = int(comp.key() % track_count);
+    // Sidechain on one kit pad: the sampler plays that pad apart, into key_pad_l / key_pad_r. On a PLUGIN track whose
+    // plug-in has a key port (a drum machine's kick alone; melodee-hdslave), that port, into the same buffers: the
+    // detector hears it, the track stays aside whole. Not while the track sleeps frozen: its print keys, as before.
+    int pad_keyed = -1;  // the key track, when its key is one of its pads
+    int plug_keyed = -1; // the key track, when its key is its plug-in's key port
+    uint16_t plug_keys = 0;
+    for (unsigned t = 0; t < track_count; ++t) {
+        auto& s = slots[t];
+        if (s.engine == &s.plugin && s.plugin.attached() && s.plugin.attached()->has_key()) plug_keys |= uint16_t(1u << t);
     }
-    if (pad_keyed >= 0) { std::fill(key_pad_l, key_pad_l + frames, 0.0f); std::fill(key_pad_r, key_pad_r + frames, 0.0f); }
+    plugin_key_tracks.store(plug_keys, std::memory_order_relaxed);
+    if (comp.keyed()) {
+        unsigned k = comp.key() % track_count;
+        auto& ks = slots[k];
+        if (comp.key_pad() < sampler_pads && ks.engine == &ks.sampler) pad_keyed = int(k);
+        else if (((plug_keys >> k) & 1) && !(ks.freeze && !ks.awake)) plug_keyed = int(k);
+    }
+    if (pad_keyed >= 0 || plug_keyed >= 0) { std::fill(key_pad_l, key_pad_l + frames, 0.0f); std::fill(key_pad_r, key_pad_r + frames, 0.0f); }
 
     // The Looper's time is the sequencer's at the block's first frame (run_loops() comes after the block is played).
     loop_running = running; loop_counting = count_left > 0;
@@ -2800,6 +2824,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // kept for its job below; the old way renders every track up to each step here.
     deferring = whole;
     keyed_pad = pad_keyed;
+    keyed_plugin = plug_keyed;
     cut_count = 0;
     unsigned done = 0;
     while (done < frames) {
@@ -2849,6 +2874,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
             if (slot.engine == &slot.sampler) { slot.knob_pad_fed |= slot.sampler.knob_fed(); slot.send_pad_fed |= slot.sampler.sends_fed(); }
+            if (plug_keyed == int(t)) plugin_key(slot, done, n);
             track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         };
         if (parallel) workers.run(active, engine_job, true); // the old way keeps the workers awake between its runs
@@ -2975,9 +3001,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         run_live(uint8_t(t), slot.left, slot.right, frames);
         if (pdc.on) compensate(CompensationLines::track0 + t, slot.left, slot.right, frames); // meets the latest track (roadmap P4)
         if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
-        bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
-        if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
-        if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
+        bool keying = keyed && t == key && pad_keyed < 0; // the whole track stays aside (and keys, but for a plug-in's key port)
+        if (keying && plug_keyed != int(t)) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
+        // One kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks. Or its plug-in's key
+        // port keys (melodee-hdslave): at the track's level and pan too, heard by the detector alone.
+        if (pad_keyed == int(t) || plug_keyed == int(t)) {
             for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * slot.mix_l.at(f); key_r[f] = key_pad_r[f] * slot.mix_r.at(f); }
             if (pdc.on) compensate(CompensationLines::key_pad, key_l, key_r, frames); // it left before the chain (roadmap P4)
         }

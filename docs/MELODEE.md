@@ -1957,8 +1957,15 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   picked, the same pad again keys the whole kit, the wheel or −/+ walk the
   banks. A key pad leaves the kit after its own chain (skipping the kit
   filter and the track's chain, as Knob FX's pads do) and the rest of the
-  kit ducks with everything else. The key's sound after its chain, muted
-  or not, drives the detector,
+  kit ducks with everything else. On a PLUGIN track whose CLAP plug-in has
+  a second audio output (the first after its main one: a drum machine's
+  "SC Key", its kick alone; melodee-hdslave) that output keys instead: the
+  detector hears it at the track's level and pan, as late as the plug-in's
+  main output (delay compensation as for a key pad, less the plug-in's own
+  latency), never heard itself, while the track stays aside whole, as a key
+  track does; the header's tag reads "6 SC Foundry". Not through a rate
+  converter, nor while the track sleeps frozen (its print keys). The key's
+  sound after its chain, muted or not, drives the detector,
   and the rest of the mix (other tracks, the Looper, the bus returns, Knob
   FX) ducks under it before the master chain, with no makeup; the key
   passes untouched, In Boost drives the detector alone, and Color stays on

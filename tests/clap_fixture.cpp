@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Two small CLAP plug-ins in one library, for tests/clap_host.cpp: Test Sine
 // (an instrument: a sine per note, Level and Wave parameters, CC 1 sets Level
-// and says so as an output event) and Test Gain (an effect). Each counts the
+// and says so as an output event; a second output, "SC Key", pulses for 16
+// frames from each note-on, as a drum machine's side-chain key would) and Test
+// Gain (an effect). Each counts the
 // calls it got on the wrong thread, by the host's thread-check, and
 // fixture_counts() reports them.
 //
@@ -50,6 +52,7 @@ struct Plugin {
     double rate = 44100, level = 0.5, wave = 0, gain = 1;
     std::map<int, double> phases; // key: phase of its sine
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
+    int pulse = 0;                // Sine's SC Key: frames of its pulse still to play
     const clap_host_melodee_screen* screen = nullptr; // Melodee's, where it is the host
     const clap_host_params* hostParams = nullptr;
     int cursor = 0, inputs = 0;   // the screen's: the row under the cursor, the inputs taken
@@ -115,8 +118,17 @@ bool load(const clap_plugin* p, const clap_istream* in) {
 }
 const clap_plugin_state state {save, load};
 
-uint32_t audioCount(const clap_plugin* p, bool input) { return input && of(p).instrument ? 0 : 1; }
+uint32_t audioCount(const clap_plugin* p, bool input) { return input ? (of(p).instrument ? 0 : 1) : (of(p).instrument ? 2 : 1); }
 bool audioInfo(const clap_plugin* p, uint32_t i, bool input, clap_audio_port_info* info) {
+    if (i == 1 && !input && of(p).instrument) { // the side-chain key: not main, stereo
+        *info = {};
+        info->id = 3;
+        std::strcpy(info->name, "SC Key");
+        info->channel_count = 2;
+        info->port_type = CLAP_PORT_STEREO;
+        info->in_place_pair = CLAP_INVALID_ID;
+        return true;
+    }
     if (i != 0 || (input && of(p).instrument)) return false;
     *info = {};
     info->id = input ? 1 : 2;
@@ -238,6 +250,7 @@ void event(Plugin& s, const clap_event_header* e) {
         }
     } else if (e->type == CLAP_EVENT_NOTE_ON) {
         s.phases[reinterpret_cast<const clap_event_note*>(e)->key] = 0;
+        s.pulse = 16;
     } else if (e->type == CLAP_EVENT_NOTE_OFF) {
         s.phases.erase(reinterpret_cast<const clap_event_note*>(e)->key);
     } else if (e->type == CLAP_EVENT_NOTE_CHOKE) {
@@ -273,6 +286,11 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
                 phase += 2 * M_PI * 440.0 * std::pow(2.0, (key - 69) / 12.0) / s.rate;
             }
             out[0][f] = out[1][f] = x;
+            if (proc->audio_outputs_count > 1) {
+                float** key = proc->audio_outputs[1].data32;
+                key[0][f] = key[1][f] = s.pulse > 0 ? 1.0f : 0.0f;
+                if (s.pulse > 0) --s.pulse;
+            }
         } else {
             float** in = proc->audio_inputs[0].data32;
             out[0][f] = float(in[0][f] * s.gain);

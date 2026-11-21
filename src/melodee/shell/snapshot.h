@@ -131,6 +131,7 @@ struct Snapshot {
         float plugins_load = 0;              // their share of the audio time
         std::array<float, track_count> track_load {}; // each track's share of a block (roadmap P2), as render_load
         unsigned pdc_frames = 0;             // roadmap P4: what plug-in delay compensation holds everything back by
+        uint16_t plugin_keys = 0;            // PLUGIN tracks whose plug-in has a side-chain key port, a bit each (melodee-hdslave)
     } machine;
     std::array<float, modulator_count> mod_values {}; // roadmap P4: each modulator's value now (EngineHost::modulator_value)
     // Freeze plan F2c: each track's freeze (FRZN) and prints kept (PRNT records), the print engine's job as far as it

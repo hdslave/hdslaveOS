@@ -79,8 +79,19 @@ int main(int argc, char** argv) {
 
         CHECK(peak(run(*sine)) == 0.0f);
         CHECK(!sine->wantsProcess()); // nothing waits for it: the rack may let it sleep (plugin/idle_gate.h)
-        run(*sine, {juce::MidiMessage::noteOn(1, 69, 1.0f)});
+        // Its second output, the side-chain key (melodee-hdslave): apart from the main output, a 16-frame pulse from
+        // the note's first frame; the main output starts its sine at 0 there.
+        CHECK(sine->hasKeyOutput() && sine->keyFrames() == block && sine->keyChannel(0) && sine->keyChannel(1));
+        auto noted = run(*sine, {juce::MidiMessage::noteOn(1, 69, 1.0f)});
+        CHECK(sine->keyFrames() == block && noted.getSample(0, 0) == 0.0f);
+        bool pulse = true;
+        for (int f = 0; f < block; ++f)
+            for (int c = 0; c < 2; ++c) pulse = pulse && sine->keyChannel(c)[f] == (f < 16 ? 1.0f : 0.0f);
+        CHECK(pulse);
         CHECK(std::abs(peak(run(*sine)) - 0.5f) < 0.01f); // A at Level 0.5
+        bool after = true;
+        for (int f = 0; f < block; ++f) after = after && sine->keyChannel(0)[f] == 0.0f;
+        CHECK(after && sine->keyFrames() == block);
 
         level->setValue(1.0f); // the next block hears it
         CHECK(level->getValue() == 1.0f && sine->wantsProcess()); // and is run for it, asleep or not
@@ -168,6 +179,7 @@ int main(int argc, char** argv) {
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1
+        CHECK(!gain->hasKeyOutput() && gain->keyFrames() == 0 && !gain->keyChannel(0)); // one output: no key
         CHECK(!gain->wantsProcess());
         param(*gain, "Gain")->setValue(0.25f);                          // 0.5 of 0..2
         CHECK(gain->wantsProcess());                                    // an effect too: run for a value set

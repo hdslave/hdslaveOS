@@ -2099,6 +2099,16 @@ const Preview previews[] {
          kick_trail(s);
          kick_bar(s, 0.85f, 11.0f);
      }},
+    {"compressorsckey", [](Shell&, Snapshot& s) { // Sidechain on a drum plug-in's key port (its kick alone): "6 SC Foundry"
+         s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
+         load_sound(s.project.tracks[5], EngineKind::Plugin, 0);
+         s.project.tracks[5].set_name("FOUNDRY");
+         s.machine.plugin_keys = uint16_t(1u << 5);
+         auto& c = s.project.compressor;
+         c.on = true; c.sidechain = true; c.key = 5; c.amount = 60; c.attack = 5; c.release = 70;
+         kick_trail(s);
+         kick_bar(s, 0.85f, 11.0f);
+     }},
     {"pickerdirt", [](Shell&, Snapshot& s) { // the picker on Dirt: Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape emulator
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 2; s.playing = true;
          s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = uint8_t(Family::Dirt); s.ui.picker_item = 8;

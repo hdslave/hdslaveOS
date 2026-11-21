@@ -544,6 +544,7 @@ bool ClapInstance::pushOut (const clap_output_events* list, const clap_event_hea
 void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
     const int frames = std::min (buffer.getNumSamples(), block);
+    keyWritten = 0;
     // This block answers a request to be run: one made from now on wants the next (even one that does not run).
     host->process.store (false, std::memory_order_release);
     if (! active || frames <= 0) { buffer.clear(); return; }
@@ -691,7 +692,16 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         if (c < mainOut && status != CLAP_PROCESS_ERROR) buffer.copyFrom (c, 0, outputPointers[(size_t) c], frames);
         else buffer.clear (c, 0, frames);
     }
+    // The key port stays in its own buffers, where keyChannel() reads it (melodee-hdslave).
+    keyWritten = status != CLAP_PROCESS_ERROR && outCount > 1 && hasKeyOutput() ? frames : 0;
     steadyTime += frames;
+}
+
+const float* ClapInstance::keyChannel (int channel) const
+{
+    if (! hasKeyOutput()) return nullptr;
+    const size_t at = outputPorts[0].channels + (size_t) std::clamp<int> (channel, 0, (int) outputPorts[1].channels - 1);
+    return at < outputPointers.size() ? outputPointers[at] : nullptr;
 }
 
 double ClapInstance::getTailLengthSeconds() const
