@@ -2868,6 +2868,52 @@ int bench(unsigned rounds, const std::vector<std::string>& names) {
     return 0;
 }
 
+// --melodee-frames COUNT [PAGE [TRACK [PLAY [PARTS [LIGHT]]]]]: the screen thread's frame COUNT times, as the app runs it
+// with no control used in between: the MIDI thread's tick (Shell::lights()), then the snapshot of the shell and the
+// page drawn from it. Prints the mean time of each half and one number for all that was drawn. PLAY 1: the sequencer
+// runs, a block rendered a frame. PARTS, for counting each half's cost under a profiler by leaving the other out:
+// 1 the snapshot only, 2 the drawing only (from the first frame's snapshot), 3 both (the default). LIGHT 0: every
+// snapshot taken whole, as before the light ones (optimization.md MODEL-1); `seen` must be the same either way.
+[[gnu::noinline]] void frames_snapshot(Shell& shell, Snapshot& frame, uint32_t now) { shell.snapshot(frame, now); }
+[[gnu::noinline]] void frames_draw(juce::Image& image, const Snapshot& frame) { juce::Graphics g(image); draw(g, frame); }
+int frames(unsigned count, unsigned page, unsigned track, bool play, unsigned parts, bool light) {
+    Shell::snapshot_light = light;
+    auto host = std::make_unique<EngineHost>();
+    Shell shell(*host);
+    board_project(shell);
+    host->load(shell.project(), shell.patterns());
+    shell.ui().track = uint8_t(track % track_count);
+    shell.ui().page = PageId(page % unsigned(PageId::Count));
+    SurfaceLights lights;
+    auto frame = std::make_unique<Snapshot>();
+    juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
+    std::vector<int32_t> out(EngineHost::block * 2);
+    if (play) host->send({Command::Type::Play});
+    double snapshot_us = 0, draw_us = 0;
+    unsigned whole = 0; // snapshots taken whole
+    uint64_t seen = 1469598103934665603ull; // what was drawn, as one number: the same frames give the same
+    for (unsigned n = 0; n < count; ++n) {
+        const uint32_t now = 100000 + n * 33;
+        if (play) host->render(out.data(), EngineHost::block, 0.7f);
+        shell.lights(lights, now);
+        auto t0 = std::chrono::steady_clock::now();
+        if ((parts & 1) || n == 0) { frames_snapshot(shell, *frame, now); whole += frame->whole; }
+        auto t1 = std::chrono::steady_clock::now();
+        if (parts & 2) frames_draw(image, *frame);
+        auto t2 = std::chrono::steady_clock::now();
+        snapshot_us += std::chrono::duration<double, std::micro>(t1 - t0).count();
+        draw_us += std::chrono::duration<double, std::micro>(t2 - t1).count();
+        juce::Image::BitmapData pixels(image, juce::Image::BitmapData::readOnly);
+        for (int y = 0; y < pixels.height; ++y) {
+            const uint8_t* line = pixels.getLinePointer(y);
+            for (int x = 0; x < pixels.width * pixels.pixelStride; ++x) { seen ^= line[x]; seen *= 1099511628211ull; }
+        }
+    }
+    std::printf("MELODEE_FRAMES page=%u track=%u play=%d frames=%u whole=%u snapshot_us=%.0f draw_us=%.0f seen=%016llx\n", page, track, int(play), count,
+                whole, snapshot_us / std::max(count, 1u), draw_us / std::max(count, 1u), (unsigned long long)seen);
+    return 0;
+}
+
 void little(std::ofstream& file, uint32_t value, unsigned bytes) {
     for (unsigned n = 0; n < bytes; ++n) file.put(char((value >> (n * 8)) & 255));
 }
@@ -3229,6 +3275,9 @@ std::optional<int> run_tool(int argc, char** argv) {
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-print-spike")) return print_spike(argc, argv);
+    if (argc >= 3 && !std::strcmp(argv[1], "--melodee-frames"))
+        return frames(unsigned(std::max(1, std::atoi(argv[2]))), argc > 3 ? unsigned(std::atoi(argv[3])) : 0, argc > 4 ? unsigned(std::atoi(argv[4])) : 0,
+                      argc > 5 && std::atoi(argv[5]) != 0, argc > 6 ? unsigned(std::atoi(argv[6])) : 3u, argc <= 7 || std::atoi(argv[7]) != 0);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);

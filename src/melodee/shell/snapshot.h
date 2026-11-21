@@ -32,6 +32,12 @@ struct PatternSketch {
 };
 
 struct Snapshot {
+    // Shell::snapshot()'s own, kept from frame to frame (melodee-hdslave; optimization.md MODEL-1): what the kits and
+    // the sketches below were last copied at, so that a frame in which neither can have changed leaves them as they
+    // are. A new Snapshot is always filled whole. `whole`: this frame was.
+    uint64_t heavy_serial = 0;
+    uint32_t sent_seen = 0, whole_at = 0;
+    bool whole = true;
     std::shared_ptr<const TakePeaks> audio_peaks; // freeze plan F3: the takes' overviews (Context::audio_peaks)
     UiState ui;
     Project project;

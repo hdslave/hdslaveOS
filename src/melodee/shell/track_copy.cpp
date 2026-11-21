@@ -12,6 +12,7 @@ namespace melodee {
 namespace {
 // Track t as it is now, whole, to the audio thread (its patterns' motion in them).
 void send_track(Context& c, unsigned t) {
+    ++c.heavy_serial; // the track's kit and patterns, whole
     auto* pack = new TrackPack(t, c.project.tracks[t], c.patterns.at[t]);
     Command load {Command::Type::TrackLoad, uint8_t(t)};
     load.track_pack = pack;

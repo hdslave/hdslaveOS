@@ -475,6 +475,13 @@ public:
     bool project_list_opened = false; // the list has been opened since start
     bool dirty = false;               // changed since it was saved or loaded
     uint32_t sent = 0;                // commands sent to the audio thread so far (the usage log: did a press do anything)
+    // Moves whenever a kit (a track's pads, their chains, its zone trims) or a pattern may have changed: with every
+    // control and MIDI message that reaches the shell (Shell::surface() and its like), and where a change is told to
+    // the audio thread (send()'s edits, sync_pattern(), sync_motion(), a track sent whole, a project switched to),
+    // which is how the changes that come by themselves arrive: a sample landed, an arp's notes recorded. The screen
+    // copies the kits and draws the patterns' sketches again only when it has moved (Shell::snapshot();
+    // melodee-hdslave, optimization.md MODEL-1). MIDI thread, under the shell's lock.
+    uint64_t heavy_serial = 1;
     bool import_unsaved = false;      // an MPC project just opened, with no file of its own: saved by hand (SAVE AS), never in the background
     void save_project_to(const std::string& path);
     bool autosave(); // background save (shell/autosave.h): false with no card

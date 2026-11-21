@@ -168,10 +168,21 @@ private:
             if (on && !held[size_t(b)]) fail(std::string(surface_buttons[size_t(b)].name) + " still held after it was let go");
     }
 
+    // One snapshot kept from draw to draw, as the app's is. Three frames each time: the first after the moves, taken
+    // whole, then two with no control used, light ones (melodee-hdslave; optimization.md MODEL-1). Shell::snapshot()
+    // checks each light one against a whole one (snapshot_verify) and counts those that differ: a kit or a pattern
+    // changed with no word of it. The last, a light one, is the one drawn.
+    std::unique_ptr<Snapshot> snap = std::make_unique<Snapshot>();
+    unsigned stale_seen = 0;
     void draw() {
-        shell->lights(lights, now);
-        auto snap = std::make_unique<Snapshot>();
-        shell->snapshot(*snap, now);
+        for (unsigned frame = 0; frame < 3; ++frame) {
+            shell->lights(lights, now);
+            shell->snapshot(*snap, now);
+        }
+        if (unsigned stale = shell->snapshot_stale(); stale != stale_seen) {
+            stale_seen = stale;
+            fail("a light snapshot differed from a whole one: a kit or a pattern changed that the screen was not told of");
+        }
         juce::Image image(juce::Image::ARGB, 320, 240, true);
         juce::Graphics g(image);
         ui::Paint p(g);
@@ -183,6 +194,7 @@ private:
 } // namespace
 
 int monkey(unsigned first, unsigned seeds, unsigned steps) {
+    Shell::snapshot_verify = true;
     unsigned failed = 0;
     for (unsigned s = first; s < first + seeds; ++s) {
         auto m = std::make_unique<Monkey>(s); // large: off the stack
