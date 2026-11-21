@@ -21,11 +21,12 @@
 namespace melodee {
 
 void Context::ask_new_project() {
-    ask(*this, UiState::Ask::NewProject, !dirty ? 0 : project_path.empty() ? 2 : 1);
+    // Autosave Off (issue 18): a project with a file is not saved first either, its changes are left behind (3)
+    ask(*this, UiState::Ask::NewProject, !dirty ? 0 : project_path.empty() ? 2 : ui.settings.autosave ? 1 : 3);
 }
 
 void Context::start_new_project(bool kit) {
-    if (dirty && !project_path.empty()) save_project();
+    if (dirty && !project_path.empty() && ui.settings.autosave) save_project(); // Autosave Off: left as it was saved
     // KIT: the MPC's factory kit on track 1 (shell/lesson.h), onto an empty kit while it loads. Not there (another
     // firmware): no tracks, as NEW.
     const bool factory = kit && store && std::filesystem::exists(factory_kit_path);

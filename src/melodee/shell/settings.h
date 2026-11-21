@@ -37,7 +37,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -78,6 +78,9 @@ struct Settings {
     uint8_t pad_fade = 1;
     uint32_t fade_ms() const { return fades[pad_fade % fades.size()]; }
     bool tap_light = true;    // Tap Tempo flashes on the beat while playing
+    // Background save (shell/autosave.h, issue 18): On, the project saves itself a moment after the controls rest; Off,
+    // only SAVE writes it, and what was not saved can be put back with REVERT or left behind (New, Load, Exit).
+    bool autosave = true;
     // Step Edit and Roll while the pattern plays (shell/step_edit.cpp seq_follow): 0 Off, they stay where they are;
     // 1 Page, the caret goes to the same step of the bar that plays when a new bar starts; 2 Step, the caret on the
     // step that plays.
@@ -143,7 +146,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level"};
+                                    "USB-C in", "Direct level", "Autosave"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -183,6 +186,7 @@ struct Settings {
         case MirrorRate: return std::to_string(mirror_mode().fps) + " fps";
         case PadFade: return std::to_string(fade_ms()) + " ms";
         case TapLight: return tap_light ? "On" : "Off";
+        case Autosave: return autosave ? "On" : "Off";
         case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
         case RecQuantize: return rec_quantize ? "On" : "Off";
@@ -221,6 +225,7 @@ struct Settings {
         case MirrorRate: mirror_fps = way < 0 ? 30 : 60; break;
         case PadFade: pad_fade = uint8_t(step_in(pad_fade % fades.size(), unsigned(fades.size()), way)); break;
         case TapLight: tap_light = !tap_light; break;
+        case Autosave: autosave = !autosave; break;
         case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
         case RecQuantize: rec_quantize = !rec_quantize; break;
@@ -282,6 +287,7 @@ struct Settings {
         case MirrorRate: return mirror_fps == 60;
         case PadFade: return pad_fade % fades.size();
         case TapLight: return tap_light;
+        case Autosave: return autosave;
         case RepeatVelocity: return repeat_pressure;
         case SeqFollow: return seq_follow % 3u;
         case RecQuantize: return rec_quantize;
@@ -320,6 +326,7 @@ struct Settings {
         case MirrorRate: mirror_fps = n ? 60 : 30; break;
         case PadFade: pad_fade = uint8_t(n); break;
         case TapLight: tap_light = n; break;
+        case Autosave: autosave = n; break;
         case RepeatVelocity: repeat_pressure = n; break;
         case SeqFollow: seq_follow = uint8_t(n); break;
         case RecQuantize: rec_quantize = n; break;
@@ -362,7 +369,7 @@ struct Settings {
     std::string text() const {
         std::ostringstream out;
         // pickup= stays for the builds before parity phase 8, which know only that.
-        out << "features=" << int(full_features) << "\nlessons=" << int(lessons_done) << "\nusage_log=" << int(usage_log) << "\npad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light)
+        out << "features=" << int(full_features) << "\nlessons=" << int(lessons_done) << "\nusage_log=" << int(usage_log) << "\npad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light) << "\nautosave=" << int(autosave)
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
@@ -407,6 +414,7 @@ struct Settings {
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
             else if (key == "pad_fade") pad_fade = uint8_t(std::clamp(value, 0, int(fades.size()) - 1));
             else if (key == "tap_light") tap_light = value != 0;
+            else if (key == "autosave") autosave = value != 0;
             else if (key == "pickup") pickup = value != 0;
             else if (key == "knob_takeover") knob_takeover = takeover(value);
             else if (key == "knob_fx_takeover") knob_fx_takeover = takeover(value);

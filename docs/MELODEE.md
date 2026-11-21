@@ -2097,6 +2097,15 @@ while following.
   Open at start, Delete (asks again); on another Load and **Load kit (no
   patterns)** (its first kit onto the selected track, one undo) first.
   Settings and About are Shift + Pad 8's.
+  **Autosave Off** (Settings > SEQ, issue 18; `Settings::autosave`, On by
+  default, `autosave=` in the settings file): no background save. B1 reads
+  **SAVE** (to the project's file; SAVE AS while it has none, SAVE AS NEW on
+  its sheet); the open project's sheet gains **REVERT** (TO SAVED, second
+  card) while it has a file and changes: pressed twice, the file is opened
+  again. NEW asks with "Its changes are lost" and saves nothing; LOAD of
+  another project says CHANGES LOST and asks once more; Exit's POWER OFF
+  and MPC APP leave without saving (DISCARDS under them). An update's
+  install still saves first.
 - **Loading**: a project loaded, imported or new (and a change of sample
   rate) fades the sound out over 10 ms and parks the audio thread, silent,
   while the MIDI thread builds the whole project, so however many effects
@@ -2219,7 +2228,8 @@ while following.
   keeps.
 - **Exit** (Power, short): a tile under each key. B3 MPC APP saves the
   project first, then returns to the stock app; B2 POWER OFF saves it, then
-  turns the MPC off; the header says UNSAVED while there are changes and
+  turns the MPC off (with Autosave Off neither saves: DISCARDS under
+  them while there are changes); the header says UNSAVED while there are changes and
   SAVED once they are kept (or NO CARD); B1 stays
   (and calls off a save still on its way). At the next start Melodee opens
   the project set to open at start, or else the one last opened or saved.

@@ -437,10 +437,11 @@ void Shell::press(Button b, bool pressed) {
             off_after_save = ui.exit_off = b == Button::TopMiddle;
             context_.send({Command::Type::Stop});
             context_.send({Command::Type::AllNotesOff, 255});
-            // The project goes to the card first (a new file if it has none); then away.
+            // The project goes to the card first (a new file if it has none); then away. Autosave Off (issue 18):
+            // never saved here, it stays as it was last saved.
             ProjectStore::View v;
             if (store_) store_->view(v);
-            if (!v.root.empty()) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
+            if (!v.root.empty() && ui.settings.autosave) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
             else if (off_after_save) { ui.exit_saved = true; off_saved_at = context_.now; } // nothing to save: the second, then off
             else leave.store(true);
         }

@@ -109,6 +109,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         juce::String name = s.project.name[0] ? juce::String::fromUTF8(s.project.name) : juce::String("This project");
         if (s.ui.ask_target == 1) sheet.lines = {name + " is saved first.", ""};
         else if (s.ui.ask_target == 2) sheet.lines = {"This project was never saved.", "Its changes are lost."};
+        else if (s.ui.ask_target == 3) sheet.lines = {name + " stays as last saved.", "Its changes are lost."}; // Autosave Off
         else sheet.lines = {name + " has nothing unsaved.", ""};
         verb = "NEW"; verb_glyph = Icon::Check;
         middle = "KIT"; // B3: no tracks, the track types on track 1; B2: the MPC's factory kit on track 1

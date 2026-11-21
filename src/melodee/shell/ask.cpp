@@ -142,7 +142,7 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::Rechop)
         return std::to_string(ui.ask_target) + (ui.ask_target == 1 ? " slice hit changes" : " slice hits change") + " sound. Undo brings them back.";
     if (ui.ask == UiState::Ask::NewProject)
-        return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 ? "Unsaved changes are lost." : "The open project closes.";
+        return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 || ui.ask_target == 3 ? "Unsaved changes are lost." : "The open project closes.";
     return {};
 }
 

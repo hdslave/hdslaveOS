@@ -68,6 +68,7 @@ void Shell::autosave_tick(uint32_t now) {
     if (ui.held_pads || ui.shift || ui.seq_held || ui.pad_bank || ui.sample_held || ui.erase || tap.down) last_input_ = now;
     const auto& host = context_.host;
     AutosaveFacts f;
+    f.enabled = ui.settings.autosave;
     f.dirty = context_.dirty;
     f.playing = host.playing() || host.song_playing() || host.looper().recording() || host.looper().armed();
     f.recording = ui.recording || ui.rec_armed || host.recorder().state() != TakeRecorder::State::Idle

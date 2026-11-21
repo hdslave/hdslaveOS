@@ -2908,6 +2908,21 @@ void button_remap() {
         CHECK(!autosave_due(f)); // no card a moment ago: not again yet
         f.last_try = f.now - autosave_retry_ms;
         CHECK(autosave_due(f));
+        f.enabled = false; CHECK(!autosave_due(f)); // Settings > SEQ > Autosave Off (issue 18): only SAVE writes it
+    }
+    // Issue 18: the Autosave row, On unless the file says Off; Reset Factory Settings turns it back On.
+    {
+        Settings fresh;
+        CHECK(fresh.autosave && fresh.value_text(Settings::Autosave) == "On" && std::string(Settings::row_name(Settings::Autosave)) == "Autosave");
+        Settings off = fresh;
+        off.step(Settings::Autosave, 1);
+        CHECK(!off.autosave && off.value_text(Settings::Autosave) == "Off" && off.choice(Settings::Autosave) == 0);
+        Settings back; back.read(off.text());
+        CHECK(!back.autosave);
+        Settings old; old.read("tap_light=0\n"); // a file from before the row: On
+        CHECK(old.autosave);
+        off.reset_factory();
+        CHECK(off.autosave);
     }
     // Tap Tempo held (shell/tap_hold.h): a turn of the encoder shows the Tempo page until it is let go; held alone,
     // the page opens to stay; held on the page, it closes.

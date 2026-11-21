@@ -2011,8 +2011,27 @@ const Preview previews[] {
      }},
     {"filesheetscroll", [](Shell&, Snapshot& s) { // turned to the last card: the rows scrolled, DELETE asking again
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
-         s.ui.sheet_row = 7; s.ui.delete_armed = true;
+         s.ui.sheet_row = 8; s.ui.delete_armed = true; // REVERT on the sheet too: the preview's project has changes
          preview_projects(s);
+     }},
+    // Issue 18: Settings > SEQ > Autosave Off. B1 SAVE to the project's file; its sheet's REVERT asking again;
+    // another project's LOAD saying the changes are lost; Exit leaving them behind.
+    {"projectsave", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false;
+         preview_projects(s);
+     }},
+    {"filesheetrevert", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false; s.ui.project_list = true; s.ui.project_cursor = 3;
+         s.ui.sheet_open = true; s.ui.sheet_row = 1; s.ui.delete_armed = true;
+         preview_projects(s);
+     }},
+    {"loadlost", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false; s.ui.project_list = true; s.ui.project_cursor = 4; s.ui.sheet_open = true;
+         preview_projects(s);
+     }},
+    {"exitunsaved", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Stage; s.ui.exit_open = true; s.ui.exit_pick = 1; s.ui.settings.autosave = false; s.dirty = true;
+         s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp";
      }},
     // Parity phase 10: another project's sheet with Load kit, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
