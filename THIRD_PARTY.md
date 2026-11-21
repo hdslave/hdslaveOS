@@ -26,6 +26,13 @@ A project built from this code may not ship the hdslave film either: before
 releasing, write a film of its own with `tools/boot_film.py VIDEO` (any
 video; its options set the cut, the speed and the framing).
 
+## HDSLAVE screen art
+
+The static purple flare in `src/melodee/ui/hdslave_flare.h` is original
+art generated for hdslave's Melodee fork. Copyright (C) 2026 hdslave.
+All rights reserved (LicenseRef-Hdslave-Flare). The fork may include the
+art in its source and builds. The code that displays it uses the project licence.
+
 ## sample-base
 
 The runtime, drivers, build and install scripts come from sample-base

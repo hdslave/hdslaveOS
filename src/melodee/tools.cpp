@@ -2129,6 +2129,10 @@ const Preview previews[] {
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
          s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("MONO"));
      }},
+    {"settingshdslave", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("HDSLAVE"));
+     }},
     {"settingsfont", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Font;
          s.ui.settings_look = true; s.ui.settings.font = 6;
@@ -2725,7 +2729,7 @@ void draw(juce::Graphics& g, const Snapshot& s) {
     ui::use_palette(s.ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : s.ui.settings.font); // LCD sets its own
     ui::Paint p(g);
-    g.fillAll(ui::colour::bg);
+    p.background();
     page_spec(s.ui.page).draw(p, s);
     draw_overlays(p, s);
 }
@@ -2756,7 +2760,8 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         const Pattern before = snapshot->pattern;
         preview.set(shell, *snapshot);
         // MELODEE_PALETTE / MELODEE_FONT: every page in another of Settings' palettes or faces (by number).
-        if (auto* v = std::getenv("MELODEE_PALETTE"); v && !snapshot->ui.settings_look) snapshot->ui.settings.palette = uint8_t(std::atoi(v));
+        const bool palette_picker = snapshot->ui.settings_look && snapshot->ui.settings_cursor == Settings::Palette;
+        if (auto* v = std::getenv("MELODEE_PALETTE"); v && !palette_picker) snapshot->ui.settings.palette = uint8_t(std::atoi(v));
         if (auto* v = std::getenv("MELODEE_FONT"); v && !snapshot->ui.settings_look) snapshot->ui.settings.font = uint8_t(std::atoi(v));
         // The pattern in view follows the track the preview picked (unless it set one of its own).
         const auto& track = snapshot->project.tracks[snapshot->ui.track];

@@ -2375,10 +2375,18 @@ void settings() {
         for (const auto& row : p.tracks) for (uint32_t v : row) all = all && grey(v);
         for (const auto& row : p.loops) for (uint32_t v : row) all = all && grey(v);
         CHECK(all && p.bg == 0x000000 && p.mono && p.square && !p.light && p.face == -1);
-        // Only LCD and MONO have no colour, only MONO is square; the others keep what they had.
+        // LCD and MONO are monochrome. MONO and HDSLAVE use square corners.
         unsigned mono = 0, square = 0;
         for (const auto& q : ui::palettes) { mono += q.mono; square += q.square; }
-        CHECK(mono == 2 && square == 1 && ui::palettes[ui::palette_named("LCD")].mono && ui::palette_named("NONE") == 0);
+        CHECK(mono == 2 && square == 2 && ui::palettes[ui::palette_named("LCD")].mono && ui::palette_named("NONE") == 0);
+    }
+    {
+        const auto n = ui::palette_named("HDSLAVE");
+        CHECK(n == 10 && n == ui::palette_named("MONO") + 1 && n + 1 == ui::palettes.size());
+        const auto& p = ui::palettes[n];
+        CHECK(std::string_view(p.name) == "HDSLAVE" && !p.light && !p.mono && p.square && p.face == -1);
+        CHECK(p.backdrop == ui::Backdrop::HdslaveFlare && p.accented_grid && p.contour_print);
+        for (unsigned i = 0; i < n; ++i) CHECK(ui::palettes[i].backdrop == ui::Backdrop::None && !ui::palettes[i].contour_print);
     }
     { Settings odd; odd.read("palette=99\nfont=99\n"); CHECK(odd.palette + 1u == ui::palettes.size() && odd.font + 1u == ui::face_choices); }
     // Double Seq: Copy notes (the MPC's) or Empty, kept in the text.

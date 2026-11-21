@@ -20,7 +20,10 @@ float page_dots(Paint& p, float x, float cy, int count, int at, juce::Colour c, 
 
 void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
     if (row.current) {
-        p.fill(x, y, w, list_row_h, colour::raised, 4);
+        if (palette().contour_print)
+            p.contour_panel(juce::roundToInt(x), juce::roundToInt(y), juce::roundToInt(w), int(list_row_h));
+        else
+            p.fill(x, y, w, list_row_h, colour::raised, 4);
         if (row.played >= 0) { // inside the row's rounded fill: the part heard, then its head
             float to = w * std::clamp(row.played, 0.0f, 1.0f);
             p.g.saveState();
@@ -127,7 +130,7 @@ void wide_sheet(Paint& p, const MenuSheet& m, const juce::String& chip_text, juc
     p.ring(x, y, w, h, colour::line, 6);
     auto chip = caps_text(colour::bg);
     float cw = p.width(chip_text, chip) + 10;
-    p.fill(x + 10, y + 8, cw, 15, chip_colour, 3);
+    p.label_plate(x + 10, y + 8, cw, 15, chip_colour);
     p.text(chip_text, x + 10, y + 8, cw, 15, chip, juce::Justification::centred);
     auto title = plain(colour::text, type::body, Weight::SemiBold), detail = caps_text(m.detail_colour);
     float tx = x + 10 + cw + 6, dw = m.detail.isEmpty() ? 0 : p.width(m.detail, detail);
@@ -229,12 +232,12 @@ void carousel(Paint& p, const std::vector<CarouselCard>& cards, float position, 
 
 void card_sheet(Paint& p, const CardSheet& m) {
     // The page behind goes: the header becomes the sheet's, the picture and knob zones its cards.
-    p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg);
+    p.background(zone::header_y, zone::height - zone::header_y);
     float x = zone::pad, mid_y = zone::header_y + zone::header_h / 2.0f;
     if (m.chip.isNotEmpty()) {
         auto chip = caps_text(colour::bg);
         float cw = p.width(m.chip, chip) + 10;
-        p.fill(x, mid_y - 7.5f, cw, 15, m.chip_colour, 3);
+        p.label_plate(x, mid_y - 7.5f, cw, 15, m.chip_colour);
         p.text(m.chip, x, mid_y - 7.5f, cw, 15, chip, juce::Justification::centred);
         x += cw + 6;
     }
@@ -253,7 +256,10 @@ void card_sheet(Paint& p, const CardSheet& m) {
             const auto& it = m.items[n];
             bool lit = n == m.current;
             float cx = zone::pad + c * (card_w + gap), cy = top_y + r * (card_h + gap);
-            p.fill(cx, cy, card_w, card_h, lit ? colour::raised : colour::panel, 6);
+            if (lit && palette().contour_print)
+                p.contour_panel(int(cx), int(cy), int(card_w), int(card_h));
+            else
+                p.fill(cx, cy, card_w, card_h, lit ? colour::raised : colour::panel, 6);
             if (lit) p.ring(cx, cy, card_w, card_h, it.danger ? colour::rec : m.accent, 6, 1.2f);
             auto ink = it.off ? colour::dim : it.danger ? colour::rec : lit ? colour::text : colour::mid;
             icon(p, it.icon, cx + 10, cy + card_h / 2 - 10, 20, ink, 1.4f);

@@ -461,7 +461,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
     ui::use_palette(frame->ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : frame->ui.settings.font); // LCD sets its own
     ui::Paint p(g);
-    g.fillAll(ui::colour::bg);
+    p.background();
     page_spec(frame->ui.page).draw(p, *frame);
     draw_overlays(p, *frame);
     boot.draw(g, now); // its fade out, over the app; nothing once it has ended
