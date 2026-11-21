@@ -15776,6 +15776,64 @@ void keyed_dynamics_p4() {
     level(0, 1);
 }
 
+// melodee-hdslave (optimization.md HOST-1): a chain that hears nothing and holds nothing rests, and what comes out of
+// the engine is the same to the last bit as when every chain is run in every block. Every kind of effect in turn, a
+// kind a chain on sixteen kits and four buses: a second of sound, a silence long enough for chains to rest, then
+// the sound that wakes them.
+void chains_rest() {
+    std::vector<EffectKind> kinds;
+    for (unsigned k = 1; k < unsigned(EffectKind::Count); ++k)
+        if (EffectKind(k) != EffectKind::Plugin && effect_info(EffectKind(k)).built) kinds.push_back(EffectKind(k));
+    const auto tone = tone_sample();
+    const unsigned chains = track_count + bus_count;
+    unsigned rested_most = 0;
+    for (size_t first = 0; first < kinds.size(); first += chains) {
+        auto slot_of = [&](size_t n) {
+            const auto kind = kinds[(first + n) % kinds.size()];
+            std::array<int16_t, 6> values {};
+            for (unsigned q = 0; q < 6; ++q) values[q] = int16_t(effect_info(kind).params[q].label ? effect_info(kind).params[q].initial : 0);
+            return EffectSlot {uint8_t(kind), false, values};
+        };
+        auto play = [&](bool rests, unsigned& rested) {
+            EngineHost::chain_rests = rests;
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            for (unsigned t = 0; t < track_count; ++t) {
+                tone_kit(*project, t);
+                project->tracks[t].fx.slots[0] = slot_of(t);
+                project->tracks[t].mix.sends[t % bus_count] = 40;
+                put(bank->at[t][0], t % 4, uint8_t(sampler_first_note + t % 4), 100);
+            }
+            for (unsigned b = 0; b < bus_count; ++b) project->buses[b].fx.slots[0] = slot_of(track_count + b);
+            project->tempo = 1200;
+            EngineHost host;
+            host.load(*project, *bank);
+            CHECK(host.offer_sample(0, &tone));
+            host.send({Command::Type::Play});
+            std::vector<int32_t> heard, out(256);
+            const unsigned second = 44100 / 128;
+            for (unsigned n = 0; n < 15 * second; ++n) {
+                if (n == second * 3 / 2) host.send({Command::Type::Stop});
+                if (n == 13 * second) { rested = host.chains_resting(); host.send({Command::Type::Play}); }
+                host.render(out.data(), 128, 1);
+                heard.insert(heard.end(), out.begin(), out.end());
+            }
+            EngineHost::chain_rests = true;
+            return heard;
+        };
+        unsigned rested = 0, never = 0;
+        const auto resting = play(true, rested);
+        const auto running = play(false, never);
+        rested_most = std::max(rested_most, rested);
+        size_t differ = 0;
+        float loudest = 0;
+        for (size_t n = 0; n < std::min(resting.size(), running.size()); ++n) { differ += resting[n] != running[n]; loudest = std::max(loudest, std::fabs(resting[n] / 2147483648.0f)); }
+        if (differ) std::fprintf(stderr, "chains_rest: from kind %u, %zu samples differ\n", unsigned(kinds[first]), differ);
+        CHECK(resting.size() == running.size() && differ == 0 && loudest > 0.01f && never == 0);
+    }
+    CHECK(rested_most >= 8); // with a kind a chain, most chains of a group come to rest in the silence
+}
+
 // Roadmap P4: SYNC on the delays. An echo at a note value of the song's clock, following it when the tempo changes.
 void delay_sync_p4() {
     CHECK(delay_sync_param(EffectKind::Echo) == 4 && delay_sync_param(EffectKind::DiffDelay) == 5 && delay_sync_param(EffectKind::Reverb) < 0);
@@ -18544,6 +18602,7 @@ int main() {
     delay_pool_clears();
     mix_motion_p4();
     delay_sync_p4();
+    chains_rest();
     keyed_dynamics_p4();
     delay_compensation_p4();
     chop_kept();

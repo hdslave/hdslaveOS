@@ -24,6 +24,7 @@
 #include "melodee/model/project.h"
 #include "surface/midi.h"
 #include <array>
+#include <string>
 #include <atomic>
 #include <bitset>
 #include <cstdint>
@@ -184,6 +185,18 @@ public:
     // Tests: every block counted as taking `share` of its time (below 0: as measured).
     void set_guard_test_share(float share) { guard_test.store(share, std::memory_order_relaxed); }
     uint64_t render_parallel_blocks() const { return parallel_blocks.load(std::memory_order_relaxed); }
+    // Chains at rest in the last block (resting chains, below). chain_rests off: every chain is run every block, as
+    // before; for the tests and the bench, which compare the two.
+    unsigned chains_resting() const { return chains_resting_now.load(std::memory_order_relaxed); }
+    // The render thread's (the bench, the tests): each chain that holds an effect: 'z' at rest; else what kept it up in
+    // its last block: 'i' sound coming in, 'o' sound going out, 's' an effect's state still moving, 'p' a plug-in or a
+    // keyed effect, 'q' quiet, counting towards its rest.
+    std::string chains_map() const {
+        std::string map;
+        for (unsigned c = 0; c < chain_count; ++c) if (fx[c][0].kind() != EffectKind::None) map += chain_rest[c].asleep ? 'z' : chain_rest[c].why;
+        return map;
+    }
+    static inline bool chain_rests = true;
     // The Looper (docs/LOOPER.md): its loops play into the tracks L1-L4, after the sixteen.
     Looper& looper() { return loops; }
     const Looper& looper() const { return loops; }
@@ -825,6 +838,18 @@ private:
     bool plugin_on_two_buses() const;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
+    // Resting chains (melodee-hdslave; optimization.md HOST-1). A chain that has heard silence and given silence for
+    // rest_after frames, every effect in it left by each of those blocks as Effect::rest() leaves it, is no longer
+    // run: its effects only rest(). Silence is anything under Effect::rest_floor (-571 dB). It is run again from the first block that brings it sound, or in which
+    // one of its effects, the tempo or the rate has changed. rest_after is twice the longest delay line and a
+    // block: by then nothing a line held can still be on its way out. Chains with a plug-in or a keyed effect
+    // never rest (a plug-in has its own gate). Each chain's record is its thread's for the block, like its effects.
+    struct ChainRest { uint32_t quiet = 0, stamp = 0; double quarter = 0; float rate = 0; bool asleep = false; char why = 'i'; uint8_t wait = 0; };
+    std::array<ChainRest, chain_count> chain_rest {};
+    static constexpr uint32_t rest_after = 2 * DelayPool::half + block;
+    static constexpr uint8_t rest_retry = 32; // blocks
+    uint32_t chain_stamp(unsigned chain) const { uint32_t sum = 0; for (const auto& e : fx[chain]) sum += e.changes(); return sum; }
+    std::atomic<uint32_t> chains_resting_now {0};
     std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain
     // Which of a track's pad effects have a kind (bit pad * pad_slots + slot): a load passes the rest without
     // reading them, 8192 effects of about a kilobyte each (8 MB), cold, whose kind() took ~2.4 ms of a load's

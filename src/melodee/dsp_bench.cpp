@@ -97,11 +97,14 @@ double thread_seconds() {
 // cores 2, 3, ...; give threads=2), tracks (16). For counting what the engine does under a profiler, where time
 // means nothing: pace (0: the blocks one after another, with no wait for the period), guard (0: the overload guard
 // off, so that what is played does not depend on how long a block took), play (0: the project stopped, the cost
-// of a block with nothing sounding).
+// of a block with nothing sounding). For the resting chains: rest (0: every chain run every block, as before), stop
+// and again (seconds after the count begins at which Stop, then Play, are sent: the project stopped for a while in
+// the middle, long enough for its tails to end and its chains to rest, then played again).
 int dsp_bench(int argc, char** argv) {
     double seconds = 10;
     unsigned rate = 48000, threads = 3, spin = 200, tracks = track_count;
     bool whole = true, linger = false, pinned = false, paced = true, guarded = true, playing = true;
+    double stop_at = -1, again_at = -1;
     for (int n = 2; n < argc; ++n) {
         std::string arg = argv[n];
         auto eq = arg.find('=');
@@ -118,6 +121,9 @@ int dsp_bench(int argc, char** argv) {
         else if (key == "pace") paced = value != "0";
         else if (key == "guard") guarded = value != "0";
         else if (key == "play") playing = value != "0";
+        else if (key == "rest") EngineHost::chain_rests = value != "0";
+        else if (key == "stop") stop_at = std::atof(value.c_str());
+        else if (key == "again") again_at = std::atof(value.c_str());
         else { std::fprintf(stderr, "dsp-bench: no key %s\n", key.c_str()); return 1; }
     }
     auto project = std::make_unique<Project>();
@@ -160,9 +166,17 @@ int dsp_bench(int argc, char** argv) {
     // What it played, as one number (FNV-1a over every sample): two builds that print the same played the same,
     // to the bit, as long as the guard stole nothing (guard=0/0), since what it steals depends on the time taken.
     uint64_t heard = 1469598103934665603ull;
+    const unsigned stop_block = stop_at >= 0 ? unsigned(stop_at * rate / frames) : ~0u, again_block = again_at >= 0 ? unsigned(again_at * rate / frames) : ~0u;
+    std::string chains;
+    unsigned most_resting = 0, silent_from = 0; // the most chains at rest in a block; the block from which nothing more came out
     for (unsigned n = 0; n < blocks; ++n) {
+        if (n == stop_block) host.send({Command::Type::Stop});
+        if (n == again_block) host.send({Command::Type::Play});
         auto t0 = std::chrono::steady_clock::now();
         host.render(out.data(), frames, 0.7f);
+        most_resting = std::max(most_resting, host.chains_resting());
+        if (n + 1 == std::min(blocks, again_block)) chains = host.chains_map(); // as the silence ends (or the run)
+        if (n < again_block) { bool any = false; for (int32_t sample : out) any |= sample != 0; if (any) silent_from = n + 1; }
         float us = std::chrono::duration<float, std::micro>(std::chrono::steady_clock::now() - t0).count();
         for (int32_t sample : out) { heard ^= uint32_t(sample); heard *= 1099511628211ull; }
         took.push_back(us);
@@ -193,10 +207,10 @@ int dsp_bench(int argc, char** argv) {
     auto at = [&](double q) { return sorted.empty() ? 0.0f : sorted[std::min(sorted.size() - 1, size_t(q * sorted.size()))]; };
     std::printf("MELODEE_DSP_BENCH guard=%u/%u mode=%s linger=%d pin=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
                 "mean_us=%.0f p50_us=%.0f p99_us=%.0f max_us=%.0f over=%u cpu_pct=%.1f audio_thread_pct=%.1f workers_pct=%.1f "
-                "parallel_blocks=%llu calls_lost=%u heard=%016llx\n",
+                "parallel_blocks=%llu calls_lost=%u resting=%u chains=%s silent_s=%.1f heard=%016llx\n",
                 host.guard_steals(), host.guard_blocks(), whole ? "whole" : "split", int(linger), int(pinned), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
                 at(0.99), sorted.empty() ? 0.0f : sorted.back(), over, 100 * cpu / wall, 100 * own / wall, 100 * (cpu - own) / wall,
-                (unsigned long long)host.render_parallel_blocks(), host.calls_lost(), (unsigned long long)heard);
+                (unsigned long long)host.render_parallel_blocks(), host.calls_lost(), most_resting, chains.c_str(), double(silent_from) * frames / rate, (unsigned long long)heard);
     return 0;
 }
 

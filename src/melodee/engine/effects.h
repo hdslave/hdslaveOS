@@ -67,7 +67,7 @@ public:
     void set_params(const std::array<int16_t, effect_params>& values);
     // Bypassed, the effect fades out over bypass_seconds, then rests; when it comes back it starts from
     // silence (clear()), never from the echoes and tails it held when it stopped.
-    void set_bypass(bool on) { bypass = on; }
+    void set_bypass(bool on) { bypass = on; ++changed; }
     EffectKind kind() const { return current; }
     bool bypassed() const { return bypass; }
     int param(unsigned index) const { return index < effect_params ? p[index] : 0; }
@@ -83,7 +83,24 @@ public:
         if (!clearing()) return;
         std::fill(memory + cleared, memory + DelayPool::block_floats, 0.0f);
         cleared = DelayPool::block_floats;
+        ++changed;
     }
+    // Resting (melodee-hdslave; optimization.md HOST-1). An effect that hears silence and holds nothing gives
+    // silence, and nothing in it moves but its slow swings: its host need not run it (EngineHost::run_chain()).
+    //
+    // process_silent(): process() for a block its caller knows is silent going in. True when the effect came out of
+    // it as rest(frames) would have left it: to the last byte, but for running values under rest_floor, which may
+    // still be turning over. It holds nothing that can still be heard. Kinds that keep sound in their memory which
+    // silence does not flush out (a Looper's loop) never say so. The caller still looks at what came out.
+    bool process_silent(float* left, float* right, unsigned frames);
+    // What process() does to such an effect over `frames` of silence: its swings move on, a frame at a time as
+    // there, and so does the place it writes at in its (empty) lines, so that it wakes exactly where it would have been.
+    void rest(unsigned frames);
+    // What counts as silence for resting: under 2^-95 (2.5e-29, -571 dB). The output's lowest bit is 4.7e-10, so
+    // twenty such sounds, through any gain an effect or the compressor has, stay a trillion trillion times under it.
+    static constexpr float rest_floor = 0x1p-95f;
+    // Moves with every change from outside (its kind, a parameter, Bypass, a clear): a resting chain wakes.
+    uint32_t changes() const { return changed; }
     // Roadmap P4, delay compensation: frames its output lags its input (a Limiter's LOOKAHEAD; 0 for the rest, and
     // bypassed or out of memory).
     unsigned latency() const { return current == EffectKind::Limiter && memory && !bypass ? delay : 0; }
@@ -116,6 +133,7 @@ private:
     // bends the echoes as a tape's speed would, never clicks); `limit` the line's reach. Off: the TIME it was given.
     float sync_back(float limit);
     float synced = 0; // frames, as it glides; 0 not yet set
+    uint32_t changed = 0; // changes()
 
     EffectKind current = EffectKind::None;
     bool bypass = false;

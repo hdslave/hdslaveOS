@@ -7,6 +7,7 @@
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #if defined(__linux__)
 #include <sys/syscall.h>
@@ -1302,17 +1303,83 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
     }
 }
 
+namespace {
+// Nothing in the block: every sample under Effect::rest_floor (2^-95: a float under it has none of these three bits
+// of its exponent set, so the bits of a whole block can be gathered and looked at once). The first that is not
+// ends the look, so a sounding block costs a frame or two of it.
+bool silent_block(const float* left, const float* right, unsigned frames, uint32_t counted = 0x70000000u) {
+    if (!frames) return true;
+    { // a sounding block nearly always shows at its ends: four samples, before the whole of it is read
+        uint32_t ends[4];
+        std::memcpy(&ends[0], left, 4); std::memcpy(&ends[1], right, 4);
+        std::memcpy(&ends[2], left + frames - 1, 4); std::memcpy(&ends[3], right + frames - 1, 4);
+        if ((ends[0] | ends[1] | ends[2] | ends[3]) & counted) return false;
+    }
+    unsigned f = 0;
+    const uint64_t pairs = uint64_t(counted) << 32 | counted; // two samples to a word
+    for (; f + 16 <= frames; f += 16) {
+        uint64_t any = 0;
+        for (unsigned g = 0; g < 16; g += 2) {
+            uint64_t l, r;
+            std::memcpy(&l, left + f + g, sizeof l); std::memcpy(&r, right + f + g, sizeof r);
+            any |= l | r;
+        }
+        if (any & pairs) return false;
+    }
+    for (; f < frames; ++f) {
+        uint32_t l, r;
+        std::memcpy(&l, left + f, sizeof l); std::memcpy(&r, right + f, sizeof r);
+        if ((l | r) & counted) return false;
+    }
+    return true;
+}
+// Every sample +0, its bits all clear: what such a block adds to a sum, at any gain that is not negative, is +0, and
+// a sum that began at +0 is left as it was to the bit. (A -0 could come out of an effect; such a block is mixed as ever.)
+bool zero_block(const float* left, const float* right, unsigned frames) { return silent_block(left, right, frames, 0xffffffffu); }
+}
+
 void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned frames) {
+    if (fx[chain][0].kind() == EffectKind::None) return; // slots are packed from the front: nothing in it
+    auto& nap = chain_rest[chain];
+    // An effect's state was still moving a moment ago (a tail going down, a swing that turns something over): asked
+    // again only every rest_retry blocks, as asking costs a copy of each effect.
+    const bool waiting = nap.wait > 0;
+    if (waiting) --nap.wait;
+    bool quiet = chain_rests && !waiting && silent_block(left, right, frames); // so far down the chain: silence, and nothing moved but swings
+    if (nap.asleep) {
+        if (quiet && nap.stamp == chain_stamp(chain) && nap.quarter == effect_clock_now->quarter && nap.rate == dsp::sample_rate()) {
+            for (auto& effect : fx[chain]) {
+                if (effect.kind() == EffectKind::None) break;
+                effect.rest(frames);
+            }
+            // What is under the floor is silence from here on: the mixer and the next chain see exactly nothing.
+            if (!zero_block(left, right, frames)) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
+            return;
+        }
+        nap.asleep = false; // sound, or something about it changed: run as ever, and count its silence again
+        nap.quiet = 0;
+    }
+    char why = waiting ? 's' : quiet ? 'q' : 'i';
     for (unsigned k = 0; k < max_slots; ++k) {
         auto& effect = fx[chain][k];
-        if (effect.kind() == EffectKind::None) break; // slots are packed from the front
-        if (fx_key[chain][k]) key_effect(chain, k, effect);
+        if (effect.kind() == EffectKind::None) break;
+        if (fx_key[chain][k]) { key_effect(chain, k, effect); quiet = false; why = 'p'; } // it hears another track
         if (effect.kind() == EffectKind::Plugin) { // the rack's plug-in for the entry it names; none yet: through
+            quiet = false; why = 'p'; // a plug-in rests by its own gate
             auto* runner = runner_of(unsigned(effect.param(0)));
             if (runner && !effect.bypassed()) runner->render(left, right, frames);
             continue;
         }
-        effect.process(left, right, frames);
+        if (!quiet) { effect.process(left, right, frames); continue; }
+        if (!effect.process_silent(left, right, frames)) { quiet = false; why = 's'; nap.wait = rest_retry; }
+        else if (!silent_block(left, right, frames)) { quiet = false; why = 'o'; }
+    }
+    nap.why = why;
+    if (!quiet) { nap.quiet = 0; return; }
+    nap.quiet += frames;
+    if (nap.quiet >= rest_after) {
+        nap.asleep = true;
+        nap.stamp = chain_stamp(chain); nap.quarter = effect_clock_now->quarter; nap.rate = dsp::sample_rate();
     }
 }
 
@@ -2990,7 +3057,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f); // a centred mono track's stem sums to itself
                 const bool steady = slot.audible.flat() && slot.knob_share.flat(); // as above: the same sums, the gains read once
                 const float steady_a = slot.audible.at(0), steady_k = slot.knob_share.at(0);
-                for (unsigned f = 0; f < frames; ++f) {
+                // A track that plays nothing, exactly: what it would add to the master, Knob FX, the buses and its
+                // stem is +0 in every frame, which leaves each of those sums (begun at +0) as it is to the bit. Its
+                // level stays 0 and its stem as it was filled above (melodee-hdslave; optimization.md HOST-1).
+                const bool nothing = chain_rests && zero_block(slot.left, slot.right, frames);
+                for (unsigned f = nothing ? frames : 0; f < frames; ++f) {
                     float a = steady ? steady_a : slot.audible.at(f), k = steady ? steady_k : slot.knob_share.at(f);
                     float l = slot.left[f] * a, r = slot.right[f] * a;
                     knob_l[f] += l * k; knob_r[f] += r * k;
@@ -3000,7 +3071,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 }
                 for (unsigned b = 0; b < bus_count; ++b) { // into each bus as much as its send
                     const auto& send = slot.sends_now[b];
-                    if (send.silent()) continue;
+                    if (send.silent() || nothing) continue;
                     if (slot.audible.flat() && send.flat()) {
                         const float g = slot.audible.at(0) * send.at(0);
                         for (unsigned f = 0; f < frames; ++f) { bus_l[b][f] += slot.left[f] * g; bus_r[b][f] += slot.right[f] * g; }
@@ -3074,6 +3145,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (unsigned b = 0; b < bus_count; ++b) {
         auto& back = returns_now[b];
         back.aim(returns[b], frames, snap_mix);
+        if (chain_rests && zero_block(bus_l[b], bus_r[b], frames)) continue; // a bus that gives nothing, exactly: +0 into the master's sum
         if (back.flat()) {
             const float g = back.at(0);
             for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * g; master_r[f] += bus_r[b][f] * g; }
@@ -3223,6 +3295,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         track_loads[t].store(std::max(own, track_loads[t].load(std::memory_order_relaxed) * load_fall), std::memory_order_relaxed);
     }
     if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
+    { // for `status`, the bench and the tests: the chains at rest
+        uint32_t resting = 0;
+        for (const auto& nap : chain_rest) resting += nap.asleep;
+        chains_resting_now.store(resting, std::memory_order_relaxed);
+    }
     { // freeze plan F2b: packs whose voices have faded handed back; what is frozen, playing and asleep, published
         uint32_t frozen_bits = 0, playing_bits = 0, sleeping_bits = 0, under = 0, waited = 0;
         for (unsigned t = 0; t < track_count; ++t) {

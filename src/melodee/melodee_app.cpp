@@ -625,6 +625,7 @@ std::string MelodeeApp::status() const {
          + " melodee_update=" + std::to_string(int(const_cast<melodee::Shell&>(shell).updates().phase())) // UpdatePhase
          + " melodee_update_offer=" + std::to_string(int(update_offered.load()))
          + " melodee_dimmed=" + std::to_string(int(shell.dimmed()))
+         + " melodee_chains_resting=" + std::to_string(host.chains_resting()) // effect chains not run: silent and holding nothing
          + " " + shell.summary();
 }
 

@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/effects.h"
 #include "melodee/engine/rbj.h"
+#include <type_traits>
+#include <new>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -83,6 +85,7 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool, bool ready) {
     for (unsigned n = 0; n < effect_params; ++n) p[n] = info.params[n].label ? info.params[n].initial : 0;
     on = bypass ? 0.0f : 1.0f; resting = false; // a new kind starts where Bypass is, not fading
     reset_state();
+    ++changed;
     if (ready) update();
 }
 
@@ -96,6 +99,7 @@ void Effect::reset_state() {
 
 void Effect::clear() {
     if (memory) cleared = 0; // a slice a block from the next process(), dry until done
+    ++changed;
     reset_state();
     update(); // Multi-chorus spreads its voices round the turn again
 }
@@ -104,6 +108,7 @@ void Effect::set_params(const std::array<int16_t, effect_params>& values) {
     const auto& info = effect_info(current);
     for (unsigned n = 0; n < effect_params; ++n)
         if (info.params[n].label) p[n] = std::clamp<int>(values[n], info.params[n].min, info.params[n].max);
+    ++changed;
     if (current == K::Limiter && home) { // LOOKAHEAD: its line from the pool while it looks ahead (as set_param)
         if (p[2] > 0 && !memory) take_memory(*home);
         else if (p[2] == 0 && memory) { home->give(memory); memory = nullptr; }
@@ -117,6 +122,7 @@ void Effect::set_param(unsigned index, int value) {
     const auto& info = effect_info(current).params[index];
     if (!info.label) return;
     p[index] = std::clamp<int>(value, info.min, info.max);
+    ++changed;
     if (current == K::Limiter && index == 2 && home) { // LOOKAHEAD: its line from the pool while it looks ahead
         if (p[2] > 0 && !memory) take_memory(*home);
         else if (p[2] == 0 && memory) { home->give(memory); memory = nullptr; }
@@ -633,6 +639,100 @@ void Effect::frames_of(float* left, float* right, unsigned frames, const float* 
         left[f] = l + (wet_l - l) * m;
         right[f] = r + (wet_r - r) * m;
     }
+}
+
+namespace {
+// Kinds whose lines are run through whole, a frame at a time, with what comes back out of them heard. Once such an
+// effect has given silence for longer than its lines are long, they hold nothing. Other kinds that keep sound in
+// their memory (a Looper's loop) are never taken for empty.
+bool empties(EffectKind k) {
+    switch (k) {
+    case K::Room: case K::Reverb: case K::Plate: case K::Shimmer: case K::Echo: case K::TapeEcho: case K::PingPong:
+    case K::Chorus: case K::Flanger: case K::Tape: return true;
+    default: return false;
+    }
+}
+}
+
+// Each kind as its frames_of() case moves it when nothing sounds: the place it writes at in its lines and its slow
+// swing, a frame at a time. The places matter though the lines are empty: a delay reads at a fraction worked out
+// from where it writes, and the same sound a different way round the line would differ in its last bits.
+void Effect::rest(unsigned frames) {
+    // As process(): these run nothing, so nothing moves.
+    if (current == K::None || current == K::Plugin || !effect_info(current).built) return;
+    if (needs_memory(current) && !memory) return;
+    if (bypass && on <= 0) return;
+    auto round = [&](unsigned& at, unsigned length) { // `frames` times: if (++at >= length) at = 0
+        if (at < length) at = (at + frames) % length; // inside its line, as it always is: the same place in one step
+        else for (unsigned f = 0; f < frames; ++f) if (++at >= length) at = 0;
+    };
+    auto reverb_places = [&] { // reverb() and reverb_block(): each comb and allpass round its own length
+        for (unsigned n = 0; n < 8; ++n) round(comb_at[n], comb_length[n]);
+        for (unsigned n = 0; n < 4; ++n) round(pass_at[n], pass_length[n]);
+        write += frames;
+    };
+    float swing = 0;
+    switch (current) {
+    case K::Room: case K::Reverb: case K::Plate: reverb_places(); return;
+    case K::Shimmer:
+        reverb_places();
+        for (unsigned f = 0; f < frames; ++f) { shift_phase += 1; if (shift_phase >= window) shift_phase -= window; }
+        round(shift_at, shift_room);
+        return;
+    case K::Echo: case K::PingPong: round(write, DelayPool::half); return;
+    case K::TapeEcho: round(write, DelayPool::half); swing = 0.6f / fs(); break;
+    case K::Tape: round(write, DelayPool::half); swing = 0.8f / fs(); break;
+    case K::Chorus: case K::Flanger: round(write, DelayPool::half); swing = a / fs(); break;
+    case K::AutoPan: swing = a / fs(); break;
+    case K::Crush: hold_count += frames; return; // its count of frames for RATE
+    case K::Phaser: { // its swing every frame; its allpass coefficient from it at every sixteenth frame of a call, of which the last stays
+        const float step = a / fs();
+        const unsigned last = (frames - 1) & ~15u;
+        for (unsigned f = 0; f < frames; ++f) {
+            lfo += step; lfo -= std::floor(lfo);
+            if (f == last) {
+                float hz = 300 * std::exp2(b * 3.5f * (0.5f + 0.5f * std::sin(two_pi * lfo)));
+                float t = std::tan(dsp::pi * hz / fs());
+                env2 = (t - 1) / (t + 1);
+            }
+        }
+        return;
+    }
+    default: return;
+    }
+    for (unsigned f = 0; f < frames; ++f) { lfo += swing; lfo -= std::floor(lfo); }
+}
+
+bool Effect::process_silent(float* left, float* right, unsigned frames) {
+    static_assert(std::is_trivially_copyable_v<Effect>, "process_silent() keeps a copy of the effect, byte for byte");
+    // No rest: memory still being cleared; a kind whose memory silence does not empty; sound held in its lines
+    // that is not heard (no wet share), which could come back when its MIX is turned up.
+    const bool off = bypass && on <= 0; // resting already: cleared before it runs again
+    const bool may = !clearing() && (!memory || empties(current)) && (!memory || off || (mix > 0 && on > 0));
+    if (!may) { process(left, right, frames); return false; }
+    alignas(Effect) unsigned char kept[sizeof(Effect)];
+    std::memcpy(kept, static_cast<const void*>(this), sizeof(Effect));
+    process(left, right, frames);
+    Effect* was = std::launder(reinterpret_cast<Effect*>(kept));
+    was->rest(frames);
+    if (std::memcmp(kept, static_cast<const void*>(this), sizeof(Effect)) == 0) return true;
+    // Not to the byte. What may still differ: the running values that sound moves, where both the old and the new
+    // are under rest_floor. A filter's last bits can go round for ever at 1e-38 under the flush to zero (a product
+    // that small is flushed, a sum is not), and an echo takes minutes to fall from there to nothing: neither can be
+    // heard, reach the output's lowest bit or come back. Everything else must be as rest() left it: its places and
+    // swings, its parameters, whatever is not listed here.
+    auto small = [](float& old, float now) { if (std::fabs(old) < rest_floor && std::fabs(now) < rest_floor) old = now; };
+    small(was->env, env); small(was->env2, env2); small(was->gain, gain); small(was->hold_l, hold_l); small(was->hold_r, hold_r);
+    small(was->tone_l, tone_l); small(was->tone_r, tone_r); small(was->phaser_l, phaser_l); small(was->phaser_r, phaser_r);
+    small(was->shimmer_l, shimmer_l); small(was->shimmer_r, shimmer_r); small(was->spit_gain, spit_gain);
+    for (size_t n = 0; n < svf.size(); ++n) { small(was->svf[n].s1, svf[n].s1); small(was->svf[n].s2, svf[n].s2); }
+    for (size_t side = 0; side < allpass.size(); ++side) for (size_t n = 0; n < allpass[side].size(); ++n) small(was->allpass[side][n], allpass[side][n]);
+    for (size_t n = 0; n < formant.size(); ++n) { small(was->formant[n].s1, formant[n].s1); small(was->formant[n].s2, formant[n].s2); }
+    for (size_t n = 0; n < comb_filter.size(); ++n) small(was->comb_filter[n], comb_filter[n]);
+    for (size_t n = 0; n < chirp.size(); ++n) small(was->chirp[n], chirp[n]);
+    for (size_t n = 0; n < state.size(); ++n) small(was->state[n], state[n]);
+    for (size_t n = 0; n < eq.size(); ++n) { small(was->eq[n].z1, eq[n].z1); small(was->eq[n].z2, eq[n].z2); }
+    return std::memcmp(kept, static_cast<const void*>(this), sizeof(Effect)) == 0;
 }
 
 void Effect::process(float* left, float* right, unsigned frames) {
