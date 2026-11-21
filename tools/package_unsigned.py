@@ -5,7 +5,7 @@
 tools/make_release.py signs a release's file list with the key whose public half is in
 src/melodee/shell/update.h, so that an installed Melodee takes updates only from its author. A fork has no such
 key. This writes the same autorun folder (the same files, the same SHA256SUMS that sd-worker.sh checks at boot,
-the same autorun.check) as dist/Melodee-MPC-Sample-<version>-unsigned.zip, without RELEASE.sha256.sig.
+the same autorun.check) as dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip, without RELEASE.sha256.sig.
 
 Such a package installs by hand only: unzip it and copy its autorun folder to the card (or into a boot menu's
 folder for Melodee). Melodee's own updater, on the MPC or on its web page, will not take it, and a Melodee built
@@ -37,7 +37,7 @@ def main():
     for name, data in files.items():
         make_release.scan(name, data)
     files[make_release.LIST] = make_release.release_list(files)
-    output = ROOT / "dist" / f"Melodee-MPC-Sample-{arguments.version}-unsigned.zip"
+    output = ROOT / "dist" / f"hdslaveOS-MPC-Sample-{arguments.version}-unsigned.zip"
     make_release.write_zip(files, output, int(make_release.git("log", "-1", "--format=%ct")))
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_name(output.name + ".sha256").write_text(f"{digest}  {output.name}\n")

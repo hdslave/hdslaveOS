@@ -39,7 +39,7 @@ Studio in the README, About text and release notes, and name Melodee by Kerem
 Kiliç (Ellic Studio) as the origin wherever the fork describes where it comes
 from.
 
-The boot animation is melodee-hdslave's own film (`src/melodee/ui/boot_film*.cpp`,
+The boot animation is hdslaveOS's own film (`src/melodee/ui/boot_film*.cpp`,
 written by `tools/boot_film.py`), which is not under the AGPL (THIRD_PARTY.md,
 Boot film). It replaced Melodee's logo and backdrop, which may not be part of
 any public release of a fork. Never add them back, and never ship the hdslave

@@ -94,7 +94,7 @@ one owner per piece of state.
   or not. Any MIDI for it, or sound into an effect, runs it again from that
   block; so does, for a CLAP plug-in, a value set for it (a pot turned) or
   its own `request_process` or `request_flush` (a press on its own page that
-  its audio side must take), each as a note would (melodee-hdslave). A
+  its audio side must take), each as a note would (hdslaveOS). A
   sleeping plug-in's load shows 0.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
@@ -2423,7 +2423,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   PRESETS; with more than one location holding presets (Surge XT: Factory,
   Third Party, User), each location is a folder too, named without the
   plug-in's name. No editor windows, as for VST3.
-- **A plug-in's own screen** (melodee-hdslave). A CLAP plug-in may draw
+- **A plug-in's own screen** (hdslaveOS). A CLAP plug-in may draw
   its own page through a Melodee extension, `com.hdslave.melodee.screen/1`
   (`plugin/melodee_screen.h`, MIT licensed so that a plug-in may copy it):
   the 320 x 218 pixels under the soft keys, with the encoder's turns, its

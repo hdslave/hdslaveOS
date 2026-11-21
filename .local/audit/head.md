@@ -1,6 +1,6 @@
 # Melodee optimization audit
 
-A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the `melodee-hdslave` fork changes as a result. Written on 2026-11-20, in three passes: an audit by reading; a second pass for speed alone, measured with a profiler; and a third for what a stopped project and the screen cost.
+A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the hdslaveOS fork (first called `melodee-hdslave`) changes as a result. Written on 2026-11-20, in three passes: an audit by reading; a second pass for speed alone, measured with a profiler; and a third for what a stopped project and the screen cost.
 
 Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app and the sample-base runtime under it (`base/`). The fork keeps his copyright headers, credits and licence.
 

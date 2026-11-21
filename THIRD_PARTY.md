@@ -7,7 +7,7 @@ full text is in `LICENSE`.
 
 ## Boot film
 
-melodee-hdslave's boot animation is its own film, cut from the hdslave
+hdslaveOS's (this fork's, first called melodee-hdslave) boot animation is its own film, cut from the hdslave
 intro and a shot rendered from the intro's own scene, graded purple,
 with a VHS glitch outro: its
 frames (`src/melodee/ui/boot_film.cpp` and `boot_film_*.cpp`, written by
@@ -29,7 +29,7 @@ video; its options set the cut, the speed and the framing).
 ## HDSLAVE screen art
 
 The static purple flare in `src/melodee/ui/hdslave_flare.h` is original
-art generated for hdslave's Melodee fork. Copyright (C) 2026 hdslave.
+art generated for hdslaveOS, hdslave's Melodee fork. Copyright (C) 2026 hdslave.
 All rights reserved (LicenseRef-Hdslave-Flare). The fork may include the
 art in its source and builds. The code that displays it uses the project licence.
 

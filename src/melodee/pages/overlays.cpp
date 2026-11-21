@@ -40,7 +40,7 @@ void draw_update_sheet(Paint& p, const Snapshot& s) {
     p.text(title, x, zone::picture_y + 28, w, 28, p.fit(title, plain(colour::text, type::title, Weight::SemiBold), w, type::body),
            juce::Justification::centred);
     if (failed) {
-        juce::String line = juce::String("Melodee ") + melodee_version() + " is still installed.";
+        juce::String line = juce::String("hdslaveOS ") + melodee_version() + " is still installed.";
         p.text(line, x, zone::picture_y + 64, w, 18, p.fit(line, plain(colour::sec, type::body), w, type::floor),
                juce::Justification::centred);
         SoftKeys keys {{"CLOSE", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};

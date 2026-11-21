@@ -353,12 +353,13 @@ void machine_draw(Paint& p, const Snapshot& s) {
 
 void credits_draw(Paint& p) {
     float x = zone::pad + 6, w = zone::width - 2 * zone::pad - 12, y = zone::picture_y + 4;
-    p.text("Melodee", x, y, w, 30, plain(colour::text, 26, Weight::SemiBold));
+    p.text("hdslaveOS", x, y, w, 30, plain(colour::text, 26, Weight::SemiBold));
     juce::String version = juce::String("Version ") + melodee_version();
     p.text(version, x, y + 30, w, 14, p.fit(version, plain(colour::sec, type::small), w, type::floor));
     unsigned effects = effect_count(); // as the effect picker counts them: not None, not the plug-in slot
     juce::String juce_version = juce::String(JUCE_MAJOR_VERSION) + "." + juce::String(JUCE_MINOR_VERSION) + "." + juce::String(JUCE_BUILDNUMBER);
     const std::pair<const char*, juce::String> rows[] {
+        {"FORK OF", juce::String::fromUTF8("Melodee by Kerem Kili\xc3\xa7 (Ellic Studio)")},
         {"ENGINES", "Sampler, plug-ins, MIDI"},
         {"EFFECTS", juce::String(effects) + " effects, " + juce::String(punch_count) + " punches"},
         {"TRACKS", juce::String(track_count) + " tracks, " + juce::String(pattern_count) + " patterns each"},
