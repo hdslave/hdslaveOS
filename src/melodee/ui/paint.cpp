@@ -243,16 +243,24 @@ float Paint::text(const juce::String& original, float x, float y, float w, float
     return width(value, style);
 }
 
+// The HDSLAVE flare, decoded on first use (the screen thread's first HDSLAVE frame): an opaque, device-sized image
+// for later blits; invalid if it does not decode to 320 x 240.
+static const juce::Image& hdslave_flare() {
+    static const juce::Image flare = []() -> juce::Image {
+        juce::MemoryOutputStream png;
+        if (!juce::Base64::convertFromBase64(png, hdslave_flare_png)) return {};
+        auto image = juce::ImageFileFormat::loadFrom(png.getData(), png.getDataSize());
+        if (image.getWidth() != zone::width || image.getHeight() != zone::height) return {};
+        return image.convertedToFormat(juce::Image::RGB);
+    }();
+    return flare;
+}
+
+bool hdslave_flare_ready() { return hdslave_flare().isValid(); }
+
 void Paint::background(int y, int height) {
     if (palette().backdrop == Backdrop::HdslaveFlare) {
-        // First HDSLAVE frame on the screen thread. Keep an opaque, device-sized image for later blits.
-        static const juce::Image flare = []() -> juce::Image {
-            juce::MemoryOutputStream png;
-            if (!juce::Base64::convertFromBase64(png, hdslave_flare_png)) return {};
-            auto image = juce::ImageFileFormat::loadFrom(png.getData(), png.getDataSize());
-            if (image.getWidth() != zone::width || image.getHeight() != zone::height) return {};
-            return image.convertedToFormat(juce::Image::RGB);
-        }();
+        const auto& flare = hdslave_flare();
         if (flare.isValid()) {
             juce::Graphics::ScopedSaveState state(g);
             g.reduceClipRegion(0, y, zone::width, height);

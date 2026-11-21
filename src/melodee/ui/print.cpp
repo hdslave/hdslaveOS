@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 hdslave
 #include "melodee/ui/paint.h"
+#include <algorithm>
 
 namespace melodee::ui {
 
@@ -41,7 +42,9 @@ void Paint::contour_panel(int x, int y, int w, int h) {
         return image;
     }();
     g.setOpacity(1.0f);
-    g.drawImage(engraving, x, y, w, h, x, 0, w, h);
+    // A tile taller than the engraving (66 px: today's tallest, the Settings doors) gets it stretched to its height,
+    // not cut short; every shorter one takes its own crop, as drawn.
+    g.drawImage(engraving, x, y, w, h, x, 0, w, std::min(h, engraving.getHeight()));
 }
 
 void Paint::label_plate(float x, float y, float w, float h, juce::Colour ink) {

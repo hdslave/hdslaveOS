@@ -1,10 +1,42 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 """Embed the 320 x 240 HDSLAVE screen art. Run: python3 tools/hdslave_art.py FLARE.png"""
 from pathlib import Path
+import base64
+import struct
 import sys
+import zlib
 
-from boot_art import image_chunks, literal
+SIGNATURE = b"\x89PNG\r\n\x1a\n"
+KEEP = {b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND"}
+
+
+# image_chunks() and literal() came with the former tools/boot_art.py (Melodee's boot art writer), which the boot
+# film replaced: the PNG's image chunks alone (no text, time or colour-profile metadata), at the screen's size, and
+# its Base64 as a C string literal.
+def image_chunks(path):
+    data = Path(path).read_bytes()
+    if not data.startswith(SIGNATURE):
+        raise SystemExit(f"{path}: not a PNG")
+    at, out = len(SIGNATURE), [SIGNATURE]
+    while at < len(data):
+        length, kind = struct.unpack(">I4s", data[at:at + 8])
+        if kind == b"IHDR":
+            width, height = struct.unpack(">II", data[at + 8:at + 16])
+            if (width, height) != (320, 240):
+                raise SystemExit(f"{path}: {width} x {height}, the screen is 320 x 240")
+        if kind in KEEP:
+            body = data[at + 8:at + 8 + length]
+            out.append(struct.pack(">I4s", length, kind) + body + struct.pack(">I", zlib.crc32(kind + body)))
+        at += 12 + length
+    return b"".join(out)
+
+
+def literal(name, png, what):
+    text = base64.b64encode(png).decode()
+    lines = [f'    "{text[n:n + 100]}"' for n in range(0, len(text), 100)]
+    return f"// {what}: {len(png)} bytes of PNG.\nconst char {name}[] =\n" + "\n".join(lines) + ";\n"
 
 
 def main(path):
