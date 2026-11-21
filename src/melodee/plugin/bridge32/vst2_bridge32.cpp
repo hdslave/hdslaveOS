@@ -35,10 +35,11 @@ vst2::Events<bridge::maxEvents> events {};
 float* inputs[bridge::maxChannels];
 float* outputs[bridge::maxChannels];
 
+// No timeout: the host wakes the bridge for every command, and PR_SET_PDEATHSIG
+// ends it when the host dies, so an idle bridge has no reason to wake.
 void futexWait (uint32_t* word, uint32_t expected)
 {
-    timespec timeout { 0, 100 * 1000 * 1000 };
-    syscall (SYS_futex, word, FUTEX_WAIT, expected, &timeout, nullptr, 0);
+    syscall (SYS_futex, word, FUTEX_WAIT, expected, nullptr, nullptr, 0);
 }
 
 void futexWake (uint32_t* word)
@@ -275,10 +276,12 @@ int main (int argc, char** argv)
     uint32_t handled = bridge::load (shared->reply);
     for (;;)
     {
-        // Spin briefly first: in steady playback the next block arrives
-        // within a period, and a wake-up costs more than the spin.
+        // Spin briefly first, for a command that follows the last at once (an
+        // instrument rendered in parts, a run of parameter reads). The next
+        // block comes a period later, far past any spin worth making, so the
+        // spin stays short and the thread then sleeps until the host wakes it.
         uint32_t request = bridge::load (shared->request);
-        for (int spin = 0; request == handled && spin < 4000; ++spin)
+        for (int spin = 0; request == handled && spin < 1000; ++spin)
             request = bridge::load (shared->request);
         if (request == handled)
         {

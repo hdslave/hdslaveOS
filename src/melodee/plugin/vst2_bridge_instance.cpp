@@ -206,10 +206,15 @@ Vst2BridgeInstance::Connection::~Connection()
     munmap (shared, sizeof (bridge::Shared));
 }
 
-// One command, one round trip. The host spins for the reply first (a block
-// is usually back within tens of microseconds), then sleeps on the futex.
+// One command, one round trip. The host spins for the reply first (an empty
+// command is back within microseconds), then sleeps on the futex. A process
+// block that outlasts the spin means the plug-in's own work takes longer than
+// a spin, and the next block's will too: the next blocks sleep at once,
+// leaving the core to the bridge and the other tracks, and every so often one
+// spins again in case the plug-in has become quicker.
 bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutMs)
 {
+    constexpr int spinLoads = 20000, blocksAfterSlowReply = 64;
     const std::lock_guard<InheritingMutex> held (lock);
     if (dead)
         return false;
@@ -218,9 +223,17 @@ bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutM
     bridge::store (shared->request, request);
     futexWake (&shared->request);
 
-    for (int spin = 0; spin < 20000; ++spin)
-        if (bridge::load (shared->reply) == request)
-            return true;
+    const bool process = command == bridge::Command::process;
+    if (process && unspunBlocks > 0)
+        --unspunBlocks;
+    else
+    {
+        for (int spin = 0; spin < spinLoads; ++spin)
+            if (bridge::load (shared->reply) == request)
+                return true;
+        if (process)
+            unspunBlocks = blocksAfterSlowReply;
+    }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds (timeoutMs);
     for (;;)
     {
