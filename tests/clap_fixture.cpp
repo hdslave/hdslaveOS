@@ -18,7 +18,10 @@
 // the Level, its green full while the cursor is on its second row, its blue the inputs it took; a white bar on its
 // first row as wide as the Level, and on its second as far as K1's pot sits. The wheel moves the cursor (Minus /
 // Plus too, Push puts it back on the first row); K1 and K2 turn the row under the cursor and the other, K3 nothing.
-// A Level that changes asks for a paint from the audio thread. fixture_screen() reports what it was asked.
+// A Level that changes asks for a paint from the audio thread. Push and Minus / Plus are presses its audio side takes
+// too, as a real plug-in's page may need: each asks to be run (Push by request_process, Minus / Plus by the
+// parameters' request_flush), and its next block counts it and asks for a paint; a white bar on the third row, 16
+// pixels for each counted. fixture_screen() reports what it was asked.
 #include <clap/clap.h>
 #include "melodee/plugin/melodee_screen.h"
 
@@ -48,7 +51,10 @@ struct Plugin {
     std::map<int, double> phases; // key: phase of its sine
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
     const clap_host_melodee_screen* screen = nullptr; // Melodee's, where it is the host
+    const clap_host_params* hostParams = nullptr;
     int cursor = 0, inputs = 0;   // the screen's: the row under the cursor, the inputs taken
+    std::atomic<int> asked {0}, heard {0}; // presses for the audio side: made on the page, counted by process()
+    int drawnHeard = -1;          // `heard` as it was last drawn
     uint32_t drawn = 0;           // the colour last drawn (0: never)
     int drawnPot = -2;            // and K1's pot as it was then
 
@@ -247,6 +253,10 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     auto& s = of(p);
     s.audio();
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
+    if (const int presses = s.asked.load(); presses != s.heard.load()) {
+        s.heard.store(presses);
+        if (s.screen) s.screen->request_paint(s.host);
+    }
     if (s.outLevel >= 0) {
         clap_event_param_value v {};
         v.header = {sizeof(v), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
@@ -282,7 +292,8 @@ bool screenPaint(const clap_plugin* p, const melodee_screen_canvas_t* c) {
     ++screenPaints;
     screenAccent = int(c->accent & 0xffffff);
     uint32_t colour = screenColour(s);
-    if (!c->whole && colour == s.drawn && c->knobs[0].position == s.drawnPot) return false; // as it is
+    const int heard = s.heard.load();
+    if (!c->whole && colour == s.drawn && c->knobs[0].position == s.drawnPot && heard == s.drawnHeard) return false; // as it is
     for (uint32_t y = 0; y < c->height; ++y)
         for (uint32_t x = 0; x < c->width; ++x) c->pixels[y * c->stride + x] = colour;
     auto bar = [&](uint32_t y, double share) {
@@ -290,8 +301,10 @@ bool screenPaint(const clap_plugin* p, const melodee_screen_canvas_t* c) {
     };
     bar(0, s.level);
     if (c->knobs[0].position >= 0) bar(1, c->knobs[0].position / 127.0);
+    bar(2, heard * 16.0 / c->width);
     s.drawn = colour;
     s.drawnPot = c->knobs[0].position;
+    s.drawnHeard = heard;
     ++screenDrawn;
     return true;
 }
@@ -305,6 +318,11 @@ bool screenInput(const clap_plugin* p, const melodee_screen_input_t* in) {
     else if (in->kind == MELODEE_SCREEN_PUSH) s.cursor = 0;
     else return false;
     ++s.inputs;
+    if (in->kind == MELODEE_SCREEN_PUSH) { ++s.asked; s.host->request_process(s.host); }
+    else if (in->kind == MELODEE_SCREEN_NUDGE) {
+        ++s.asked;
+        if (s.hostParams && s.hostParams->request_flush) s.hostParams->request_flush(s.host);
+    }
     return true;
 }
 void screenKnobs(const clap_plugin* p, clap_id ids[3]) {
@@ -340,6 +358,7 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
         auto& s = of(p);
         s.threads = static_cast<const clap_host_thread_check*>(s.host->get_extension(s.host, CLAP_EXT_THREAD_CHECK));
         s.screen = static_cast<const clap_host_melodee_screen*>(s.host->get_extension(s.host, CLAP_EXT_MELODEE_SCREEN_HOST));
+        s.hostParams = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS));
         s.main();
         s.host->request_callback(s.host);
         return true;

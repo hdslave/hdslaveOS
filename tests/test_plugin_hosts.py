@@ -54,8 +54,14 @@ class PluginHostTests(unittest.TestCase):
             plugin = Path(temp) / "Test.clap"
             subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            # Then, once it sleeps (silent, no key held, stopped: plugin/idle_gate.h; 1200 ms here is about 0.64 s of
+            # audio, more than the half second it waits): a pot turned on its page, a Push (request_process) and a Plus
+            # (request_flush) each reach its audio side, which wakes for them.
             steps = ["png:first", "wheel:1", "png:wheel", "push", "png:push", "plus", "png:plus", "k1:127", "png:k1",
-                     "stage", "png:stage", "minus", "png:minus", "shift", "png:shift", "shift"]
+                     "stage", "png:stage", "minus", "png:minus", "shift", "png:shift", "shift",
+                     "push", "wait:1200", "png:asleep", "k1:0", "wait:100", "png:level",
+                     "wait:1200", "png:asleep2", "push", "wait:100", "png:pushed",
+                     "wait:1200", "png:asleep3", "plus", "wait:100", "png:flushed"]
             result = subprocess.run([str(ROOT / "build/melodee"), "--melodee-plugin-screen", str(plugin), str(Path(temp) / "out"),
                                      *steps], capture_output=True, text=True, timeout=120,
                                     env={**os.environ, "HOME": temp, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
@@ -63,9 +69,11 @@ class PluginHostTests(unittest.TestCase):
             said = {line.split()[1]: dict(kv.split("=") for kv in line.split()[2:])
                     for line in result.stdout.splitlines() if line.startswith("MELODEE_PLUGIN_SCREEN ")}
             # Level 0.5: red 128; the cursor's row in green; the inputs taken in blue; K1-K3 the rows it names.
+            # Level 0 (K1 at the bottom, once Push put Level on it): red 0.
             want = {"first": ("0,1,-1", "0xff800000"), "wheel": ("1,0,-1", "0xff80ff01"), "push": ("0,1,-1", "0xff800002"),
                     "plus": ("1,0,-1", "0xff80ff03"), "stage": ("1,0,-1", "0xff80ff03"), "minus": ("0,1,-1", "0xff800004"),
-                "shift": ("0,1,-1", "0xff800004")}
+                "shift": ("0,1,-1", "0xff800004"), "asleep": ("0,1,-1", "0xff800005"), "level": ("0,1,-1", "0xff000005"),
+                "pushed": ("0,1,-1", "0xff000006"), "flushed": ("1,0,-1", "0xff00ff07")}
             for name, (knobs, pixel) in want.items():
                 self.assertEqual(said[name]["screen"], "1", name)
                 self.assertEqual(said[name]["knobs"], knobs, name)
@@ -75,6 +83,15 @@ class PluginHostTests(unittest.TestCase):
             self.assertEqual(said["first"]["bar"], "0")  # K1 not moved yet
             self.assertEqual(said["k1"]["bar"], "320")   # K1 at the top, as the plug-in was told
             self.assertGreater(int(said["minus"]["serial"]), int(said["first"]["serial"]))
+            # Asleep before each, awake after; its third row 16 pixels for each Push, Minus and Plus its audio side took.
+            for name in ("asleep", "asleep2", "asleep3"):
+                self.assertEqual(said[name]["asleep"], "1", name)
+            for name in ("level", "pushed", "flushed"):
+                self.assertEqual(said[name]["asleep"], "0", name)
+            self.assertEqual(said["asleep"]["bar2"], "64")   # push, plus, minus, push
+            self.assertEqual(said["asleep2"]["bar2"], "64")
+            self.assertEqual(said["pushed"]["bar2"], "80")
+            self.assertEqual(said["flushed"]["bar2"], "96")
             for name in want:
                 self.assertTrue((Path(temp) / "out" / (name + ".png")).is_file())
 

@@ -62,6 +62,8 @@ public:
     // untouched), and loads with that state once its track wakes.
     void sync(const Project& project, uint32_t asleep = 0);
     bool asleep(unsigned entry) const;
+    // Whether its plug-in skipped its last render as idle (plugin/idle_gate.h), not freeze plan F2d's sleep.
+    bool idling(unsigned entry) const;
     // A project's file was read: the states it carried, each used the next
     // time its entry loads (sync() right after).
     void set_states(PluginStates states);

@@ -92,7 +92,10 @@ one owner per piece of state.
   is not run once its output has stayed under -100 dB for half a second;
   an effect sleeps once its input and output have, whether the song plays
   or not. Any MIDI for it, or sound into an effect, runs it again from that
-  block. A sleeping plug-in's load shows 0.
+  block; so does, for a CLAP plug-in, a value set for it (a pot turned) or
+  its own `request_process` or `request_flush` (a press on its own page that
+  its audio side must take), each as a note would (melodee-hdslave). A
+  sleeping plug-in's load shows 0.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
@@ -2434,7 +2437,10 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   plug-in's main-thread lock and comes back later if another holds it.
   Paints come when the plug-in asks (`request_paint`, from any thread),
   after an input, when the pots, Shift, the transport or the track's
-  colour change, and never nearer each other than 16 ms. The canvas keeps
+  colour change, and never nearer each other than 16 ms. A silent plug-in
+  that sleeps (see Idle plug-ins sleep) wakes for a pot turned on its page
+  and when it asks to be run (`request_process`, `request_flush`), so an
+  input its audio side must take asks for that. The canvas keeps
   the plug-in's last picture, so it may draw only what changed; its
   `whole` flag asks for every pixel (its first paint, or back in view
   after another plug-in's page). The page copies

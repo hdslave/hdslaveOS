@@ -2826,7 +2826,8 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
 // (the page: Edit, or Stage's EDIT), and png:NAME, the screen as it is drawn into DIR/NAME.png and @2x. Each png says
 // what Melodee holds: MELODEE_PLUGIN_SCREEN NAME screen=0|1 knobs=K1,K2,K3 (places among the shown parameters)
 // serial=N pixel=0xAARRGGBB (the picture's, at 0,5) page=0xAARRGGBB (the screen's there, row 27) low=0xAARRGGBB (the
-// screen's at 0,230, under the knobs' overlays) bar=W (row 1's white).
+// screen's at 0,230, under the knobs' overlays) bar=W (row 1's white) bar2=W (row 2's) asleep=0|1 (the plug-in skipped
+// its last block as idle: plugin/idle_gate.h).
 int plugin_screen(const std::string& plugin, const std::string& folder, const std::vector<std::string>& steps) {
     if (!std::getenv("MELODEE_PLUGIN_STAGE")) // its RAM copy somewhere of its own
         setenv("MELODEE_PLUGIN_STAGE", ("/tmp/melodee-plugin-screen-" + std::to_string(::getpid())).c_str(), 1);
@@ -2923,15 +2924,16 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
             const auto& panel = snapshot->ui.plugin_panel;
             const auto& picture = snapshot->plugin_screen;
             uint32_t pixel = 0;
-            unsigned bar = 0;
+            unsigned bar = 0, bar2 = 0;
             if (picture && picture->entry == 0) {
                 pixel = picture->pixels[5 * PluginScreenFrame::width];
                 while (bar < PluginScreenFrame::width && picture->pixels[PluginScreenFrame::width + bar] == 0xffffffffu) ++bar;
+                while (bar2 < PluginScreenFrame::width && picture->pixels[2 * PluginScreenFrame::width + bar2] == 0xffffffffu) ++bar2;
             }
-            std::printf("MELODEE_PLUGIN_SCREEN %s screen=%d knobs=%d,%d,%d serial=%u pixel=0x%08x page=0x%08x low=0x%08x bar=%u\n",
+            std::printf("MELODEE_PLUGIN_SCREEN %s screen=%d knobs=%d,%d,%d serial=%u pixel=0x%08x page=0x%08x low=0x%08x bar=%u bar2=%u asleep=%d\n",
                         arg.c_str(), int(panel.screen), panel.knob[0], panel.knob[1], panel.knob[2], picture ? picture->serial : 0u,
                         pixel, unsigned(shown.getPixelAt(0, int(PluginScreenFrame::top) + 5).getARGB()),
-                        unsigned(shown.getPixelAt(0, 230).getARGB()), bar);
+                        unsigned(shown.getPixelAt(0, 230).getARGB()), bar, bar2, int(rack->idling(0)));
         } else {
             std::fprintf(stderr, "unknown step %s: use wheel:N push minus plus shift k1:V k2:V k3:V wait:MS edit stage png:NAME\n", step.c_str());
             return 2;

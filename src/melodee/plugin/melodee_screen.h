@@ -22,6 +22,11 @@
  * Threads: paint(), input() and knobs() are main-thread calls (CLAP's sense: never the audio thread), made from a
  * thread of Melodee's own that only calls when the plug-in's other main-thread calls are not running; they should
  * take well under a millisecond or two. request_paint() may be called from any thread.
+ *
+ * Sleep: Melodee does not run a silent plug-in (an instrument with no key held while the song is stopped; an effect
+ * silent in and out) until something wakes it: a note, a parameter value set from Melodee (K1-K3 turned), or the
+ * plug-in's own clap_host.request_process() or clap_host_params.request_flush(). An input() that the plug-in's audio
+ * side must take should ask for one of those; a picture that keeps moving asks for its own next paint.
  */
 #pragma once
 

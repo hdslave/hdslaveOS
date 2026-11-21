@@ -2,7 +2,10 @@
 // Every plug-in in the given CLAP files, opened as Melodee's rack opens it: the plug-in support pack first
 // (ensure_plugin_support: the GUI stubs and the sound libraries the MPC lacks), then ClapInstance::list and load at
 // 48 kHz, 128 frames. Each plays one second (noise into an effect, a held chord on an instrument), saves and restores
-// its state, and is checked for output that is not a number. One line a plug-in; a last line counts the failures.
+// its state, and is checked for output that is not a number. "asks" counts the last 32 blocks (the chord let go
+// 28 blocks before them) after which it still wanted to run (request_process, request_flush): Melodee wakes a
+// sleeping plug-in for each, so one that asks every block never sleeps. One line a plug-in; a last line counts the
+// failures.
 //   clap_check FILE.clap ...
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/plugin_files.h"
@@ -52,6 +55,7 @@ int main (int argc, char** argv)
             double total = 0.0, worst = 0.0;
             float peak = 0.0f;
             bool finite = true;
+            int asks = 0;
             for (int b = 0; b < blocks; ++b)
             {
                 MidiBuffer midi;
@@ -78,6 +82,8 @@ int main (int argc, char** argv)
                     }
                 if (b % 32 == 0)
                     plugin->idle();
+                if (b >= blocks - 32 && plugin->wantsProcess())
+                    ++asks;
             }
             MemoryBlock state;
             plugin->getStateInformation (state);
@@ -85,10 +91,10 @@ int main (int argc, char** argv)
             plugin->releaseResources();
             const bool ok = finite;
             (ok ? passed : failed)++;
-            std::printf ("%s  %-28s %-34s %s  params %4d  latency %5d  in %d out %d  block mean %7.1f us max %7.1f us  peak %.3f  state %zu B\n",
+            std::printf ("%s  %-28s %-34s %s  params %4d  latency %5d  in %d out %d  block mean %7.1f us max %7.1f us  peak %.3f  state %zu B  asks %d/32\n",
                          ok ? "ok  " : "FAIL", file.getFileName().toRawUTF8(), info.name.c_str(), info.instrument ? "inst" : "fx  ",
                          plugin->getParameters().size(), plugin->getLatencySamples(), plugin->getTotalNumInputChannels(),
-                         plugin->getTotalNumOutputChannels(), total / blocks, worst, peak, state.getSize());
+                         plugin->getTotalNumOutputChannels(), total / blocks, worst, peak, state.getSize(), asks);
         }
     }
     std::printf ("%d loaded and played, %d failed\n", passed, failed);

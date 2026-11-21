@@ -3,7 +3,7 @@
 // Melodee's CLAP host (plugin/clap_instance.h) against tests/clap_fixture.cpp:
 // listing a library, notes as CLAP notes and CCs as MIDI, parameters both ways,
 // state, latency, the main-thread callback, presets found (with their folders,
-// kept in a cache) and loaded, Melodee's plug-in screen, and every call on the right thread.
+// kept in a cache) and loaded, Melodee's plug-in screen, what it is run for when idle, and every call on the right thread.
 // Built and run by tests/test_plugin_hosts.py on aarch64 Linux, with Melodee's objects.
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/melodee_screen.h"
@@ -78,12 +78,14 @@ int main(int argc, char** argv) {
         CHECK(wave && wave->isDiscrete() && wave->getNumSteps() == 3);
 
         CHECK(peak(run(*sine)) == 0.0f);
+        CHECK(!sine->wantsProcess()); // nothing waits for it: the rack may let it sleep (plugin/idle_gate.h)
         run(*sine, {juce::MidiMessage::noteOn(1, 69, 1.0f)});
         CHECK(std::abs(peak(run(*sine)) - 0.5f) < 0.01f); // A at Level 0.5
 
         level->setValue(1.0f); // the next block hears it
-        CHECK(level->getValue() == 1.0f);
+        CHECK(level->getValue() == 1.0f && sine->wantsProcess()); // and is run for it, asleep or not
         CHECK(std::abs(peak(run(*sine)) - 1.0f) < 0.01f);
+        CHECK(!sine->wantsProcess());
 
         run(*sine, {juce::MidiMessage::controllerEvent(1, 1, 64)}); // MIDI: the plug-in sets Level and says so
         CHECK(std::abs(level->getValue() - 64.0f / 127.0f) < 1e-4f);
@@ -131,19 +133,29 @@ int main(int argc, char** argv) {
         CHECK(sine->screenKnobs(knobs) && knobs[0] == 0 && knobs[1] == 1 && knobs[2] == -1); // Level, Wave, nothing
         melodee_screen_input wheel {MELODEE_SCREEN_WHEEL, 1, false};
         CHECK(sine->screenInput(wheel, used) && used && sine->paintWanted());
+        CHECK(!sine->wantsProcess()); // the wheel needs only its main thread
         CHECK(sine->screenKnobs(knobs) && knobs[0] == 1 && knobs[1] == 0 && knobs[2] == -1); // the cursor on Wave
         CHECK(sine->screenPaint(canvas, changed) && changed && pixels[below] == 0xff81ff01u);
         canvas.knobs[0] = {127, true};
         CHECK(sine->screenPaint(canvas, changed) && changed && pixels[2 * MELODEE_SCREEN_WIDTH - 1] == 0xffffffffu); // K1 at the top
         melodee_screen_input push {MELODEE_SCREEN_PUSH, 1, true}, odd {7, 0, false};
         CHECK(sine->screenInput(push, used) && used && sine->screenKnobs(knobs) && knobs[0] == 0);
+        CHECK(sine->wantsProcess()); // Push asked to be run (request_process): a sleeping instrument wakes for it
         CHECK(sine->screenInput(odd, used) && !used); // not one it knows
         screen(&paints, &drawn, &inputs, &kind, &value, &accent);
         CHECK(paints == 5 && drawn == 4 && inputs == 3 && kind == 7 && accent == 0x123456);
         level->setValue(0.0f); // through the audio: it asks for a paint from there
         sine->paintWanted(); // what the inputs asked for, taken
         run(*sine);
-        CHECK(sine->paintWanted());
+        CHECK(sine->paintWanted() && !sine->wantsProcess());
+        const size_t third = 2 * size_t(MELODEE_SCREEN_WIDTH); // its third row: 16 pixels for each press its audio side took
+        CHECK(sine->screenPaint(canvas, changed) && changed && pixels[third + 15] == 0xffffffffu && pixels[third + 16] != 0xffffffffu);
+        melodee_screen_input plus {MELODEE_SCREEN_NUDGE, 1, false};
+        CHECK(sine->screenInput(plus, used) && used && sine->wantsProcess()); // request_flush: run for it as well
+        CHECK(sine->screenPaint(canvas, changed) && pixels[third + 16] != 0xffffffffu); // not taken before a block
+        run(*sine);
+        CHECK(!sine->wantsProcess() && sine->screenPaint(canvas, changed) && changed);
+        CHECK(pixels[third + 31] == 0xffffffffu && pixels[third + 32] != 0xffffffffu);
         sine->releaseResources();
     }
 
@@ -156,8 +168,11 @@ int main(int argc, char** argv) {
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1
+        CHECK(!gain->wantsProcess());
         param(*gain, "Gain")->setValue(0.25f);                          // 0.5 of 0..2
+        CHECK(gain->wantsProcess());                                    // an effect too: run for a value set
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.125f) < 1e-6f);
+        CHECK(!gain->wantsProcess());
     }
     { // Presets: files in folders beside the library, as Surge XT keeps them.
         auto reads = reinterpret_cast<int (*)()>(dlsym(fixture, "fixture_preset_reads"));

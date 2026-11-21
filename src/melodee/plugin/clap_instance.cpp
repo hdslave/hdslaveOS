@@ -108,6 +108,7 @@ struct ClapInstance::Host
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
     std::atomic<bool> paint { true }; // Melodee's plug-in screen: paint() wanted (at first, always)
+    std::atomic<bool> process { false }; // a block wanted, asleep or not (request_process, request_flush)
 
     Host()
     {
@@ -119,7 +120,9 @@ struct ClapInstance::Host
         host.version = "1";
         host.get_extension = &extension;
         host.request_restart = [] (const clap_host*) {}; // not while it plays: a reload (picked again) restarts it
-        host.request_process = [] (const clap_host*) {}; // it is processed every block
+        // Run in the next block, even if the rack let it sleep as silent (wantsProcess()): what a plug-in asks when
+        // something outside its blocks (a press on its page) needs its audio side.
+        host.request_process = [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); };
         host.request_callback = [] (const clap_host* h) { of (h).callback = true; };
     }
     static Host& of (const clap_host* h) { return *static_cast<Host*> (h->host_data); }
@@ -140,7 +143,8 @@ struct ClapInstance::Host
                     of (h).rescan = true;
             },
             [] (const clap_host*, clap_id, clap_param_clear_flags) {},
-            [] (const clap_host*) {}, // request_flush: its next block takes the changes
+            // request_flush: its next block takes the changes, run even if it sleeps (as request_process)
+            [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); },
         };
         static const clap_host_latency latency { [] (const clap_host* h) { of (h).latencyChanged = true; } };
         static const clap_host_tail tail { [] (const clap_host*) {} };
@@ -421,6 +425,11 @@ void ClapInstance::idle()
     if (host->latencyChanged.exchange (false)) readLatency();
 }
 
+bool ClapInstance::wantsProcess() const
+{
+    return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
+}
+
 // Melodee's plug-in screen. The calls try the main-thread lock and give up at once if another main-thread call holds it
 // (the rack's thread loading presets, a save), so the screen's thread never waits behind them.
 bool ClapInstance::paintWanted() { return screen != nullptr && host->paint.exchange (false); }
@@ -535,6 +544,8 @@ bool ClapInstance::pushOut (const clap_output_events* list, const clap_event_hea
 void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
     const int frames = std::min (buffer.getNumSamples(), block);
+    // This block answers a request to be run: one made from now on wants the next (even one that does not run).
+    host->process.store (false, std::memory_order_release);
     if (! active || frames <= 0) { buffer.clear(); return; }
     AudioScope audioThread;
     if (! processing) processing = plugin->start_processing (plugin);
