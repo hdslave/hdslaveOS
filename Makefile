@@ -18,6 +18,10 @@ CPPFLAGS += $(CORE_CPPFLAGS)
 build/obj/%.o: core/src/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror -c $< -o $@
+# An object built before the core moved to core/ names its source in src/:
+# forgotten, so that it is built again from the core.
+STALE := $(shell grep -lsE '(^|[ :])src/[^ ]*\.cpp' $(CORE_OBJECTS:.o=.d))
+$(foreach d,$(STALE),$(shell rm -f $(d) $(d:.d=.o)))
 -include $(CORE_OBJECTS:.o=.d)
 
 # The version shown on the Credits page and used to compare updates
