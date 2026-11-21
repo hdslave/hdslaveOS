@@ -34,7 +34,7 @@ namespace melodee {
 namespace {
 using namespace ui;
 constexpr unsigned visible = list_rows;
-const juce::Colour amber = colour::amber;
+const juce::Colour& amber = colour::amber; // the palette in use's, as each frame sets it (a copy would keep NIGHT's)
 
 enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit };
 
