@@ -9780,6 +9780,30 @@ bool logged_pin(const void* address, size_t, bool lock) {
     return true;
 }
 
+// A platform's worker setup (engine/render_pool.h): run once on each worker's own thread, before its first job.
+std::thread::id setup_caller;
+std::atomic<int> setups_run {0};
+std::atomic<int> setup_on_worker {0};
+void count_setup() {
+    setups_run.fetch_add(1);
+    if (std::this_thread::get_id() != setup_caller) setup_on_worker.fetch_add(1);
+}
+void render_worker_setup() {
+    setup_caller = std::this_thread::get_id();
+    set_worker_setup(count_setup);
+    {
+        RenderPool pool;
+        pool.start(2, 0);
+        std::atomic<int> jobs {0};
+        for (int round = 0; round < 3; ++round) pool.run(4, [&](unsigned) { jobs.fetch_add(1); });
+        CHECK(jobs.load() == 12);
+        for (int wait = 0; wait < 1000 && setups_run.load() < 2; ++wait) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        pool.stop();
+    }
+    set_worker_setup(nullptr);
+    CHECK(setups_run.load() == 2 && setup_on_worker.load() == 2); // once a worker, on the worker, not again a run
+}
+
 // Rendering on several cores (engine/render_pool.h): a busy project sounds the same, sample for sample, with
 // render workers sharing every block as with the audio thread alone; and the workers did share them.
 void parallel_render() {
@@ -19348,6 +19372,7 @@ int main() {
     sample_cache();
     stream_pager();
     parallel_render();
+    render_worker_setup();
     one_dispatch();
     loops_and_buses_parallel();
     overload_guard();
