@@ -118,6 +118,14 @@ PALETTES = [
 LCD = ("LCD", (167, 181, 150), (152, 166, 136), (24, 33, 24))
 FACE = {"LCD": 6}  # a palette that sets its own face (ui/faces.h)
 
+# MONO: black and white, no colour. Neutral greys on black, every track, knob and state in white (greys for the knob
+# shades), square corners and no soft shadows. The face stays Settings' Font.
+MONO = dict(bg=(0, 0, 0), quiet=(10, 10, 10), panel=(16, 16, 16), surf=(24, 24, 24), raised=(37, 37, 37),
+            line=(56, 56, 56), text=(238, 238, 238), sec=(204, 204, 204), mid=(153, 153, 153), dim=(102, 102, 102))
+MONO_INKS = [(238, 238, 238), (204, 204, 204), (153, 153, 153)]  # a track's colour, then its knob shades
+NO_COLOUR = {"LCD", "MONO"}  # no colour anywhere on screen: a pad colour of its own is shown in the ink too
+SQUARE = {"MONO"}            # square corners, no soft shadows
+
 READ = 4.5       # values, labels, a track's colour: on BG, SURF and RAISED
 TEXT_MIN = 7.0   # SEC (names) on BG
 MID_MIN = 4.6    # MID (labels, units) on BG and SURF
@@ -185,6 +193,19 @@ def build_lcd(name, bg, surf, text):
     return p
 
 
+def build_mono():
+    p = dict(MONO, light=False)
+    grounds = [p["bg"], p["surf"], p["raised"]]
+    assert all(contrast(c, g) >= READ for c in MONO_INKS for g in grounds)
+    assert contrast(p["sec"], p["bg"]) >= TEXT_MIN and contrast(p["sec"], p["raised"]) >= TEXT_MIN
+    assert all(contrast(p["mid"], g) >= MID_MIN for g in (p["bg"], p["surf"])) and contrast(p["dim"], p["bg"]) >= DIM_MIN
+    for key in ("rec", "amber", "play", "ice"):
+        p[key] = p["text"]
+    p["tracks"] = [list(MONO_INKS) for _ in range(16)]
+    p["loops"] = [list(MONO_INKS) for _ in range(4)]
+    return p
+
+
 def weakest(p):
     pairs = [("text", "bg"), ("sec", "bg"), ("mid", "bg"), ("mid", "surf"), ("dim", "bg"), ("rec", "bg"), ("amber", "bg"),
              ("play", "bg"), ("ice", "bg")]
@@ -201,6 +222,7 @@ def main():
     night["light"] = False
     all_ = [("NIGHT", night)] + [(n, build(n, bg, surf, text, c, s, tracks, loops)) for n, bg, surf, text, c, s in PALETTES]
     all_.append((LCD[0], build_lcd(*LCD)))
+    all_.append(("MONO", build_mono()))  # after LCD: a saved palette number keeps its meaning
 
     keys = ["bg", "panel", "surf", "raised", "quiet", "line", "text", "sec", "mid", "dim", "rec", "amber", "play", "ice"]
     h = lambda c: f"0x{rgbhex(c):06X}"
@@ -210,6 +232,7 @@ def main():
              "#pragma once",
              "#include <array>",
              "#include <cstdint>",
+             "#include <string_view>",
              "",
              "// The screen's palettes (Settings > SCREEN > Palette; ui/tokens.h use_palette()). NIGHT is the design's",
              "// own; the others keep every track's hue and move its lightness until it reads on that palette's grounds.",
@@ -223,6 +246,8 @@ def main():
              "    std::array<std::array<uint32_t, 3>, 4> loops;",
              "    bool light; // a light ground (DAY, CANDY, LCD)",
              "    int face;   // a face of its own (ui/faces.h), whatever Settings' Font says; -1 none",
+             "    bool mono;  // no colour anywhere (LCD, MONO): a pad colour of its own is shown in the ink too",
+             "    bool square; // square corners and no soft shadows (MONO; ui/tokens.h corner())",
              "};",
              "",
              f"constexpr std::array<PaletteSpec, {len(all_)}> palettes {{{{"]
@@ -230,10 +255,17 @@ def main():
         lines.append(f'    {{"{name}", ' + ", ".join(h(p[k]) for k in keys) + ",")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["tracks"]) + "}},")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["loops"]) + "}},")
-        lines.append(f"     {'true' if p['light'] else 'false'}, {FACE.get(name, -1)}}},")
+        b = lambda v: "true" if v else "false"
+        lines.append(f"     {b(p['light'])}, {FACE.get(name, -1)}, {b(name in NO_COLOUR)}, {b(name in SQUARE)}}},")
         (w, which), tr = weakest(p)
         print(f"{name:9} weakest {which} {w:.2f}  tracks min {tr:.2f}")
-    lines += ["}};", "", "} // namespace melodee::ui", ""]
+    lines += ["}};", "",
+              "// The number of the palette called `name` (Settings' palette=); 0, NIGHT, if there is none.",
+              "constexpr unsigned palette_named(std::string_view name) {",
+              "    for (unsigned n = 0; n < palettes.size(); ++n) if (name == palettes[n].name) return n;",
+              "    return 0;",
+              "}",
+              "", "} // namespace melodee::ui", ""]
     (ROOT / "src/melodee/ui/palettes.h").write_text("\n".join(lines))
 
 

@@ -2364,7 +2364,22 @@ void settings() {
     for (int n = 0; n < 20; ++n) c.step(Settings::Font, 1);
     CHECK(c.font + 1u == ui::face_choices && c.value_text(Settings::Font) == "VT323");
     { Settings back; back.read(c.text()); CHECK(back.palette == 1 && back.font + 1u == ui::face_choices); }
-    { Settings lcd; lcd.palette = uint8_t(ui::palettes.size() - 1); CHECK(lcd.value_text(Settings::Palette) == "LCD" && lcd.value_text(Settings::Font) == "Melodee Pixel"); }
+    { Settings lcd; lcd.palette = uint8_t(ui::palette_named("LCD")); CHECK(lcd.palette == 8 && lcd.value_text(Settings::Palette) == "LCD" && lcd.value_text(Settings::Font) == "Melodee Pixel"); }
+    // MONO, after LCD so a saved palette number keeps its meaning: black and white, square, in Settings' own Font.
+    { Settings mono; mono.palette = uint8_t(ui::palette_named("MONO")); CHECK(mono.palette == 9 && mono.value_text(Settings::Palette) == "MONO" && mono.value_text(Settings::Font) == "Rubik"); }
+    {
+        const auto& p = ui::palettes[ui::palette_named("MONO")];
+        auto grey = [](uint32_t v) { return (v >> 16 & 255) == (v >> 8 & 255) && (v >> 8 & 255) == (v & 255); };
+        bool all = true;
+        for (uint32_t v : {p.bg, p.panel, p.surf, p.raised, p.quiet, p.line, p.text, p.sec, p.mid, p.dim, p.rec, p.amber, p.play, p.ice}) all = all && grey(v);
+        for (const auto& row : p.tracks) for (uint32_t v : row) all = all && grey(v);
+        for (const auto& row : p.loops) for (uint32_t v : row) all = all && grey(v);
+        CHECK(all && p.bg == 0x000000 && p.mono && p.square && !p.light && p.face == -1);
+        // Only LCD and MONO have no colour, only MONO is square; the others keep what they had.
+        unsigned mono = 0, square = 0;
+        for (const auto& q : ui::palettes) { mono += q.mono; square += q.square; }
+        CHECK(mono == 2 && square == 1 && ui::palettes[ui::palette_named("LCD")].mono && ui::palette_named("NONE") == 0);
+    }
     { Settings odd; odd.read("palette=99\nfont=99\n"); CHECK(odd.palette + 1u == ui::palettes.size() && odd.font + 1u == ui::face_choices); }
     // Double Seq: Copy notes (the MPC's) or Empty, kept in the text.
     CHECK(c.double_copies && c.value_text(Settings::DoubleSeq) == "Copy notes");

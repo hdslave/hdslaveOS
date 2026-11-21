@@ -2123,7 +2123,11 @@ const Preview previews[] {
      }},
     {"settingslcd", [](Shell&, Snapshot& s) { // LCD: no colour, Melodee Pixel
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
-         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palettes.size() - 1);
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("LCD"));
+     }},
+    {"settingsmono", [](Shell&, Snapshot& s) { // MONO: black and white, square corners
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette;
+         s.ui.settings_look = true; s.ui.settings.palette = uint8_t(ui::palette_named("MONO"));
      }},
     {"settingsfont", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Font;

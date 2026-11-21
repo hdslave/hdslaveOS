@@ -9,8 +9,8 @@
 
 // Melodee's design tokens at device size (the boards are drawn at 2x: halve
 // them). The palette in use (NIGHT unless Settings > SCREEN > Palette picks
-// another, ui/palettes.h), one colour per track, and the four fixed zones of
-// every screen.
+// another, ui/palettes.h), one colour per track, the corners it draws, and
+// the four fixed zones of every screen.
 namespace melodee::ui {
 
 inline juce::Colour hex(uint32_t rgb, float alpha = 1) { return juce::Colour(0xff000000u | rgb).withAlpha(alpha); }
@@ -43,11 +43,15 @@ inline juce::Colour track_colour(unsigned track) { return hex(palette().tracks[t
 inline juce::Colour knob_shade(unsigned track, unsigned knob) { return hex(palette().tracks[track % 16][knob % 3]); }
 inline juce::Colour loop_colour(unsigned loop) { return hex(palette().loops[loop % 4][0]); }
 inline juce::Colour loop_shade(unsigned loop, unsigned knob) { return hex(palette().loops[loop % 4][knob % 3]); }
-// A colour of the pads' own (ui/shades.h, a kit pad's COLOUR) as this palette shows it: the track colour it is, else as it is.
+// A colour of the pads' own (ui/shades.h, a kit pad's COLOUR) as this palette shows it: the track colour it is, else as it is
+// (a palette with no colour, LCD or MONO, shows any other in its ink).
 inline juce::Colour screen_colour(uint32_t rgb) {
     for (unsigned t = 0; t < 16; ++t) if (track_shades[t][0] == rgb) return track_colour(t);
-    return hex(rgb);
+    return palette().mono ? track_colour(0) : hex(rgb);
 }
+// A corner's radius as the palette in use draws it: none on a square palette (MONO), which also drops soft shadows.
+inline float corner(float radius) { return palette().square ? 0.0f : radius; }
+inline bool soft_shadows() { return !palette().square; }
 
 // Zones, top to bottom, at device size.
 namespace zone {

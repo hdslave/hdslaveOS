@@ -106,10 +106,13 @@ Press **Push** or **B3 KEEP** to keep it, or **B1 BACK** to go back to the
 one you had.
 
 Palettes: NIGHT (the default), DAY, CONTRAST, SUNSET, OCEAN, NEON, CANDY,
-LO-FI and LCD. LCD looks like an old sampler's backlit LCD: dark letters on a
-grey-green screen, no colour, always in the Melodee Pixel font. Each track keeps its colour family in every palette, so track 1 is
+LO-FI, LCD and MONO. LCD looks like an old sampler's backlit LCD: dark letters on a
+grey-green screen, no colour, always in the Melodee Pixel font. MONO is a
+black-and-white dark mode: white and grey on black, no colour, square corners
+and no shadows, in the font you chose. On LCD and MONO every track is drawn in
+the same ink, so a track shows by its number. Elsewhere each track keeps its colour family, so track 1 is
 always coral; on DAY and CANDY the colours are darker so they read on the
-light screen. The pads keep their own colours.
+light screen. The pads keep their own colours in every palette.
 
 Fonts: Rubik (the default), Inter Tight, Atkinson, Space Grotesk, IBM Plex
 and Manrope, and two pixel fonts: Melodee Pixel and VT323. Melodee Pixel is

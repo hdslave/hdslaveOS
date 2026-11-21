@@ -100,7 +100,7 @@ void sheet(Paint& p, const Sheet& s) {
     if (lines > 3) report_text_issue({s.body, body.size, body_h, 3 * line});
     float h = pad + (s.power_icon ? 22 : 0) + 24 + lines * line + pad;
     float y = std::max(float(zone::header_y), zone::picture_y + (zone::picture_h - h) / 2);
-    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n); // a soft shadow
+    if (soft_shadows()) for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n); // a soft shadow
     p.fill(x, y, w, h, colour::surf, 6);
     p.ring(x, y, w, h, colour::line, 6);
     float at = y + pad;
@@ -122,7 +122,7 @@ void sheet(Paint& p, const Sheet& s) {
 
 void wide_sheet(Paint& p, const MenuSheet& m, const juce::String& chip_text, juce::Colour chip_colour) {
     constexpr float x = zone::pad, y = zone::header_y + 2, w = zone::width - 2 * zone::pad, h = zone::knobs_y - 2 - y;
-    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
+    if (soft_shadows()) for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
     p.fill(x, y, w, h, colour::surf, 6);
     p.ring(x, y, w, h, colour::line, 6);
     auto chip = caps_text(colour::bg);
@@ -282,7 +282,7 @@ void confirm_sheet(Paint& p, const ConfirmSheet& s) {
     bool foot = s.chip.isNotEmpty() || s.name.isNotEmpty() || s.undo;
     constexpr float w = 272, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - 116) / 2; // the top stays put
     float h = foot ? 116 : s.lines[1].isEmpty() ? 70 : 86;
-    for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 7 + k);
+    if (soft_shadows()) for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 7 + k);
     p.fill(x, y, w, h, colour::panel, 6);
     p.ring(x, y, w, h, s.accent, 6, 1.2f);
     icon(p, s.icon, x + 14, y + 12, 20, s.accent, 1.6f);

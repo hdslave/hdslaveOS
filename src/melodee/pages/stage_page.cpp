@@ -897,7 +897,7 @@ void input_picture(Paint& p, const Snapshot& s) {
     } else if (armed) {
         if (r.used()) region_wave(p, s, r, take_x + 2, take_y + 2, take_span(s, r) - 4, h - 4, c.withAlpha(0.35f));
         juce::Path frame;
-        frame.addRoundedRectangle(take_x + 0.5f, take_y + 0.5f, take_w - 1, h - 1, 3);
+        frame.addRoundedRectangle(take_x + 0.5f, take_y + 0.5f, take_w - 1, h - 1, corner(3));
         juce::Path dashed;
         const float dashes[] {4, 4};
         juce::PathStrokeType(1.0f).createDashedStroke(dashed, frame, dashes, 2);

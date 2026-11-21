@@ -244,6 +244,7 @@ float Paint::text(const juce::String& original, float x, float y, float w, float
 
 void Paint::fill(float x, float y, float w, float h, juce::Colour c, float radius) {
     g.setColour(c);
+    radius = corner(radius);
     if (radius > 0) g.fillRoundedRectangle(x, y, w, h, radius);
     else g.fillRect(juce::Rectangle<float>(x, y, w, h));
 }
@@ -251,7 +252,7 @@ void Paint::fill(float x, float y, float w, float h, juce::Colour c, float radiu
 void Paint::ring(float x, float y, float w, float h, juce::Colour c, float radius, float thickness) {
     g.setColour(c);
     float half = thickness / 2;
-    g.drawRoundedRectangle(x + half, y + half, w - thickness, h - thickness, radius, thickness);
+    g.drawRoundedRectangle(x + half, y + half, w - thickness, h - thickness, corner(radius), thickness);
 }
 
 void Paint::circle(float cx, float cy, float r, juce::Colour c) {
