@@ -1,6 +1,6 @@
 # Melodee optimization audit
 
-A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the `melodee-hdslave` fork changes as a result. Written on 2026-11-20, in two passes: an audit by reading, then a second pass for speed alone, measured with a profiler.
+A performance and battery-life audit of Melodee 0.5.1 for the Akai MPC Sample, and the record of what the `melodee-hdslave` fork changes as a result. Written on 2026-11-20, in three passes: an audit by reading; a second pass for speed alone, measured with a profiler; and a third for what a stopped project and the screen cost.
 
 Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app and the sample-base runtime under it (`base/`). The fork keeps his copyright headers, credits and licence.
 
@@ -10,9 +10,10 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 
 - **128 findings**: 127 from eleven auditors, each covering one part of the code, and one found while implementing. I checked each against the code. 95 are confirmed, 27 turned out to be the same issue reported by a second auditor, 5 are partly confirmed and 1 could not be checked without the compiler's output. None was rejected outright, but one recommended compiler flag turned out to change the audio and was dropped (BASE-5).
 - **The processor's speed is left alone.** The first pass built a CPU speed setting that held the cores at a lower clock and voltage to save battery. It was removed at the owner's request before the fork was ever run: the four cores stay at the kernel's 1.8 GHz, as under the stock app, and nothing in the fork touches the clocks.
-- **The fork implements 23 findings**, eight of them in part. They remove wasted work in the engine and around it and add three settings (Refresh, Dim after, Pad brightness). The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
+- **The fork implements 25 findings**, nine of them in part. They remove wasted work in the engine and around it and add three settings (Refresh, Dim after, Pad brightness). The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
 - **Second pass, for speed:** the engine runs **23 % fewer instructions** for the benchmark's busy 16-track project and **12 % fewer** for the same project stopped, playing the same to the bit. Most of it comes from one loop in the sampler.
-- **The largest saving left on the table** is letting silent tracks and effect chains rest (HOST-1). A stopped project still costs the engine about half of what a busy one playing does. Resting a chain cannot be made bit-exact as the effects are written, so it was not attempted.
+- **Third pass, silent chains:** a chain of effects that hears nothing and holds nothing is no longer run (HOST-1). Once a stopped project's chains rest, a block costs the engine **76 % fewer instructions**. The output is the same to the bit with resting on and off, through silence and the sound that ends it.
+- **Third pass, the screen:** the screen thread no longer copies the kits and redraws every pattern's sketch for frames in which neither can have changed (MODEL-1). With the MPC's cache sizes that takes its snapshot from about 3.4 million cycles a frame to 0.75 million, and the pads wait on its lock for that much less time. Every page gives the same pixels.
 
 ### The levers, in order of likely value
 
@@ -20,8 +21,9 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 | --- | --- | --- | --- |
 | 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | Not used. Built, then removed at the owner's request: full speed always |
 | 2 | Any changed pixel bought 30 more full redraws at 60 fps. The place bar moves on every page while playing, so every page was redrawn 60 times a second. | BASE-2, UI-1, UI-4 | Refresh setting (30 fps by default), shorter tail, event-driven wake |
+| 2a | Every frame copied 0.8 MB of project and rebuilt 2,048 pattern sketches under the lock the pads use. | MODEL-1 | Third pass: only when a kit or pattern can have changed |
 | 3 | Nothing dims: backlight at its level and 16 RGB pads plus about 25 button lights on for hours. | BASE-3, LIGHT-4 | Dim after and Pad brightness settings |
-| 4 | Silent tracks, buses and the master still run every effect in their chains on every block. | HOST-1 | Not implemented |
+| 4 | Silent tracks, buses and the master still run every effect in their chains on every block. | HOST-1 | Third pass: chains that hold nothing rest; silent tracks and buses are not mixed |
 | 4a | Half of a busy project's engine time is the sampler's plain voice loop, most of it for voices that only hold their level. | SMP-9 | Fixed in the second pass: 17 % of the engine's instructions |
 | 5 | Background polling: about 715 of the runtime's 1,060 wakeups a second at rest are polls, plus 1,000 a second from Melodee's stream reader. | SMP-1, BASE-2, BASE-6, BASE-7 | Stream reader and screen thread fixed; service and lights loops unchanged |
 | 6 | Needless saves to the card: some commands marked the project changed with no edit, in one case once a second for ever; each save re-read every project in the folder. | SHELL-1, LIGHT-6, IO-1 | Fixed |
@@ -50,6 +52,8 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 | A Pad FX that is off moves its history on in one or two copies, not a frame at a time. | SMP-3 | `engine/punch.cpp` |
 | The echoes look their SYNC up once a call, not once a frame. | FX-4 | `engine/effects.cpp` |
 | The mixer reads a gain that is not moving once a block. | HOST-4 | `engine/engine_host.cpp` |
+| An effect chain that hears silence and holds nothing rests, and wakes exactly where it would have been. A track or bus that gives nothing is not mixed. | HOST-1 | `engine/engine_host.cpp` (`run_chain`), `engine/effects.*` (`rest`, `process_silent`) |
+| The screen's snapshot leaves the kits and pattern sketches alone in a frame where neither can have changed. | MODEL-1 | `shell/shell.cpp` (`snapshot`), `shell/context.*` (`heavy_serial`) |
 | Crash recovery puts the backlight back: the recovery script when the app's service stops, and the runtime itself as the next app starts, should one have been killed in between. | BASE-3 | `base/install/restore-stock.sh`, `base/src/drivers/platform.*` (`recover()`) |
 
 Changes to `base/` are on a branch named `hdslave` inside the submodule, since the project's own rule is to change the base in sample-base and not from Melodee's tree.
@@ -141,6 +145,59 @@ Each count includes about 78 million instructions of the benchmark's own setup a
 
 **What is left, by weight.** The effects are now the largest share, and each kind is a little of it. The exact savings left there are small and each needs its own proof (FX-4's other sites, FX-9). Resting silent chains (HOST-1) is the big one, and it is not exact: a chorus's sweep keeps moving through silence, so a chain that slept would come back at a different point of its sweep. Outside the engine, the screen thread's copy of the whole project for every frame (MODEL-1) is the next largest cost that could go without anything being lost.
 
+## Third pass: silent chains and the screen
+
+The second pass ended with a stopped project still costing the engine about half of what a busy one playing does, and with the note that resting a chain could not be made bit-exact. The owner asked for it anyway. It turned out that it can be made exact, with one measured reservation.
+
+**The rule.** A chain is no longer run once all of this has held for twice the longest delay line and a block (288,128 frames: 6 s at 48 kHz):
+
+- what goes into it is silence, and what comes out of each of its effects is silence;
+- every effect was left by every one of those blocks as `Effect::rest()` leaves it. The engine keeps a copy of the effect before the block, applies `rest()` to the copy, and compares the two byte for byte. So `rest()` is not trusted to describe what an effect does in silence: it is checked against the effect itself about 2,250 times in a row before it is used alone;
+- no plug-in and no keyed effect is in the chain, and no effect in it is still clearing its memory or holding sound that is not heard (a MIX of 0).
+
+While it rests, each effect's slow swing and the place it writes at in its delay line move on exactly as they would have, a frame at a time. That matters: a delay works out where it reads from the place it writes at, in floating point, and the first version, which left the place where it was, played the next sound differently in its last bits. The chain is run again from the first block that brings it sound, or in which one of its effects, the tempo or the sample rate has changed.
+
+A track or bus whose block is exactly +0 is no longer mixed into the master, Knob FX and the buses: adding +0 to a sum that began at +0 changes nothing.
+
+**The reservation: what counts as silence.** With silence as exactly zero, three of the bench's twenty chains never rested after playing. A filter's last bits can go round for ever at about 1e-38: the engine flushes results that small to zero, but a sum of two such values is not that small, so they keep turning over. And an echo takes minutes to fall from the output's lowest bit to nothing. So silence is anything under 2^-95 (2.5e-29, -571 dB), in what goes in and out and in an effect's running values. The output's lowest bit is 4.7e-10: what is discarded is a trillion trillion times under it and cannot come back. With that floor the output is still the same to the bit in every run below; a chain that reaches true zero is exact with no reservation at all.
+
+**Measured** (instructions a block, one thread, the bench's project never played, so that every chain can rest):
+
+| | Instructions a block |
+| --- | --- |
+| Stopped, original build | about 880,000 |
+| Stopped, after the second pass | 766,710 |
+| Stopped, chains resting | 181,205 (**-76 %**) |
+
+The busy project playing costs 0.2 % more than before (the look at each chain's input): 2,326 million instructions for three seconds, against 2,321 million.
+
+**How long until a chain rests.** A chain without long tails (drive, filter, compressor, chorus, phaser, crush) rests 6 to 15 s after its sound ends. One with an echo or a reverb rests when its tail has fallen under the floor. Each kind alone at the values it starts with, after two seconds of sound: Echo 24 s, Room 25 s, Plate 29 s, Reverb 33 s, Tape echo 45 s, Shimmer 76 s. In the bench, where the echoes feed back harder, about three minutes. After the bench's project has played for three seconds and stopped: 12 of its 20 chains rest after 30 s, 15 after 80 s, all 20 after 400 s. A project that has not played since it was loaded rests whole after 6 s.
+
+**Proof that nothing changes.** The bench has a second switch (`rest=0`: every chain run in every block, as before) and can stop and start (`stop=`, `again=`). Its output hash is the same with resting on and off: playing; stopped; and played, stopped and played again after silences of 30, 80, 190 and 400 s, on one thread and with three workers. A new test does the same for every kind of effect Melodee has, a kind a chain, through a silence long enough to rest and the note that ends it, comparing every sample.
+
+**What does not rest.** A chain with a plug-in (plug-ins have their own gate) or a keyed effect. And a chain that holds one of thirteen of Melodee's 41 kinds of effect, which are run as before because the byte comparison never passes for them: Looper keeps sound in its memory; Tremolo, Pedal chorus, Pedal phaser, Spit, Diff delay, Sample delay, Spring, Ensemble, Multi-chorus, Vintage, Vinyl and Tape emulator have running values or line places that move in silence in ways `rest()` does not follow yet. The other 28 kinds rest (`.local/checks/rests_by_kind.cpp` lists them). The master section (the Pad FX histories, the master compressor) is run as before.
+
+**On the MPC:** the status line has `melodee_chains_resting=`.
+
+### The screen's snapshot
+
+For every frame the screen thread takes a copy of what the page needs, under the lock the pads, the buttons and MIDI in also take. That copy was 794 KB: the whole project (539 KB, nine tenths of it the kits: every track's 128 pads, their effect chains and zone trims) and a sketch of each of the 2,048 patterns, rebuilt from the patterns every time (229 KB written, 492 KB read). Thirty times a second while a project plays.
+
+**Measured.** A new tool, `--melodee-frames`, runs the frame as the app does (the tick, the snapshot, the page drawn), and callgrind's cache model was given the MPC's sizes from the vendor's device tree (32 KB of data cache a core, 512 KB shared by the four, 16 ways, 64-byte lines). Instruction counts say little here, since a copy is few instructions and many cache misses, so the figure is the usual estimate of cycles: instructions, plus 10 for a first-level miss, plus 100 for a last-level one. On Stage, playing:
+
+| A frame | Snapshot | Drawing |
+| --- | --- | --- |
+| Before | about 3.4 million cycles (29,000 last-level misses) | about 3.3 million |
+| After | about 0.75 million (5,600) | the same |
+
+So the snapshot cost as much as drawing the page, nearly all of it memory traffic, and now costs a fifth of that. The estimate is rough (a copy's misses are cheaper than 100 cycles each on a real core, since it reads ahead), but the proportion is what matters: about nine tenths of the bytes are gone. The copy was also larger than the MPC's whole shared cache, so every frame pushed the audio threads' data out of it, thirty times a second; no count here shows what that cost them.
+
+**The rule.** `Context::heavy_serial` moves whenever a kit or a pattern may have changed: on every control and MIDI message that reaches the shell, and at each place where such a change is told to the audio thread (an edit sent, a pattern synced, Motion written, a track sent whole, a project switched to), which is how changes that come by themselves arrive (a sample landed, an arp's notes recorded). A frame in which it has not moved is a light one: everything is copied as before except the kits and the sketches, which stay as the last whole frame made them. Three more things make a frame whole: any command sent to the audio thread since the last frame, a project or pattern bank handed out by `Shell::project()` or `patterns()`, and half a second since the last whole one. The last is a net under the rule: if a change ever came by a way that tells nobody, the screen would show it at most half a second late.
+
+**Proof that nothing changes.** Every page was drawn for 120 frames with light snapshots and with whole ones, on three tracks, stopped and playing (276 runs, 33,000 frames): the pixels are the same in every run. The monkey test now keeps one snapshot from draw to draw, as the app does, and has the shell check every light snapshot against a whole one: in 36,000 random moves, none differed.
+
+**What it does not do.** A control in use makes every frame whole, as before: the saving is for frames while your hands are off, which is when a project plays. An external MIDI clock also makes every frame whole, since each clock byte is a MIDI message. Drawing itself is unchanged.
+
 ## Tests
 
 All run in the project's own build container (Debian 12, arm64) on an Apple Silicon Mac.
@@ -156,6 +213,10 @@ All run in the project's own build container (Debian 12, arm64) on an Apple Sili
 | Self-test audio (6 s render), SHA-256 against the unmodified build | identical |
 | DSP bench output hash (16 busy tracks, 10 s) against the original build's, playing and stopped, on one thread and with three workers | identical |
 | The sampler's held runs against the loop frame by frame (`held_runs` off), kits and keygroups | identical |
+| Resting chains against every chain run every block (`chain_rests` off): every effect kind, a kind a chain, through a silence and the note that ends it | every sample identical |
+| The same on the DSP bench: stopped, and stopped and played again after 30, 80, 190 and 400 s | identical hashes |
+| Light snapshots against whole ones: every page, three tracks, stopped and playing, 120 frames each | the same pixels in all 276 runs |
+| The monkey with every light snapshot checked against a whole one | none differed |
 | Compressor shortcut against the original expressions | 370,217,204 gains identical |
 
 Two notes on the test setup:
@@ -167,7 +228,7 @@ The bench's own block times on the build machine vary too much from run to run (
 
 ## Before you install it
 
-The package is `dist/Melodee-MPC-Sample-v0.5.1-hdslave.2-unsigned.zip`, made by `tools/package_unsigned.py`. It has the same files and boot checks as a release, without the update signature (only the author has that key). So it installs by hand only, and Melodee's own updater will not accept it.
+The package is `dist/Melodee-MPC-Sample-v0.5.1-hdslave.3-unsigned.zip`, made by `tools/package_unsigned.py`. It has the same files and boot checks as a release, without the update signature (only the author has that key). So it installs by hand only, and Melodee's own updater will not accept it.
 
 Things only the device can tell:
 
@@ -180,9 +241,9 @@ Going back is one setting each: Refresh 60, Dim after Off, Pad brightness 100 %.
 
 ## Not done, in order of likely value
 
-1. **HOST-1 / FX-1: rest silent chains.** Largest remaining saving when stopped or in sparse arrangements: a stopped project still runs about half the instructions of a busy one. Needs a tail rule longer than the longest echo and listening tests, and is not bit-exact (a sleeping chain's sweeps stop).
+1. **HOST-1, the rest of it.** Chains now rest (third pass). Left: the master section when nothing feeds it, the kinds whose running values `rest()` does not follow, and an idle track's remaining bookkeeping. A rested stopped block is 181,000 instructions, so what is left here is small.
 2. **UI-5: skip drawing a screen that cannot have changed.** Would take the resting state from 10 full redraws a second to none. Needs three checks moved out of the screen thread's snapshot and a dependency list per page.
-3. **MODEL-1: stop copying the whole project every frame.** Needs change counters on every writer.
+3. **Drawing.** With the snapshot cut, drawing the page is what the screen thread spends its time on: about 3.3 million cycles a frame on Stage by the same estimate. UI-9, UI-11, UI-12 and the page findings are each a part of it.
 4. **BASE-6, BASE-7, LIGHT-3: slow the 5 ms service and lights loops when nothing happens.** Needs every pass-counting timer converted to clock time first.
 5. **IO-3: write only the loops that changed** when saving.
 6. **SMP-2, SMP-4, FX-4's other sites, FX-9: exact DSP savings** in the Looper and the effects. Each is small, and each must be shown to leave the output's bits alone (see FX-3 in the second pass).
