@@ -57,9 +57,12 @@ public:
     // Any thread: Settings' USB volume, Full: USB-C's main mix at full main volume, the knob left out.
     bool usb_full_volume() const { return usb_full.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
-    // Any thread: power (melodee-hdslave; Settings' Refresh and Dim after, shell/settings.h). dimmed(): the controls
-    // have been still, and nothing has played, recorded or worked, for Dim after's minutes.
+    // Any thread: power (melodee-hdslave; Settings' CPU speed, Refresh and Dim after, shell/settings.h). dimmed():
+    // the controls have been still, and nothing has played, recorded or worked, for Dim after's minutes. working():
+    // a job that wants the CPUs' full speed with no hand on the controls (a load, a print, an export, stems).
     bool dimmed() const { return dimmed_.load(std::memory_order_relaxed); }
+    bool working() const { return working_.load(std::memory_order_relaxed); }
+    unsigned cpu_speed() const { return cpu_wanted.load(std::memory_order_relaxed); }      // Settings::CpuFull ...
     unsigned refresh_fps() const { return refresh_wanted.load(std::memory_order_relaxed); } // frames a second
     // Any thread: Settings' sample rate and buffer (periods): the card's from start_settings(), else the default.
     unsigned audio_rate() const { return audio_wanted.load(std::memory_order_relaxed) & 0xfffff; }
@@ -171,8 +174,8 @@ private:
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
     std::atomic<uint32_t> mirror_wanted {3u << 1}; // on | size << 1 | 60 fps << 4: off, 1280 x 960, 30 fps
     std::atomic<bool> usb_full {true};
-    std::atomic<bool> dimmed_ {false};
-    std::atomic<uint8_t> refresh_wanted {30};
+    std::atomic<bool> dimmed_ {false}, working_ {true}; // working until the first pass says otherwise: the start is at full speed
+    std::atomic<uint8_t> cpu_wanted {Settings::CpuFull}, refresh_wanted {30};
     uint32_t last_busy_ = 0; // MIDI thread: when something last played, recorded or worked (power_tick())
     void want_audio_format() {
         audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed);

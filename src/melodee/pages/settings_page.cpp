@@ -54,7 +54,7 @@ const std::array<Door, 8> doors {{
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
     {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::Refresh, Settings::PlaceBarRow,
                                   Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
-    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume)},
+    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::CpuSpeed)},
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                                  Settings::SilenceBelow)},
     {Icon::Din, "MIDI", {none}},  // MIDI Config's own page
@@ -179,7 +179,8 @@ void rows_draw(Paint& p, const Snapshot& s) {
     }
     if (s.ui.settings_door % doors.size() != audio_door) return;
     // AUDIO (roadmap P2): what the blocks take of their time, beside the dropouts (a check while there are none).
-    float y = zone::picture_y + 1 + shown * (list_row_h + list_row_gap) + 6, cy = y + list_row_h / 2, right = x + w - 9;
+    // Four rows (CPU speed the fourth): the two lines under them close up, so PDC's still ends above K1's card.
+    float y = zone::picture_y + 1 + shown * (list_row_h + list_row_gap) + (shown > 3 ? 0 : 6), cy = y + list_row_h / 2, right = x + w - 9;
     float load = s.machine.render_load;
     icon(p, Icon::Chip, x + 10, cy - 7, 14, colour::sec, 1.4f);
     p.text("DSP", x + 30, y, 40, list_row_h, caps_text(colour::mid));

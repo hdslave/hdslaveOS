@@ -50,15 +50,16 @@ choices made outside Settings are kept there too:
 
 ## Power
 
-Three settings trade a little light or screen smoothness for battery life and processor time. None of them changes what you hear, and none slows the processor: it always runs at its full speed, as under the stock app. They are in this fork (melodee-hdslave) only.
+Four settings trade a little speed or light for battery life. None of them changes what you hear, and the processor stays at its full speed unless you pick a lower **CPU speed**. They are in this fork (melodee-hdslave) only.
 
 | Setting | Page | Values | What it does |
 | --- | --- | --- | --- |
-| **Refresh** | SCREEN | 60, 30, 20 fps | How often the screen is drawn while something on it moves by itself, such as the place bar or a meter. Every frame is a full redraw, so fewer frames leave more processor time for the sound while a project plays. A control you use is always answered at 60 fps. The default is 30. |
+| **CPU speed** | AUDIO | Auto, Full, Balanced, Eco | The processor's top speed. **Eco** holds 1.4 GHz, the fastest speed at the processor's lowest voltage, where the same work takes about a third less energy and a quarter more time. **Balanced** holds 1.6 GHz and **Full** (the default) 1.8 GHz, the MPC's own speed, as under the stock app. **Auto** holds 1.4 GHz and goes to 1.8 GHz while the project needs it: when a block of audio has taken half its time, after a dropout, and while loading, printing, exporting or separating stems. It goes back after eight calm seconds. |
+| **Refresh** | SCREEN | 60, 30, 20 fps | How often the screen is drawn while something on it moves by itself, such as the place bar or a meter. Every frame is a full redraw, so fewer frames save processor time while a project plays. A control you use is always answered at 60 fps. The default is 30. |
 | **Dim after** | SCREEN | Off, 1, 2, 5, 10 min | After this long with no control used, and nothing playing, recording or working, the screen goes to its lowest light and the pads and buttons go low. Any control brings them back and is acted on as usual. The default is 2 minutes. |
 | **Pad brightness** | PADS | 100, 75, 50, 25 % | The light of the pads and the fader. |
 
-The MPC gets its own backlight level back when you leave Melodee.
+If a heavy project crackles on **Auto** or **Eco**, set **CPU speed** to **Full**: AUDIO's DSP line shows the share of each block's time the project takes. The MPC gets its own speed and backlight back when you leave Melodee.
 
 ## Basic and Full
 

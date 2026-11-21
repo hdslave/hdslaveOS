@@ -18615,32 +18615,37 @@ void usb_volume() {
     CHECK(old.usb_full);
     knob.reset_factory();
     CHECK(knob.usb_full);
-    { // Power (melodee-hdslave): Refresh, Dim after and Pad brightness, as they start, step, and are kept.
+    { // Power (melodee-hdslave): CPU speed, Refresh, Dim after and Pad brightness, as they start, step, and are kept.
         Settings power;
+        CHECK(power.cpu_speed == Settings::CpuFull && power.value_text(Settings::CpuSpeed) == "Full" && power.choices(Settings::CpuSpeed) == 4); // full speed unless chosen
         CHECK(power.refresh_fps() == 30 && power.value_text(Settings::Refresh) == "30 fps" && power.choices(Settings::Refresh) == 3);
         CHECK(power.dim_ms() == 120000 && power.value_text(Settings::DimAfter) == "2 min" && power.choices(Settings::DimAfter) == 5);
         CHECK(power.pad_percent() == 100 && power.value_text(Settings::PadLevel) == "100 %" && power.choices(Settings::PadLevel) == 4);
-        CHECK(std::string(Settings::row_name(Settings::Refresh)) == "Refresh" && unsigned(Settings::Refresh) == unsigned(Settings::UsbVolume) + 1);
+        CHECK(std::string(Settings::row_name(Settings::CpuSpeed)) == "CPU speed" && unsigned(Settings::CpuSpeed) == unsigned(Settings::UsbVolume) + 1);
+        CHECK(std::string(Settings::row_name(Settings::Refresh)) == "Refresh" && unsigned(Settings::Refresh) == unsigned(Settings::CpuSpeed) + 1);
         CHECK(std::string(Settings::row_name(Settings::DimAfter)) == "Dim after" && std::string(Settings::row_name(Settings::PadLevel)) == "Pad brightness");
         CHECK(std::string(Settings::row_name(Settings::UsbVolume)) == "USB volume"); // the rows before them where they were
-        for (unsigned row : {unsigned(Settings::Refresh), unsigned(Settings::DimAfter), unsigned(Settings::PadLevel)})
+        for (unsigned row : {unsigned(Settings::CpuSpeed), unsigned(Settings::Refresh), unsigned(Settings::DimAfter), unsigned(Settings::PadLevel)})
             for (unsigned n = 0; n < power.choices(row); ++n) { // every value can be picked, and reads back as picked
                 power.set_choice(row, n);
                 CHECK(power.choice(row) == n && !power.value_text(row).empty());
                 Settings kept; kept.read(power.text());
                 CHECK(kept.choice(row) == n && kept.value_text(row) == power.value_text(row));
             }
-        power.set_choice(Settings::DimAfter, 0);
-        CHECK(power.dim_ms() == 0 && power.value_text(Settings::DimAfter) == "Off");
-        CHECK(power.text().find("cpu_speed") == std::string::npos); // no setting slows the CPUs
+        power.set_choice(Settings::CpuSpeed, Settings::CpuEco); power.set_choice(Settings::DimAfter, 0);
+        CHECK(power.value_text(Settings::CpuSpeed) == "Eco" && power.dim_ms() == 0 && power.value_text(Settings::DimAfter) == "Off");
+        { // the four in their order, as saved: Auto 0, Full 1, Balanced 2, Eco 3
+            const char* names[] {"Auto", "Full", "Balanced", "Eco"};
+            for (unsigned n = 0; n < 4; ++n) { Settings one; one.read("cpu_speed=" + std::to_string(n) + "\n"); CHECK(one.value_text(Settings::CpuSpeed) == names[n]); }
+        }
         power.step(Settings::Refresh, -1); power.step(Settings::Refresh, -1); power.step(Settings::Refresh, -1);
         CHECK(power.refresh_fps() == 60);
         Settings before; before.read("usb_volume=1\n"); // a file from before these rows: as they start
-        CHECK(before.refresh_fps() == 30 && before.dim_ms() == 120000 && before.pad_percent() == 100);
-        Settings odd; odd.read("cpu_speed=3\nrefresh=25\ndim_after=7\npad_level=60\n"); // values no row has: the nearest it has; a row long gone: passed over
-        CHECK(odd.refresh_fps() == 30 && odd.dim_ms() == 300000 && odd.pad_percent() == 75);
+        CHECK(before.cpu_speed == Settings::CpuFull && before.refresh_fps() == 30 && before.dim_ms() == 120000 && before.pad_percent() == 100);
+        Settings odd; odd.read("cpu_speed=9\nrefresh=25\ndim_after=7\npad_level=60\n"); // values no row has: the nearest it has
+        CHECK(odd.cpu_speed == Settings::CpuEco && odd.refresh_fps() == 30 && odd.dim_ms() == 300000 && odd.pad_percent() == 75);
         power.reset_factory();
-        CHECK(power.refresh_fps() == 30 && power.dim_ms() == 120000 && power.pad_percent() == 100);
+        CHECK(power.cpu_speed == Settings::CpuFull && power.refresh_fps() == 30 && power.dim_ms() == 120000 && power.pad_percent() == 100);
     }
 }
 
