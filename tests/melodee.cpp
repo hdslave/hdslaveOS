@@ -2385,8 +2385,8 @@ void settings() {
         CHECK(n == 10 && n == ui::palette_named("MONO") + 1 && n + 1 == ui::palettes.size());
         const auto& p = ui::palettes[n];
         CHECK(std::string_view(p.name) == "HDSLAVE" && !p.light && !p.mono && p.square && p.face == -1);
-        CHECK(p.backdrop == ui::Backdrop::HdslaveFlare && p.accented_grid);
-        for (unsigned i = 0; i < n; ++i) CHECK(ui::palettes[i].backdrop == ui::Backdrop::None);
+        CHECK(p.backdrop == ui::Backdrop::HdslaveFlare && p.accented_grid && p.chrome_knobs);
+        for (unsigned i = 0; i < n; ++i) CHECK(ui::palettes[i].backdrop == ui::Backdrop::None && !ui::palettes[i].chrome_knobs);
     }
     { Settings odd; odd.read("palette=99\nfont=99\n"); CHECK(odd.palette + 1u == ui::palettes.size() && odd.font + 1u == ui::face_choices); }
     // Double Seq: Copy notes (the MPC's) or Empty, kept in the text.

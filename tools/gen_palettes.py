@@ -219,7 +219,7 @@ def build_hdslave():
     p = build("HDSLAVE", (2, 0, 4), (50, 33, 65), (247, 240, 255), 1.0, 0,
               [shades(c) for c in tracks], [shades(c) for c in loops])
     p.update(quiet=hexrgb(0x22152F), panel=hexrgb(0x30203F), line=hexrgb(0x654B77),
-             sec=hexrgb(0xE0D0EE), mid=hexrgb(0xC2B0D2), dim=hexrgb(0x9F8DAE), accented_grid=True,
+             sec=hexrgb(0xE0D0EE), mid=hexrgb(0xC2B0D2), dim=hexrgb(0x9F8DAE), accented_grid=True, chrome_knobs=True,
              rec=hexrgb(0xFF6975), amber=hexrgb(0xFFD473), play=hexrgb(0xC2F769), ice=hexrgb(0xA5DBFF))
     grounds = [p[k] for k in ("bg", "surf", "raised")]
     values = [p[k] for k in ("text", "rec", "amber", "play", "ice")]
@@ -277,6 +277,7 @@ def main():
              "    bool square; // square corners and no soft shadows (ui/tokens.h corner())",
              "    Backdrop backdrop;",
              "    bool accented_grid; // group steps in fours and lift the sequencer rules and ghost notes",
+             "    bool chrome_knobs; // purple enamel and a silver flourish on the three knob cards",
              "};",
              "",
              f"constexpr std::array<PaletteSpec, {len(all_)}> palettes {{{{"]
@@ -287,7 +288,7 @@ def main():
         b = lambda v: "true" if v else "false"
         backdrop = "HdslaveFlare" if name == "HDSLAVE" else "None"
         lines.append(f"     {b(p['light'])}, {FACE.get(name, -1)}, {b(name in NO_COLOUR)}, {b(name in SQUARE)}, "
-                     f"Backdrop::{backdrop}, {b(p.get('accented_grid', False))}}},")
+                     f"Backdrop::{backdrop}, {b(p.get('accented_grid', False))}, {b(p.get('chrome_knobs', False))}}},")
         (w, which), tr = weakest(p)
         print(f"{name:9} weakest {which} {w:.2f}  tracks min {tr:.2f}")
     lines += ["}};", "",
