@@ -209,7 +209,9 @@ it is held.
 
 - On a kit page, the pads mute kit pads.
 - On other pages, the pads mute tracks.
-- **SHIFT** + pad solos.
+- **SHIFT** + pad solos. An empty track can't be soloed: the screen says it is
+  empty. A solo kept on an empty track by an older project silences nothing,
+  and **SHIFT** + its pad turns it off.
 - **SHIFT** + **MUTE** unmutes everything.
 
 Muted pads light red. Soloed pads light white.

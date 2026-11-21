@@ -313,6 +313,40 @@ void bindings() {
     }
 }
 
+// A solo counts only on a track that plays something (Track::used(), as the pad lights have it): an empty track left
+// soloed, as a project kept it from Track Mute's Shift + pad, silences nothing; a kit soloed still silences the other.
+void solo_empty_track() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    tone_kit(*project, 0);
+    tone_kit(*project, 1);
+    project->tracks[4].mix.solo = true; // track 5: empty, soloed in the file
+    EngineHost host;
+    host.load(*project, *bank);
+    SampleData tone = tone_sample();
+    host.offer_sample(0, &tone);
+    std::vector<int32_t> out(256);
+    auto peak = [&](unsigned blocks) {
+        float most = 0;
+        for (unsigned n = 0; n < blocks; ++n) {
+            host.render(out.data(), 128, 1);
+            for (auto s : out) most = std::max(most, std::fabs(s / 2147483648.0f));
+        }
+        return most;
+    };
+    peak(2);
+    host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note), 100});
+    CHECK(peak(20) > 0.05f);
+    host.send({Command::Type::Solo, 7, 0, 0, 1}); // track 8, empty, soloed now
+    CHECK(peak(20) > 0.05f && host.meter(0) > 0.05f);
+    host.send({Command::Type::Solo, 1, 0, 0, 1}); // kit 2 soloed: kit 1 is silenced, as before
+    peak(4); // the solo eases in over a block
+    CHECK(peak(20) < 1e-6f);
+    host.send({Command::Type::Solo, 1, 0, 0, 0});
+    CHECK(peak(20) > 0.05f);
+    CHECK(host.dropped() == 0);
+}
+
 void host_sequencer() {
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
@@ -18756,6 +18790,7 @@ int main() {
     layouts();
     bindings();
     host_sequencer();
+    solo_empty_track();
     sequenced_legato();
     audio_quality();
     std::puts("melodee ok");

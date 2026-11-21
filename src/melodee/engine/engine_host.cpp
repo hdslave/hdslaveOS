@@ -2126,7 +2126,7 @@ bool EngineHost::out_wanted(unsigned t, int key) const {
 
 bool EngineHost::heard(unsigned t) const {
     bool solo = false;
-    for (const auto& s : slots) solo |= s.solo;
+    for (const auto& s : slots) solo |= s.soloing();
     const auto& slot = slots[t % track_count];
     return !slot.mute && !(solo && !slot.solo);
 }
@@ -2771,7 +2771,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     bool solo = false;
     for (auto& strip : loop_strips) solo |= strip.solo && loops.on();
     for (auto& slot : slots) {
-        solo |= slot.solo;
+        solo |= slot.soloing();
         std::fill(slot.buffer, slot.buffer + frames, 0.0f);
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
         slot.knob_pad_fed = false;

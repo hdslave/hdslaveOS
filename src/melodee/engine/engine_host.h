@@ -397,6 +397,9 @@ private:
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f;
         std::array<float, bus_count> sends {}; // into each bus A-D (round 2: four sends a track)
         bool mute = false, solo = false;
+        // A solo counts only on a track that plays something (Track::used(), as the pad lights have it): an empty
+        // track kept soloed would silence every other track with nothing to show why.
+        bool soloing() const { return solo && kind != EngineKind::None; }
         // As the block plays them (Ease): level and pan on each side, heard (1) or muted / soloed out (0),
         // into Knob FX (1) or not, and each send.
         Ease mix_l, mix_r, audible, knob_share;
