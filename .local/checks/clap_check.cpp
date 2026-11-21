@@ -50,17 +50,22 @@ int main (int argc, char** argv)
             plugin->prepareToPlay (rate, block);
             AudioBuffer<float> buffer (std::max (2, std::max (plugin->getTotalNumInputChannels(), plugin->getTotalNumOutputChannels())), block);
             double total = 0.0, worst = 0.0;
-            float peak = 0.0f;
+            float peak = 0.0f, keyPeak = 0.0f; // keyPeak: its side-chain key port's (melodee-hdslave), with note 36 too
             bool finite = true;
+            const bool key = plugin->hasKeyOutput();
             for (int b = 0; b < blocks; ++b)
             {
                 MidiBuffer midi;
                 if (info.instrument && b == 0)
                     for (int note : { 48, 52, 55 })
                         midi.addEvent (MidiMessage::noteOn (1, note, 0.8f), 0);
+                if (key && b == 0)
+                    midi.addEvent (MidiMessage::noteOn (1, 36, 0.8f), 0); // a drum machine's kick (A01)
                 if (info.instrument && b == blocks - 60)
                     for (int note : { 48, 52, 55 })
                         midi.addEvent (MidiMessage::noteOff (1, note), 0);
+                if (key && b == blocks - 60)
+                    midi.addEvent (MidiMessage::noteOff (1, 36), 0);
                 for (int c = 0; c < buffer.getNumChannels(); ++c)
                     for (int i = 0; i < block; ++i)
                         buffer.setSample (c, i, info.instrument ? 0.0f : noise (random));
@@ -76,6 +81,13 @@ int main (int argc, char** argv)
                         finite = finite && std::isfinite (s);
                         peak = std::max (peak, std::abs (s));
                     }
+                for (int c = 0; key && c < 2; ++c)
+                    for (int i = 0; i < plugin->keyFrames(); ++i)
+                    {
+                        const float s = plugin->keyChannel (c)[i];
+                        finite = finite && std::isfinite (s);
+                        keyPeak = std::max (keyPeak, std::abs (s));
+                    }
                 if (b % 32 == 0)
                     plugin->idle();
             }
@@ -85,10 +97,12 @@ int main (int argc, char** argv)
             plugin->releaseResources();
             const bool ok = finite;
             (ok ? passed : failed)++;
-            std::printf ("%s  %-28s %-34s %s  params %4d  latency %5d  in %d out %d  block mean %7.1f us max %7.1f us  peak %.3f  state %zu B\n",
+            std::printf ("%s  %-28s %-34s %s  params %4d  latency %5d  in %d out %d  block mean %7.1f us max %7.1f us  peak %.3f  state %zu B",
                          ok ? "ok  " : "FAIL", file.getFileName().toRawUTF8(), info.name.c_str(), info.instrument ? "inst" : "fx  ",
                          plugin->getParameters().size(), plugin->getLatencySamples(), plugin->getTotalNumInputChannels(),
                          plugin->getTotalNumOutputChannels(), total / blocks, worst, peak, state.getSize());
+            if (key) std::printf ("  SC key port: peak %.3f", keyPeak);
+            std::printf ("\n");
         }
     }
     std::printf ("%d loaded and played, %d failed\n", passed, failed);

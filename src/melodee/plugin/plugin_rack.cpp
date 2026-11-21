@@ -243,6 +243,9 @@ public:
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
         idle.reset(is_instrument, this->plugin_rate);
+        // A side-chain key (melodee-hdslave): a CLAP instrument's second output port (plugin/clap_instance.h).
+        auto* clap = is_instrument ? dynamic_cast<ClapInstance*>(instance.get()) : nullptr;
+        key_source = clap && clap->hasKeyOutput() ? clap : nullptr;
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -280,7 +283,17 @@ public:
         warming = false;
         load.store(0.0f, std::memory_order_relaxed); // what it costs to play counts from here
     }
+    // Its key port, heard only straight from the plug-in: not through the rate bridge, and silent while it sleeps.
+    bool has_key() const override { return key_source != nullptr && !bridge.converting(); }
+    void key(float* left, float* right, unsigned frames) override {
+        unsigned n = std::min(frames, key_frames);
+        const float* l = n ? key_source->keyChannel(0) : nullptr;
+        const float* r = n ? key_source->keyChannel(1) : nullptr;
+        if (!l || !r) return;
+        for (unsigned f = 0; f < n; ++f) { left[f] += sane(l[f]); right[f] += sane(r[f]); }
+    }
     void render(float* left, float* right, unsigned frames) override {
+        key_frames = 0;
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         auto t0 = std::chrono::steady_clock::now();
@@ -294,7 +307,10 @@ public:
             return;
         }
         if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
-        else run(left, right, frames, instrument);
+        else {
+            run(left, right, frames, instrument);
+            if (key_source) key_frames = std::min(frames, unsigned(std::max(key_source->keyFrames(), 0)));
+        }
         double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         float share = float(took / (frames / sample_rate));
         load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
@@ -327,10 +343,11 @@ public:
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
         idle.heard(l, r, frames);
-        auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
-        if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
-        else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
+        if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += sane(l[f]); right[f] += sane(r[f]); }
+        else for (unsigned f = 0; f < frames; ++f) { left[f] = sane(l[f]); right[f] = sane(r[f]); }
     }
+    // What a plug-in gives, kept finite and within ±8.
+    static float sane(float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; }
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
     const bool instrument;
@@ -397,6 +414,8 @@ private:
     int channels = 2;
     std::vector<float> memory;
     juce::MidiBuffer midi_in;
+    ClapInstance* key_source = nullptr; // `instance`, when it is a CLAP instrument with a key port (has_key())
+    unsigned key_frames = 0;            // frames of it the last render() played (0: none, or it slept)
 };
 
 PluginRack::PluginRack(EngineHost& engine, std::string stage) : host(engine), stage_tag(std::move(stage)) {

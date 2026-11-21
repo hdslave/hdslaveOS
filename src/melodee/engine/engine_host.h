@@ -253,6 +253,9 @@ public:
         return (*pad_fx)[track % track_count][pad % sampler_pads][slot % pad_slots].kind();
     }
     float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
+    // Any thread (melodee-hdslave): the PLUGIN tracks whose plug-in offers a side-chain key port (PluginRunner::has_key),
+    // a bit each, as the audio thread's last block found them. Keyed by such a track, the Sidechain hears that port.
+    uint16_t plugin_keys() const { return plugin_key_tracks.load(std::memory_order_relaxed); }
     void compressor_activity(float& level_db, float& reduce_db) { comp.take_activity(level_db, reduce_db); } // the page's picture
     unsigned flex_playing() const { return flex_now.load(std::memory_order_relaxed); } // Flex Beat's pad playing, 0 Empty
     unsigned live_punches() const { return live_on.load(std::memory_order_relaxed); }  // Pad FX: a bit a live slot sounding
@@ -499,9 +502,12 @@ private:
     void engine_pressure(Slot& slot, int key, float value);
     void make_call(unsigned t, Slot& slot, const EngineCall& call); // one kept call, now
     void render_engine(unsigned t, Slot& slot, unsigned at, unsigned frames); // the engine's frames [at, at + frames)
+    void plugin_key(Slot& slot, unsigned at, unsigned frames); // its plug-in's key port for them, into key_pad_l / key_pad_r
     void play_calls(unsigned t, Slot& slot, unsigned frames);   // the engine over the whole block, each call at its frame
     std::atomic<bool> whole_blocks {true};
     int keyed_pad = -1;                            // this block's: the Sidechain's key track, when its key is one kit pad
+    int keyed_plugin = -1;                         // this block's: the Sidechain's key track, when its key is its plug-in's key port
+    std::atomic<uint16_t> plugin_key_tracks {0};   // plugin_keys()
     bool split_cuts = false;                       // tests: each job cut where the old way cut every track
     std::array<uint16_t, block + 1> cuts {};       // this block's runs' starts, the old way's cuts
     unsigned cut_count = 0;
@@ -910,7 +916,10 @@ private:
     uint32_t knob_quiet = 0, knob_rung = 0; // frames its tail has been quiet, and has rung, since it was last fed
     float knob_l[block] {}, knob_r[block] {};
     float key_l[block] {}, key_r[block] {}, aside_l[block] {}, aside_r[block] {};
-    float key_pad_l[block] {}, key_pad_r[block] {}; // Sidechain on one kit pad: that pad as the sampler left it // Sidechain: the key heard by the detector, and as it joins the master
+    // Sidechain: the key heard by the detector (key_l / key_r) and, aside, what joins the master after the ducking.
+    // key_pad_l / key_pad_r: a key that leaves its track before the chain, one kit pad as the sampler left it, or
+    // (melodee-hdslave) a plug-in's key port as it played it.
+    float key_pad_l[block] {}, key_pad_r[block] {};
     void knob_targets(); // hands each kit its pads (none while Knob FX is not heard)
     void knob_command(const Command& c);
     MasterCompressor comp;

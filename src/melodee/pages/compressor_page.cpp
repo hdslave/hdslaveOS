@@ -14,7 +14,9 @@
 // taken off hangs from the top across it up to where the transport is, the
 // bar before as a dashed ghost, and the detector's hits (the key's with
 // Sidechain) marked along the foot. Release is tuned against the groove, as
-// it is heard. At the bottom right what it takes off now.
+// it is heard. At the bottom right what it takes off now. A PLUGIN track whose
+// plug-in has a side-chain key port (a drum machine's kick alone;
+// melodee-hdslave) keys from that port: the header names it "SC".
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include <algorithm>
@@ -32,10 +34,13 @@ juce::String kit_pad_name(const Project& project, unsigned track, unsigned kit) 
     return pad.used() ? juce::String(project.samples[pad.sample % sample_slots].name) : juce::String("Empty");
 }
 
-// The header's key: the track, or on a kit the pad ("6 A01 Kick").
+// The header's key: the track, on a kit the pad ("6 A01 Kick"), on a plug-in with a key port that port ("6 SC Foundry").
 HeaderItem key_tag(const Snapshot& s) {
     const auto& c = s.project.compressor;
     unsigned key = c.key % track_count;
+    const auto& track = s.project.tracks[key];
+    if (track.engine == EngineKind::Plugin && track.used() && ((s.machine.plugin_keys >> key) & 1))
+        return track_tag(int(key) + 1, "SC", name_case(track.name), track_colour(key));
     if (c.key_pad == MasterComp::whole_kit || !key_is_kit(s.project)) return tag_of(s, key);
     char text[4]; pad_label(c.key_pad, text);
     return track_tag(int(key) + 1, text, kit_pad_name(s.project, key, c.key_pad), track_colour(key));

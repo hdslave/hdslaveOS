@@ -18657,6 +18657,103 @@ void usb_volume() {
     }
 }
 
+// The Sidechain keyed by a plug-in's key port (melodee-hdslave): a drum machine's second output, its kick alone. While
+// a note is held its main output plays a steady 0.25 (or, `kick_in_main`, the kick) and its key port the kick, a 0.8
+// pulse 2646 frames on in every 11025; it reports `late` frames of latency.
+struct KeyPortPlugin final : PluginRunner {
+    bool port = true, main_plays = true, kick = true, kick_in_main = false;
+    unsigned late = 0, clock = 0, last_frames = 0;
+    bool held = false;
+    std::array<float, EngineHost::block> last {};
+    void midi(uint8_t status, uint8_t, uint8_t data2) override {
+        if ((status & 0xf0) == 0x90 && data2) { held = true; clock = 0; }
+        else if ((status & 0xf0) == 0x80) held = false;
+    }
+    void silence() override { held = false; }
+    void render(float* left, float* right, unsigned frames) override {
+        last_frames = frames;
+        for (unsigned f = 0; f < frames; ++f) {
+            float pulse = held && clock % 11025 < 2646 ? 0.8f : 0.0f;
+            float main = !held || !main_plays ? 0.0f : kick_in_main ? pulse : 0.25f;
+            left[f] += main; right[f] += main;
+            last[f] = kick ? pulse : 0.0f;
+            if (held) ++clock;
+        }
+    }
+    bool has_key() const override { return port; }
+    void key(float* left, float* right, unsigned frames) override {
+        for (unsigned f = 0; f < std::min(frames, last_frames); ++f) { left[f] += last[f]; right[f] += last[f]; }
+    }
+    unsigned latency() const override { return late; }
+};
+
+// Keyed by a PLUGIN track whose plug-in has a key port, the detector hears that port and not the track's main
+// output; the track stays aside whole, as with a track key; a plug-in without one keys with the whole track, as
+// before. The port is as late as the main output: with latencies to compensate, a port carrying what the main output
+// plays keys exactly as the whole track does.
+void plugin_sidechain_key() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    synth(project->tracks[0], 0); // the drum machine, the key
+    synth(project->tracks[2], 2); // the rest of the mix
+    synth(project->tracks[4], 4); // a later plug-in that plays nothing: the latest track (roadmap P4)
+    struct Heard { double energy = 0; float reduction = 0; uint16_t keys = 0; std::vector<int32_t> out; };
+    auto run = [&](KeyPortPlugin& drums, bool keyed, bool drums_play, bool rest_plays, unsigned later = 0) {
+        ToneRunner rest;
+        KeyPortPlugin quiet;
+        quiet.port = false; quiet.late = later;
+        EngineHost host;
+        host.load(*project, *bank);
+        CHECK(host.offer_plugin(0, &drums) && host.offer_plugin(2, &rest) && host.offer_plugin(4, &quiet));
+        host.send({Command::Type::Compressor, 0, 0, 4, 100});
+        host.send({Command::Type::Compressor, 0, 0, 7, 0});
+        host.send({Command::Type::Compressor, 0, 0, 6, 1});
+        host.send({Command::Type::Compressor, 0, 0, 0, int16_t(keyed)});
+        std::vector<int32_t> out(256);
+        // Two blocks of silence: the key settles (taken part way into the first block) before anything plays.
+        for (unsigned n = 0; n < 2; ++n) host.render(out.data(), 128, 1);
+        if (drums_play) host.send({Command::Type::NoteOn, 0, 0, 36, 127});
+        if (rest_plays) for (int note : {64, 69}) host.send({Command::Type::NoteOn, 2, 0, uint16_t(note), 110});
+        Heard h;
+        for (unsigned n = 0; n < 200; ++n) {
+            host.render(out.data(), 128, 1);
+            h.reduction = std::max(h.reduction, host.compression());
+            if (n > 40) for (auto v : out) h.energy += double(v / 2147483648.0f) * (v / 2147483648.0f);
+            h.out.insert(h.out.end(), out.begin(), out.end());
+        }
+        h.keys = host.plugin_keys();
+        for (PluginRunner* gone = nullptr; host.take_retired_plugin(gone);) {}
+        return h;
+    };
+    // The port silent, the main output loud: nothing ducks; without a port the main output keys, as before.
+    KeyPortPlugin silent_port;
+    silent_port.kick = false;
+    KeyPortPlugin no_port;
+    no_port.port = false; no_port.kick = false;
+    auto rest_dry = run(silent_port, false, false, true);
+    auto quiet_key = run(silent_port, true, true, true), track_key = run(no_port, true, true, true);
+    CHECK(quiet_key.keys == 1 && track_key.keys == 0);
+    CHECK(quiet_key.reduction < 0.01f && track_key.reduction > 3);
+    // The port's kick keys: the rest ducks under it; the drum machine itself passes untouched (aside).
+    KeyPortPlugin drums;
+    auto both_dry = run(drums, false, true, true), both_keyed = run(drums, true, true, true);
+    auto drums_dry = run(drums, false, true, false), drums_keyed = run(drums, true, true, false);
+    CHECK(both_keyed.reduction > 3 && both_keyed.energy < both_dry.energy - rest_dry.energy * 0.3);
+    CHECK(drums_keyed.reduction > 3 && std::fabs(drums_keyed.energy - drums_dry.energy) < drums_dry.energy * 0.01);
+    // Delay compensation: the drum machine 200 frames late, another plug-in 500. A port carrying the kick the main
+    // output plays keys exactly as the whole track carrying it does, to the bit.
+    KeyPortPlugin by_port, by_track;
+    by_port.kick_in_main = by_track.kick_in_main = true;
+    by_port.late = by_track.late = 200;
+    by_track.port = false;
+    auto ported = run(by_port, true, true, true, 500), tracked = run(by_track, true, true, true, 500);
+    CHECK(ported.reduction > 3 && ported.out == tracked.out);
+    // And not by its main output: the same port under a steady main output gives another mix.
+    KeyPortPlugin steady;
+    steady.late = 200;
+    CHECK(run(steady, true, true, true, 500).out != ported.out);
+}
+
 int main() {
     usb_volume();
     controls_audit();
@@ -18690,6 +18787,7 @@ int main() {
     chains_rest();
     keyed_dynamics_p4();
     delay_compensation_p4();
+    plugin_sidechain_key();
     chop_kept();
     samples_used();
     samples_unlimited();

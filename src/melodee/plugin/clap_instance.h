@@ -93,6 +93,15 @@ public:
     void setStateInformation (const void*, int) override;
     juce::AudioProcessorParameter* getBypassParameter() const override;
 
+    // A side-chain key (melodee-hdslave): the plug-in's second audio output port, the first after the main one
+    // (a drum machine's "SC Key"), which processBlock() fills in its own buffers but leaves out of `buffer`.
+    // keyFrames(): how many frames of it the last processBlock() wrote (0: none, an error, or no such port).
+    // keyChannel(c): its channel c (0 left, 1 right; a mono port gives its one channel for both). The audio
+    // thread, until its next processBlock().
+    bool hasKeyOutput() const { return outputPorts.size() > 1 && outputPorts[1].channels > 0; }
+    int keyFrames() const { return keyWritten; }
+    const float* keyChannel (int channel) const;
+
     struct Host; // the clap_host it gives the plug-in, and what the plug-in asked of it
 
 private:
@@ -135,6 +144,7 @@ private:
     bool midiNotes = false;         // the port takes MIDI (CCs, bend, pressure)
     std::vector<float> audio;       // every port's channels, `block` frames each
     std::vector<float*> inputPointers, outputPointers;
+    int keyWritten = 0;             // frames the last processBlock() wrote to the key port (hasKeyOutput())
 
     std::vector<Parameter*> parameters;              // owned by the AudioProcessor
     std::vector<std::pair<uint32_t, int>> byId;      // clap_id to index in `parameters`, sorted
