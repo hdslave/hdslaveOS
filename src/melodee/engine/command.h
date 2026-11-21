@@ -46,7 +46,8 @@ struct Command {
         Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
         Pad,         // track, index = kit pad, pad
         Audition,    // track, pad (sample, start, end), value = velocity: a region on no pad
-        PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64, position = cutoff + 1 (0: the pad's): 16 Levels
+        PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64, position = cutoff + 1 (0: the pad's): 16 Levels;
+                     // micros = a slice + 1 of the pad's sample's chop (0: the pad's region): Chop under Seq Record (issue 24)
         // track = InputSource, index = sample slot, value = threshold dB (-96: at once), pattern = rec length
         // (0 until stopped, 1..16 bars, 255 Seq: the pattern of track `position`, from where it comes round while playing)
         RecordArm,
@@ -156,7 +157,10 @@ struct Command {
         Rebase,
         // value 1: the input source (the mic or the rear inputs) is on the ADC side a loop or MIDI track took, so
         // Sample Record, Audio Recall, an audio track's take and Monitor hear silence, not the other input (IN USE).
-        InputTaken
+        InputTaken,
+        // Issue 24: index = a sample slot, chop = its chop as slice hits play it now (the shell's copy; none: no chop).
+        // The one it replaces goes back to be freed (EngineHost::take_retired_chop()).
+        Chop
 
     };
     Command() = default;
@@ -177,6 +181,7 @@ struct Command {
         struct ProjectPack* pack = nullptr;
         struct FreezePack* freeze;
         struct AudioPack* audio; // AudioRegions (freeze plan F3)
+        const Slices* chop;      // Chop (issue 24)
     };
     struct TrackPack* track_pack = nullptr;
     // A note played by hand or by MIDI in (EngineHost::send_at): it plays at frame `at` (the low 32 bits of the

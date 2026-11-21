@@ -13,6 +13,7 @@
 // MPC 3 project (the wheel's last): the project as MPC 3 opens it (MPC One,
 // Live, Key, X, the MPC 3 app), Melodee/MPC 3/<name>.xpj on the card
 // (shell/mpc3_export.h): the kits, their patterns, the song, the prints.
+#include "melodee/model/slice_hits.h"
 #include "melodee/model/song_flatten.h"
 #include "melodee/shell/context.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -23,6 +24,24 @@
 #include <algorithm>
 
 namespace melodee {
+
+// The project's bytes for the MPC 3 export. MPC 3 plays no slice of a pad's chop from a note: slice hits (issue 24) go
+// onto free pads of their kit first, in copies (model/slice_hits.h), the project as it is. How many found no free pad.
+std::vector<uint8_t> Context::mpc3_bytes(unsigned& left) {
+    PluginStates states;
+    if (plugins) states = plugins->states();
+    left = 0;
+    if (!any_slice_hits(patterns)) return melodee::save_project(project, patterns, &states, &prints);
+    auto laid = std::make_unique<Project>(project);
+    auto bank = std::make_unique<PatternBank>(patterns);
+    left = lay_slice_hits(*laid, *bank, [this](unsigned sample) -> const Slices& { return live_chop(sample); });
+    return melodee::save_project(*laid, *bank, &states, &prints);
+}
+
+static std::string exporting_note(unsigned left) {
+    return left ? "MPC 3: exporting; " + std::to_string(left) + (left == 1 ? " slice hit plays" : " slice hits play") + " its whole pad, no pad free"
+                : std::string("MPC 3: exporting");
+}
 
 void Context::song_export_soft(int key) {
     ui.song_export = false;
@@ -52,10 +71,9 @@ void Context::export_mpc3(const std::string& name) {
         notice("MPC 3: printing plug-in tracks");
         return;
     }
-    PluginStates states;
-    if (plugins) states = plugins->states();
-    store->export_mpc3(project_path, melodee::save_project(project, patterns, &states, &prints), name);
-    notice("MPC 3: exporting");
+    unsigned left = 0;
+    store->export_mpc3(project_path, mpc3_bytes(left), name);
+    notice(exporting_note(left));
 }
 
 void Context::mpc3_tick() {
@@ -82,10 +100,9 @@ void Context::mpc3_tick() {
         return;
     }
     mpc3_waiting = false;
-    PluginStates states;
-    if (plugins) states = plugins->states();
-    store->export_mpc3(project_path, melodee::save_project(project, patterns, &states, &prints), mpc3_name);
-    notice("MPC 3: exporting");
+    unsigned left = 0;
+    store->export_mpc3(project_path, mpc3_bytes(left), mpc3_name);
+    notice(exporting_note(left));
 }
 
 void Context::song_to_pattern() {

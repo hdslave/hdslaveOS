@@ -324,6 +324,7 @@ struct UiState {
     uint32_t chop_take_at = 0;  // ms when the take (or its part from a slice: a lit pad, the red one after) began, 0 none
     uint32_t chop_take_from = 0; // the frame it plays from
     bool chop_more = false;     // a take played out: the red stays on the next slice's pad, and tapped it plays on
+    bool chop_rechop_ok = false; // issue 24 (3b): Rechop asked and answered on this visit to Chop: no more asking
     // Auto's CLEAN (B2): its cuts found on the sample's DRUMS stem (shell/stems.h), separated once for that sample.
     bool chop_clean = false;     // on, with the stem in
     bool chop_cleaning = false;  // its stems being separated, or the DRUMS stem being read
@@ -425,7 +426,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, CaptureScene }; // CaptureScene (shell/scene_jobs.cpp): CAPTURE onto a column with notes; target the column // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use; target the picker's row, `ask_name` the old plug-in's name // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, CaptureScene, Rechop }; // Rechop (issue 24, Context::chop_change): Chop's slices renumbered under slice hits; target how many hits // CaptureScene (shell/scene_jobs.cpp): CAPTURE onto a column with notes; target the column // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use; target the picker's row, `ask_name` the old plug-in's name // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     std::array<char, 48> ask_name {}; // DeleteFile: the file's or the folder's name

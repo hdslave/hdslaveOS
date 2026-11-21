@@ -389,6 +389,12 @@ void SamplerEngine::refresh(Voice& v) {
     PadSound layered;
     const PadSound* sound = &own;
     if (v.layer > 0) { layered = layer_sound(own, unsigned(v.layer)); sound = &layered; }
+    if (v.slice >= 0) { // a slice hit (issue 24): the pad's sound now over its slice as the chop has it now
+        const Slices* chop = chops && own.used() && own.sample < sample_slots ? (*chops)[own.sample] : nullptr;
+        if (!chop || unsigned(v.slice) >= chop->count) return; // its slice gone: it plays on as it was
+        layered = slice_sound(own, chop->start[size_t(v.slice)], chop->stop[size_t(v.slice)]);
+        sound = &layered;
+    }
     if (!sound->used() || sound->sample != v.slot) return;
     const SampleZone* zone = nullptr;
     Multisample* multi = nullptr;
@@ -626,9 +632,19 @@ void SamplerEngine::play(const PadSound& sound, int pad, int velocity, int semit
 // its linked pad (same bank) plays with it, and that pad's linked pad, and so
 // on through the bank (roadmap P3), each pad once: a chain that comes back
 // round to a pad already played stops there.
-void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
+void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff, int slice) {
     if (pad < 0 || pad >= int(sampler_pads) || pad_muted(unsigned(pad))) return;
     const auto& sound = pads[size_t(pad)];
+    // Issue 24, a slice hit: the pad's sound over that slice of its sample's chop (as TO PADS lays a slice, POLY), no
+    // linked pad; past the chop's end nothing. A sample with no chop plays the pad's own region.
+    const Slices* chop = slice >= 0 && chops && sound.used() && sound.sample < sample_slots ? (*chops)[sound.sample] : nullptr;
+    if (chop && chop->count) {
+        if (unsigned(slice) >= chop->count) return;
+        Voice& v = free_voice();
+        start(v, slice_sound(sound, chop->start[size_t(slice)], chop->stop[size_t(slice)]), pad, velocity, semitones, cutoff, -1);
+        if (v.pad >= 0) v.slice = int8_t(slice);
+        return;
+    }
     if (sound.loop && sound.play == PadPlay::OneShot) {
         bool stopped = false;
         for (auto& v : voices)
@@ -662,10 +678,10 @@ void SamplerEngine::note_on(int key, int velocity) {
         pedal_count = kept;
     }
     const int cutoff = (key >> 16) & 0xff;
-    hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), cutoff ? std::min(cutoff - 1, 100) : -1);
+    hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), cutoff ? std::min(cutoff - 1, 100) : -1, note_slice(key));
 }
 
-void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones, int cutoff) { hit(int(pad), velocity, semitones, cutoff); }
+void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones, int cutoff, int slice) { hit(int(pad), velocity, semitones, cutoff, slice); }
 
 void SamplerEngine::set_pad_mute(unsigned pad, bool on) {
     if (pad >= sampler_pads) return;

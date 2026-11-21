@@ -184,6 +184,18 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         verb = "REPLACE"; verb_glyph = Icon::Swap;
         break;
     }
+    case Ask::Rechop: { // issue 24 (3b): Chop renumbers slices that slice hits play (Context::chop_change)
+        unsigned hits = unsigned(std::max(0, int(s.ui.ask_target)));
+        sheet.icon = Icon::Scissors;
+        const juce::String name = s.ui.chop_sample < sample_slots ? juce::String::fromUTF8(s.project.samples[s.ui.chop_sample].name) : juce::String();
+        sheet.title = "Rechop " + name + "?";
+        sheet.lines = {count_of(hits, "slice hit changes", "slice hits change") + " sound.", hits == 1 ? juce::String("Undo brings it back.") : undo_line};
+        sheet.chip = "TRACK " + juce::String(track + 1);
+        sheet.chip_colour = colour_of(s);
+        sheet.undo = true;
+        verb = "RECHOP"; verb_glyph = Icon::Scissors;
+        break;
+    }
     case Ask::Unfreeze: { // freeze plan F2c: an edit of a frozen track
         unsigned which = unsigned(s.ui.ask_target) % track_count;
         const bool deep = s.freeze[which].state == FreezeState::Deep; // freeze plan F2d: thawed first

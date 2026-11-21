@@ -542,6 +542,20 @@ public:
     void rechop();                                                     // Chop's slices from its type and amount
     Slices type_chop(bool* capped = nullptr) const;                    // what the type and amount cut now (no hand cuts)
     void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
+    // Issue 24, slice hits (model/slice_hits.h). Chop's pads while Seq Record runs: the slice played through its pad and
+    // written as the pad's note with the slice's number; let go, as long as it was held. False: not recording (or no
+    // pad of the track holds Chop's sample), the pad auditions as ever.
+    bool slice_hit(unsigned pad, unsigned slice, uint8_t velocity);
+    void slice_release(unsigned pad);
+    std::array<int32_t, 16> chop_held {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; // each pad's slice hit, held
+    int chop_kit_pad() const;                                          // the kit pad slice hits on Chop's sample play (-1 none)
+    const Slices& live_chop(unsigned sample) const;                      // a sample's chop as slice hits play it: Chop's own while it holds it
+    SlotTable<Slices> chops_sent;                                      // each sample's chop as the audio thread holds it
+    void sync_chops();                                                 // the chops that changed since, to the audio thread
+    // 3b: a change of Chop's slices from slice `first` on (another type or amount, Split, Merge, Erase) that slice hits
+    // on those slices would hear asks first (Ask::Rechop), once a visit to Chop; else it is made at once.
+    void chop_change(unsigned first, std::function<void()> change);
+    std::function<void()> chop_pending;                                // the change the question waits to make
     void chop_tick(uint32_t ms);                                       // Chop: a take played out ends; a moved cut heard once
     void chop_jump(int delta);                                         // Chop: SHIFT + wheel, the cut onto the next hit
     void chop_erase(unsigned slice);                                   // Chop: Erase + pad, Erase: the slice joins its neighbour
@@ -595,6 +609,7 @@ public:
     void resample_song(unsigned kit);                     // roadmap P3: Resample on Song, the song rendered onto the pad
     void mixdown(const std::string& name);                // Song's export, Audio mixdown, after the Name sheet
     void export_mpc3(const std::string& name);            // Song's export, MPC 3 project (shell/song_export.cpp)
+    std::vector<uint8_t> mpc3_bytes(unsigned& left);      // the project to export, slice hits laid on free pads (issue 24)
     // The MPC 3 export waits for its plug-in tracks' prints: `mpc3_pending` a bit a track still to print (one job a
     // track, as the print engine takes them), `mpc3_printing` the track whose job runs (-1 none), then mpc3_tick()
     // hands the project, its prints in, to the export once the last result is in.

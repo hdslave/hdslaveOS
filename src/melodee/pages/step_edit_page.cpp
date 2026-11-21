@@ -237,6 +237,11 @@ void draw(Paint& p, const Snapshot& s) {
             const auto& e = pattern.events[n];
             juce::String name = key_name(s, e.key, true);
             if (e.pitch) name = key_name(s, e.key, false) + " " + (e.pitch > 0 ? "+" : "") + juce::String(int(e.pitch));
+            if (e.slice) { // a slice hit (issue 24): its pad and slice, the pad's name left out where both do not fit
+                const juce::String slice = juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(e.slice));
+                name += slice;
+                if (p.width(name, plain(colour::sec, type::body, Weight::SemiBold)) > 82) name = key_name(s, e.key, false) + slice;
+            }
             add(name);
         }
     }

@@ -301,6 +301,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                     if (pattern.events[n].cutoff) { w.u32(n); w.u8(pattern.events[n].cutoff); }
                 w.end(at);
             }
+            uint32_t sliced = 0;
+            for (const auto& e : pattern.events) sliced += e.slice != 0;
+            if (sliced) { // issue 24: kit notes played on Chop, their slice + 1, by their place in EVNT
+                at = w.begin("SLCE");
+                w.u8(t); w.u8(p); w.u32(sliced);
+                for (uint32_t n = 0; n < pattern.events.size(); ++n)
+                    if (pattern.events[n].slice) { w.u32(n); w.u8(pattern.events[n].slice); }
+                w.end(at);
+            }
             uint32_t ratchets = 0;
             for (const auto& e : pattern.events) ratchets += e.hits() > 1 || e.ramp || e.pitch_ramp;
             if (ratchets) { // ratchets (roadmap P1), by their place in EVNT: hits, velocity ramp, pitch ramp
@@ -1044,6 +1053,17 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 unsigned cut = r.u8();
                 if (r.ok && place < pattern.events.size()) pattern.events[place].cutoff = uint8_t(std::min(cut, 101u));
+            }
+        } else if (name == "SLCE") { // issue 24: slice hits played on Chop; without it each plays its pad's region
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                uint32_t place = r.u32();
+                unsigned slice = r.u8();
+                // Written in order with their slices, so the places after EVNT's sort are still theirs.
+                if (r.ok && place < pattern.events.size()) pattern.events[place].slice = uint8_t(std::min(slice, max_slices));
             }
         } else if (name == "RTCH") { // ratchets (roadmap P1); without it every note plays once
             unsigned t = r.u8(), p = r.u8();

@@ -5,12 +5,14 @@
 
 namespace melodee {
 namespace {
-bool before(const Event& a, const Event& b) { return a.tick != b.tick ? a.tick < b.tick : a.key != b.key ? a.key < b.key : a.pitch < b.pitch; }
+bool before(const Event& a, const Event& b) {
+    return a.tick != b.tick ? a.tick < b.tick : a.key != b.key ? a.key < b.key : a.pitch != b.pitch ? a.pitch < b.pitch : a.slice < b.slice;
+}
 } // namespace
 
-bool Pattern::add(const Event& e) {
+bool Pattern::add(const Event& e) { // the same note (two slices of one pad are two notes) is replaced
     auto at = std::lower_bound(events.begin(), events.end(), e, before);
-    if (at != events.end() && at->tick == e.tick && at->key == e.key && at->pitch == e.pitch) { *at = e; return true; }
+    if (at != events.end() && at->tick == e.tick && at->key == e.key && at->pitch == e.pitch && at->slice == e.slice) { *at = e; return true; }
     if (events.size() >= max_pattern_events) return false;
     events.insert(at, e);
     return true;
@@ -63,6 +65,7 @@ void Pattern::set_step(unsigned s, const Step& value) {
         for (unsigned k = 0; k < count; ++k) // the note it was keeps its pitch, and its ratchet while the step's is unchanged
             if (was[k].key == n.key && was[k].velocity) {
                 e.pitch = was[k].pitch; e.pitch_ramp = was[k].pitch_ramp;
+                e.slice = was[k].slice; // a slice hit stays its slice
                 if (same_ratchet) { e.ratchet = was[k].ratchet; e.ramp = was[k].ramp; }
                 if (same_condition) e.condition = was[k].condition;
                 was[k].velocity = 0;

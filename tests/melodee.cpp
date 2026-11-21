@@ -4,6 +4,7 @@
 #include "drivers/direct_monitor.h"
 #include "melodee/engine/effects.h"
 #include "melodee/model/slice_banks.h"
+#include "melodee/model/slice_hits.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
 #include <fstream>
@@ -19089,7 +19090,153 @@ void stems_lookup() {
     fs::remove_all(ram, error);
 }
 
+// Issue 24: slice hits, kit notes played on Chop while Seq Record ran (Event::slice). Each plays a slice of its pad's
+// sample's chop as the chop is now, the kit keeping no pad for it: in the pattern, the file, the sampler, the host's
+// sequencer and its chop table, and laid on free pads for the MPC 3 export (model/slice_hits.h).
+void slice_hit_notes() {
+    const uint8_t key = uint8_t(sampler_first_note + 4);
+    // Two slices of one pad on one tick are two notes, in slice order; the same slice again replaces it.
+    Pattern p;
+    Event a; a.tick = 0; a.key = key; a.velocity = 100; a.slice = 3;
+    Event b = a; b.slice = 1;
+    CHECK(p.add(a) && p.add(b) && p.events.size() == 2 && p.events[0].slice == 1 && p.events[1].slice == 3);
+    Event louder = a; louder.velocity = 50;
+    CHECK(p.add(louder) && p.events.size() == 2 && p.events[1].velocity == 50);
+    Event own = a; own.slice = 0;
+    CHECK(p.add(own) && p.events.size() == 3 && p.events[0].slice == 0);
+    CHECK(own != a); // the slice tells two notes apart (undo, the screen's sketches)
+    // Step Edit's rewrite of a step keeps a hit's slice.
+    Pattern one;
+    one.add(b);
+    Step st = one.step(0);
+    st.notes[0].velocity = 90;
+    one.set_step(0, st);
+    CHECK(one.events.size() == 1 && one.events[0].slice == 1 && one.events[0].velocity == 90);
+    // The note as the engine and the shell carry it: the slice + 1 over the cutoff, none on a 16-bit key.
+    CHECK(note_slice(pad_note(int(key), 0, -1, 5)) == 5 && (pad_note(int(key), 0, -1, 5) & 0xffff) == key);
+    CHECK(note_slice(pad_note(int(key), -3, 40, 0)) == 0 && note_slice(int(key)) == -1);
+    CHECK(note_slice(int(int16_t(pad_note(int(key), -12)))) == -1); // a pad's key and semitones in 16 bits, sign and all
+
+    // The file: SLCE, by place in EVNT; a file without it plays each note's pad region.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[2];
+    load_sound(kit, EngineKind::Sampler, 0); // a kit's own values (its level), its pads cleared
+    for (auto& pad : kit.pads) pad = PadSound {};
+    for (unsigned n = 0; n < 4; ++n) kit.pads[n].sample = uint16_t(20 + n); // A01-A04 taken
+    kit.pads[4].sample = 7; kit.pads[4].play = PadPlay::OneShot;          // A05: the chopped pad
+    bank->at[2][1] = p;
+    bank->at[2][1].add([&] { Event e = a; e.tick = 2 * sixteenth_ticks; e.slice = 9; return e; }()); // past the chop's end
+    auto data = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[2][1] == bank->at[2][1]);
+    const std::string tag(data.begin(), data.end());
+    CHECK(tag.find("SLCE") != std::string::npos);
+    CHECK(!any_slice_hits(*std::make_unique<PatternBank>()) && any_slice_hits(*bank));
+
+    // 3b's count: hits on pads holding the sample, from a slice on.
+    CHECK(slice_hits(*project, *bank, 7) == 3 && slice_hits(*project, *bank, 7, 2) == 2 && slice_hits(*project, *bank, 7, 3) == 1);
+    CHECK(slice_hits(*project, *bank, 8) == 0 && sliced_samples(*project, *bank) == std::vector<uint16_t> {7});
+
+    // The sampler: a slice hit sounds as TO PADS' pad over that slice; past the chop's end nothing; with no chop the
+    // pad's own region; Chop's PadNote (play_pad) as the pattern's note.
+    SampleData noise;
+    noise.frames = 44100;
+    noise.left.resize(44100); noise.right.resize(44100);
+    uint32_t seed = 11;
+    for (unsigned n = 0; n < 44100; ++n) {
+        seed = seed * 1664525u + 1013904223u;
+        noise.left[n] = noise.right[n] = float(int32_t(seed) >> 8) / float(1 << 23) * 0.5f;
+    }
+    SamplerEngine::Table table {};
+    table[7] = &noise;
+    Slices chop;
+    chop.count = 3;
+    chop.start[0] = 0; chop.start[1] = 10000; chop.start[2] = 20000;
+    chop.stop[0] = 10000; chop.stop[1] = 20000; chop.stop[2] = 0;
+    SamplerEngine::Chops chops {};
+    chops[7] = &chop;
+    const PadSound whole = kit.pads[4];
+    auto render = [&](const PadSound& pad, int note, int pad_slice = -2) {
+        SamplerEngine e;
+        e.set_samples(&table);
+        e.set_chops(&chops);
+        e.set_pad(4, pad);
+        if (pad_slice > -2) e.play_pad(4, 100, 0, -1, pad_slice);
+        else e.note_on(note, 100);
+        std::vector<float> out, l(128), r(128);
+        for (unsigned block = 0; block < 120; ++block) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            e.render_stereo(l.data(), r.data(), 128);
+            out.insert(out.end(), l.begin(), l.end());
+        }
+        return out;
+    };
+    auto loudest = [](const std::vector<float>& v) { float m = 0; for (float x : v) m = std::max(m, std::fabs(x)); return m; };
+    const auto hit = render(whole, pad_note(key, 0, -1, 1));
+    CHECK(loudest(hit) > 0.05f && hit == render(slice_sound(whole, 10000, 20000), key));
+    CHECK(hit != render(whole, key));
+    CHECK(loudest(render(whole, pad_note(key, 0, -1, 5))) == 0.0f);
+    CHECK(render(whole, 0, 1) == hit);
+    chops[7] = nullptr;
+    CHECK(render(whole, pad_note(key, 0, -1, 1)) == render(whole, key));
+    chops[7] = &chop;
+
+    // The host: the chop the project keeps, loaded; its pattern's slice hit as TO PADS' pad playing a plain note.
+    project->chops.edit(7).slices = chop;
+    project->chops.edit(7).to = 44100;
+    auto laid_project = std::make_unique<Project>(*project);
+    laid_project->tracks[2].pads[5] = slice_sound(whole, 10000, 20000);
+    auto beat = std::make_unique<PatternBank>(), laid_beat = std::make_unique<PatternBank>();
+    beat->at[2][0].add([&] { Event e = a; e.slice = 2; return e; }());     // slice 2 (index 1)
+    laid_beat->at[2][0].add([&] { Event e = a; e.slice = 0; e.key = uint8_t(key + 1); return e; }()); // A06, that slice
+    auto play_host = [&](const Project& pr, const PatternBank& bk, EngineHost& host) {
+        host.load(pr, bk);
+        CHECK(host.offer_sample(7, &noise));
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256), all;
+        for (unsigned block = 0; block < 60; ++block) { host.render(out.data(), 128, 1); all.insert(all.end(), out.begin(), out.end()); }
+        return all;
+    };
+    auto host = std::make_unique<EngineHost>(), laid_host = std::make_unique<EngineHost>();
+    const auto heard = play_host(*project, *beat, *host), laid_heard = play_host(*laid_project, *laid_beat, *laid_host);
+    int32_t most = 0;
+    for (auto v : heard) most = std::max(most, v < 0 ? -v : v);
+    CHECK(most > 0 && heard == laid_heard);
+    // A newer chop for the slot: swapped in at the next block, the old one handed back to be freed.
+    Command swap {Command::Type::Chop, 0, 0, 7};
+    swap.chop = new Slices(chop);
+    CHECK(host->send(swap));
+    std::vector<int32_t> out(256);
+    host->render(out.data(), 128, 1);
+    const Slices* old = nullptr;
+    CHECK(host->take_retired_chop(old) && old && old != swap.chop && old->same(chop));
+    delete old;
+    const SampleData* gone = nullptr;
+    while (host->take_retired(gone)) {}
+    while (laid_host->take_retired(gone)) {}
+
+    // The MPC 3 export: each pad and slice played laid once on the next free pad (POLY, the pad's sound over the
+    // slice), its hits moved there as plain notes; a hit past the chop's end dropped.
+    auto export_project = std::make_unique<Project>(*project);
+    auto export_bank = std::make_unique<PatternBank>(*bank);
+    const unsigned left = lay_slice_hits(*export_project, *export_bank, [&](unsigned s) -> const Slices& { return s == 7 ? chop : project->chops[s].slices; });
+    const auto& moved = export_bank->at[2][1].events;
+    CHECK(left == 0 && !any_slice_hits(*export_bank) && moved.size() == 3);
+    const auto& laid = export_project->tracks[2].pads;
+    CHECK(laid[5].start == 0 && laid[5].end == 10000 && laid[5].sample == 7);  // slice 1, hit first
+    CHECK(laid[6].start == 20000 && laid[6].end == 0 && !laid[7].used());      // slice 3; slice 9 is past three: dropped
+    CHECK(moved[0].key == key && moved[1].key == key + 1 && moved[2].key == key + 2 && moved[2].velocity == 50);
+    // No pad free: the hits play their pad's whole region, counted.
+    auto full = std::make_unique<Project>(*project);
+    for (unsigned n = 5; n < sampler_pads; ++n) full->tracks[2].pads[n].sample = 30;
+    auto full_bank = std::make_unique<PatternBank>(*bank);
+    CHECK(lay_slice_hits(*full, *full_bank, [&](unsigned) -> const Slices& { return chop; }) == 2 && full_bank->at[2][1].events.size() == 3);
+}
+
 int main() {
+    slice_hit_notes();
     audio_monitor_choice();
     track_names();
     pad_value_erase();

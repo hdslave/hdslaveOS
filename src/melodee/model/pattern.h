@@ -55,10 +55,13 @@ struct Event {
     int8_t ramp = 0, pitch_ramp = 0;
     uint8_t condition = trig_always; // which passes it plays on, beside its chance (model/trig.h)
     uint8_t cutoff = 0; // roadmap P3, a kit pad's: 16 Levels Filter's cutoff + 1 it was played at (0: the pad's own)
+    // A kit pad's, played on Chop while Seq Record ran: the slice + 1 of the pad's sample's chop it plays, as the chop
+    // is now (0: the pad's own region). The kit keeps no pad for it (model/slice_hits.h).
+    uint8_t slice = 0;
     bool operator==(const Event& o) const {
         return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags &&
                pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp && condition == o.condition &&
-               cutoff == o.cutoff;
+               cutoff == o.cutoff && slice == o.slice;
     }
     bool operator!=(const Event& o) const { return !(*this == o); }
     unsigned hits() const { return std::clamp<unsigned>(ratchet, 1, max_ratchet); }

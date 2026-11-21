@@ -45,6 +45,7 @@ inline Pattern keyed_pattern(const Pattern& kit, unsigned pad) {
         e.pitch = 0;
         e.pitch_ramp = 0;
         e.cutoff = 0;
+        e.slice = 0; // a keygroup plays the whole sample at a key
         out.events.push_back(e);
     }
     std::stable_sort(out.events.begin(), out.events.end(), [](const Event& a, const Event& b) { return a.tick != b.tick ? a.tick < b.tick : a.key < b.key; });

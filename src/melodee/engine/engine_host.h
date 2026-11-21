@@ -329,6 +329,8 @@ public:
     bool take_arp_written(ArpWritten& note) { return arp_written.pop(note); }
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
+    // MIDI thread (issue 24): a sample's chop the audio thread held until a newer one came (Command::Chop), to free.
+    bool take_retired_chop(const Slices*& chop) { return retired_chops.pop(chop); }
     // Any thread (roadmap P4, plug-in delay compensation): device frames everything heard is held back by, so the
     // latest path (a plug-in's latency, its rate converter's, a Limiter's LOOKAHEAD) meets the rest: the tracks' and
     // loops' latest, the buses' and Knob FX's latest after them, and the master's chain. MIDI out, the metronome and
@@ -756,6 +758,16 @@ private:
     std::array<Pattern*, 64> limbo {}; // retired ones the queue had no room for yet
     void retire(Pattern* pattern);
     SamplerEngine::Table samples {};
+    // Issue 24: each sample slot's chop as the shell last sent it, for slice hits (the shell's copies, never changed
+    // in place: a newer one replaces it and it goes back through retired_chops to be freed). Freed with the host.
+    struct ChopTable {
+        SamplerEngine::Chops at {};
+        ChopTable() = default;
+        ChopTable(const ChopTable&) = delete;
+        ChopTable& operator=(const ChopTable&) = delete;
+        ~ChopTable() { for (const Slices* s : at) delete s; }
+    } chops;
+    MidiQueue<1024, const Slices*> retired_chops;
     StreamPager pager;
     TakeRecorder take;
     RecallRing recall_ring; // Audio Recall: the source, always

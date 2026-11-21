@@ -139,7 +139,8 @@ shows a track that is on a pattern of its own.
 ![Recording armed](../images/screens/recarmed.png)
 
 Recording adds to the notes already in the pattern. Each take is one undo
-step. Turn a knob while recording to record it as Motion.
+step. Turn a knob while recording to record it as Motion. On Chop, the slice
+pads record too (see [Recording slices](kits-and-sampling.md#recording-slices)).
 
 - **SHIFT** + **Pad 4**: count-in on or off. A pad hit in the last
   sixteenth of the count-in records at the start of the take, as long as

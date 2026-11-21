@@ -98,6 +98,10 @@ EngineHost::~EngineHost() {
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     for (unsigned t = 0; t < track_count; ++t)
         for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = played_pattern(bank.at[t][p], project.tracks[t].speed);
+    for (unsigned n = 0; n < sample_slots; ++n) { // each sample's chop, for slice hits (issue 24); a live host's shell sends them again
+        delete chops.at[n];
+        chops.at[n] = project.chops[n].used() ? new Slices(project.chops[n].slices) : nullptr;
+    }
     load_state(project);
     snap_mix = true; // its levels from the first block, not eased in from the last project's
 }
@@ -440,6 +444,7 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     slot.plugin.attach(kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
     if (kind != EngineKind::Plugin) slot.plugin.release_macros();
     slot.sampler.set_samples(&samples);
+    slot.sampler.set_chops(&chops.at); // slice hits (issue 24)
     slot.sampler.set_keyed(kind == EngineKind::Keygroup); // its notes MIDI notes on pad 1
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
@@ -765,6 +770,13 @@ void EngineHost::apply(const Command& c) {
     case Type::RecordStop: take.stop(); cue_track = -1; break;
     case Type::Monitor: monitor_on.store(c.value != 0, std::memory_order_relaxed); break;
     case Type::InputTaken: source_taken.store(c.value != 0, std::memory_order_relaxed); break;
+    case Type::Chop: // issue 24: a sample's chop for slice hits; the one it replaces back to the MIDI thread
+        if (c.index < sample_slots) {
+            const Slices* old = chops.at[c.index];
+            chops.at[c.index] = c.chop;
+            if (old && !retired_chops.push(old)) {} // the MIDI thread frees it; a full queue only leaks one
+        }
+        break;
     case Type::LoopMonitor: loop_monitor.store(uint8_t(std::clamp<int>(c.value, 0, int(Monitor::Count) - 1)), std::memory_order_relaxed); break;
     case Type::KnobFx: knob_command(c); break;
     case Type::Compressor: {
@@ -796,7 +808,8 @@ void EngineHost::apply(const Command& c) {
         if (slot.freeze) wake(slot);
         if (slot.engine == &slot.sampler) {
             EngineCall call;
-            call.op = EngineCall::Op::PlayPad; call.a = c.index; call.b = c.value; call.c = int(c.pattern) - 64; call.d = int(c.position) - 1;
+            call.op = EngineCall::Op::PlayPad; call.b = c.value; call.c = int(c.pattern) - 64; call.d = int(c.position) - 1;
+            call.a = int(c.index & 0xffff) | int(std::min<uint32_t>(c.micros, 127)) << 16; // the pad, a slice + 1 above it (issue 24)
             if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
         }
         if (!hand_early) midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now + block_at, -1); // 16 Levels: the pad's note
@@ -1229,7 +1242,7 @@ void EngineHost::make_call(unsigned t, Slot& slot, const EngineCall& c) {
     case Op::Pressure: e->set_pressure(c.a, c.x); break;
     case Op::Control: e->control(c.a, c.b); break;
     case Op::Mod: e->set_mod(unsigned(c.a), ModRoute {uint8_t(c.b), uint8_t(c.c), int8_t(c.d)}); break;
-    case Op::PlayPad: if (e == &slot.sampler) slot.sampler.play_pad(unsigned(c.a), c.b, c.c, c.d); break;
+    case Op::PlayPad: if (e == &slot.sampler) slot.sampler.play_pad(unsigned(c.a & 0xffff), c.b, c.c, c.d, ((c.a >> 16) & 0x7f) - 1); break;
     case Op::Audition: if (e == &slot.sampler) slot.sampler.audition(uint16_t(c.a), uint32_t(c.b), uint32_t(c.c), c.d); break;
     case Op::MovePad: slot.sampler.move_pad(unsigned(c.a), PadParam(c.b), c.c); break;
     case Op::RestorePad: slot.sampler.restore_pad(unsigned(c.a), PadParam(c.b)); break;
@@ -2481,7 +2494,8 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     if (skipped(slot, unsigned(played), at)) return;
     // Roadmap P3: a kit pad's note kept with 16 Levels' cutoff plays at it (the sampler reads it above the semitones).
     const int cutoff = slot.kind == EngineKind::Sampler && e.cutoff ? e.cutoff - 1 : -1;
-    const int sounded = cutoff >= 0 ? pad_note(e.key, e.pitch, cutoff) : played;
+    const int slice = slot.kind == EngineKind::Sampler && e.slice ? e.slice - 1 : -1; // issue 24: a slice hit's slice
+    const int sounded = cutoff >= 0 || slice >= 0 ? pad_note(e.key, e.pitch, cutoff, slice) : played;
     bool go = trig_plays(t, slot, e, pass);
     if (trig_weighed(e.condition, e.chance)) { // how it went, for PRE and NEI after it
         slot.weighed = true; slot.went = go;
@@ -2528,7 +2542,7 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     for (unsigned k = 1; k < hits; ++k) { // the ratchet's other hits, each on its frame (run_hits)
         if (slot.hits_waiting == slot.hits.size()) break;
         PendingHit hit;
-        hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48), cutoff);
+        hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48), cutoff, slice);
         hit.midi = int16_t(e.key);
         hit.velocity = uint8_t(e.hit_velocity(velocity, k));
         hit.accent = accent;

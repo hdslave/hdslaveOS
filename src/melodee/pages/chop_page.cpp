@@ -322,10 +322,12 @@ void draw(Paint& p, const Snapshot& s) {
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     auto& ui = c.ui;
-    if (!down) return;
+    if (!down) { c.slice_release(pad); return; } // a slice hit let go: as long as it was held (issue 24)
     ui.sheet_open = false; // a pad leaves TO PADS' cards and plays as ever
     if (ui.erase) { // the slice out: it joins the one before (slice 1: the one after), the rest move down a pad
-        c.chop_erase(pad_slice(chop_bank_slice(c.project, ui, c.now), pad)); // in the bank in view
+        const unsigned slice = pad_slice(chop_bank_slice(c.project, ui, c.now), pad); // in the bank in view
+        if (slice < ui.slices.count && ui.slices.count > 1) // slice hits from there on: asked first (issue 24)
+            c.chop_change(slice ? slice - 1 : 0, [&c, slice] { c.chop_erase(slice); });
         return;
     }
     c.chop_tap(pad, velocity);
@@ -385,21 +387,26 @@ void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (ui.sheet_open) { if (key == 0) c.back(); return; } // TO PADS' cards: B1 BACK; the wheel and Push do the rest
     if (ui.shift) {
-        uint32_t frames = ui.chop_sample < sample_slots ? c.project.samples[ui.chop_sample].frames : 0;
         if (key == 0) c.extract_slice();
-        if (key == 1) {
+        if (key == 1) c.chop_change(ui.chop_slice, [&c] { // slice hits on it and after: asked first (issue 24)
+            auto& ui = c.ui;
+            uint32_t frames = ui.chop_sample < sample_slots ? c.project.samples[ui.chop_sample].frames : 0;
             if (ui.slices.split(ui.chop_slice, frames)) {
                 unsigned cut = ui.chop_slice + 1u; // the new cut, onto a zero crossing with Zero Snap on
                 ui.slices.move_start(cut, c.zero_cut(ui.slices.start[cut]), frames);
                 ui.chop_hand.pin(ui.slices.start[cut]); // a cut by hand: it stays through a new chop
             }
             else c.notice("Split: too short");
-        }
+        });
         if (key == 2) {
             if (ui.chop_slice == 0) { c.notice("Merge: the first slice"); return; }
-            ui.chop_hand.take_out(ui.slices.start[ui.chop_slice]); // a new chop leaves it out
-            ui.slices.remove(ui.chop_slice);
-            ui.chop_slice = uint8_t(ui.chop_slice - 1);
+            c.chop_change(ui.chop_slice - 1u, [&c] { // slice hits on the one before and after: asked first (issue 24)
+                auto& ui = c.ui;
+                if (ui.chop_slice == 0 || ui.chop_slice >= ui.slices.count) return;
+                ui.chop_hand.take_out(ui.slices.start[ui.chop_slice]); // a new chop leaves it out
+                ui.slices.remove(ui.chop_slice);
+                ui.chop_slice = uint8_t(ui.chop_slice - 1);
+            });
         }
         return;
     }

@@ -283,6 +283,7 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
+    if (page != ui.page && ui.page == PageId::Chop) for (unsigned n = 0; n < 16; ++n) slice_release(n); // and a slice hit held (issue 24)
     if (page != ui.page && page == PageId::Sends) ui.sends_pads = false; // SENDS opens on the tracks (B2 again: a kit's pads)
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
@@ -505,6 +506,7 @@ void Context::record(int key, int velocity, int cutoff) {
     Event e;
     e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
     if (cutoff >= 0 && track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // roadmap P3
+    if (note_slice(key) >= 0 && track().engine == EngineKind::Sampler) e.slice = uint8_t(note_slice(key) + 1); // issue 24: a slice hit
     if (!p.add(e)) { notice("Pattern full"); return; }
     sync_pattern(ui.track, track().pattern);
     if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }
@@ -523,7 +525,7 @@ void Context::record_release(int key) {
         if (!host.heard_place(h.track, hit_ns, position, ticks)) ticks = host.ticks();
         int32_t held = int32_t(ticks - h.since); // let go before the first tick (an early hit): the shortest
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
-            if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8)) {
+            if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8) && p.events[n].slice == uint8_t(note_slice(key) + 1)) {
                 p.events[n].length = uint16_t(std::clamp<int32_t>(held, 1, 65535));
                 sync_pattern(h.track, h.pattern);
                 break;
@@ -820,13 +822,16 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopMode: // the same type again (a pot's noise): nothing, the cuts as they are
         if (ChopMode(value) == ui.chop_mode) break;
-        ui.chop_mode = ChopMode(value); rechop();
-        ui.settings.chop_mode = uint8_t(value); // the next sample with no chop of its own opens on it
-        settings_save_at = std::max<uint32_t>(now, 1) + 1000; // K3 turns in steps: the card gets the last
+        chop_change(0, [this, value] { // slice hits on any slice: asked first (issue 24)
+            ui.chop_mode = ChopMode(value); rechop();
+            ui.settings.chop_mode = uint8_t(value); // the next sample with no chop of its own opens on it
+            settings_save_at = std::max<uint32_t>(now, 1) + 1000; // K3 turns in steps: the card gets the last
+        });
         break;
     case Kind::ChopAmount:
         if (ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] == value) break;
-        ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); break;
+        chop_change(0, [this, value] { ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); });
+        break;
     case Kind::ChopStart: case Kind::ChopEnd: { // a cut moved by hand: it stays through a new chop by type or amount (in frames)
         auto was = chop_view(project, ui);
         uint32_t frames = chop_frames(project, ui), at = std::min(uint32_t(value), frames);
@@ -1238,6 +1243,8 @@ void Context::set_step(unsigned t, unsigned at, const Step& value) {
 void Context::free_retired() {
     Pattern* old = nullptr;
     while (host.take_retired_pattern(old)) delete old;
+    const Slices* chop = nullptr; // a sample's chop a newer one replaced (issue 24)
+    while (host.take_retired_chop(chop)) delete chop;
 }
 
 void Context::sync_pattern(unsigned t, unsigned p) {

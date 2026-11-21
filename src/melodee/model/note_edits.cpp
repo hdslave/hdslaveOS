@@ -118,7 +118,8 @@ std::vector<Event> arp_events(const std::vector<Event>& notes, unsigned mode, un
             e.ratchet = 1; e.ramp = 0; e.pitch_ramp = 0;
             if (lane >= 0) { e.key = uint8_t(lane); e.pitch = int8_t(std::clamp(key - 60, -48, 48)); }
             else e.key = uint8_t(std::clamp(key, 0, 255));
-            for (size_t n = first; n < last; ++n) if (row(notes[n]) == key) e.cutoff = notes[n].cutoff; // a level's cutoff kept
+            for (size_t n = first; n < last; ++n)
+                if (row(notes[n]) == key) { e.cutoff = notes[n].cutoff; e.slice = notes[n].slice; } // a level's cutoff, a slice hit's slice kept
             out.push_back(e);
         }
         first = last;

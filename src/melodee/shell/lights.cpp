@@ -13,6 +13,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
+#include "melodee/model/slice_hits.h"
 #include "melodee/shell/autosave.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/ask.h"
@@ -226,6 +227,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         context_.send({Command::Type::KeyedRoot, uint8_t(t), 0, 0, root});
     }
     context_.files_landed();  // Trim Sample, Extract, Save Sample, takes, Recall, Resample: done on the service thread
+    context_.sync_chops();    // the chops slice hits play, as Chop and the project hold them now (issue 24)
     context_.record_tick(now); // Input Config's route and monitor, settings kept, renders followed
     context_.browser_tick();  // the browser's listings and previews
     // The device's rate changed: the project again, worked out at the new rate.
@@ -338,8 +340,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track % track_count];
         const FrameView view = zoomed_view(); // a close view's frames too, drawn from memory (SampleLibrary::detail())
         const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
+        SlicedChops sliced; // slice hits' samples, their chops as they play them (issue 24)
+        for (uint16_t slot : sliced_samples(*project_, context_.patterns)) sliced.emplace_back(slot, &context_.live_chop(slot));
         auto holds = stream_holds(*project_, chop ? &ui_.slices : nullptr, chop ? ui_.chop_sample : no_sample,
-                                  view.width() ? view_sample : no_sample, HeldRange {view.from, view.to, false});
+                                  view.width() ? view_sample : no_sample, HeldRange {view.from, view.to, false}, sliced);
         auto find = [](const StreamHolds& in, unsigned slot) {
             auto at = std::lower_bound(in.begin(), in.end(), slot, [](const auto& e, unsigned s) { return e.first < s; });
             return at != in.end() && at->first == slot ? &at->second : nullptr;

@@ -2577,7 +2577,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SLCE` (slice notes recorded on Chop: each note's slice), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
   `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds

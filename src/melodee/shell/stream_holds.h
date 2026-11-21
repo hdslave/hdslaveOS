@@ -25,9 +25,11 @@ struct HeldRange {
 using StreamHolds = std::vector<std::pair<uint16_t, std::vector<HeldRange>>>; // by slot, in order; each slot's ranges in order
 constexpr uint32_t view_most = 12 * 44100; // wider, a view is drawn from the sample's peaks (SampleLibrary::detail())
 
-// `chop`: Chop's slices of `chop_sample` while Chop is open (nullptr otherwise); `view` of `view_sample`: a zoomed view.
+// `chop`: Chop's slices of `chop_sample` while Chop is open (nullptr otherwise); `view` of `view_sample`: a zoomed view;
+// `sliced`: the samples slice hits play (issue 24, model/slice_hits.h) with their chops, each slice's start held.
+using SlicedChops = std::vector<std::pair<uint16_t, const Slices*>>;
 inline StreamHolds stream_holds(const Project& project, const Slices* chop = nullptr, unsigned chop_sample = no_sample,
-                                unsigned view_sample = no_sample, HeldRange view = {}) {
+                                unsigned view_sample = no_sample, HeldRange view = {}, const SlicedChops& sliced = {}) {
     StreamHolds out;
     auto add = [&](unsigned slot, HeldRange range) {
         auto at = std::lower_bound(out.begin(), out.end(), slot, [](const auto& e, unsigned s) { return e.first < s; });
@@ -62,6 +64,13 @@ inline StreamHolds stream_holds(const Project& project, const Slices* chop = nul
     }
     if (chop && chop_sample < sample_slots && project.samples[chop_sample].streamed)
         for (unsigned n = 0; n < chop->count; ++n) add(chop_sample, {chop->start[n], chop->start[n], false});
+    for (const auto& [slot, slices] : sliced) // slice hits: a hit starts its slice (a reversed one its end)
+        if (slices && slot < sample_slots && project.samples[slot].streamed)
+            for (unsigned n = 0; n < slices->count; ++n) {
+                add(slot, {slices->start[n], slices->start[n], false});
+                const uint32_t end = slices->end(n, project.samples[slot].frames);
+                add(slot, {end, end, true});
+            }
     if (view_sample < sample_slots && project.samples[view_sample].streamed && view.to > view.from && view.to - view.from <= view_most)
         add(view_sample, view);
     for (auto& [slot, ranges] : out) {

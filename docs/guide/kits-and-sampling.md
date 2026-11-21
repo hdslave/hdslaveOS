@@ -284,8 +284,9 @@ sheet without loading.
 ## Chop
 
 Press **CHOP** to slice the last pad's sample. The pads play the slices: tap
-a pad to play its slice and select it. Press **CHOP** again to go back to
-**TRIM**. Chop does not work on a sampled instrument.
+a pad to play its slice and select it. With Seq Record on, the slices you tap
+are recorded (see [Recording slices](#recording-slices)). Press **CHOP** again
+to go back to **TRIM**. Chop does not work on a sampled instrument.
 
 ![Chop](../images/screens/chop.png)
 
@@ -447,6 +448,38 @@ then plays. The notes follow how the pads play: with Warp or Follow at the
 loop's own tempo, else as it was recorded. Undo takes back the pads, the
 pattern and which pattern plays in one step. If Seq Record is on, TO PADS
 turns it off first, so the recording is a step of its own before it.
+
+### Recording slices
+
+You can record slices into a pattern straight from Chop, as on the stock MPC
+Sample. The kit's pads stay as they are: no pad is taken for a slice.
+
+1. Select the pad and press **CHOP**.
+2. Press **SEQ RECORD**, then **PLAY**.
+3. Tap the slice pads. Each slice plays with the pad's own sound (tune,
+   envelope, filter, effects) and is recorded as a note of that pad. A note is
+   as long as you hold its pad. **PAD BANK** reaches slices 17–64.
+4. Press **SEQ RECORD** again to stop recording.
+
+While Seq Record is off or the transport is stopped, the pads only play the
+slices, as before. During a Manual take the pads still cut and nothing is
+recorded.
+
+A recorded slice note plays its slice as the chop is now. When you move a cut
+with **K1**, **K2** or the encoder, the notes on that slice follow it. On
+Step Edit and Roll the note shows its pad and slice, such as **A05 · 5**. A
+slice note on a slice the chop no longer has is silent.
+
+Changing the chop type or amount, **SPLIT**, **MERGE**, **ERASE** + pad and
+**ERASE** + **CHOP** change which part of the sample a slice number plays.
+When recorded slice notes use the slices that would change, Melodee asks
+first (**Rechop?**, with how many notes change sound). **B3** (**RECHOP**)
+goes ahead; it asks once a visit to Chop. Undo (**SHIFT** + **−**) takes the
+change back.
+
+An MPC 3 export puts each slice that is played on a free pad of the kit and
+moves its notes there, as TO PADS would. If the kit has no free pad left, the
+notes play the whole pad, and Melodee says how many.
 
 ### Slices in the WAV file
 
