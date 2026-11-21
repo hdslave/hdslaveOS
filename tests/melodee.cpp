@@ -11265,6 +11265,51 @@ void stems_lookup() {
     fs::remove_all(ram, error);
 }
 
+// An MPC Sample project's hits played on Chop's pads (stock 1.3.0.12, Kerem's "Pokemom"): pad 13 (note 48) holds
+// "Sample 001008-Normalized.wav", 987776 frames at 44.1 kHz, its region 1790..987775 (sliceIndex 129), and the WAV's
+// "atem" 16 slices. Its eight notes each have the Sample Slice modifier on ("Absolute"), its value the slice / 127.
+// Before, each came in as a plain note of pad 13 and played the whole 22 s sample.
+void mpc_chop_hits() {
+    // Each note's modifierActiveState15 and modifierValue15, as the file has them (the doubles the MPC wrote).
+    const double saved[8] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.007874015718698502, 0.0, 0.015748031437397003};
+    // The WAV's "Slice 0".."Slice 15" Start and End.
+    const uint32_t atem[16][2] = {{1790, 61759}, {61759, 113386}, {113386, 165540}, {165540, 248286}, {248286, 329958},
+                                  {329958, 360078}, {360078, 431368}, {431368, 493708}, {493708, 523828}, {523828, 605858},
+                                  {605858, 657458}, {657458, 739488}, {739488, 821160}, {821160, 851638}, {851638, 903238},
+                                  {903238, 985269}};
+    Slices chop;
+    for (const auto& s : atem) { chop.start[chop.count] = s[0]; chop.stop[chop.count] = s[1]; ++chop.count; }
+    PadSound pad;
+    pad.sample = 0; pad.start = 1790; pad.end = 987775; pad.play = PadPlay::OneShot;
+    const uint8_t key = uint8_t(sampler_first_note + 12);
+    Pattern p;
+    p.length = 8 * ticks_per_quarter;
+    for (unsigned n = 0; n < 8; ++n) {
+        Event e;
+        e.tick = n * ticks_per_quarter; // one a beat, as recorded (960 MPC ticks apart)
+        e.key = key;
+        e.slice = mpc_slice_hit(true, saved[n], false);
+        CHECK(p.add(e));
+    }
+    const uint8_t slices[8] = {1, 1, 1, 1, 1, 2, 1, 3}; // Slice 1, 1, 1, 1, 1, 2, 1, 3 on the MPC's screen
+    CHECK(p.events.size() == 8);
+    for (unsigned n = 0; n < 8; ++n) {
+        const auto& e = p.events[n];
+        CHECK(e.slice == slices[n] && unsigned(e.slice - 1) < chop.count);
+        // What the sampler plays for it (SamplerEngine::hit): the pad over that slice, not 1790..987775.
+        const auto played = slice_sound(pad, chop.start[size_t(e.slice - 1)], chop.stop[size_t(e.slice - 1)]);
+        CHECK(played.start == atem[e.slice - 1][0] && played.end == atem[e.slice - 1][1]);
+        CHECK(note_slice(pad_note(int(e.key), 0, -1, e.slice - 1)) == e.slice - 1);
+    }
+    // A note with the modifier off plays its pad, whatever value it keeps (the MPC writes one for every note).
+    CHECK(mpc_slice_hit(false, 0.0, false) == 0 && mpc_slice_hit(false, 0.5, false) == 0);
+    // Relative modifiers offset the pad's slice, and a pad playing its own region has none: its pad.
+    CHECK(mpc_slice_hit(true, 0.015748031437397003, true) == 0);
+    // The last of the MPC's 128 slices and past Melodee's 64: past any chop (silent, as a slice past its chop's end).
+    CHECK(mpc_slice_hit(true, 1.0, false) == max_slices + 1 && mpc_slice_hit(true, 63.0 / 127, false) == 64);
+    CHECK(mpc_slice_hit(true, -0.1, false) == 0 && mpc_slice_hit(true, std::nan(""), false) == 0);
+}
+
 int main() {
     audio_monitor_choice();
     pad_value_erase();
@@ -11356,5 +11401,6 @@ int main() {
     settings();
     sampler_kit();
     bindings();
+    mpc_chop_hits();
     std::puts("melodee ok");
 }
