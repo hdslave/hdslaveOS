@@ -17662,7 +17662,19 @@ void pad_colours() {
     std::array<pad_light::Look, 16> looks;
     pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
     CHECK(looks[5].colour == 0xFF0000 && looks[5].hue == pad_light::Hue::Track && pad_light::rung(looks[5].level) == 4);
-    CHECK(looks[7].colour == ui::track_shades[4][0] && pad_light::rung(looks[7].level) == 2);
+    // One of the sixteen picked on COLOUR lights as vivid as the screen shows it (melodee-hdslave); an MPC kit's own
+    // colour (pad 6's, above: none of the sixteen) as it is.
+    CHECK(looks[7].colour == pad_light::vivid(ui::track_shades[4][0]) && pad_light::rung(looks[7].level) == 2);
+    CHECK(pad_light::vivid(0xFF7A5C) == 0xFF3A21 && pad_light::vivid(0x46D9B0) == 0x17D98F); // the brightest channel stays, the others fall as their squares
+    CHECK(pad_light::vivid(0xFF0000) == 0xFF0000 && pad_light::vivid(0xFFFFFF) == 0xFFFFFF && pad_light::vivid(0) == 0 && pad_light::vivid(0x808080) == 0x808080);
+    for (const auto& shade : ui::track_shades) { // every one of the sixteen: the same brightest channel, less of the others, the same order of the three
+        const uint32_t was = shade[0], now = pad_light::vivid(was);
+        auto part = [](uint32_t c, int n) { return int((c >> (16 - 8 * n)) & 255); };
+        int most_was = std::max({part(was, 0), part(was, 1), part(was, 2)}), most_now = std::max({part(now, 0), part(now, 1), part(now, 2)});
+        CHECK(most_was == most_now);
+        for (int n = 0; n < 3; ++n) CHECK(part(now, n) <= part(was, n) && part(now, n) > 0);
+        for (int a = 0; a < 3; ++a) for (int b = 0; b < 3; ++b) CHECK((part(was, a) < part(was, b)) == (part(now, a) < part(now, b)) || part(now, a) == part(now, b));
+    }
     kit.pads[7].colour = 0;
     pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
     CHECK(looks[7].colour == ui::track_shades[1][0]);

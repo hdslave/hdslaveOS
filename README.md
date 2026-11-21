@@ -4,7 +4,7 @@
 
 ![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
 
-> **melodee-hdslave** is a local fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds three settings (Refresh, Dim after, Pad brightness). The processor always runs at its full speed, and Melodee plays the same, to the bit. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
+> **melodee-hdslave** is a local fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds three settings (Refresh, Dim after, Pad brightness). The processor always runs at its full speed, and Melodee plays the same, to the bit. Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a

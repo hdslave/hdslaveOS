@@ -43,6 +43,17 @@ inline Look of(uint32_t colour, Hue hue, float level) {
     out.colour = colour; out.level = level; out.hue = hue;
     return out;
 }
+// A screen colour as a pad's light should show it (melodee-hdslave). The sixteen colours are written for the screen,
+// whose values are gamma-coded; a pad's LEDs are driven in light itself, so the screen's 48 % of green is not a
+// fifth of the light there but nearly half of it, and a colour that is a soft coral on the screen comes out near
+// white on a pad. Each channel is squared against the brightest, which stays as it is: about what the screen's
+// coding does, so the hue is the screen's and the saturation is what the screen shows.
+constexpr uint32_t vivid(uint32_t colour) {
+    const uint32_t r = (colour >> 16) & 255, g = (colour >> 8) & 255, b = colour & 255;
+    const uint32_t most = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (!most) return 0;
+    return ((r * r + most / 2) / most) << 16 | ((g * g + most / 2) / most) << 8 | ((b * b + most / 2) / most);
+}
 inline Look track(unsigned t, float level) { return of(ui::track_shades[t % 16][0], Hue::Track, level); }
 inline Look loop(unsigned l, float level) { return of(ui::loop_shades[l % 4][0], Hue::Loop, level); }
 inline Look white(float level) { return of(0xFFFFFF, Hue::White, level); }

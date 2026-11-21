@@ -6,6 +6,7 @@
 // for a loss or a recording; Faint, Dim, Mid and Full for how much; a blink
 // for a wait, a flare for a sound, a pulse for the count.
 #include "melodee/shell/pad_lights.h"
+#include "melodee/shell/pad_colour.h"
 #include "melodee/shell/features.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -159,7 +160,10 @@ Look counting(const PadScene& s, const Look& look) {
 // Kit pad `kit` in its own colour (Stage's COLOUR, an MPC kit's), else the track's; Hue::Track either way.
 Look kit_hue(const PadScene& s, unsigned kit, float level) {
     uint32_t own = selected(s).pads[kit % sampler_pads].colour;
-    return own ? of(own, Hue::Track, level) : track(selected_index(s), level);
+    if (!own) return track(selected_index(s), level);
+    // One of the sixteen picked on Stage's COLOUR: as vivid as the screen shows it (pad_light::vivid()), so that pads
+    // coloured apart look apart. An MPC kit's own colours were made for pads: as they are.
+    return of(colour_choice(own) < colour_own ? vivid(own) : own, Hue::Track, level);
 }
 Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
