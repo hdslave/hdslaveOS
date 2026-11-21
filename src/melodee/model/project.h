@@ -226,11 +226,13 @@ struct Song {
 };
 
 // Roadmap P5: a scene is a column of patterns across the tracks (pattern n of each), launched together on the next bar,
-// with a name and a tempo of its own (0: none; tenths of a BPM) taking over on that bar.
+// with a name and a tempo of its own (0: none; tenths of a BPM) taking over on that bar, and a colour (issue 19) its
+// cell and pad show (0: none; 1-16 a track colour, ui/shades.h).
 struct Scene {
     char name[12] {};
     uint16_t tempo = 0;
-    bool plain() const { return !name[0] && !tempo; }
+    uint8_t colour = 0;
+    bool plain() const { return !name[0] && !tempo && !colour; }
     void set_name(const char* text) {
         unsigned n = 0;
         for (; n + 1 < sizeof(name) && text[n]; ++n) name[n] = text[n];

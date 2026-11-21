@@ -16540,11 +16540,14 @@ void scenes_p5() {
         put(bank->at[3][5], 0, 60, 100);
         bank->at[3][5].follow = f;
         project->scenes[2].set_name("CHORUS"); project->scenes[2].tempo = 1285; project->scenes[9].tempo = 900;
+        project->scenes[2].colour = 5; project->scenes[11].colour = 16; // issue 19: a colour alone is kept too
+        CHECK(!project->scenes[11].plain());
         auto data = save_project(*project, *bank);
         auto back = std::make_unique<Project>();
         auto back_bank = std::make_unique<PatternBank>();
         CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[3][5].follow == f && !back_bank->at[3][4].follow.on());
         CHECK(std::string(back->scenes[2].name) == "CHORUS" && back->scenes[2].tempo == 1285 && back->scenes[9].tempo == 900 && back->scenes[0].plain());
+        CHECK(back->scenes[2].colour == 5 && back->scenes[9].colour == 0 && back->scenes[11].colour == 16 && !back->scenes[11].tempo);
         std::string text(data.begin(), data.end());
         data[text.find("FOLW")] = 'X'; data[text.find("SCNE")] = 'X';
         CHECK(load_project(data, *back, *back_bank).empty() && !back_bank->at[3][5].follow.on() && back->scenes[2].plain());
@@ -16566,7 +16569,8 @@ void scenes_p5() {
         // again on PATTERNS.
         ui.patterns_cards = 1; project->tracks[1].pattern = 19; project->scenes[19].tempo = 1284;
         auto scene = base_bindings(*project, ui, p);
-        CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128 && !scene[1].bound());
+        CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128);
+        CHECK(scene[1].kind == Binding::Kind::SceneColour && scene[1].id == 19 && scene[1].value == 0 && scene[1].max == 16 && !scene[2].bound());
         CHECK(!shift_bindings(*project, ui, p)[0].bound());
         ui.patterns_cards = 0;
         CHECK(base_bindings(*project, ui, p)[0].kind == Binding::Kind::PatternLength);

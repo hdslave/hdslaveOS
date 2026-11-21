@@ -691,11 +691,11 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < lane.count; ++n) { w.u16(lane.points[n].bar); w.u16(lane.points[n].tempo); w.u8(lane.points[n].ramp); }
         w.end(at);
     }
-    for (unsigned n = 0; n < pattern_count; ++n) { // scenes (roadmap P5): a column's name and tempo, where it has either
+    for (unsigned n = 0; n < pattern_count; ++n) { // scenes (roadmap P5): a column's name, tempo and colour, where it has one
         const auto& scene = project.scenes[n];
         if (scene.plain()) continue;
         at = w.begin("SCNE");
-        w.u8(n); w.text(scene.name); w.u16(scene.tempo);
+        w.u8(n); w.text(scene.name); w.u16(scene.tempo); w.u8(scene.colour);
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
@@ -1245,12 +1245,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 if (r.ok) lane.set(bar, tempo, ramp != 0);
             }
             if (r.ok) project->song.tempo = lane;
-        } else if (name == "SCNE") { // a scene's name and tempo (roadmap P5); without it the column alone
+        } else if (name == "SCNE") { // a scene's name, tempo and colour (roadmap P5); without it the column alone
             unsigned n = r.u8();
             Scene scene;
             r.text(scene.name, sizeof(scene.name));
             unsigned tempo = r.u16();
             scene.tempo = uint16_t(tempo ? std::clamp(tempo, 300u, 3000u) : 0);
+            if (!r.done()) scene.colour = uint8_t(std::min(r.u8(), 16u)); // older files end here: none
             if (r.ok && n < pattern_count) project->scenes[n] = scene;
         } else if (name == "PROG") { // the Prog layout's progression; without it none
             unsigned t = r.u8(), version = r.u8();

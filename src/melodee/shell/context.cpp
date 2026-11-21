@@ -954,6 +954,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
     case Kind::SceneTempo: set_scene_tempo(unsigned(b.id), value * 10); break; // Patterns' SCENE: below 30, none of its own
+    case Kind::SceneColour: set_scene_colour(unsigned(b.id), value); break;
     case Kind::AutoLow: case Kind::AutoHigh: case Kind::AutoStep: case Kind::AutoLayers: case Kind::AutoHold: case Kind::AutoTail:
     case Kind::AutoTap: case Kind::AutoLoop: case Kind::AutoLevel: auto_sheet_set(b.kind, value); break; // shell/auto_sample.cpp
     case Kind::PrintTapPick: ui.print_sheet.tap = value ? PrintTap::PreFx : PrintTap::PostFx; break; // freeze plan F2c

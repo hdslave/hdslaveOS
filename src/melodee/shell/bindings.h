@@ -123,6 +123,7 @@ struct Binding {
         // WARP (B1's third page): K1 0 Off, 1 Stretch, 2 Repitch; K2 the tempo it was recorded at (tenths of a BPM); K3
         // its semitones, Shift + K3 its cents (Stretch moves its pitch by them).
         RegionWarp, RegionBpm, RegionSemi, RegionFine,
+        SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

@@ -4,8 +4,9 @@
 // as the pads sit (pad 1 bottom left; Pad Bank another bank of
 // them), each a column of patterns, pattern n of every track. A pad launches its sequence: pattern n on every used
 // track at the next bar (a track with no notes there goes silent, shell/sequences.h), the scene's tempo with
-// it; Erase + pad clears its name and tempo. Push names the scene in hand,
-// the wheel sets its tempo (below 30 BPM: none of its own). The cards are the
+// it; Erase + pad clears its name, tempo and colour. Push names the scene in hand,
+// the wheel sets its tempo (below 30 BPM: none of its own), Shift + wheel its
+// colour (issue 19: its cell and pad in it; Shift held shows it). The cards are the
 // selected track's pattern's follow action (model/follow.h): K1 FOLLOW, K2
 // AFTER (bars or plays), K3 CHANCE, Shift + K1 OR (the second action, on the
 // odds the first leaves); Shift + B3 ALL puts it on every track's pattern in its
@@ -73,14 +74,15 @@ void draw(Paint& p, const Snapshot& s) {
             waiting += s.playing && !live && tr.pattern == n;
         }
         float x = gx + column * (cw + gap), y = gy + row * (ch + gap);
+        const auto& sc = s.project.scenes[n];
+        const juce::Colour ink = sc.colour ? track_colour(sc.colour - 1u) : colour::text; // its colour (issue 19), else white
         bool playing = with && on == with;
         juce::Colour text = with ? colour::sec : colour::dim;
-        if (playing) { p.fill(x, y, cw, ch, colour::text, 5); text = colour::bg; }
-        else if (waiting) { p.fill(x, y, cw, ch, colour::text.withAlpha(blink ? 0.4f : 0.12f), 5); p.ring(x, y, cw, ch, colour::text, 5, 1.5f); text = colour::text; }
-        else if (with) p.fill(x, y, cw, ch, colour::text.withAlpha(0.06f + 0.02f * float(std::min(with, 8u))), 5);
-        else p.fill(x, y, cw, ch, colour::quiet, 5);
+        if (playing) { p.fill(x, y, cw, ch, ink, 5); text = colour::bg; }
+        else if (waiting) { p.fill(x, y, cw, ch, ink.withAlpha(blink ? 0.4f : 0.12f), 5); p.ring(x, y, cw, ch, ink, 5, 1.5f); text = colour::text; }
+        else if (with) p.fill(x, y, cw, ch, ink.withAlpha((sc.colour ? 0.18f : 0.06f) + 0.02f * float(std::min(with, 8u))), 5);
+        else p.fill(x, y, cw, ch, sc.colour ? ink.withAlpha(0.14f) : colour::quiet, 5); // a coloured empty column says so too
         if (n == hand) p.ring(x - 1, y - 1, cw + 2, ch + 2, c, 6, 1.5f);
-        const auto& sc = s.project.scenes[n];
         p.text(juce::String(n + 1), x + 4, y + 2, cw - 8, 13, plain(text, type::small, Weight::Bold));
         if (sc.tempo) p.fill(x + cw - 7, y + 6, 3, 3, playing ? colour::bg : colour::amber, 1.5f); // a tempo of its own
         if (sc.name[0]) { // as much of its name as fits, as the MPC shortens names
@@ -95,9 +97,16 @@ void draw(Paint& p, const Snapshot& s) {
     float x = gx + grid_w + 10, w = zone::width - zone::pad - x, y = gy;
     juce::String title = "SEQ " + juce::String(hand + 1) + (scene.name[0] ? " " + juce::String(scene.name) : juce::String());
     p.text(title, x, y, w, 18, p.fit(title, plain(colour::text, type::list, Weight::SemiBold), w, type::floor));
-    icon(p, Icon::Metro, x, y + 21, 13, scene.tempo ? colour::amber : colour::dim, 1.3f);
-    p.text(scene.tempo ? tempo_text(scene.tempo) + " BPM" : juce::String::fromUTF8("\xe2\x80\x94"), x + 17, y + 19, w - 17, 16,
-           plain(scene.tempo ? colour::text : colour::dim, type::body, Weight::Medium));
+    if (s.ui.shift) { // Shift + wheel: its colour, in place of its tempo
+        if (scene.colour) p.fill(x, y + 22, 12, 12, track_colour(scene.colour - 1u), 3);
+        else p.ring(x, y + 22, 12, 12, colour::dim, 3, 1.2f);
+        p.text(scene.colour ? juce::String(ui::track_colour_names[size_t(scene.colour - 1) % 16]) : juce::String("No colour"), x + 17, y + 19, w - 17, 16,
+               plain(scene.colour ? colour::text : colour::dim, type::body, Weight::Medium));
+    } else {
+        icon(p, Icon::Metro, x, y + 21, 13, scene.tempo ? colour::amber : colour::dim, 1.3f);
+        p.text(scene.tempo ? tempo_text(scene.tempo) + " BPM" : juce::String::fromUTF8("\xe2\x80\x94"), x + 17, y + 19, w - 17, 16,
+               plain(scene.tempo ? colour::text : colour::dim, type::body, Weight::Medium));
+    }
     if (follow_shown(s.ui)) { // the follow action: Full's (shell/features.h)
         p.fill(x, y + 40, w, 1, colour::line);
         draw_follow(p, s, x, y + 46, w, c);
@@ -123,8 +132,14 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 }
 
 // The wheel: the scene in hand's tempo by a BPM, from the tempo now when it has none; under 30, none of its own.
+// Shift + wheel: its colour, none then the sixteen track colours.
 void wheel(Context& c, int delta) {
     unsigned hand = c.ui.scene % pattern_count;
+    if (c.ui.shift) {
+        c.ui.shift_used = true;
+        c.set_scene_colour(hand, std::clamp(int(c.project.scenes[hand].colour) + delta, 0, 16));
+        return;
+    }
     int now = c.project.scenes[hand].tempo ? int(c.project.scenes[hand].tempo) : int(c.tempo_now()) / 10 * 10 - delta * 10;
     c.set_scene_tempo(hand, now + delta * 10);
 }

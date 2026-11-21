@@ -59,6 +59,14 @@ void Context::set_scene_tempo(unsigned scene, int tenths) {
     dirty = true;
 }
 
+void Context::set_scene_colour(unsigned scene, int colour) {
+    auto& s = project.scenes[scene % pattern_count];
+    uint8_t value = uint8_t(std::clamp(colour, 0, 16));
+    if (s.colour == value) return;
+    s.colour = value;
+    dirty = true;
+}
+
 void Context::name_scene(unsigned scene) {
     name_scene_at = uint8_t(scene % pattern_count);
     const auto& s = project.scenes[name_scene_at];
@@ -74,7 +82,7 @@ void Context::name_track(unsigned t) {
 
 void Context::clear_scene(unsigned scene) {
     auto& s = project.scenes[scene % pattern_count];
-    if (s.plain()) { notice("SEQ " + std::to_string(scene % pattern_count + 1) + " has no name or tempo"); return; }
+    if (s.plain()) { notice("SEQ " + std::to_string(scene % pattern_count + 1) + " has no name, tempo or colour"); return; }
     s = Scene {};
     dirty = true;
     notice("SEQ " + std::to_string(scene % pattern_count + 1) + " cleared");
