@@ -7,20 +7,21 @@
 #include <string>
 
 // MIDI Config's rows (Shift + Pad 8, parity phase 9) in the MPC's order, with
-// Melodee's track channel and its input after Out channel, the Remote rows after Receive program change and the three takeover rows the
+// Melodee's track channel and its input after Out channel, Scale on white keys after Pad MIDI in, the Remote rows after
+// Receive program change and the three takeover rows the
 // MPC keeps here (they are Settings' rows too), then Melodee's MIDI Panic
 // (docs/MIDI_TRACKS.md) and Reset Factory Settings.
 namespace melodee {
 
 enum MidiRow : uint8_t {
-    MidiPortRow, InChannelRow, OutChannelRow, TrackChannelRow, TrackInRow, PadInRow, PadOutRow, SyncInRow, SyncOutRow, ThruRow,
+    MidiPortRow, InChannelRow, OutChannelRow, TrackChannelRow, TrackInRow, PadInRow, ScaleKeysRow, PadOutRow, SyncInRow, SyncOutRow, ThruRow,
     ProgramChangeRow, RemoteChannelRow, TrackCcRow, PatternCcRow, SceneCcRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, PanicRow, ResetRow,
     MidiRows
 };
 
 inline const char* midi_row_name(unsigned row) {
     static const char* const names[] {"MIDI port", "MIDI in channel", "MIDI out channel", "Track channel", "Track MIDI in",
-                                      "Pad MIDI in", "Pad MIDI out", "MIDI sync in", "MIDI sync out", "MIDI thru",
+                                      "Pad MIDI in", "Scale on white keys", "Pad MIDI out", "MIDI sync in", "MIDI sync out", "MIDI thru",
                                       "Receive program change", "Remote channel", "Remote track CC", "Remote pattern CC",
                                       "Remote sequence CC", "CV/sync out", "CV/sync base", "CV/sync division", "Parameter takeover",
                                       "Knob FX takeover", "Fader takeover", "MIDI panic", "Reset factory settings"};
@@ -36,6 +37,7 @@ inline std::string midi_row_value(const Settings& s, const Track& track, unsigne
     case TrackChannelRow: return midi_channel_text(track.midi_channel, "Off");
     case TrackInRow: return track_midi_in_name(track.midi_in);
     case PadInRow: return m.pad_in ? "On" : "Off";
+    case ScaleKeysRow: return s.scale_keys ? "On" : "Off";
     case PadOutRow: return pad_midi_out_name(m.pad_out);
     case SyncInRow: return midi_sync_name(m.sync_in);
     case SyncOutRow: return midi_sync_name(m.sync_out);
@@ -69,6 +71,7 @@ inline void midi_row_step(Settings& s, Track& track, unsigned row, int way) {
     case TrackChannelRow: track.midi_channel = uint8_t(stop(track.midi_channel, 0, 16)); break;
     case TrackInRow: track.midi_in = TrackMidiIn(round(int(track.midi_in), int(TrackMidiIn::Count))); break;
     case PadInRow: m.pad_in = !m.pad_in; break;
+    case ScaleKeysRow: s.scale_keys = !s.scale_keys; break;
     case PadOutRow: m.pad_out = PadMidiOut(round(int(m.pad_out), int(PadMidiOut::Count))); break;
     case SyncInRow: m.sync_in = MidiSync(round(int(m.sync_in), int(MidiSync::Count))); break;
     case SyncOutRow: m.sync_out = MidiSync(round(int(m.sync_out), int(MidiSync::Count))); break;
@@ -116,6 +119,7 @@ inline unsigned midi_row_choice(const Settings& s, const Track& track, unsigned 
     case TrackChannelRow: return track.midi_channel;
     case TrackInRow: return unsigned(track.midi_in);
     case PadInRow: return m.pad_in;
+    case ScaleKeysRow: return s.scale_keys;
     case PadOutRow: return unsigned(m.pad_out);
     case SyncInRow: return unsigned(m.sync_in);
     case SyncOutRow: return unsigned(m.sync_out);
@@ -146,6 +150,7 @@ inline void midi_row_set(Settings& s, unsigned row, unsigned n) {
     case InChannelRow: m.in_channel = uint8_t(n); break;
     case OutChannelRow: m.out_channel = uint8_t(n + 1); break;
     case PadInRow: m.pad_in = n; break;
+    case ScaleKeysRow: s.scale_keys = n; break;
     case PadOutRow: m.pad_out = PadMidiOut(n); break;
     case SyncInRow: m.sync_in = MidiSync(n); break;
     case SyncOutRow: m.sync_out = MidiSync(n); break;

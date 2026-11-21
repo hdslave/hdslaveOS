@@ -273,6 +273,8 @@ the scale and **K3** the pad layout.
 - Encoder push: open Edit.
 
 The key and scale belong to the project. The layout belongs to each track.
+To play the scale on a MIDI keyboard's white keys, see
+[Play the scale on the white keys](midi-and-sync.md#play-the-scale-on-the-white-keys).
 
 ## Chord progressions
 

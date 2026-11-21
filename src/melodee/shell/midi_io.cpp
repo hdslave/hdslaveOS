@@ -8,6 +8,7 @@
 #include "melodee/shell/input_route.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/scale_keys.h"
 #include "melodee/shell/step_edit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
@@ -39,23 +40,31 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     t %= track_count;
     if (k < 0 || k > 127) return;
     auto& tr = project.tracks[t];
-    if (down) midi_held[t].set(size_t(k));
-    else if (midi_held[t].test(size_t(k))) midi_held[t].reset(size_t(k));
-    else return; // never started here (or already let go)
-    // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key
-    // played. Kept from the press, so its end finds it whatever has changed meanwhile.
+    // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key played. With Scale on white keys,
+    // a white key is a note of the scale and a black key nothing (shell/scale_keys.h). Kept from the press, so its
+    // end finds it whatever has changed meanwhile.
     const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
     const bool instrument = project.samples[pad.sample % sample_slots].instrument();
     const int root = levels_root_shift(project, tr); // a single sample: its note, key 60 + root its own pitch
     const int levels = levels_key(tr, k, instrument, root);
-    if (down) midi_played[t][size_t(k)] = levels >= 0 ? levels : k;
+    if (down) {
+        const bool scale = levels < 0 && ui.settings.scale_keys && scale_keys_on(project, tr);
+        const int note = levels >= 0 ? levels : scale ? scale_key_note(project, k) : k;
+        if (note < 0) return; // a black key: not held, so its release does nothing
+        midi_held[t].set(size_t(k));
+        midi_played[t][size_t(k)] = note;
+    } else if (midi_held[t].test(size_t(k))) {
+        midi_held[t].reset(size_t(k));
+    } else {
+        return; // never started here (or already let go)
+    }
     const int played = midi_played[t][size_t(k)];
     from_midi = true;
     if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history; Step Edit and Roll write it
         if (down && played == k && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
         key(played, velocity, down);
         if (levels >= 0) midi_entry(*this, int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - (instrument ? int(pad.pitch) : root), uint8_t(velocity), down);
-        else midi_entry(*this, k, 0, uint8_t(velocity), down);
+        else midi_entry(*this, played, 0, uint8_t(velocity), down);
     } else { // a track on its own channel: played as the selected one is, and Seq Record takes it too (every track at once)
         const uint8_t selected = ui.track;
         ui.track = uint8_t(t);
@@ -250,12 +259,15 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         int value = m.isAftertouch() ? m.getAfterTouchValue() : m.getChannelPressureValue();
         for (unsigned t = 0; t < track_count; ++t) {
             if (!((tracks >> t) & 1)) continue;
+            // On a synth, the note a held key plays (Scale on white keys moves it); a kit's pads as they were.
+            const bool kit = c.project.tracks[t].engine == EngineKind::Sampler;
+            auto sounding = [&](int k) { return !kit && c.midi_held[t].test(size_t(k)) ? int(c.midi_played[t][size_t(k)]) : k; };
             if (m.isAftertouch()) {
                 int key = note_key(c.project.tracks[t], m.getNoteNumber());
-                if (key >= 0) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(key), int16_t(value)});
+                if (key >= 0) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(sounding(key)), int16_t(value)});
             } else {
                 for (int k = 0; k < 128; ++k)
-                    if (c.midi_held[t].test(size_t(k))) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(k), int16_t(value)});
+                    if (c.midi_held[t].test(size_t(k))) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(sounding(k)), int16_t(value)});
             }
         }
         return;

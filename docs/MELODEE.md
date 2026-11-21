@@ -2023,7 +2023,8 @@ shows it, the header says what and how much.
 it, Push does MIDI Panic and Reset, B1 back): port (External jacks or USB), In channel (All, 1–16: plays the
 selected track), Out channel, Track Channel (a track's own: plays it
 whichever is selected, and its notes go out there), Pad MIDI In / Out
-(Never, Always, Empty), Sync In / Out (Off, MIDI Clock, MTC), Thru, Program
+(Never, Always, Empty), Scale on White Keys (on a Scale or Chords track the white keys play the project's
+scale from the root on C4, the black keys nothing; `shell/scale_keys.h`), Sync In / Out (Off, MIDI Clock, MTC), Thru, Program
 Change (launches that pattern), CV/Sync Out with Base 1–8 and Division 1–24
 (pulses a quarter), the three takeover rows, MIDI Panic (Push: every note
 here ends, and All Sound Off, All Notes Off and pitch bend centre go out on

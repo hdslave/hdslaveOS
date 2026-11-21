@@ -121,6 +121,7 @@ struct Settings {
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     SamplingPrefs sampling;   // how Audio Recall cuts the ring, and when a Free take ends on its own
     MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
+    bool scale_keys = false;  // MIDI Config's Scale on white keys: MIDI in's white keys play the scale (shell/scale_keys.h)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
     static constexpr unsigned engines = 11, sounds = 256; // a row per EngineKind (MIDI the eighth, PLUGIN the ninth, KEYGROUP the tenth, AUDIO the eleventh)
     std::array<std::bitset<sounds>, engines> favourites {};
@@ -383,7 +384,8 @@ struct Settings {
             << "\nauto_end=" << int(sampling.auto_end) << "\nauto_end_after=" << int(sampling.end_after)
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\ndirect_level=" << int(direct_level)
-            << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps) << '\n';
+            << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
+            << "\nscale_keys=" << int(scale_keys) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
@@ -463,6 +465,7 @@ struct Settings {
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
             else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
+            else if (key == "scale_keys") scale_keys = value != 0;
             else if (read_midi_config(midi, key, value)) {}
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));

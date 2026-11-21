@@ -83,6 +83,7 @@
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
+#include "melodee/shell/scale_keys.h"
 #include "melodee/engine/midi_out.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/takeover.h"
@@ -4005,6 +4006,48 @@ void midi_and_sync() {
         midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
         midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
         CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset factory settings");
+        // Scale on white keys: off at first, a toggle, kept in the settings file, off again after Reset.
+        CHECK(std::string(midi_row_name(ScaleKeysRow)) == "Scale on white keys" && midi_row_choices(ScaleKeysRow) == 2);
+        CHECK(!set.scale_keys && midi_row_value(set, track, ScaleKeysRow) == "Off" && midi_row_choice(set, track, ScaleKeysRow) == 0);
+        midi_row_step(set, track, ScaleKeysRow, 1); CHECK(set.scale_keys && midi_row_value(set, track, ScaleKeysRow) == "On");
+        Settings back; back.read(set.text()); CHECK(back.scale_keys);
+        Settings older; older.read("pad_response=2\n"); CHECK(!older.scale_keys);
+        midi_row_set(set, track, ScaleKeysRow, 0); CHECK(!set.scale_keys);
+        set.scale_keys = true; set.reset_factory(); CHECK(!set.scale_keys);
+    }
+    // Scale on white keys: the white keys play the scale in order, C4 the root nearest it, black keys nothing.
+    {
+        auto project = std::make_unique<Project>();
+        project->root = 0; project->scale = 0; // C Major: every white key as it is
+        for (int k : {0, 59, 60, 62, 64, 65, 67, 69, 71, 72, 127}) CHECK(scale_key_note(*project, k) == k);
+        for (int k : {1, 61, 63, 66, 68, 70, 126}) CHECK(scale_key_note(*project, k) == -1);
+        CHECK(scale_key_note(*project, -1) == -1 && scale_key_note(*project, 128) == -1);
+        project->root = 2; // D Major: C4 is D4, B3 the C#4 below it, the top key past 127
+        CHECK(scale_key_note(*project, 60) == 62 && scale_key_note(*project, 62) == 64 && scale_key_note(*project, 64) == 66);
+        CHECK(scale_key_note(*project, 65) == 67 && scale_key_note(*project, 59) == 61 && scale_key_note(*project, 72) == 74);
+        CHECK(scale_key_note(*project, 127) == -1);
+        project->root = 9; project->scale = 1; // A Minor: the root the nearest way, down to A3
+        CHECK(scale_key_note(*project, 60) == 57 && scale_key_note(*project, 62) == 59 && scale_key_note(*project, 64) == 60);
+        CHECK(scale_key_note(*project, 72) == 69 && scale_key_note(*project, 0) == -1);
+        project->root = 0; project->scale = 10; // C Minor pent: five notes go on up the white keys, a note a key
+        CHECK(std::string(scales()[10].name) == "Minor pent");
+        CHECK(scale_key_note(*project, 60) == 60 && scale_key_note(*project, 62) == 63 && scale_key_note(*project, 67) == 70);
+        CHECK(scale_key_note(*project, 69) == 72 && scale_key_note(*project, 71) == 75 && scale_key_note(*project, 72) == 77);
+        CHECK(scale_key_note(*project, 59) == 58 && scale_key_note(*project, 57) == 55);
+        // Where it plays: a synth, keygroup or MIDI track on Scale or Chords, in any scale but Chromatic.
+        Track synth; synth.engine = EngineKind::Plugin;
+        CHECK(scale_keys_on(*project, synth));
+        synth.layout = PadLayout::Chords; CHECK(scale_keys_on(*project, synth));
+        synth.layout = PadLayout::Chromatic; CHECK(!scale_keys_on(*project, synth));
+        synth.layout = PadLayout::Drums; CHECK(!scale_keys_on(*project, synth));
+        synth.layout = PadLayout::Prog; CHECK(!scale_keys_on(*project, synth));
+        synth.layout = PadLayout::Scale;
+        Track kit; kit.engine = EngineKind::Sampler;
+        Track keygroup; keygroup.engine = EngineKind::Keygroup;
+        Track midi; midi.engine = EngineKind::Midi;
+        Track empty;
+        CHECK(!scale_keys_on(*project, kit) && scale_keys_on(*project, keygroup) && scale_keys_on(*project, midi) && !scale_keys_on(*project, empty));
+        project->scale = chromatic_scale; CHECK(!scale_keys_on(*project, synth));
     }
     // Where notes go: a track's own channel wins; the In channel (All or one) plays the selected track.
     {
