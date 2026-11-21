@@ -102,7 +102,9 @@ one owner per piece of state.
   LV2 plug-ins too.
   CLAP plug-ins take every main-thread call (open, state, parameter
   text) from the rack's threads, one at a time, and their audio calls
-  from whichever thread runs their block (`plugin/clap_instance.h`).
+  from whichever thread runs their block (`plugin/clap_instance.h`). A
+  plug-in with its own screen is painted from a screen thread of the
+  rack's, which only tries the plug-in's lock (Plug-ins, below).
 - **Service thread** does every file on the card (projects, sounds,
   settings, samples, takes, renders), the input routes and the speaker,
   the power key, and SD card access. It leaves the card alone while the
@@ -2418,6 +2420,29 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   PRESETS; with more than one location holding presets (Surge XT: Factory,
   Third Party, User), each location is a folder too, named without the
   plug-in's name. No editor windows, as for VST3.
+- **A plug-in's own screen** (melodee-hdslave). A CLAP plug-in may draw
+  its own page through a Melodee extension, `com.hdslave.melodee.screen/1`
+  (`plugin/melodee_screen.h`, MIT licensed so that a plug-in may copy it):
+  the 320 x 218 pixels under the soft keys, with the encoder's turns, its
+  Push and Minus / Plus, and the three parameters it puts on K1–K3. Edit on
+  its PLUGIN track and Stage's EDIT then show its picture once it has drawn
+  one; the soft keys stay Melodee's, and so do the MENU, notices and the
+  Shift layer over it. K1–K3 bind to its three as to any plug-in's
+  parameters (takeover, ERASE + pot, Shift + wheel, the fader, motion). The
+  rack paints it on a screen thread of its own, so a slow load or preset
+  scan on the rack's thread never stops the picture: each call tries the
+  plug-in's main-thread lock and comes back later if another holds it.
+  Paints come when the plug-in asks (`request_paint`, from any thread),
+  after an input, when the pots, Shift, the transport or the track's
+  colour change, and never nearer each other than 16 ms. The canvas keeps
+  the plug-in's last picture, so it may draw only what changed; its
+  `whole` flag asks for every pixel (its first paint, or back in view
+  after another plug-in's page). The page copies
+  the newest picture from the snapshot. Any other host simply never asks
+  for it. `melodee --melodee-plugin-screen PLUGIN.clap DIR steps...` opens
+  one through the rack and writes the screen as PNGs after each step
+  (`wheel:N`, `push`, `minus`, `plus`, `shift`, `k1:V`..`k3:V`, `wait:MS`,
+  `edit`, `stage`, `png:NAME`).
 - **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
   for each plug-in opened, made on the message thread. A bundle's presets
   (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot

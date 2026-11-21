@@ -1196,6 +1196,10 @@ void draw(Paint& p, const Snapshot& s) {
         for (const auto& other : s.project.tracks) any |= other.used();
         keys = SoftKeys {{any ? (s.ui.new_sources ? "BACK" : "CANCEL") : "", "", ""}, -1, c, {any ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
     }
+    if (page.picture == StagePicture::PluginEdit && t.used() && !frozen && plugin_screen_shown(s, t.plugin)) { // its own page
+        draw_plugin_screen(p, s, t.plugin, keys);
+        return;
+    }
     frame(p, s, keys, h);
     if (!t.used()) { new_track_picture(p, s); return; }
     if (frozen) { frozen_picture(p, s); return; }
@@ -1259,7 +1263,10 @@ void wheel(Context& c, int delta) {
         return;
     }
     if (page.kind == StageKind::PluginSound) { c.plugin_preset_turn(delta); return; } // its presets (none: nothing)
-    if (page.kind == StageKind::PluginEdit) { plugin_rows(c, delta); return; }       // its rows of three
+    if (page.kind == StageKind::PluginEdit) { // its rows of three, or its own page
+        if (!c.plugin_screen_input(PluginScreenKey::Wheel, delta)) plugin_rows(c, delta);
+        return;
+    }
     int n = stage_focus(c.ui, c.track());
     if (!c.track().used()) { // the carousel: Push makes the card in the middle
         new_pick_turn(c.ui, delta, c.now);
@@ -1295,6 +1302,7 @@ void push(Context& c) {
         if (t.plugin < max_plugins && c.ui.plugin_panel.entry == t.plugin && c.ui.plugin_panel.programs) c.open_plugin_presets(t.plugin);
         return;
     }
+    if (page.kind == StageKind::PluginEdit && c.plugin_screen_input(PluginScreenKey::Push, 1)) return; // its own page
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
     int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
@@ -1309,7 +1317,10 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
-    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { plugin_rows(c, way); return; } // as Edit's (a plug-in track)
+    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { // as Edit's (a plug-in track)
+        if (!c.plugin_screen_input(PluginScreenKey::Nudge, way)) plugin_rows(c, way);
+        return;
+    }
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);
     else octave(c, way);
 }

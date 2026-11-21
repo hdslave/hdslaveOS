@@ -9,6 +9,7 @@
 #include "melodee/model/project.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
+#include "melodee/plugin/plugin_screen.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/capture_ring.h"
@@ -324,6 +325,11 @@ public:
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
+    // Melodee's plug-in screen (plugin/melodee_screen.h): the entry whose own page is in view (Edit on a PLUGIN track,
+    // Stage's EDIT), -1 none; and an input on that page (a MELODEE_SCREEN_ kind) handed to the plug-in when it draws
+    // its own page: false when it does not, so the page does its own job with it.
+    int plugin_screen_in_view() const;
+    bool plugin_screen_input(PluginScreenKey key, int value);
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

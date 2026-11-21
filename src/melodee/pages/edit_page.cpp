@@ -163,6 +163,7 @@ void draw(Paint& p, const Snapshot& s) {
         bool presets = ours && panel.programs > 0, chosen = s.track().plugin < max_plugins;
         SoftKeys keys {{"PLUG-INS", presets ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, c};
         if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[s.track().plugin].transport ? 4 : 0; }
+        if (plugin_screen_shown(s, s.track().plugin)) { draw_plugin_screen(p, s, s.track().plugin, keys); return; } // its own page
         frame(p, s, keys, h);
         if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
             icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
@@ -243,7 +244,10 @@ void plugin_rows(Context& c, int delta) {
 namespace {
 
 void wheel(Context& c, int delta) {
-    if (c.track().engine == EngineKind::Plugin) { plugin_rows(c, delta); return; }
+    if (c.track().engine == EngineKind::Plugin) { // to its own page, or its rows
+        if (!c.plugin_screen_input(PluginScreenKey::Wheel, delta)) plugin_rows(c, delta);
+        return;
+    }
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track, count = edit_page_count(info);
@@ -256,6 +260,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
+    if (c.track().engine == EngineKind::Plugin && c.plugin_screen_input(PluginScreenKey::Push, 1)) return; // its own page
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track;
@@ -276,9 +281,9 @@ void push(Context& c) {
     }
 }
 
-// Minus / Plus: the octave, or on a PLUGIN track its rows as the wheel.
+// Minus / Plus: the octave, or on a PLUGIN track its rows as the wheel (its own page: to it).
 void nudge(Context& c, int way) {
-    if (c.track().engine == EngineKind::Plugin) plugin_rows(c, way);
+    if (c.track().engine == EngineKind::Plugin) { if (!c.plugin_screen_input(PluginScreenKey::Nudge, way)) plugin_rows(c, way); }
     else octave(c, way);
 }
 } // namespace

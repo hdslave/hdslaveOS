@@ -38,6 +38,10 @@ struct PluginPanel {
     uint16_t row = 0, rows = 0;    // rows of three parameters
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
     uint16_t programs = 0;         // its named programs (presets), for PRESETS
+    // Which shown parameter is on each of K1-K3 (-1: none): the row in hand's three (row * 3 + k), or for a plug-in
+    // with its own screen (plugin/melodee_screen.h) the three it names.
+    std::array<int16_t, 3> knob {-1, -1, -1};
+    bool screen = false;           // it draws its own page (plugin/melodee_screen.h)
     std::array<PluginPanelParam, 3> params {};
     // The six parameters around the row in hand, its own three among them (the row before, or at the top the row
     // after), for the page's list; `window_first` the first one's place in the list of shown ones.
@@ -107,9 +111,10 @@ constexpr unsigned plugin_binding_shown(int32_t id) { return unsigned(id) & 0xff
 // The panel's card for a binding id, null when that parameter is not on K1-K3 now.
 inline const PluginPanelParam* plugin_card(const PluginPanel& panel, int32_t id) {
     unsigned shown = plugin_binding_shown(id);
-    if (panel.entry != plugin_binding_entry(id) || shown < panel.row * 3u || shown >= panel.row * 3u + 3) return nullptr;
-    const auto& card = panel.params[shown - panel.row * 3u];
-    return card.used ? &card : nullptr;
+    if (panel.entry != plugin_binding_entry(id)) return nullptr;
+    for (unsigned k = 0; k < 3; ++k)
+        if (panel.knob[k] >= 0 && unsigned(panel.knob[k]) == shown) return panel.params[k].used ? &panel.params[k] : nullptr;
+    return nullptr;
 }
 // Shift + wheel on a plug-in card: `delta` of the parameter's own values when it takes fewer than plugin_param_max
 // (a detent is never lost to the plug-in rounding it back), else `delta` thousandths of its range.

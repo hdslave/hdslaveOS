@@ -46,6 +46,38 @@ class PluginHostTests(unittest.TestCase):
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
 
+    @unittest.skipUnless((ROOT / "build/melodee").is_file(), "needs make's build/melodee")
+    def test_plugin_screen_through_melodee(self):
+        """Melodee's plug-in screen end to end: the fixture opened through the rack on a PLUGIN track, the hands'
+        controls through the shell to it, its pictures through the snapshot onto the Edit and Stage pages."""
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "Test.clap"
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            steps = ["png:first", "wheel:1", "png:wheel", "push", "png:push", "plus", "png:plus", "k1:127", "png:k1",
+                     "stage", "png:stage", "minus", "png:minus", "shift", "png:shift", "shift"]
+            result = subprocess.run([str(ROOT / "build/melodee"), "--melodee-plugin-screen", str(plugin), str(Path(temp) / "out"),
+                                     *steps], capture_output=True, text=True, timeout=120,
+                                    env={**os.environ, "HOME": temp, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            said = {line.split()[1]: dict(kv.split("=") for kv in line.split()[2:])
+                    for line in result.stdout.splitlines() if line.startswith("MELODEE_PLUGIN_SCREEN ")}
+            # Level 0.5: red 128; the cursor's row in green; the inputs taken in blue; K1-K3 the rows it names.
+            want = {"first": ("0,1,-1", "0xff800000"), "wheel": ("1,0,-1", "0xff80ff01"), "push": ("0,1,-1", "0xff800002"),
+                    "plus": ("1,0,-1", "0xff80ff03"), "stage": ("1,0,-1", "0xff80ff03"), "minus": ("0,1,-1", "0xff800004"),
+                "shift": ("0,1,-1", "0xff800004")}
+            for name, (knobs, pixel) in want.items():
+                self.assertEqual(said[name]["screen"], "1", name)
+                self.assertEqual(said[name]["knobs"], knobs, name)
+                self.assertEqual(said[name]["pixel"], pixel, name)
+                self.assertEqual(said[name]["page"], pixel, name)  # the page shows the picture under the soft keys
+                self.assertEqual(said[name]["low"], pixel, name)   # and nothing over its foot, Shift held or not
+            self.assertEqual(said["first"]["bar"], "0")  # K1 not moved yet
+            self.assertEqual(said["k1"]["bar"], "320")   # K1 at the top, as the plug-in was told
+            self.assertGreater(int(said["minus"]["serial"]), int(said["first"]["serial"]))
+            for name in want:
+                self.assertTrue((Path(temp) / "out" / (name + ".png")).is_file())
+
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"

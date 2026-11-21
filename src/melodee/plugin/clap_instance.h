@@ -35,6 +35,9 @@ struct clap_plugin_note_ports;
 struct clap_plugin_preset_load;
 struct clap_event_header;
 struct clap_output_events;
+struct clap_plugin_melodee_screen;
+struct melodee_screen_canvas;
+struct melodee_screen_input;
 
 namespace melodee {
 
@@ -93,6 +96,15 @@ public:
     void setStateInformation (const void*, int) override;
     juce::AudioProcessorParameter* getBypassParameter() const override;
 
+    // Melodee's plug-in screen (plugin/melodee_screen.h): whether it offers one, and its calls. Each is made only if
+    // no other main-thread call is running now (a preset scan, a save): false then, and the caller tries again later.
+    // paintWanted(): it asked to be painted (or had an input) since the last time this was asked; always at first.
+    bool hasScreen() const { return screen != nullptr; }
+    bool paintWanted();
+    bool screenPaint (const melodee_screen_canvas& canvas, bool& changed);
+    bool screenInput (const melodee_screen_input& input, bool& used);
+    bool screenKnobs (int32_t (&parameterIndices)[3]); // the parameters (indices, as getParameters()) on K1-K3, -1 none
+
     struct Host; // the clap_host it gives the plug-in, and what the plug-in asked of it
 
 private:
@@ -118,6 +130,7 @@ private:
     const clap_plugin_latency* latency = nullptr;
     const clap_plugin_tail* tail = nullptr;
     const clap_plugin_preset_load* presetLoad = nullptr;
+    const clap_plugin_melodee_screen* screen = nullptr;
     std::vector<Preset> presets;    // under `mainLock`
     int currentPreset = -1;         // under `mainLock`
     juce::File file;

@@ -39,6 +39,7 @@ struct Snapshot {
     uint32_t sent_seen = 0, whole_at = 0;
     bool whole = true;
     std::shared_ptr<const TakePeaks> audio_peaks; // freeze plan F3: the takes' overviews (Context::audio_peaks)
+    PluginScreenFramePtr plugin_screen;           // a plug-in screen's newest picture (plugin/plugin_screen.h), shared
     UiState ui;
     Project project;
     Pattern pattern;                         // the selected track's pattern playing

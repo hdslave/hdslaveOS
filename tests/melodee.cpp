@@ -7240,6 +7240,7 @@ void stage() {
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit) && !cards(false)[0].bound());
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
     ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.params[0].used = true;
+    ui.plugin_panel.knob = {0, 1, 2}; // row 0's three, as the rack fills them
     { // PRESETS: the three performance knobs, whatever the plug-in (engine/macros.h); a slot's kind 0 is its default
         auto knobs = cards(false);
         CHECK(knobs[0].kind == K::Param && knobs[0].id == plugin_track::Macro1 && knobs[0].min == -100 && knobs[0].max == 100);
@@ -7265,7 +7266,16 @@ void stage() {
               plugin_param_step(tuning, 498, 1) == 500 && plugin_param_step(tuning, 1000, 1) == 1000);
         PluginPanelParam smooth; smooth.used = true;
         CHECK(plugin_param_step(smooth, 500, 1) == 501 && plugin_param_step(smooth, 0, -1) == 0);
-        ui.plugin_panel.row = 1; CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
+        ui.plugin_panel.row = 1; ui.plugin_panel.knob = {3, 4, 5};
+        CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
+        // A plug-in that draws its own page names its three, in any order (plugin/melodee_screen.h): the cards and
+        // the pots follow them, not the rows.
+        ui.plugin_panel.screen = true; ui.plugin_panel.knob = {5, -1, 0};
+        ui.plugin_panel.params[2].used = true;
+        auto screen = cards(false);
+        CHECK(screen[0].kind == K::PluginParam && plugin_binding_shown(screen[0].id) == 5 && !screen[1].bound());
+        CHECK(screen[2].kind == K::PluginParam && plugin_binding_shown(screen[2].id) == 0);
+        CHECK(plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[2]); // shown 0, now on K3
     }
     ui.plugin_panel = {};
 

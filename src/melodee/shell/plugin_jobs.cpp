@@ -15,11 +15,13 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/features.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
@@ -196,7 +198,7 @@ void Context::set_plugin_param(int32_t id, int value) {
     auto& panel = ui.plugin_panel;
     if (panel.entry == entry)
         for (unsigned k = 0; k < 3; ++k)
-            if (panel.row * 3u + k == shown) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
+            if (panel.knob[k] >= 0 && unsigned(panel.knob[k]) == shown) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
     dirty = true;
 }
 
@@ -284,11 +286,36 @@ int Context::plugin_in_focus() const {
     return -1;
 }
 
+int Context::plugin_screen_in_view() const {
+    const auto& t = project.tracks[ui.track % track_count];
+    if (t.engine != EngineKind::Plugin || t.plugin >= max_plugins) return -1;
+    if (ui.page == PageId::Edit) return t.plugin;
+    if (ui.page == PageId::Stage && stage_page_now(ui, t, stage_skip(project, ui, t)).kind == StageKind::PluginEdit) return t.plugin;
+    return -1;
+}
+
+bool Context::plugin_screen_input(PluginScreenKey key, int value) {
+    int entry = plugin_screen_in_view();
+    if (entry < 0 || !plugins || ui.plugin_panel.entry != unsigned(entry) || !ui.plugin_panel.screen) return false;
+    plugins->screen_input(unsigned(entry), {uint32_t(key), value, ui.shift});
+    if (ui.shift) ui.shift_used = true;
+    return true;
+}
+
 void Context::plugins_tick(uint32_t at) {
     if (!plugins) return;
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it
     split_shared_plugins();
     plugins->sync(project, plugins_asleep());
+    { // the plug-in screen in view, and what it is told: each tick, so a pot's move reaches its picture at once
+        int entry = plugin_screen_in_view();
+        PluginScreenContext told;
+        for (unsigned k = 0; k < 3; ++k) { told.pots[k] = ui.pots[k].position; told.engaged[k] = ui.pots[k].engaged; }
+        told.shift = ui.shift;
+        told.playing = host.playing();
+        told.accent = 0xff000000u | ui::palettes[ui.settings.palette % ui::palettes.size()].tracks[ui.track % 16][0];
+        plugins->screen_focus(entry >= 0 ? unsigned(entry) : no_plugin, told);
+    }
     delete_tick(*this); // the picker listed again once a plug-in is deleted (shell/delete_jobs.h)
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
         plugin_view_seen = plugins->changes();

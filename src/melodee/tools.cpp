@@ -44,6 +44,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace melodee {
@@ -731,6 +733,7 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
     if (status != PluginStatus::Ready) return;
     panel.rows = 8; panel.row = 1; panel.load = 216; panel.programs = 12;
+    panel.knob = {3, 4, 5}; // row 1's three, as the rack fills them
     const char* names[] {"Cutoff", "Filter envelope amount", "Decay time"};
     const char* texts[] {"5.0", "7.2", "3.5"};
     const int16_t values[] {500, 720, 350};
@@ -2808,6 +2811,132 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     return text_issues || control_breaks ? 1 : 0;
 }
 
+// Melodee's plug-in screen (plugin/melodee_screen.h), as the MPC would show it: PLUGIN (a .clap) opened through the
+// rack on a PLUGIN track, its Edit page in view, then STEPS one after another, each a control as the hands use it:
+// wheel:N, push, minus, plus, shift (held; again, let go), k1:V k2:V k3:V (a pot to 0..127), wait:MS, edit or stage
+// (the page: Edit, or Stage's EDIT), and png:NAME, the screen as it is drawn into DIR/NAME.png and @2x. Each png says
+// what Melodee holds: MELODEE_PLUGIN_SCREEN NAME screen=0|1 knobs=K1,K2,K3 (places among the shown parameters)
+// serial=N pixel=0xAARRGGBB (the picture's, at 0,5) page=0xAARRGGBB (the screen's there, row 27) low=0xAARRGGBB (the
+// screen's at 0,230, under the knobs' overlays) bar=W (row 1's white).
+int plugin_screen(const std::string& plugin, const std::string& folder, const std::vector<std::string>& steps) {
+    if (!std::getenv("MELODEE_PLUGIN_STAGE")) // its RAM copy somewhere of its own
+        setenv("MELODEE_PLUGIN_STAGE", ("/tmp/melodee-plugin-screen-" + std::to_string(::getpid())).c_str(), 1);
+    std::filesystem::create_directories(folder);
+    EngineHost host;
+    host.set_render_threads(0);
+    auto shell = std::make_unique<Shell>(host);
+    auto rack = std::make_unique<PluginRack>(host);
+    shell->set_plugins(rack.get());
+    {
+        auto& project = shell->project();
+        std::snprintf(project.plugins[0].path, sizeof(project.plugins[0].path), "%s", plugin.c_str());
+        auto& t = project.tracks[0];
+        load_sound(t, EngineKind::Plugin, 0);
+        t.plugin = 0;
+        host.load(project, shell->patterns());
+        host.set_audio_format(48000, 384);
+        Command c {Command::Type::Reload};
+        c.pack = new ProjectPack(project, shell->patterns());
+        host.send(c);
+    }
+    shell->ui().track = 0;
+    shell->context().open(PageId::Edit);
+    uint32_t now = 1000;
+    SurfaceLights lights;
+    std::vector<int32_t> audio(EngineHost::block * 2);
+    auto tick = [&](unsigned ms) { // the MIDI thread's ticks and the audio's blocks, the rack's threads running meanwhile
+        for (unsigned n = 0; n < ms; n += 5) {
+            now += 5;
+            shell->lights(lights, now);
+            host.render(audio.data(), EngineHost::block, 0.7f);
+            const ProjectPack* pack = nullptr;
+            while (host.take_done_pack(pack)) delete pack;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    auto serial = [&] { auto f = rack->screen_frame(); return f && f->entry == 0 ? f->serial : 0u; };
+    using Clock = std::chrono::steady_clock;
+    auto until = [&](auto done, double seconds) {
+        auto t0 = Clock::now();
+        while (!done() && std::chrono::duration<double>(Clock::now() - t0).count() < seconds) tick(5);
+    };
+    until([&] { auto st = rack->status(0); return st == PluginStatus::Failed || st == PluginStatus::Crashed || (st == PluginStatus::Ready && serial()); }, 20);
+    if (rack->status(0) != PluginStatus::Ready) {
+        std::printf("MELODEE_PLUGIN_SCREEN failed %s\n", rack->summary().c_str());
+        return 1;
+    }
+    tick(120); // the panel's next refresh: the screen, and the knobs it names
+    auto event = [&](SurfaceInput in) {
+        SurfaceEvent e;
+        e.input = in;
+        shell->surface(e, now);
+    };
+    auto button = [&](SurfaceButton b, bool down) { SurfaceInput in; in.kind = SurfaceInput::Kind::Button; in.index = uint8_t(b); in.pressed = down; event(in); };
+    auto control = [&](SurfaceControl c, int value, int delta) {
+        SurfaceInput in; in.kind = SurfaceInput::Kind::Control; in.index = uint8_t(c); in.value = uint8_t(value); in.delta = delta; event(in);
+    };
+    bool shift = false;
+    for (const auto& step : steps) {
+        auto colon = step.find(':');
+        std::string what = step.substr(0, colon), arg = colon == std::string::npos ? "" : step.substr(colon + 1);
+        const uint32_t before = serial();
+        bool input = true;
+        if (what == "wheel") control(SurfaceControl::Wheel, 0, std::atoi(arg.c_str()));
+        else if (what == "push") { button(SurfaceButton::WheelPush, true); tick(20); button(SurfaceButton::WheelPush, false); }
+        else if (what == "minus" || what == "plus") {
+            auto b = what == "minus" ? SurfaceButton::Minus : SurfaceButton::Plus;
+            button(b, true); tick(20); button(b, false);
+        }
+        else if (what == "shift") { shift = !shift; button(SurfaceButton::Shift, shift); }
+        else if (what.size() == 2 && what[0] == 'k' && what[1] >= '1' && what[1] <= '3')
+            control(SurfaceControl(unsigned(SurfaceControl::K1) + unsigned(what[1] - '1')), std::clamp(std::atoi(arg.c_str()), 0, 127), 0);
+        else if (what == "edit" || what == "stage") {
+            if (what == "stage") { stage_go(shell->ui(), EngineKind::Plugin, StageKind::PluginEdit); shell->context().open(PageId::Stage); }
+            else shell->context().open(PageId::Edit);
+        }
+        else if (what == "wait") { tick(unsigned(std::max(0, std::atoi(arg.c_str())))); input = false; }
+        else if (what == "png") {
+            input = false;
+            auto snapshot = std::make_unique<Snapshot>();
+            shell->snapshot(*snapshot, now);
+            snapshot->now = now;
+            juce::Image shown;
+            for (int scale : {1, 2}) {
+                juce::Image image(juce::Image::ARGB, screen_width * scale, screen_height * scale, true);
+                {
+                    juce::Graphics g(image);
+                    g.addTransform(juce::AffineTransform::scale(float(scale)));
+                    draw(g, *snapshot);
+                }
+                save_png(image, folder + "/" + arg + (scale == 1 ? std::string() : "@" + std::to_string(scale) + "x") + ".png");
+                if (scale == 1) shown = image;
+            }
+            const auto& panel = snapshot->ui.plugin_panel;
+            const auto& picture = snapshot->plugin_screen;
+            uint32_t pixel = 0;
+            unsigned bar = 0;
+            if (picture && picture->entry == 0) {
+                pixel = picture->pixels[5 * PluginScreenFrame::width];
+                while (bar < PluginScreenFrame::width && picture->pixels[PluginScreenFrame::width + bar] == 0xffffffffu) ++bar;
+            }
+            std::printf("MELODEE_PLUGIN_SCREEN %s screen=%d knobs=%d,%d,%d serial=%u pixel=0x%08x page=0x%08x low=0x%08x bar=%u\n",
+                        arg.c_str(), int(panel.screen), panel.knob[0], panel.knob[1], panel.knob[2], picture ? picture->serial : 0u,
+                        pixel, unsigned(shown.getPixelAt(0, int(PluginScreenFrame::top) + 5).getARGB()),
+                        unsigned(shown.getPixelAt(0, 230).getARGB()), bar);
+        } else {
+            std::fprintf(stderr, "unknown step %s: use wheel:N push minus plus shift k1:V k2:V k3:V wait:MS edit stage png:NAME\n", step.c_str());
+            return 2;
+        }
+        if (input) { // its next picture (if it draws one), then the panel's next refresh
+            until([&] { return serial() != before; }, 1.0);
+            tick(120);
+        }
+    }
+    shell->set_plugins(nullptr);
+    rack.reset();
+    return 0;
+}
+
 // The boot animation at 30 frames a second, fading out over the starting
 // project's first page, as DIR/boot-NNN.png.
 int boot_frames(const std::string& folder) {
@@ -3250,6 +3379,11 @@ std::optional<int> run_tool(int argc, char** argv) {
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
         auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
         return monkey(arg(2, 1), arg(3, 12), arg(4, 3000));
+    }
+    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) { // PLUGIN DIR [STEPS...]
+        std::vector<std::string> steps(argv + 4, argv + argc);
+        if (steps.empty()) steps.push_back("png:screen");
+        return plugin_screen(argv[2], argv[3], steps);
     }
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-preview")) {
         std::vector<std::string> names(argv + 3, argv + argc);

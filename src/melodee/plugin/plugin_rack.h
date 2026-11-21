@@ -4,6 +4,7 @@
 #include "melodee/model/project.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_panel.h"
+#include "melodee/plugin/plugin_screen.h"
 #include "melodee/plugin/plugin_sleep.h"
 #include <array>
 #include <atomic>
@@ -115,6 +116,14 @@ public:
     struct Usage { unsigned loaded = 0; float load = 0; };
     Usage usage() const;
 
+    // Melodee's plug-in screen (plugin/melodee_screen.h). MIDI thread: the entry whose page is in view (no_plugin
+    // none) and what that page tells it, each tick; an input on its page. The rack's screen thread, started the first
+    // time an entry is in view, hands both on and asks the plug-in to paint, apart from the rack's own thread so a
+    // load or a preset scan never stops the picture. Any thread: the newest picture (nullptr none yet).
+    void screen_focus(unsigned entry, const PluginScreenContext& context);
+    void screen_input(unsigned entry, const PluginScreenInput& input);
+    PluginScreenFramePtr screen_frame() const;
+
 private:
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
@@ -147,6 +156,7 @@ private:
     void push(Job job);
     void changed() { change_count.fetch_add(1, std::memory_order_acq_rel); }
     bool referenced(const Project& project, unsigned entry) const;
+    void screen_run();                              // the screen's thread
 
     EngineHost& host;
     mutable std::mutex lock;                        // everything below but the thread
@@ -168,6 +178,18 @@ private:
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0};
     std::thread thread;
+    // The plug-in screen's: what the MIDI thread told it, the newest picture, and its thread.
+    mutable std::mutex screen_lock;                 // the fields below to screen_thread
+    std::condition_variable screen_wake;
+    bool screen_stopping = false, screen_poked = false;
+    unsigned screen_entry = no_plugin;
+    PluginScreenContext screen_context;
+    std::deque<std::pair<unsigned, PluginScreenInput>> screen_inputs;
+    PluginScreenFramePtr screen_latest;
+    std::thread screen_thread;
+    // Held by the screen's thread while it calls a plug-in (it takes `lock` inside it), taken by destroy() before it
+    // frees one, with `lock` let go.
+    std::mutex screen_use;
 };
 
 } // namespace melodee

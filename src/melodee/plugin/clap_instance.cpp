@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/host_time.h"
+#include "melodee/plugin/melodee_screen.h"
 #include "melodee/plugin/plugin_files.h"
 
 #include <clap/clap.h>
@@ -106,6 +107,7 @@ struct ClapInstance::Host
     clap_host host {};
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
+    std::atomic<bool> paint { true }; // Melodee's plug-in screen: paint() wanted (at first, always)
 
     Host()
     {
@@ -166,7 +168,9 @@ struct ClapInstance::Host
         if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &state;
         if (std::strcmp (id, CLAP_EXT_AUDIO_PORTS) == 0) return &audioPorts;
         if (std::strcmp (id, CLAP_EXT_NOTE_PORTS) == 0) return &notePorts;
+        static const clap_host_melodee_screen screenHost { [] (const clap_host* h) { of (h).paint = true; } };
         if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &presetLoad;
+        if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screenHost;
         return nullptr;
     }
 };
@@ -352,6 +356,9 @@ ClapInstance::ClapInstance (std::unique_ptr<Host> h, Library* l, const clap_plug
     latency = static_cast<const clap_plugin_latency*> (plugin->get_extension (plugin, CLAP_EXT_LATENCY));
     tail = static_cast<const clap_plugin_tail*> (plugin->get_extension (plugin, CLAP_EXT_TAIL));
     presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD));
+    screen = static_cast<const clap_plugin_melodee_screen*> (plugin->get_extension (plugin, CLAP_EXT_MELODEE_SCREEN));
+    if (screen != nullptr && (screen->paint == nullptr || screen->input == nullptr || screen->knobs == nullptr))
+        screen = nullptr; // a half-made one is none
     if (presetLoad == nullptr)
         presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
     events.resize (maxEvents);
@@ -412,6 +419,48 @@ void ClapInstance::idle()
     if (host->callback.exchange (false)) plugin->on_main_thread (plugin);
     if (host->rescan.exchange (false)) refreshValues();
     if (host->latencyChanged.exchange (false)) readLatency();
+}
+
+// Melodee's plug-in screen. The calls try the main-thread lock and give up at once if another main-thread call holds it
+// (the rack's thread loading presets, a save), so the screen's thread never waits behind them.
+bool ClapInstance::paintWanted() { return screen != nullptr && host->paint.exchange (false); }
+
+bool ClapInstance::screenPaint (const melodee_screen_canvas& canvas, bool& changed)
+{
+    changed = false;
+    if (screen == nullptr) return true;
+    std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
+    if (! held.owns_lock()) return false;
+    changed = screen->paint (plugin, &canvas);
+    return true;
+}
+
+bool ClapInstance::screenInput (const melodee_screen_input& input, bool& used)
+{
+    used = false;
+    if (screen == nullptr) return true;
+    std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
+    if (! held.owns_lock()) return false;
+    used = screen->input (plugin, &input);
+    host->paint = true; // an input may change the picture
+    return true;
+}
+
+bool ClapInstance::screenKnobs (int32_t (&indices)[3])
+{
+    indices[0] = indices[1] = indices[2] = -1;
+    if (screen == nullptr) return true;
+    std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
+    if (! held.owns_lock()) return false;
+    clap_id ids[3] = { CLAP_INVALID_ID, CLAP_INVALID_ID, CLAP_INVALID_ID };
+    screen->knobs (plugin, ids);
+    for (int k = 0; k < 3; ++k)
+    {
+        if (ids[k] == CLAP_INVALID_ID) continue;
+        auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair ((uint32_t) ids[k], -1));
+        if (it != byId.end() && it->first == ids[k]) indices[k] = it->second;
+    }
+    return true;
 }
 
 AudioProcessorParameter* ClapInstance::getBypassParameter() const { return bypass; }

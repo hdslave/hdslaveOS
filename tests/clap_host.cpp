@@ -3,9 +3,10 @@
 // Melodee's CLAP host (plugin/clap_instance.h) against tests/clap_fixture.cpp:
 // listing a library, notes as CLAP notes and CCs as MIDI, parameters both ways,
 // state, latency, the main-thread callback, presets found (with their folders,
-// kept in a cache) and loaded, and every call on the right thread.
+// kept in a cache) and loaded, Melodee's plug-in screen, and every call on the right thread.
 // Built and run by tests/test_plugin_hosts.py on aarch64 Linux, with Melodee's objects.
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/melodee_screen.h"
 #include "melodee/plugin/plugin_files.h"
 
 #include <cmath>
@@ -103,6 +104,46 @@ int main(int argc, char** argv) {
         sine->idle(); // its request_callback from init()
         counts(&wrong, &callbacks, &inits);
         CHECK(callbacks == 1 && inits == 1);
+
+        // Melodee's plug-in screen (plugin/melodee_screen.h): its picture, its inputs, the parameters it puts on K1-K3.
+        auto screen = reinterpret_cast<void (*)(int*, int*, int*, int*, int*, int*)>(dlsym(fixture, "fixture_screen"));
+        CHECK(screen != nullptr && sine->hasScreen());
+        if (!screen) return 1;
+        int paints = 0, drawn = 0, inputs = 0, kind = 0, value = 0, accent = 0;
+        std::vector<uint32_t> pixels(size_t(MELODEE_SCREEN_WIDTH) * MELODEE_SCREEN_HEIGHT, 0);
+        melodee_screen_canvas canvas {};
+        canvas.pixels = pixels.data();
+        canvas.width = canvas.stride = MELODEE_SCREEN_WIDTH;
+        canvas.height = MELODEE_SCREEN_HEIGHT;
+        canvas.accent = 0xff123456u;
+        for (auto& k : canvas.knobs) k = {-1, false};
+        const size_t below = size_t(MELODEE_SCREEN_WIDTH) * 5; // a pixel under its two bars
+        CHECK(sine->paintWanted() && !sine->paintWanted()); // at first, always; then once asked again
+        bool changed = false, used = false;
+        CHECK(sine->screenPaint(canvas, changed) && changed);
+        CHECK(pixels[below] == 0xff810000u);  // Level 64/127: red 129, the cursor on its first row, no inputs yet
+        CHECK(pixels[160] == 0xffffffffu && pixels[161] == 0xff810000u && pixels[MELODEE_SCREEN_WIDTH] == 0xff810000u); // Level's bar; K1 unknown
+        CHECK(sine->screenPaint(canvas, changed) && !changed); // nothing new
+        canvas.whole = true;
+        CHECK(sine->screenPaint(canvas, changed) && changed);  // a canvas that lost its picture: all of it again
+        canvas.whole = false;
+        int32_t knobs[3] {};
+        CHECK(sine->screenKnobs(knobs) && knobs[0] == 0 && knobs[1] == 1 && knobs[2] == -1); // Level, Wave, nothing
+        melodee_screen_input wheel {MELODEE_SCREEN_WHEEL, 1, false};
+        CHECK(sine->screenInput(wheel, used) && used && sine->paintWanted());
+        CHECK(sine->screenKnobs(knobs) && knobs[0] == 1 && knobs[1] == 0 && knobs[2] == -1); // the cursor on Wave
+        CHECK(sine->screenPaint(canvas, changed) && changed && pixels[below] == 0xff81ff01u);
+        canvas.knobs[0] = {127, true};
+        CHECK(sine->screenPaint(canvas, changed) && changed && pixels[2 * MELODEE_SCREEN_WIDTH - 1] == 0xffffffffu); // K1 at the top
+        melodee_screen_input push {MELODEE_SCREEN_PUSH, 1, true}, odd {7, 0, false};
+        CHECK(sine->screenInput(push, used) && used && sine->screenKnobs(knobs) && knobs[0] == 0);
+        CHECK(sine->screenInput(odd, used) && !used); // not one it knows
+        screen(&paints, &drawn, &inputs, &kind, &value, &accent);
+        CHECK(paints == 5 && drawn == 4 && inputs == 3 && kind == 7 && accent == 0x123456);
+        level->setValue(0.0f); // through the audio: it asks for a paint from there
+        sine->paintWanted(); // what the inputs asked for, taken
+        run(*sine);
+        CHECK(sine->paintWanted());
         sine->releaseResources();
     }
 
@@ -111,6 +152,7 @@ int main(int argc, char** argv) {
         CHECK(gain != nullptr);
         if (!gain) return 1;
         CHECK(gain->getName() == "Test Gain" && !gain->acceptsMidi() && gain->getTotalNumInputChannels() == 2);
+        CHECK(!gain->hasScreen() && !gain->paintWanted()); // no screen of its own: never asked
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1

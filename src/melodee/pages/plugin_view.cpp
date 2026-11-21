@@ -9,7 +9,10 @@
 // Minus / Plus move the rows. The share of each block it takes is the
 // header's (pages/edit_page.cpp).
 #include "melodee/pages/common.h"
+#include "melodee/shell/features.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/ui/widgets.h"
+#include <cstring>
 #include <filesystem>
 
 namespace melodee {
@@ -23,6 +26,42 @@ juce::String plugin_name(const Snapshot& s, unsigned entry) {
     if (!ref.used()) return "Plug-in";
     if (ref.name[0]) return juce::String::fromUTF8(ref.name); // as the picker named it
     return juce::String(std::filesystem::path(ref.path).stem().string());
+}
+
+bool plugin_screen_shown(const Snapshot& s, unsigned entry) {
+    const auto& panel = s.ui.plugin_panel;
+    return entry < max_plugins && panel.entry == entry && panel.status == PluginStatus::Ready && panel.screen;
+}
+
+bool plugin_screen_in_view(const Snapshot& s) {
+    const auto& t = s.track();
+    if (t.engine != EngineKind::Plugin || !plugin_screen_shown(s, t.plugin)) return false;
+    if (s.ui.page == PageId::Edit) return true;
+    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, stage_skip(s.project, s.ui, t)).kind == StageKind::PluginEdit;
+}
+
+void draw_plugin_screen(Paint& p, const Snapshot& s, unsigned entry, const SoftKeys& keys) {
+    static_assert(PluginScreenFrame::top == zone::soft_h && PluginScreenFrame::top + PluginScreenFrame::height == zone::height
+                  && PluginScreenFrame::width == zone::width);
+    constexpr int w = int(PluginScreenFrame::width), h = int(PluginScreenFrame::height), top = int(PluginScreenFrame::top);
+    const auto& picture = s.plugin_screen;
+    if (picture && picture->entry == entry && picture->pixels.size() >= size_t(w) * h) {
+        // As an image, made again only when a new picture came. The screen thread's own (as Paint is), so static.
+        static juce::Image image;
+        static const PluginScreenFrame* from = nullptr;
+        static uint32_t serial = 0;
+        if (!image.isValid()) image = juce::Image(juce::Image::ARGB, w, h, false);
+        if (from != picture.get() || serial != picture->serial) {
+            juce::Image::BitmapData out(image, juce::Image::BitmapData::writeOnly); // 0xAARRGGBB, opaque: as the frame holds it
+            for (int y = 0; y < h; ++y) std::memcpy(out.getLinePointer(y), picture->pixels.data() + size_t(y) * w, size_t(w) * 4);
+            from = picture.get();
+            serial = picture->serial;
+        }
+        p.g.drawImageAt(image, 0, top);
+    } else {
+        p.fill(0, float(top), float(w), float(h), colour::bg); // its first picture is on its way
+    }
+    soft_row(p, s, keys);
 }
 
 void draw_plugin_view(Paint& p, const Snapshot& s, unsigned entry, float top) {

@@ -129,12 +129,13 @@ void draw_repeat_keys(Paint& p, const Snapshot& s) {
 void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The Shift jobs are printed on the MPC: the page stays as it is, and
     // the knob strip shows the cards Shift turns (Shift + K), or dims when
-    // there are none.
+    // there are none. A plug-in's own page (plugin/melodee_screen.h) draws
+    // its own cards and is told Shift is held: none dimmed over it.
     auto cards = cards_of(s);
     bool any = false;
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }
     if (any) knob_strip(p, cards);
-    else p.dim_zone(zone::knobs_y, zone::knobs_h);
+    else if (!plugin_screen_in_view(s)) p.dim_zone(zone::knobs_y, zone::knobs_h);
 }
 
 // The fader moved (parity phase 8) and drives a value none of K1-K3 shows

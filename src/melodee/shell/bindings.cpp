@@ -331,8 +331,8 @@ std::array<Binding, 3> plugin_cards(const UiState& ui, unsigned entry) {
     const auto& panel = ui.plugin_panel;
     if (panel.entry != entry || panel.status != PluginStatus::Ready) return out;
     for (unsigned k = 0; k < 3; ++k)
-        if (panel.params[k].used)
-            out[k] = {Kind::PluginParam, plugin_binding(entry, panel.row * 3u + k), 0, plugin_param_max, panel.params[k].value};
+        if (panel.params[k].used && panel.knob[k] >= 0)
+            out[k] = {Kind::PluginParam, plugin_binding(entry, unsigned(panel.knob[k])), 0, plugin_param_max, panel.params[k].value};
     return out;
 }
 // Knob FX's row (Shift: its second), while the mode is on.

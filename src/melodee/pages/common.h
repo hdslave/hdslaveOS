@@ -90,10 +90,18 @@ void effect_drawing(ui::Paint& p, const EffectSlot& slot, float x, float y, floa
 
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
+// The soft-key row alone, as frame() draws it (Pad Bank's or 16 Levels' keys while those are held).
+void soft_row(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys);
 // A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
 void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
+// Melodee's plug-in screen (plugin/melodee_screen.h): `entry` draws its own page (the panel says so), and that page,
+// the soft keys over its picture of the rest of the screen. The wheel, Push and Minus / Plus go to it
+// (Context::plugin_screen_input).
+bool plugin_screen_shown(const Snapshot& s, unsigned entry);
+bool plugin_screen_in_view(const Snapshot& s); // the page in view is such a page (Edit, or Stage's EDIT)
+void draw_plugin_screen(ui::Paint& p, const Snapshot& s, unsigned entry, const ui::SoftKeys& keys);
 void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.
