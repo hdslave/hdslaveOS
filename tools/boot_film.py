@@ -12,10 +12,12 @@ and eases back to that framing over the part, a camera pulling back (smootherste
 gently). The film is resampled to FPS frames a second; nothing of the sound is kept.
 
 --grade purple maps every picture's brightness onto a black, dark violet and lavender ramp: a dark purple shine,
-with none of the source's own hues. --outro SECONDS ends the film on a VHS tape's glitch over its last SECONDS:
-bands of lines jump sideways and a few tear further, a ghost trails the picture, a noisy tracking bar rolls
-down, scanlines and noise grow, while the picture fades through deep purple to black. It works on the
-brightness before the grade, so every artefact stays purple.
+with none of the source's own hues. --outro SECONDS ends the film on a VHS tape failing over its last SECONDS:
+the lines' timebase wobbles and the frame jumps, lines tear sideways, a torn tracking band rolls down, the
+head-switching strip frays the bottom edge, the luma goes soft and smeared with a deck's edge ringing and a
+ghost, dropouts flash as short white scratches, stretched tape grain and interlace scanlines grow, while the
+picture fades through deep purple; a burst of snow as the signal dies, and black on the last frame alone. It
+works on the brightness before the grade, so every artefact stays purple.
 
 The default is the hdslave intro's cut: its wide shot (4 to 5.25 s) at 1.25 times with the camera easing back
 from 1.8 times closer, so one short shot stands for the film's two close-ups and lands where the badge starts to
@@ -93,19 +95,40 @@ def framing(wide, tall, zoom, length):
             f"crop={2 * WIDTH}:{2 * tall},scale={WIDTH}:{tall}:flags=lanczos,{pad}")
 
 
+def frac(x):
+    """The fractional part of an ffmpeg expression: with sin, a cheap per-pixel or per-line die."""
+    return f"mod(abs({x}),1)"
+
+
 def vhs(seconds, start):
-    """The VHS outro on a grey picture: the film's last `seconds`, from `start` on its clock."""
+    """The VHS outro on a grey picture: the film's last `seconds`, from `start` on its clock (geq registers 0-9)."""
+    line = frac("sin(Y*12.9898+floor(N/2)*78.233)*43758.5453")         # a line's die, new every 2 frames
+    jump = frac("sin(floor(N/3)*91.7)*4375.85")                         # the frame's die, every 3 frames
+    drop = frac("sin(Y*7.13+N*3.71)*15731.7")                           # a line's dropout die, every frame
+    grain = frac("sin(floor(X/2)*12.9898+Y*78.233+N*37.719)*43758.5453")  # tape grain, 2 px wide
+    snow = frac("sin(X*3.17+Y*91.1+N*17.3)*24634.6")
+    at = "X-ld(4)"
+    up = "Y-ld(6)"
     expression = (
         f"st(0,clip((T-{start:g})/{seconds:g},0,1));"                           # 0..1 over the outro
-        "st(1,clip(ld(0)/0.55,0,1));st(1,ld(1)*ld(1)*(3-2*ld(1)));"            # the glitch builds
-        "st(2,clip((ld(0)-0.4)/0.6,0,1));st(2,1-ld(2)*ld(2)*(3-2*ld(2)));"     # the picture fades
-        "st(3,mod(abs(sin(floor(Y/4)*12.9898+floor(N/2)*78.233))*43758.5453,1));"  # a 4-line band's dice
-        "st(5,lt(abs(Y-(mod(T*230,H+60)-30)),7));"                             # the rolling tracking bar
-        "st(4,ld(1)*((ld(3)-0.5)*5+gt(ld(3),0.9)*(ld(3)-0.9)*360+2*sin(Y*0.06+T*31)+ld(5)*12));"  # sideways
-        "st(6,(mod(abs(sin(X*12.9898+Y*78.233+N*37.719))*43758.5453,1)-0.5)*ld(1)*(40+ld(5)*140));"  # noise
-        "st(7,1-0.3*ld(1)*mod(Y,2));"                                          # scanlines
-        "st(8,p(X-ld(4),Y)*(1-0.3*ld(1))+p(X-ld(4)-2-7*ld(1),Y)*0.45*ld(1));"  # the picture and its ghost
-        "clip((ld(8)*ld(7)+ld(6))*ld(2),0,255)")
+        "st(1,clip(ld(0)/0.45,0,1));st(1,ld(1)*ld(1)*(3-2*ld(1)));"            # the failure builds
+        "st(2,clip((ld(0)-0.5)/0.5,0,1));st(2,1-ld(2)*ld(2)*(3-2*ld(2)));"     # the picture fades, black at the end
+        f"st(3,{line});"
+        "st(5,lt(abs(Y-(mod(T*170,H+90)-45)),6));"                             # the tracking band rolling down
+        f"st(6,gt({jump},0.8)*ld(1)*2);"                                       # the frame jumps 2 lines now and then
+        # Sideways: timebase wobble, line jitter, rare tears, the band, the head-switching strip at the bottom.
+        "st(4,ld(1)*(1.2*sin(Y*0.08+T*19)+0.6*sin(Y*0.37-T*53)+(ld(3)-0.5)*3+gt(ld(3),0.93)*(ld(3)-0.93)*370)"
+        "+ld(5)*ld(1)*16+gt(Y,H-10)*(5+10*ld(1)));"
+        # Soft, smeared luma, the deck's edge ringing and a ghost; untouched while the failure is 0.
+        f"st(7,p({at},{up})*(1-0.5*ld(1))+(p({at}-1,{up})*0.3+p({at}-2,{up})*0.2)*ld(1)"
+        f"+max(0,p({at}-3,{up})-p({at},{up}))*0.55*ld(1)+p({at}-7,{up})*0.22*ld(1));"
+        # Dropouts: on about 3 lines in 100 a short streak, 8 to 63 px from a place the die picks.
+        f"st(8,{drop});"
+        f"st(9,gt(ld(8),0.972)*gte(X,{frac('ld(8)*97.3')}*W)*lte(X,{frac('ld(8)*97.3')}*W+8+{frac('ld(8)*13.1')}*55));"
+        "clip((ld(7)*(1-0.25*ld(1)*mod(Y,2))"                                   # interlace scanlines
+        f"+({grain}-0.5)*(26*ld(1)+ld(5)*130*ld(1)+gt(Y,H-10)*140)+ld(9)*255*ld(1))*ld(2)"
+        f"+{snow}*70*clip((ld(0)-0.72)/0.13,0,1)*clip((1-ld(0))/0.12,0,1)"    # snow as the signal dies
+        ",0,255)")
     return f"geq=lum='{expression}'"
 
 

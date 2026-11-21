@@ -15,7 +15,8 @@ namespace melodee::ui {
 // only the one on screen is kept.
 class BootAnimation {
 public:
-    static constexpr uint32_t out_ms = 350;
+    // The fade over the app. The film reaches black on its last frame alone, so this is all the dark there is.
+    static constexpr uint32_t out_ms = 200;
     static constexpr uint32_t out_at = boot_film::length_ms + boot_film::hold_ms;
 
     // `now` is any millisecond clock; the first call starts the animation.
