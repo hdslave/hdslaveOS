@@ -2835,7 +2835,8 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
 
 // Melodee's plug-in screen (plugin/melodee_screen.h), as the MPC would show it: PLUGIN (a .clap) opened through the
 // rack on a PLUGIN track, its Edit page in view, then STEPS one after another, each a control as the hands use it:
-// wheel:N, push, minus, plus, shift (held; again, let go), k1:V k2:V k3:V (a pot to 0..127), wait:MS, edit or stage
+// wheel:N, push, minus, plus, shift (held; again, let go), k1:V k2:V k3:V (a pot to 0..127), play, stop, pad:N (1-16,
+// hit and let go: the track's note), wait:MS, edit or stage
 // (the page: Edit, or Stage's EDIT), and png:NAME, the screen as it is drawn into DIR/NAME.png and @2x. Each png says
 // what Melodee holds: MELODEE_PLUGIN_SCREEN NAME screen=0|1 knobs=K1,K2,K3 (places among the shown parameters)
 // serial=N pixel=0xAARRGGBB (the picture's, at 0,5) page=0xAARRGGBB (the screen's there, row 27) low=0xAARRGGBB (the
@@ -2911,6 +2912,22 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
             button(b, true); tick(20); button(b, false);
         }
         else if (what == "shift") { shift = !shift; button(SurfaceButton::Shift, shift); }
+        else if (what == "play" || what == "stop") { // the transport, as its buttons do
+            auto b = what == "play" ? SurfaceButton::Play : SurfaceButton::Stop;
+            button(b, true); tick(20); button(b, false);
+        }
+        else if (what == "pad") { // pad:N (1-16) hit at velocity 100 and let go 80 ms later: the track's note
+            const unsigned p = unsigned(std::clamp(std::atoi(arg.c_str()), 1, 16) - 1);
+            auto hit = [&](bool down) {
+                SurfaceEvent e;
+                e.pad = int(p);
+                e.midi.status = uint8_t(down ? 0x90 : 0x80);
+                e.midi.key = uint8_t(p);
+                e.midi.value = down ? 100 : 0;
+                shell->surface(e, now);
+            };
+            hit(true); tick(80); hit(false);
+        }
         else if (what.size() == 2 && what[0] == 'k' && what[1] >= '1' && what[1] <= '3')
             control(SurfaceControl(unsigned(SurfaceControl::K1) + unsigned(what[1] - '1')), std::clamp(std::atoi(arg.c_str()), 0, 127), 0);
         else if (what == "edit" || what == "stage") {
