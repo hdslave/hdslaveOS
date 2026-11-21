@@ -36,6 +36,15 @@ inline bool in_spare(const UiState& ui, const Pattern& p) {
 inline unsigned edit_caret(const UiState& ui, const Pattern& p) {
     return in_spare(ui, p) ? unsigned(ui.spare_step) : unsigned(std::max<int>(ui.step_cursor, 0)) % p.steps();
 }
+// Shift + the wheel on Step Edit (melodee-hdslave): the caret `bars` pages of sixteen steps on, at the same step of
+// the page it lands on. Round the pattern's pages as the caret goes round its steps, the spare page after the last
+// while the pattern can grow; on a last page that ends short of it, the last step there.
+inline unsigned bar_caret(const Project& project, const Pattern& p, unsigned caret, int bars) {
+    int end = int(std::max(spare_end(project, p), p.steps()));
+    int pages = std::max((end + int(bar_steps) - 1) / int(bar_steps), 1);
+    int page = ((int(caret / bar_steps) + bars) % pages + pages) % pages;
+    return unsigned(std::min(page * int(bar_steps) + int(caret % bar_steps), end - 1));
+}
 // The +▸ mark: the caret is on the last page or in the spare steps, and the pattern can grow.
 inline bool spare_mark(const Project& project, const UiState& ui, const Pattern& p) {
     unsigned steps = p.steps(), caret = edit_caret(ui, p);

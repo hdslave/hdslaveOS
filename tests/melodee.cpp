@@ -18204,6 +18204,17 @@ void spare_steps() {
     ui.step_cursor = 15; ui.page = PageId::Roll; CHECK(!in_spare(ui, p));
     ui.page = PageId::StepEdit; ui.spare_step = 32; CHECK(!in_spare(ui, p)); // past the spare page
     ui.spare_step = -1; CHECK(spare_mark(project, ui, p)); // on the last page
+    { // Shift + the wheel (melodee-hdslave): a bar at a time, on the same step of the bar, round the bars and the spare page
+        Pattern four = p;
+        four.length = 4 * 384; // four bars of sixteenths, a fifth to grow into
+        CHECK(four.steps() == 64 && spare_end(project, four) == 80);
+        CHECK(bar_caret(project, four, 5, 1) == 21 && bar_caret(project, four, 21, 2) == 53 && bar_caret(project, four, 53, -3) == 5);
+        CHECK(bar_caret(project, four, 53, 1) == 69);                                             // into the spare bar
+        CHECK(bar_caret(project, four, 69, 1) == 5 && bar_caret(project, four, 5, -1) == 69);     // and round
+        CHECK(bar_caret(project, four, 0, 7) == 32 && bar_caret(project, four, 63, -6) == 47);    // several detents at once
+        CHECK(bar_caret(project, full, 3, -1) == full.steps() - 16 + 3 && bar_caret(project, full, full.steps() - 1, 1) == 15); // nothing spare: round its own bars
+        CHECK(bar_caret(project, eighths, 3, 1) == 3 && bar_caret(project, eighths, 11, 1) == 11); // one page, its spare half in it: the caret stays
+    }
     Pattern two = p;
     two.length = 768;
     ui.step_cursor = 3; CHECK(!spare_mark(project, ui, two)); // the first of two pages

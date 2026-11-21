@@ -299,7 +299,10 @@ PLAY mode (step entry):
   you release the pads.
 - **B2** (**REST**) moves on without writing. **B3** (**BACKSPACE**) goes back
   and removes that step.
-- The encoder moves the caret through every bar.
+- The encoder moves the caret through every bar. Hold **SHIFT** and it moves
+  a bar at a time, keeping the caret on the same step of the bar. Past the
+  last bar it goes to the spare bar, when the pattern can grow, then back to
+  the first.
 - **K1** length, **K2** velocity (Played uses your velocity), **K3** chance
   of what a pad writes.
 - **ERASE** + pad erases all of that pad's events (asks first). **ERASE**

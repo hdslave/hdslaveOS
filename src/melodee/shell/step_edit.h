@@ -75,6 +75,7 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down);
 void entry_rest(Context& c);
 void entry_back(Context& c);
 void entry_move(Context& c, int way);
+void entry_bar(Context& c, int bars); // Shift + the wheel: the caret a bar on or back, on the same step of it (bar_caret())
 // MIDI in on Step Edit and Roll: a key of the selected track (Context::midi_key, heard already) writes as a pad does
 // there. `key` is the track's note (a kit pad's key); on a kit under 16 Levels the pad's key, `pitch` the semitones
 // played over it. Step Edit: at the caret, the caret on a step once every key and pad is let go; with a step held on

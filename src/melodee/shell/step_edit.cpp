@@ -364,6 +364,7 @@ void entry_back(Context& c) {
 }
 
 void entry_move(Context& c, int way) { caret_to(c, int(caret_of(c.pattern(), c.ui)) + way); }
+void entry_bar(Context& c, int bars) { caret_to(c, int(bar_caret(c.project, c.pattern(), caret_of(c.pattern(), c.ui), bars))); }
 
 void set_event_nudge(Context& c, int offset) {
     auto& pattern = c.pattern();

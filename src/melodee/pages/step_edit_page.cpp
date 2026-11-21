@@ -12,7 +12,7 @@
 // B1 the cards: NOTE (as above), LOCK (the Motion lanes locked on the caret's step), TRIG (its ratchet, ramp and
 // condition; Shift + K2 a kit pad's pitch ramp), EUCLID on a kit or Drums lane (hits, steps, rotate; Shift + K1
 // the lane's length). B2 REST moves the caret on without writing, B3 ERASE steps back and takes that step out, the
-// wheel moves it. Shift + B2 TIE ties the caret's notes into the next step, Shift + B3 INSERT puts an empty step at
+// wheel moves it, with Shift a bar at a time. Shift + B2 TIE ties the caret's notes into the next step, Shift + B3 INSERT puts an empty step at
 // the caret and moves the rest on (one undo each). Shift + K1-K3 otherwise: the pattern's length, Q, the time
 // signature. Minus / Plus the octave (a kit's bank). Push, Seq or Shift + Seq go back to the page under it.
 // Picture (Steps' drawing round the caret's bar): each step's notes at their pitch, taller for harder, a ratchet as
@@ -386,6 +386,11 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
 void wheel(Context& c, int delta) {
     if (c.ui.step_pads && held_wheel(c, delta)) return;
     if (seq_following(c)) return; // Settings > SEQ > Follow has the caret while it plays
+    if (c.ui.shift) { // Shift: a bar at a time, the caret on the same step of it (melodee-hdslave)
+        c.ui.shift_used = true;
+        entry_bar(c, delta);
+        return;
+    }
     entry_move(c, delta);
 }
 
