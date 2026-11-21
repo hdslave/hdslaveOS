@@ -3,7 +3,8 @@
 # plus tools/plugin_support/Dockerfile),
 # and the stem separator beside it (make stems, tools/stems/build.py),
 # then run the tests, the sound self-test, the monkey test (random hands on every
-# control, src/melodee/monkey.cpp) and the page previews.
+# control, src/melodee/monkey.cpp), the page previews (and that the HDSLAVE flare
+# decodes) and the boot film (it fails when its frames do not decode).
 set -eu
 cd "$(dirname "$0")"
 [ -f base/base.mk ] || git submodule update --init
@@ -16,4 +17,4 @@ docker build --platform linux/arm64 -t sample-base-builder base/tools
 docker build --platform linux/arm64 -t melodee-builder tools/plugin_support
 # The engine tests keep whole projects on the stack: more than the 8 MB a container gets by default.
 docker run --rm --platform linux/arm64 --ulimit stack=268435456:268435456 -v "$PWD:/work" -e MELODEE_VERSION melodee-builder \
-    sh -c 'make -j4 && make stems && python3 -m unittest discover -s tests -v && build/melodee --self-test build/test.wav && build/melodee --melodee-monkey && mkdir -p build/melodee-preview && build/melodee --melodee-preview build/melodee-preview'
+    sh -c 'make -j4 && make stems && python3 -m unittest discover -s tests -v && build/melodee --self-test build/test.wav && build/melodee --melodee-monkey && mkdir -p build/melodee-preview && build/melodee --melodee-preview build/melodee-preview && mkdir -p build/boot && build/melodee --melodee-boot build/boot'

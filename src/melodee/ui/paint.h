@@ -85,4 +85,8 @@ ControlsSeen* controls_sink();
 inline Paint::Text caps_text(juce::Colour c, float size = type::caps) { return {size, Weight::SemiBold, c, true}; }
 inline Paint::Text plain(juce::Colour c, float size = type::body, Weight weight = Weight::Regular) { return {size, weight, c, false}; }
 
+// The HDSLAVE flare (ui/hdslave_flare.h) decodes to the screen's 320 x 240: else HDSLAVE falls back to its plain
+// ground. The preview tool checks it, so a bad regeneration fails the build (tools/hdslave_art.py).
+bool hdslave_flare_ready();
+
 } // namespace melodee::ui

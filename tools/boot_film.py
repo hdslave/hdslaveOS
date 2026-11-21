@@ -193,10 +193,10 @@ def main():
         raise SystemExit("--fps: 10 to 60")
     if arguments.outro and arguments.grade == "none":
         raise SystemExit("--outro works on the picture's brightness: it needs a --grade")
-    sources = [Path(arguments.video)]  # the inputs, each once; a part names its source by its place here
+    sources = []  # the inputs the parts use, each once (VIDEO only if a part does); a part names its source by its place
     parts = []
     for name, start, end, speed, closer in arguments.part or [part(p) for p in DEFAULT_PARTS]:
-        path = Path(name) if name else sources[0]
+        path = Path(name) if name else Path(arguments.video)
         if path not in sources:
             sources.append(path)
         parts.append((sources.index(path), start, end, speed, closer))

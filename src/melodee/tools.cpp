@@ -2812,9 +2812,12 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         std::ofstream out(folder + "/controls.tsv", std::ios::trunc);
         out << table;
     }
-    std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << " control_breaks=" << control_breaks << '\n';
-    // Text under the floor or cut by its box, and a soft key or card against the controls rules, fail the build check.
-    return text_issues || control_breaks ? 1 : 0;
+    const bool flare = ui::hdslave_flare_ready();
+    std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << " control_breaks=" << control_breaks
+              << " flare=" << (flare ? "ok" : "BROKEN") << '\n';
+    // Text under the floor or cut by its box, a soft key or card against the controls rules, and an HDSLAVE flare that
+    // does not decode to 320 x 240, fail the build check.
+    return text_issues || control_breaks || !flare ? 1 : 0;
 }
 
 // The boot animation at 30 frames a second, fading out over the starting
