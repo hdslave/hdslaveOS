@@ -8,7 +8,8 @@ full text is in `LICENSE`.
 ## Boot film
 
 melodee-hdslave's boot animation is its own film, cut from the hdslave
-intro and graded purple, with a VHS glitch outro: its
+intro and a shot rendered from the intro's own scene, graded purple,
+with a VHS glitch outro: its
 frames (`src/melodee/ui/boot_film.cpp` and `boot_film_*.cpp`, written by
 `tools/boot_film.py`) are Copyright (C) 2026 hdslave, all rights reserved,
 and are not covered by the AGPL or licensed with this code. The code that
