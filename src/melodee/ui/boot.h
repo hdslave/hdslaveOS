@@ -2,19 +2,21 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include <juce_graphics/juce_graphics.h>
+#include "melodee/ui/boot_film.h"
 #include <cstdint>
 
 namespace melodee::ui {
 
-// The boot animation, screen thread only. From black, the logo fades in
-// from left to right; once it is whole, the backdrop fades in behind it;
-// then the whole frame fades out over the app. Timed from the first draw.
-// A touch (skip()) cuts it short: the frame as it stands fades out.
+// The boot animation, screen thread only (melodee-hdslave: the boot film, ui/boot_film.h). The film's frames
+// play by one clock, the time since the first draw: a frame comes from that time, never from a count of frames
+// drawn, so a late frame is passed over and the film keeps its length. The last frame stays, then the whole
+// screen fades out over the app. A touch (skip()) cuts it short: the frame as it stands fades out.
+// Each frame is decoded when it is first due (one 320 x 240 JPEG, from memory: nothing is read from storage);
+// only the one on screen is kept.
 class BootAnimation {
 public:
-    static constexpr uint32_t black_ms = 200, wipe_ms = 1200, logo_hold_ms = 300, backdrop_ms = 900,
-                              hold_ms = 900, out_ms = 350;
-    static constexpr uint32_t out_at = black_ms + wipe_ms + logo_hold_ms + backdrop_ms + hold_ms;
+    static constexpr uint32_t out_ms = 350;
+    static constexpr uint32_t out_at = boot_film::length_ms + boot_film::hold_ms;
 
     // `now` is any millisecond clock; the first call starts the animation.
     // True while the animation covers the whole screen, so the app need not
@@ -28,13 +30,12 @@ public:
 private:
     bool started = false, loaded = false, broken = false;
     uint32_t start = 0, fade_from = out_at; // the elapsed time the fade out starts at
-    juce::Image logo, backdrop, canvas;
-    int logo_left = 0, logo_right = 0; // the columns the logo's pixels span
-    int64_t composed = -1;             // the elapsed time `canvas` shows
+    juce::Image frame;                      // the film's frame `shown`
+    int shown = -1;
 
     uint32_t elapsed(uint32_t now);
     void load();
-    void compose(uint32_t at);
+    bool show(unsigned index);
 };
 
 } // namespace melodee::ui

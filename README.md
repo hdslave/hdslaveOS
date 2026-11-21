@@ -196,8 +196,8 @@ Melodee is made by Kerem Kiliç (Ellic Studio).
 
 Melodee is licensed under AGPL-3.0-only ([LICENSE](LICENSE)). It uses JUCE
 under the AGPLv3, and the Rubik typeface and the other screen fonts under the
-SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)). The boot animation's logo and backdrop
-are not covered by the AGPL.
+SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)). melodee-hdslave's boot film, the
+hdslave intro, is not covered by the AGPL (all rights reserved); it replaces Melodee's own boot art.
 
 Melodee is not affiliated with or endorsed by inMusic or Akai Professional.
 MPC and MPC Sample are trademarks of inMusic Brands.

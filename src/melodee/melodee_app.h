@@ -96,7 +96,7 @@ private:
     std::atomic<unsigned> dropout_track {0}, dropout_load {0}; // tenths of a percent
     void note_dropout();     // service thread
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
-    melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
+    melodee::ui::BootAnimation boot;          // screen thread: the boot film, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
