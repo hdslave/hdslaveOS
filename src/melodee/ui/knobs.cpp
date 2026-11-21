@@ -36,8 +36,11 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             static const juce::Image violet = [] {
                 juce::Image face(juce::Image::RGB, int(w), int(h), false);
                 juce::Graphics g(face);
-                juce::ColourGradient wash(hex(0x221031), 4, h, hex(0x432054), w - 4, 0, false);
-                wash.addColour(0.50, hex(0x2D123F));
+                // The solid ink inside the selected Audio tile, held under the value.
+                const auto shadow = hex(0x1F0B38);
+                juce::ColourGradient wash(shadow, 4, h, hex(0x432054), w - 4, 0, false);
+                wash.addColour(0.26, shadow);
+                wash.addColour(0.62, hex(0x2A1040));
                 g.setGradientFill(wash);
                 g.fillRect(face.getBounds());
                 return face;

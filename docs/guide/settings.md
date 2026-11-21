@@ -115,7 +115,7 @@ the same ink, so a track shows by its number.
 
 HDSLAVE uses the font you chose, with square panels, lavender labels and a
 static deep-purple flare on black. Violet contour lines mark selected menu
-tiles and browser rows. The three knob cards shade from aubergine to violet.
+tiles and browser rows. The knob cards shade from the same deep purple to a softer violet.
 The active page tab uses reversed ink. Track 1 is orchid, track 2 is acid
 yellow and recording is red. Step Edit marks each group of four with a lavender edge
 and outlines the current step in amber. The other colour palettes keep track 1 coral. DAY and
