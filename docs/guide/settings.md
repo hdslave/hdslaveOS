@@ -107,13 +107,18 @@ Press **Push** or **B3 KEEP** to keep it, or **B1 BACK** to go back to the
 one you had.
 
 Palettes: NIGHT (the default), DAY, CONTRAST, SUNSET, OCEAN, NEON, CANDY,
-LO-FI, LCD and MONO. LCD looks like an old sampler's backlit LCD: dark letters on a
+LO-FI, LCD, MONO and HDSLAVE. LCD looks like an old sampler's backlit LCD: dark letters on a
 grey-green screen, no colour, always in the Melodee Pixel font. MONO is a
 black-and-white dark mode: white and grey on black, no colour, square corners
 and no shadows, in the font you chose. On LCD and MONO every track is drawn in
-the same ink, so a track shows by its number. Elsewhere each track keeps its colour family, so track 1 is
-always coral; on DAY and CANDY the colours are darker so they read on the
-light screen. The pads keep their own colours in every palette.
+the same ink, so a track shows by its number.
+
+HDSLAVE uses the font you chose, with square panels, lavender labels and a
+static deep-purple flare on black. Track 1 is orchid, track 2 is acid yellow
+and recording is red. Step Edit marks each group of four with a lavender edge
+and outlines the current step in amber. The other colour palettes keep track 1 coral. DAY and
+CANDY use darker track colours on their light screens. The pads keep their own
+colours in every palette.
 
 Fonts: Rubik (the default), Inter Tight, Atkinson, Space Grotesk, IBM Plex
 and Manrope, and two pixel fonts: Melodee Pixel and VT323. Melodee Pixel is

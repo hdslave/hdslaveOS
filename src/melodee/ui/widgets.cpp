@@ -229,7 +229,7 @@ void carousel(Paint& p, const std::vector<CarouselCard>& cards, float position, 
 
 void card_sheet(Paint& p, const CardSheet& m) {
     // The page behind goes: the header becomes the sheet's, the picture and knob zones its cards.
-    p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg);
+    p.background(zone::header_y, zone::height - zone::header_y);
     float x = zone::pad, mid_y = zone::header_y + zone::header_h / 2.0f;
     if (m.chip.isNotEmpty()) {
         auto chip = caps_text(colour::bg);

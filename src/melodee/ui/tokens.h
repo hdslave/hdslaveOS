@@ -49,9 +49,27 @@ inline juce::Colour screen_colour(uint32_t rgb) {
     for (unsigned t = 0; t < 16; ++t) if (track_shades[t][0] == rgb) return track_colour(t);
     return palette().mono ? track_colour(0) : hex(rgb);
 }
-// A corner's radius as the palette in use draws it: none on a square palette (MONO), which also drops soft shadows.
+// A corner's radius as the palette in use draws it: none on a square palette, which also drops soft shadows.
 inline float corner(float radius) { return palette().square ? 0.0f : radius; }
 inline bool soft_shadows() { return !palette().square; }
+
+// Sequencer inks. The accented grid gives each group of four a stronger first column,
+// and keeps notes on other lanes visible behind the edited lane.
+struct SequenceGrid {
+    juce::Colour step, group_start, past_lane, ghost, division, caret;
+};
+inline SequenceGrid sequence_grid() {
+    if (palette().accented_grid)
+        return {colour::raised, colour::raised.interpolatedWith(colour::line, 0.16f), colour::quiet,
+                colour::mid, colour::line, colour::bg.interpolatedWith(colour::amber, 0.25f)};
+    return {colour::quiet, colour::quiet, colour::bg, colour::line, colour::bg, colour::amber.withAlpha(0.22f)};
+}
+
+// Occupied sequence pads have an opaque base on an accented grid so the flare
+// cannot make an empty pad appear brighter than a pattern that holds notes.
+inline juce::Colour sequence_pad(juce::Colour ink, float amount) {
+    return palette().accented_grid ? colour::surf.interpolatedWith(ink, amount) : ink.withAlpha(amount);
+}
 
 // Zones, top to bottom, at device size.
 namespace zone {

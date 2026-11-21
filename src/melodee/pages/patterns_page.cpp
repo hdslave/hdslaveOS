@@ -48,10 +48,10 @@ void draw_cell(Paint& p, const Snapshot& s, unsigned k, unsigned first) {
         ink = colour::bg;
     } else if (queued) {
         bool blink = (s.now / 150) % 2;
-        p.fill(x, y, cell_w, cell_h, c.withAlpha(blink ? 0.35f : 0.15f), 4);
+        p.fill(x, y, cell_w, cell_h, sequence_pad(c, blink ? 0.35f : 0.15f), 4);
         p.ring(x + 0.75f, y + 0.75f, cell_w - 1.5f, cell_h - 1.5f, c, 4, 1.5f);
     } else if (notes) {
-        p.fill(x, y, cell_w, cell_h, c.withAlpha(0.22f), 4);
+        p.fill(x, y, cell_w, cell_h, sequence_pad(c, 0.22f), 4);
     } else {
         p.fill(x, y, cell_w, cell_h, colour::quiet, 4);
     }

@@ -39,10 +39,11 @@ void draw(Paint& p, const Snapshot& s) {
     constexpr float x = zone::pad, y = zone::picture_y + 4, w = zone::width - 2 * zone::pad, gh = zone::picture_h - 8;
     p.fill(x, y, w, gh, colour::quiet, 3);
     unsigned length = std::max<unsigned>(s.pattern.length, 1), bar = std::max(1u, s.project.bar_ticks()), beat = std::max(1u, s.project.beat_ticks());
+    auto division = sequence_grid().division;
     unsigned beats = length / beat;
     for (unsigned b = 1; b < beats && beats <= 64; ++b) // the beats, the bars bolder
-        p.fill(x + w * float(b * beat) / length - 0.5f, y, b * beat % bar ? 1.0f : 1.5f, gh, colour::bg.withAlpha(b * beat % bar ? 0.5f : 1.0f));
-    for (float q : {0.25f, 0.5f, 0.75f}) p.fill(x, y + gh * q - 0.5f, w, 1, colour::bg);
+        p.fill(x + w * float(b * beat) / length - 0.5f, y, b * beat % bar ? 1.0f : 1.5f, gh, division.withAlpha(b * beat % bar ? 0.5f : 1.0f));
+    for (float q : {0.25f, 0.5f, 0.75f}) p.fill(x, y + gh * q - 0.5f, w, 1, division);
     auto lanes = motion_lanes(s.project, s.ui, s.pattern);
     auto x_of = [&](uint32_t tick) { return x + w * float(std::min<uint32_t>(tick, length)) / float(length); };
     int hand = s.ui.turning >= 0 && s.now - s.ui.turned_at < 1500 ? s.ui.turning : s.ui.last_pot >= 0 ? s.ui.last_pot % 3 : 0;

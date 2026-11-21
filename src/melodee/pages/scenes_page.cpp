@@ -76,8 +76,8 @@ void draw(Paint& p, const Snapshot& s) {
         bool playing = with && on == with;
         juce::Colour text = with ? colour::sec : colour::dim;
         if (playing) { p.fill(x, y, cw, ch, colour::text, 5); text = colour::bg; }
-        else if (waiting) { p.fill(x, y, cw, ch, colour::text.withAlpha(blink ? 0.4f : 0.12f), 5); p.ring(x, y, cw, ch, colour::text, 5, 1.5f); text = colour::text; }
-        else if (with) p.fill(x, y, cw, ch, colour::text.withAlpha(0.06f + 0.02f * float(std::min(with, 8u))), 5);
+        else if (waiting) { p.fill(x, y, cw, ch, sequence_pad(colour::text, blink ? 0.4f : 0.12f), 5); p.ring(x, y, cw, ch, colour::text, 5, 1.5f); text = colour::text; }
+        else if (with) p.fill(x, y, cw, ch, sequence_pad(colour::text, 0.06f + 0.02f * float(std::min(with, 8u))), 5);
         else p.fill(x, y, cw, ch, colour::quiet, 5);
         if (n == hand) p.ring(x - 1, y - 1, cw + 2, ch + 2, c, 6, 1.5f);
         const auto& sc = s.project.scenes[n];

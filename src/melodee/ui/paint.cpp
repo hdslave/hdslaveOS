@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/ui/paint.h"
 #include "melodee/ui/font_data.h"
+#include "melodee/ui/hdslave_flare.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -240,6 +241,28 @@ float Paint::text(const juce::String& original, float x, float y, float w, float
         layout.draw(g, juce::AffineTransform::translation(x, y));
     }
     return width(value, style);
+}
+
+void Paint::background(int y, int height) {
+    if (palette().backdrop == Backdrop::HdslaveFlare) {
+        // First HDSLAVE frame on the screen thread. Keep an opaque, device-sized image for later blits.
+        static const juce::Image flare = []() -> juce::Image {
+            juce::MemoryOutputStream png;
+            if (!juce::Base64::convertFromBase64(png, hdslave_flare_png)) return {};
+            auto image = juce::ImageFileFormat::loadFrom(png.getData(), png.getDataSize());
+            if (image.getWidth() != zone::width || image.getHeight() != zone::height) return {};
+            return image.convertedToFormat(juce::Image::RGB);
+        }();
+        if (flare.isValid()) {
+            juce::Graphics::ScopedSaveState state(g);
+            g.reduceClipRegion(0, y, zone::width, height);
+            g.setOpacity(1.0f);
+            g.drawImageAt(flare, 0, 0);
+            return;
+        }
+    }
+    if (y == 0 && height == zone::height) g.fillAll(colour::bg);
+    else fill(0, y, zone::width, height, colour::bg);
 }
 
 void Paint::fill(float x, float y, float w, float h, juce::Colour c, float radius) {

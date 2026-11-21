@@ -22,6 +22,13 @@ or any other download), may contain either one: before releasing, replace
 both files with art of the fork's own (`tools/boot_art.py` writes them from
 any two 320 x 240 PNGs).
 
+## HDSLAVE screen art
+
+The static purple flare in `src/melodee/ui/hdslave_flare.h` is original
+art generated for hdslave's Melodee fork. Copyright (C) 2026 hdslave.
+All rights reserved (LicenseRef-Hdslave-Flare). The fork may include the
+art in its source and builds. The code that displays it uses the project licence.
+
 ## sample-base
 
 The runtime, drivers, build and install scripts come from sample-base

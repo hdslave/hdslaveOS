@@ -76,6 +76,7 @@ unsigned bars_of(const Pattern& p) { return std::max(1u, (p.steps() + bar_steps 
 
 void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
     const auto& pattern = s.pattern;
+    const auto grid = sequence_grid();
     unsigned steps = pattern.steps(), first = caret / bar_steps * bar_steps;
     int lane = steps_lane(s.track());
     bool lane_only = s.ui.step_pads && lane >= 0; // STEPS on a kit: the lane's notes, the others quiet
@@ -116,8 +117,13 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
         unsigned st = first + k;
         float x = x_of(k);
         bool inside = st < steps, here = st == caret, held = int(st) == s.ui.held_step, past = st >= lane_steps;
-        p.fill(x, top, colw, ch, here ? colour::amber.withAlpha(0.22f) : inside && !past ? colour::quiet : colour::bg, 2);
-        if (!inside && st < spare) p.ring(x + 0.5f, top + 0.5f, colw - 1, ch - 1, here ? colour::amber : colour::line, 2); // a spare step
+        const bool group_start = k % 4 == 0;
+        auto cell = past ? grid.past_lane : group_start ? grid.group_start : grid.step;
+        p.fill(x, top, colw, ch, here ? grid.caret : inside ? cell : colour::bg, 2);
+        if ((!inside && st < spare) || (here && palette().accented_grid))
+            p.ring(x + 0.5f, top + 0.5f, colw - 1, ch - 1, here ? colour::amber : colour::line, 2);
+        else if (palette().accented_grid && inside && !past && group_start)
+            p.fill(x, top, colw, 1.5f, colour::dim);
         if (int(st) == playing_step) p.fill(x, top - 3, colw, 2, colour::text, 1); // where it plays now
         auto ink = here ? colour::amber : inside && !pattern.step(st).empty() ? colour::sec : colour::dim;
         p.text(juce::String(st + 1), x - 4, top + ch + 2, colw + 8, 13, plain(ink, type::small, here || k % 4 == 0 ? Weight::Bold : Weight::Medium),
@@ -136,7 +142,7 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
             int row = std::clamp(index_of(pitch_of(e)) - base, 0, rows - 1);
             float cy = top + ch - (row + 0.5f) * (ch / rows);
             bool other = lane_only && int(e.key) != lane;
-            auto ink_note = held || (sounding(e) && !past) ? colour::text : past || other ? colour::line : c; // white: held, or sounding now
+            auto ink_note = held || (sounding(e) && !past) ? colour::text : past || other ? grid.ghost : c; // white: held, or sounding now
             unsigned hits = e.hits();
             if (hits == 1) {
                 float bh = 4 + 6 * e.velocity / 127.0f;
@@ -170,7 +176,7 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
         bool there = in_spare(s.ui, pattern);
         auto ink = there ? colour::amber : colour::sec;
         float tx = zone::width - zone::pad - 12;
-        p.fill(tx, top, 12, ch, there ? colour::amber.withAlpha(0.22f) : colour::quiet, 3);
+        p.fill(tx, top, 12, ch, there ? grid.caret : grid.step, 3);
         icon(p, Icon::Plus, tx + 2, top + ch / 2 - 11, 8, ink, 1.6f);
         icon(p, Icon::ArrowRight, tx + 1, top + ch / 2 + 2, 10, ink, 1.6f);
     }

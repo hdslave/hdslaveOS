@@ -65,8 +65,8 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
             for (unsigned o = 0; o < track_count; ++o) with += s.project.tracks[o].used() && s.sketches[o][n].notes;
             juce::Colour ink = with ? colour::sec : colour::dim;
             if (playing) { p.fill(x, y, cell, cell, colour::text, 5); ink = colour::bg; }
-            else if (waiting) { p.fill(x, y, cell, cell, colour::text.withAlpha(blink ? 0.4f : 0.12f), 5); p.ring(x, y, cell, cell, colour::text, 5, 1.5f); ink = colour::text; }
-            else if (with) p.fill(x, y, cell, cell, colour::text.withAlpha(0.06f + 0.02f * float(std::min(with, 8u))), 5);
+            else if (waiting) { p.fill(x, y, cell, cell, sequence_pad(colour::text, blink ? 0.4f : 0.12f), 5); p.ring(x, y, cell, cell, colour::text, 5, 1.5f); ink = colour::text; }
+            else if (with) p.fill(x, y, cell, cell, sequence_pad(colour::text, 0.06f + 0.02f * float(std::min(with, 8u))), 5);
             else p.fill(x, y, cell, cell, colour::quiet, 5);
             p.text(juce::String(n + 1), x, y, cell, cell, plain(ink, type::body, Weight::SemiBold), juce::Justification::centred);
             if (s.project.scenes[n].tempo) p.fill(x + cell - 7, y + 5, 3, 3, playing ? colour::bg : colour::amber, 1.5f); // a tempo of its own
@@ -81,10 +81,10 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
         bool copying = s.ui.copying == UiState::Copying::Patterns && s.ui.copy_track == t && s.ui.copy_from == int(n);
         juce::Colour text = colour::dim;
         bool ice = notes && (printing ? s.ui.seq_frozen_at(n) : frozen.frozen() && frozen.plays(n)); // frozen, or to be
-        if (ice && !playing) { p.fill(x, y, cell, cell, colour::ice.withAlpha(0.2f), 5); text = colour::ice; }
+        if (ice && !playing) { p.fill(x, y, cell, cell, sequence_pad(colour::ice, 0.2f), 5); text = colour::ice; }
         else if (playing) { p.fill(x, y, cell, cell, c, 5); text = colour::bg; }
-        else if (waiting) { p.fill(x, y, cell, cell, c.withAlpha(blink ? 0.5f : 0.15f), 5); p.ring(x, y, cell, cell, c, 5, 1.5f); text = colour::text; }
-        else if (notes) { p.fill(x, y, cell, cell, c.withAlpha(0.22f), 5); text = c; }
+        else if (waiting) { p.fill(x, y, cell, cell, sequence_pad(c, blink ? 0.5f : 0.15f), 5); p.ring(x, y, cell, cell, c, 5, 1.5f); text = colour::text; }
+        else if (notes) { p.fill(x, y, cell, cell, sequence_pad(c, 0.22f), 5); text = c; }
         else p.fill(x, y, cell, cell, colour::quiet, 5);
         if (copying) p.ring(x - 1, y - 1, cell + 2, cell + 2, colour::text, 6, 1.5f);
         p.text(juce::String(n + 1), x, y, cell, cell, plain(text, type::body, Weight::SemiBold), juce::Justification::centred);

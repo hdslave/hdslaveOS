@@ -120,11 +120,12 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(note_name(key), 0, top + r * row_h - 2, gutter - 4, row_h + 3, plain(pitch == root ? c : colour::dim, type::small, Weight::SemiBold),
                juce::Justification::centredRight);
     }
+    const auto grid = sequence_grid();
     p.fill(gutter - 1, top, 1, height, colour::line);
     for (unsigned k = 1; k < columns; ++k) {
         uint32_t tick = (first + k) * q;
         bool on_bar = tick % bar == 0, on_beat = tick % beat == 0;
-        p.fill(gutter + k * column, top, on_beat ? 1 : 0.5f, height, on_bar ? colour::mid.withAlpha(0.45f) : on_beat ? colour::line : colour::bg);
+        p.fill(gutter + k * column, top, on_beat ? 1 : 0.5f, height, on_bar ? colour::mid.withAlpha(0.45f) : on_beat ? colour::line : grid.division);
     }
     // The cursor: its step's column and its pitch's row.
     if (cursor >= first && cursor < first + columns) p.fill(gutter + (cursor - first) * column, top, column, height, c.withAlpha(0.12f));
