@@ -297,6 +297,9 @@ def main():
               "    for (unsigned n = 0; n < palettes.size(); ++n) if (name == palettes[n].name) return n;",
               "    return 0;",
               "}",
+              "",
+              "// The palette a new card starts in, until its settings file names another (Settings' palette=).",
+              "inline constexpr unsigned default_palette = palette_named(\"HDSLAVE\");",
               "", "} // namespace melodee::ui", ""]
     (ROOT / "src/melodee/ui/palettes.h").write_text("\n".join(lines))
 

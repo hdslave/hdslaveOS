@@ -87,7 +87,7 @@ struct Settings {
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
     uint8_t screen = 100;     // brightness, 20..100 %
-    uint8_t palette = 0;      // the screen's colours: ui/palettes.h (0 NIGHT)
+    uint8_t palette = uint8_t(ui::default_palette); // the screen's colours: ui/palettes.h (HDSLAVE on a new card; 0 NIGHT)
     uint8_t font = 0;         // the screen's typeface: ui/font_data.h (0 Rubik)
     bool place_bottom = false; // the place bar (shell/place_bar.h): under the knob cards, else between the soft keys and the header
     // The audio device (App::audio_format()): its rate, and the 128-frame periods queued ahead of the jacks. More

@@ -2357,9 +2357,15 @@ void settings() {
     for (int n = 0; n < 20; ++n) c.step(Settings::Screen, -1);
     CHECK(c.screen == 20);
     c.step(Settings::PadLights, -1); CHECK(c.pad_lights == 2);
-    // SCREEN's Palette and Font: NIGHT and Rubik first, stopping at the ends, kept in the text, a number out of range kept in.
-    CHECK(c.value_text(Settings::Palette) == "NIGHT" && c.value_text(Settings::Font) == "Rubik");
-    c.step(Settings::Palette, -1); CHECK(c.palette == 0);
+    // SCREEN's Palette and Font: a new card starts in HDSLAVE (the last palette) and Rubik; the rows stop at the
+    // ends, are kept in the text, and a number out of range is kept in.
+    CHECK(c.value_text(Settings::Palette) == "HDSLAVE" && c.value_text(Settings::Font) == "Rubik");
+    CHECK(c.palette == ui::default_palette && ui::default_palette == ui::palette_named("HDSLAVE") && ui::default_palette + 1u == ui::palettes.size());
+    c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "HDSLAVE");
+    { Settings fresh; fresh.read("screen=80\n"); CHECK(fresh.palette == ui::default_palette); } // a settings file without palette=
+    { Settings night; night.read("palette=0\n"); CHECK(night.palette == 0 && night.value_text(Settings::Palette) == "NIGHT"); }
+    c.palette = 0;
+    c.step(Settings::Palette, -1); CHECK(c.palette == 0 && c.value_text(Settings::Palette) == "NIGHT");
     c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "DAY");
     for (int n = 0; n < 20; ++n) c.step(Settings::Font, 1);
     CHECK(c.font + 1u == ui::face_choices && c.value_text(Settings::Font) == "VT323");

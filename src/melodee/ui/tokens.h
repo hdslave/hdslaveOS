@@ -8,7 +8,7 @@
 #include <cstdint>
 
 // Melodee's design tokens at device size (the boards are drawn at 2x: halve
-// them). The palette in use (NIGHT unless Settings > SCREEN > Palette picks
+// them). The palette in use (HDSLAVE unless Settings > SCREEN > Palette picks
 // another, ui/palettes.h), one colour per track, the corners it draws, and
 // the four fixed zones of every screen.
 namespace melodee::ui {
@@ -16,7 +16,7 @@ namespace melodee::ui {
 inline juce::Colour hex(uint32_t rgb, float alpha = 1) { return juce::Colour(0xff000000u | rgb).withAlpha(alpha); }
 
 // The palette in use: use_palette() sets these (the screen thread, before each
-// frame); they start as NIGHT's.
+// frame); they start as the default palette's (HDSLAVE).
 namespace colour {
 inline juce::Colour bg, panel, surf, raised, quiet, line, text, sec, mid, dim,
     rec, amber,
@@ -34,7 +34,7 @@ inline void use_palette(unsigned n) {
     colour::mid = hex(p.mid); colour::dim = hex(p.dim); colour::rec = hex(p.rec); colour::amber = hex(p.amber);
     colour::play = hex(p.play); colour::ice = hex(p.ice);
 }
-namespace detail { inline const bool night_first = (use_palette(0), true); }
+namespace detail { inline const bool default_first = (use_palette(default_palette), true); }
 inline const PaletteSpec& palette() { return palettes[palette_in_use % palettes.size()]; }
 
 // Track colours 1-16 with their knob shades, and the Looper's L1-L4, as the palette in use has them (the pads

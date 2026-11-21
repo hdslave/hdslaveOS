@@ -80,4 +80,7 @@ constexpr unsigned palette_named(std::string_view name) {
     return 0;
 }
 
+// The palette a new card starts in, until its settings file names another (Settings' palette=).
+inline constexpr unsigned default_palette = palette_named("HDSLAVE");
+
 } // namespace melodee::ui
