@@ -8,7 +8,9 @@
 #include "melodee/model/project_file.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
+#include "melodee/shell/live_export.h"
 #include "melodee/shell/mpc3_export.h"
+#include "melodee/ui/shades.h"
 #include "runtime/app.h"
 #include <algorithm>
 #include <cstdlib>
@@ -100,42 +102,62 @@ void ProjectStore::load(const std::string& path) {
 void ProjectStore::export_mpc3(const std::string& path, std::vector<uint8_t> bytes, const std::string& name) {
     push(new Request {Request::Kind::ExportMpc3, name, std::move(bytes), path});
 }
+void ProjectStore::export_live(const std::string& path, std::vector<uint8_t> bytes, const std::string& name) {
+    push(new Request {Request::Kind::ExportLive, name, std::move(bytes), path});
+}
 std::unique_ptr<std::string> ProjectStore::take_note() {
     std::string* n = nullptr;
     return std::unique_ptr<std::string>(notes.pop(n) ? n : nullptr);
 }
 
 // The export on a thread of its own, the request's bytes moved to it: read back as the project, written beside the
-// projects as Melodee/MPC 3/<name>.xpj and its data folder. One at a time.
+// projects as Melodee/MPC 3/<name>.xpj and its data folder, or Melodee/Ableton/<name> Project/. One at a time.
 void ProjectStore::start_export(Request& r) {
+    const bool live = r.kind == Request::Kind::ExportLive;
+    const std::string said = live ? "Live Set: " : "MPC 3: ";
     auto note = [this](std::string text) { auto* n = new std::string(std::move(text)); if (!notes.push(n)) delete n; };
-    if (export_busy.load(std::memory_order_acquire)) { note("MPC 3: an export runs"); return; }
-    if (root.empty()) { note("MPC 3: no card"); return; }
+    if (export_busy.load(std::memory_order_acquire)) { note(said + "an export runs"); return; }
+    if (root.empty()) { note(said + "no card"); return; }
     if (exporter.joinable()) exporter.join();
     std::string clean;
     for (char ch : r.path) clean += std::string("/\\:\"*?<>|").find(ch) != std::string::npos ? '-' : ch;
     if (clean.empty()) clean = "Project";
-    const fs::path folder = fs::path(root).parent_path() / "MPC 3";
+    const fs::path folder = fs::path(root).parent_path() / (live ? "Ableton" : "MPC 3");
     std::error_code error;
     std::string name = clean;
-    for (unsigned n = 2; n < 1000 && fs::exists(folder / (name + ".xpj"), error); ++n) name = clean + " " + std::to_string(n);
+    auto taken = [&](const std::string& n) { return fs::exists(folder / (live ? n + " Project" : n + ".xpj"), error); };
+    for (unsigned n = 2; n < 1000 && taken(name); ++n) name = clean + " " + std::to_string(n);
     export_busy.store(true, std::memory_order_release);
-    exporter = std::thread([this, bytes = std::move(r.bytes), from = r.from, folder, name, note] {
+    exporter = std::thread([this, bytes = std::move(r.bytes), from = r.from, folder, name, note, live, said] {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         auto prints = std::make_unique<PrintTable>();
         std::string why = load_project(bytes, *project, *bank, nullptr, nullptr, prints.get());
-        Mpc3Export report;
-        if (why.empty())
+        if (!why.empty()) {
+            note(said + why);
+        } else if (live) {
+            LiveExport report;
+            const LiveColours colours = ui::track_live_colours; // each track in its colour on the MPC
+            why = export_live_set(*project, *bank, folder.string(), name, report, prints.get(), prints_folder(from), audio_folder(from), &colours);
+            if (!why.empty()) note(said + why);
+            else {
+                std::string text = "Ableton/" + name + " Project, " + std::to_string(report.tracks) + (report.tracks == 1 ? " track" : " tracks");
+                if (report.missing) text += ", " + std::to_string(report.missing) + " files missing";
+                if (report.skipped) text += ", " + std::to_string(report.skipped) + " sounds left out";
+                note(text);
+            }
+        } else {
+            Mpc3Export report;
             why = export_mpc3_project(*project, *bank, folder.string(), name, report, prints.get(), prints_folder(from), audio_folder(from));
-        if (!why.empty()) note("MPC 3: " + why);
-        else {
-            std::string text = "MPC 3/" + name;
-            const unsigned left = report.skipped_tracks + (report.missing ? 1 : 0);
-            if (report.skipped_tracks) text += ", " + std::to_string(report.skipped_tracks) + (report.skipped_tracks == 1 ? " track left out" : " tracks left out");
-            if (report.missing) text += ", " + std::to_string(report.missing) + " files missing";
-            if (!left && report.skipped_pads) text += ", " + std::to_string(report.skipped_pads) + " sounds left out";
-            note(text);
+            if (!why.empty()) note(said + why);
+            else {
+                std::string text = "MPC 3/" + name;
+                const unsigned left = report.skipped_tracks + (report.missing ? 1 : 0);
+                if (report.skipped_tracks) text += ", " + std::to_string(report.skipped_tracks) + (report.skipped_tracks == 1 ? " track left out" : " tracks left out");
+                if (report.missing) text += ", " + std::to_string(report.missing) + " files missing";
+                if (!left && report.skipped_pads) text += ", " + std::to_string(report.skipped_pads) + " sounds left out";
+                note(text);
+            }
         }
         export_busy.store(false, std::memory_order_release);
     });
@@ -406,7 +428,7 @@ void ProjectStore::run(Request& r) {
         saved.fetch_add(1, std::memory_order_release);
         break;
     }
-    case Request::Kind::ExportMpc3:
+    case Request::Kind::ExportMpc3: case Request::Kind::ExportLive:
         start_export(r);
         return;
     case Request::Kind::Load: {

@@ -969,11 +969,19 @@ hold to steer, Shift + Seq to zoom in**.
   mix as `Mix.wav` and each track with a sound, `NN <name>.wav`, as it
   joins the mix after its chain, level, pan and mute, and each bus a
   track sends into, after its chain at its return; all 32-bit float,
-  the same frames, in one real-time pass), or a MIDI FILE
+  the same frames, in one real-time pass), a MIDI FILE
   (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
   song each track's pattern once; a kit's pads as notes 36 on, on channel
-  10, a MIDI track on its own). A `.mid` in the browser (a note glyph,
+  10, a MIDI track on its own), an MPC 3 project
+  (`Melodee/MPC 3/<name>.xpj`, `shell/mpc3_export.h`) or an Ableton LIVE
+  SET (`Melodee/Ableton/<name> Project/<name>.als` and its samples in
+  `Samples/Imported/`, Live 12.1 or later, `shell/live_export.h` in the
+  core: each pattern a Session View clip in the scene of its number, the
+  song in Arrangement View, a kit a Drum Rack of Simplers, a plug-in track
+  its notes and its prints, printed first as for MPC 3; no effects; track
+  colours as Live's nearest, `ui/shades.h`). Both run on the project
+  store's export thread, slice hits laid on free pads first. A `.mid` in the browser (a note glyph,
   MIDI) loads with Push: every note onto the selected track's pattern
   playing, as many bars as they take (128 at most), one undo; a kit takes
   notes 36 on as its pads.
@@ -2640,7 +2648,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   files are. Safe to delete: each is made again when its sample next loads.
 - `Melodee/Projects/**/<project> Loops/Loop N.wav`: a project's loops.
   `Melodee/Mixdowns/` holds song mixdowns, `Melodee/Stems/` stems,
-  `Melodee/MIDI/` MIDI files, `Melodee/SysEx/` a MIDI track's `.syx`
+  `Melodee/MIDI/` MIDI files, `Melodee/MPC 3/` and `Melodee/Ableton/`
+  exported projects, `Melodee/SysEx/` a MIDI track's `.syx`
   files (`SysEx/` at the card's top, where older builds read them, too).
 
 Melodee makes no folder at the card's top: what it writes is under

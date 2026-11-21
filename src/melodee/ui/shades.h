@@ -24,6 +24,9 @@ constexpr std::array<std::array<uint32_t, 3>, 16> track_shades {{
 constexpr std::array<const char*, 16> track_colour_names {
     "Coral", "Amber", "Teal", "Lavender", "Sky", "Pink", "Lime", "Violet", "Cyan", "Yellow", "Rose", "Green", "Blue", "Orange", "Magenta", "Grey",
 };
+// The sixteen as the nearest of Ableton Live's clip and track colours (its palette's index), for the Live Set export
+// (shell/live_export.h): Coral as Live's salmon, Amber its orange, and so on.
+constexpr std::array<uint8_t, 16> track_live_colours {28, 1, 20, 10, 8, 12, 4, 11, 21, 17, 0, 18, 9, 15, 26, 37};
 // The Looper's tracks L1-L4 (docs/LOOPER.md): colours of their own, apart from the sixteen, shaded the same way.
 constexpr std::array<std::array<uint32_t, 3>, 4> loop_shades {{
     {0x6FD3FF, 0x6FA6FF, 0x6FFFE5}, {0xFFA36F, 0xFF7A6F, 0xFFD06F}, {0xC09CFF, 0x9C9EFF, 0xE69CFF}, {0x7DEBA6, 0x7DEBD9, 0xA4EB7D},

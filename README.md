@@ -62,7 +62,8 @@ page and control, read the [user guide](docs/GUIDE.md).
   conditions. Sequences, as on the stock app, sequence chains and follow
   actions.
 - **Song**: an arrangement with a lane per track, markers and a tempo lane.
-  Export a WAV mixdown, stems, a MIDI file or an MPC 3 project.
+  Export a WAV mixdown, stems, a MIDI file, an MPC 3 project or an Ableton
+  Live Set.
 - **Looper**: four loops that follow the tempo, with overdub and undo.
 - **Effects**: 41 effects. A six-slot chain on every track, four send buses
   and the master. Knob FX, Pad FX, Flex Beat and the master compressor work

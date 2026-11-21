@@ -77,10 +77,12 @@ public:
     void save_sound(const std::string& name, std::vector<uint8_t> bytes); // Melodee/Sounds/<name>.mlds
     void append_usage(const std::string& file, const std::string& text); // Melodee/Usage/<file> (shell/usage_log.h)
     void move(const std::string& path, const std::string& folder); // a project into a folder ("" the top), its name kept (" 2" on a clash)
-    // The project (`bytes` as save_project() makes them, its file `path` for its prints, "" unsaved) as an MPC 3
-    // project, Melodee/MPC 3/<name>.xpj on the card (" 2" on a clash; shell/mpc3_export.h), on a thread of its own:
-    // copying its samples can take a while. What came of it comes back through take_note().
+    // The project (`bytes` as save_project() makes them, its file `path` for its prints and takes, "" unsaved) as an
+    // MPC 3 project, Melodee/MPC 3/<name>.xpj on the card (shell/mpc3_export.h), or as an Ableton Live Set,
+    // Melodee/Ableton/<name> Project/<name>.als (shell/live_export.h); " 2" on a clash. On a thread of its own:
+    // copying its samples can take a while. One export at a time. What came of it comes back through take_note().
     void export_mpc3(const std::string& path, std::vector<uint8_t> bytes, const std::string& name);
+    void export_live(const std::string& path, std::vector<uint8_t> bytes, const std::string& name);
     std::unique_ptr<std::string> take_note(); // MIDI thread: an export's outcome, if one is waiting
     bool exporting() const { return export_busy.load(std::memory_order_acquire); }
     // A project path in the folder in view for a typed name: the name itself,
@@ -121,10 +123,10 @@ public:
 
 private:
     struct Request {
-        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Opened, Settings, Rename, SaveSound, Move, ExportMpc3, Usage } kind;
+        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Opened, Settings, Rename, SaveSound, Move, ExportMpc3, Usage, ExportLive } kind;
         std::string path;
         std::vector<uint8_t> bytes;
-        std::string from = {}; // Save: the project's file before (Save As), whose prints come along; ExportMpc3: its file
+        std::string from = {}; // Save: the project's file before (Save As), whose prints come along; ExportMpc3, ExportLive: its file
     };
     void push(Request* request);
     void run(Request& request);

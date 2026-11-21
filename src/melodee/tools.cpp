@@ -11,6 +11,7 @@
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/delete_jobs.h"
+#include "melodee/shell/live_export.h"
 #include "melodee/shell/mpc3_export.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/model/progression.h"
@@ -1993,6 +1994,11 @@ const Preview previews[] {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.export_kind = 5;
          s.ui.name.start(NameTarget::Mixdown, "Project 1", 31, false);
      }},
+    {"songlive", [](Shell&, Snapshot& s) { // Export with the wheel on LIVE SET: an Ableton Live Set
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 0; s.ui.song_export = true; s.ui.export_kind = export_kinds::live;
+         Clip clip; clip.track = 2; clip.pattern = 0; clip.bar = 0; clip.bars = 16;
+         s.project.song.place(clip);
+     }},
     {"mixdownname", [](Shell&, Snapshot& s) { // Export, B2: the mixdown's name
          s.ui.page = PageId::Song; s.ui.track = 2;
          s.ui.name.start(NameTarget::Mixdown, "Project 1", 31, false);
@@ -3121,15 +3127,15 @@ static int mpc_import(const char* path) {
     return 0;
 }
 
-// A Melodee project (.mldp) or an MPC Sample project (.xpj, read as Melodee reads one) written as an MPC 3 project
-// into FOLDER, for the build's checks. Each change after them is made first: "T.P=PATH" puts a file or an instrument on
+// A Melodee project (.mldp) or an MPC Sample project (.xpj, read as Melodee reads one) written as an MPC 3 project, or
+// with `live` as an Ableton Live Set, into FOLDER, for the build's checks. Each change after them is made first: "T.P=PATH" puts a file or an instrument on
 // pad P of track T (from 0), "T.P^N" plays that pad's notes N semitones up, "T.P^A,B,C" each next note at the next,
 // "T@P=PATH" makes track T a plug-in track with PATH as its print of pattern P (the prints all in one folder),
 // "T.P~W" warps that pad at W (1 Seq, 50..200 %), "S:T.P@B+N" puts a song clip of pattern P on track T's lane at bar B
 // (from 0) for N bars, "L:T.P=TICKS" sets pattern P of track T that long (96 a quarter), "K:T=PATH" makes track T a
 // keygroup of PATH (its notes kept, as MIDI notes), "M:T=CH,PROG" a MIDI track on channel CH sending program PROG
 // (as Stage shows it, 0 Off; its notes kept).
-static int mpc3_export(const char* path, const char* folder, const char* name, int changes, char** change) {
+static int project_export(bool live, const char* path, const char* folder, const char* name, int changes, char** change) {
     std::ifstream file(path, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
     auto project = std::make_unique<Project>();
@@ -3265,8 +3271,18 @@ static int mpc3_export(const char* path, const char* folder, const char* name, i
             track.pads[n].own_tempo = project->tempo;
         } else { std::printf("error=change %s\n", change[c]); return 1; }
     }
-    Mpc3Export report;
     auto began = std::chrono::steady_clock::now();
+    if (live) {
+        LiveExport report;
+        const LiveColours colours = ui::track_live_colours;
+        error = export_live_set(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir, &colours);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+        if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
+        std::printf("exported tracks=%u clips=%u arranged=%u scenes=%u notes=%u samples=%u missing=%u skipped=%u ms=%lld\n", report.tracks,
+                    report.clips, report.arranged, report.scenes, report.notes, report.samples, report.missing, report.skipped, (long long)ms);
+        return 0;
+    }
+    Mpc3Export report;
     error = export_mpc3_project(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
@@ -3289,7 +3305,8 @@ std::optional<int> run_tool(int argc, char** argv) {
     // --self-test is what device.py and the SD boot run before stopping the stock app.
     if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
     if (argc == 3 && !std::strcmp(argv[1], "--mpc-import")) return mpc_import(argv[2]);
-    if (argc >= 5 && !std::strcmp(argv[1], "--mpc3-export")) return mpc3_export(argv[2], argv[3], argv[4], argc - 5, argv + 5); // IN FOLDER NAME [CHANGE...]
+    if (argc >= 5 && !std::strcmp(argv[1], "--mpc3-export")) return project_export(false, argv[2], argv[3], argv[4], argc - 5, argv + 5); // IN FOLDER NAME [CHANGE...]
+    if (argc >= 5 && !std::strcmp(argv[1], "--live-export")) return project_export(true, argv[2], argv[3], argv[4], argc - 5, argv + 5);  // the same, a Live Set
     if (argc == 3 && !std::strcmp(argv[1], "--instrument-read")) return instrument_read(argv[2]);
     if (argc == 4 && !std::strcmp(argv[1], "--mpc-track")) { // a keygroup program as MPC 3's track file, as the auto sampler writes it
         const auto error = write_mpc3_track(argv[2], argv[3]);

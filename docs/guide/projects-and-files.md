@@ -149,6 +149,7 @@ again and Melodee asks whether to eject anyway.
 | `Melodee/Stems/` | A song's stems |
 | `Melodee/MIDI/` | Exported MIDI files |
 | `Melodee/MPC 3/` | MPC 3 projects exported from Song |
+| `Melodee/Ableton/` | Ableton Live Sets exported from Song, a folder each |
 | `Melodee/Progressions/` | Chord progressions you make |
 | `Melodee/Sounds/` | Sounds you save |
 | `Melodee/Cache/` | Decoded instrument samples, and long MP3, FLAC, Ogg and AIFF samples as WAV. Safe to delete: Melodee makes them again. |

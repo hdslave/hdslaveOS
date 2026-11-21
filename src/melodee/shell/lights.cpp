@@ -263,7 +263,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
-        if (auto note = store_->take_note()) context_.notice(*note); // an MPC 3 export's outcome
+        if (auto note = store_->take_note()) context_.notice(*note); // an MPC 3 or Live Set export's outcome
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) { // loop files too
             if (!off_after_save) leave.store(true);
             else if (!ui_.exit_saved) { ui_.exit_saved = true; off_saved_at = now; } // the sheet says it is saved, then off
@@ -276,7 +276,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.free_tick();     // Free length: a take on a Free pattern grows it (shell/free_length.h)
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.print_tick();      // prints made (freeze plan F2a) into the project's records
-    context_.mpc3_tick();       // an MPC 3 export's plug-in tracks printed, then the export
+    context_.export_tick();     // an MPC 3 or Live Set export's plug-in tracks printed, then the export
     context_.stems_tick();      // a sample's stems written: onto their pads (shell/stems_jobs.cpp)
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     context_.live_erase_tick(); // Erase + pad while playing: the notes the playhead passed

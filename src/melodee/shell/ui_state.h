@@ -57,6 +57,11 @@ struct CardView {
     uint64_t returns = 0;
 };
 
+// Song's Export, what B2 makes (UiState::export_kind), in the wheel's order.
+namespace export_kinds {
+constexpr uint8_t mix32 = 0, mix24 = 1, mix16 = 2, stems = 3, midi = 4, mpc3 = 5, live = 6, count = 7;
+}
+
 // Trim's and Chop's view zoomed in, kept while its handle moves inside it (shell/zoom_view.h); key 0: none kept.
 struct ZoomView {
     uint32_t from = 0, to = 0, key = 0;
@@ -207,8 +212,8 @@ struct UiState {
     // What the loops and MIDI tracks need of the inputs (InputRoute::need_line, need_mic, need_usb): a source on the ADC
     // side they did not get is IN USE (InputRoute::adc_taken).
     uint8_t adc_needs = 0;
-    // Roadmap P4, Song's Export: what B2 makes, the wheel's pick: a mixdown as 32-bit float, 24-bit or 16-bit (both
-    // dithered), the stems, or a MIDI file.
+    // Roadmap P4, Song's Export: what B2 makes, the wheel's pick (export_kinds): a mixdown as 32-bit float, 24-bit or
+    // 16-bit (both dithered), the stems, a MIDI file, an MPC 3 project or an Ableton Live Set.
     uint8_t export_kind = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;

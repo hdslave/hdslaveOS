@@ -609,16 +609,17 @@ public:
     void resample_pad(unsigned kit);                      // the pad: the pattern rendered onto it
     void resample_song(unsigned kit);                     // roadmap P3: Resample on Song, the song rendered onto the pad
     void mixdown(const std::string& name);                // Song's export, Audio mixdown, after the Name sheet
-    void export_mpc3(const std::string& name);            // Song's export, MPC 3 project (shell/song_export.cpp)
-    std::vector<uint8_t> mpc3_bytes(unsigned& left);      // the project to export, slice hits laid on free pads (issue 24)
-    // The MPC 3 export waits for its plug-in tracks' prints: `mpc3_pending` a bit a track still to print (one job a
-    // track, as the print engine takes them), `mpc3_printing` the track whose job runs (-1 none), then mpc3_tick()
-    // hands the project, its prints in, to the export once the last result is in.
-    std::string mpc3_name;
-    uint32_t mpc3_pending = 0;
-    int mpc3_printing = -1;
-    bool mpc3_waiting = false;
-    void mpc3_tick();
+    // Song's export, an MPC 3 project or an Ableton Live Set (`live`), after the Name sheet (shell/song_export.cpp).
+    void export_project(const std::string& name, bool live);
+    std::vector<uint8_t> export_bytes(unsigned& left);    // the project to export, slice hits laid on free pads (issue 24)
+    // Both wait for their plug-in tracks' prints: `export_pending` a bit a track still to print (one job a track, as
+    // the print engine takes them), `export_printing` the track whose job runs (-1 none), then export_tick() hands
+    // the project, its prints in, to the export once the last result is in.
+    std::string export_name;
+    uint32_t export_pending = 0;
+    int export_printing = -1;
+    bool export_waiting = false, export_live = false;
+    void export_tick();
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;
     uint32_t render_since = 0;

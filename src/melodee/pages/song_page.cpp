@@ -24,6 +24,7 @@
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <cstdio>
 
 namespace melodee {
@@ -119,18 +120,21 @@ void draw(Paint& p, const Snapshot& s) {
 
     if (s.ui.song_export) {
         // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern; a tile under each says what it makes.
-        // Roadmap P4: the wheel picks what B2 makes: the mixdown as float, 24 or 16 bits, the stems, a MIDI file, or
-        // an MPC 3 project.
-        static const char* const b2[] {"MIXDOWN", "MIXDOWN", "MIXDOWN", "STEMS", "MIDI FILE", "MPC 3"};
-        unsigned kind = s.ui.export_kind % 6;
+        // Roadmap P4: the wheel picks what B2 makes: the mixdown as float, 24 or 16 bits, the stems, a MIDI file, an
+        // MPC 3 project or an Ableton Live Set.
+        static const char* const b2[] {"MIXDOWN", "MIXDOWN", "MIXDOWN", "STEMS", "MIDI FILE", "MPC 3", "LIVE SET"};
+        static_assert(std::size(b2) == export_kinds::count);
+        unsigned kind = s.ui.export_kind % export_kinds::count;
+        const bool project_file = kind == export_kinds::mpc3 || kind == export_kinds::live; // a project of files: its tracks
         SoftKeys keys {{"CANCEL", b2[kind], "PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-        const Icon made = kind == 5 ? Icon::Mpc : kind == 4 ? Icon::Note : kind == 3 ? Icon::Layers : Icon::Wav;
+        const Icon made = kind == export_kinds::live ? Icon::Laptop : kind == export_kinds::mpc3 ? Icon::Mpc
+                          : kind == export_kinds::midi ? Icon::Note : kind == export_kinds::stems ? Icon::Layers : Icon::Wav;
         keys.glyphs = {Icon::None, made, Icon::Pattern};
         frame(p, s, keys, h);
         p.dim_zone(zone::picture_y, zone::picture_h, 0.86f);
         p.dim_zone(zone::knobs_y, zone::knobs_h);
         unsigned bars = song.length(), seconds = unsigned(song.tempo.seconds(bars, double(s.project.bar_ticks()) / ticks_per_quarter, std::max(300u, unsigned(s.project.tempo))) + 0.5);
-        if (!bars && kind < 4) { // nothing to export yet (a MIDI file and an MPC 3 project take the patterns)
+        if (!bars && kind < export_kinds::midi) { // nothing to export yet (a MIDI file and the projects take the patterns)
             icon(p, Icon::Pattern, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::amber, 1.4f);
             p.text("EMPTY SONG", 0, zone::picture_y + 80, zone::width, 14, caps_text(colour::amber), juce::Justification::centred);
             return;
@@ -144,9 +148,9 @@ void draw(Paint& p, const Snapshot& s) {
         juce::String length = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
         unsigned stems = 0;
         for (const auto& tr : s.project.tracks) stems += tr.used();
-        static const char* const formats[] {"32-BIT FLOAT", "24-BIT DITHER", "16-BIT DITHER", "", "SMF 96 PPQ", "PROJECT"};
-        juce::String sub = kind == 3 ? juce::String(stems) + " STEMS" : juce::String(formats[kind]);
-        juce::String value = kind == 5 ? juce::String(stems) + (stems == 1 ? " TRACK" : " TRACKS") : bars ? length : juce::String("P");
+        static const char* const formats[] {"32-BIT FLOAT", "24-BIT DITHER", "16-BIT DITHER", "", "SMF 96 PPQ", "PROJECT", "ABLETON LIVE"};
+        juce::String sub = kind == export_kinds::stems ? juce::String(stems) + " STEMS" : juce::String(formats[kind]);
+        juce::String value = project_file ? juce::String(stems) + (stems == 1 ? " TRACK" : " TRACKS") : bars ? length : juce::String("P");
         key_tiles(p, {KeyTile {}, value_tile(made, value, sub, true), // the wheel picks
                       value_tile(Icon::Pattern, free < pattern_count ? "P" + juce::String(free + 1) : juce::String("FULL"),
                                  juce::String(bars) + (bars == 1 ? " BAR" : " BARS"))});
@@ -325,7 +329,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 }
 
 void wheel(Context& c, int delta) {
-    if (c.ui.song_export) { c.ui.export_kind = uint8_t(std::clamp(int(c.ui.export_kind) + delta, 0, 5)); return; } // what B2 makes (roadmap P4)
+    if (c.ui.song_export) { c.ui.export_kind = uint8_t(std::clamp(int(c.ui.export_kind) + delta, 0, export_kinds::count - 1)); return; } // what B2 makes (roadmap P4)
     c.ui.song_cursor = uint16_t(std::clamp<int>(c.ui.song_cursor + delta, 0, int(song_bars) - 1));
     c.ui.song_view = uint16_t(view_of(c.ui));
 }
