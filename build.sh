@@ -6,7 +6,7 @@
 # control, src/melodee/monkey.cpp) and the page previews.
 set -eu
 cd "$(dirname "$0")"
-[ -f base/base.mk ] || git submodule update --init
+[ -f base/base.mk ] && [ -f core/core.mk ] || git submodule update --init
 python3 tools/dependencies.py
 # The version the Credits page shows: ./release.sh names it, else git describe.
 MELODEE_VERSION=$(printf %s "${MELODEE_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}" | tr -cd 'A-Za-z0-9._+-')

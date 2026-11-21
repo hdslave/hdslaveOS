@@ -7,12 +7,18 @@ audio/MIDI queues, no allocation, locks or file I/O in `render()`, screen
 work off the audio thread, crash/remote-stop/reboot recovery kept) hold
 here too.
 
-- Melodee lives in `src/melodee/`; `src/main.cpp` only wires it to the
-  runtime. Melodee includes the base layers `surface/`, `dsp/`, `drivers/`,
-  `runtime/` and itself, nothing else (`tests/test_layout.py`).
-- Change the base in sample-base itself, then move the submodule
-  (`git -C base pull origin main && git add base`). Never edit files under
-  `base/` from this repository.
+- Melodee's engine, model and files (`melodee/engine`, `melodee/model`,
+  the formats and libraries in `melodee/shell`) are ellic-core, the `core/`
+  git submodule, shared with melodee-move (`core/AGENTS.md`: no UI, no
+  hardware). Melodee's screens, pages and MPC shell live in `src/melodee/`;
+  `src/main.cpp` only wires it to the runtime. Melodee includes the base
+  layers `surface/`, `dsp/`, `drivers/`, `runtime/` and itself (its own and
+  the core's), nothing else, and no file is in both `src/` and the core
+  (`tests/test_layout.py`).
+- Change the base in sample-base and the core in ellic-core, then move the
+  submodule (`git -C core pull origin main && git add core`, the same for
+  `base`). Never edit files under `base/` or `core/` from this repository.
+  The core's change lands in every product: run melodee-move's build too.
 - The DSP engines are written from scratch for this app; never compile or
   emulate the FM-1 firmware or its DSP sources.
 - Keep downloaded sources, binaries, captures and device data in ignored
