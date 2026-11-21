@@ -6,56 +6,6 @@
 
 namespace melodee::ui {
 
-namespace {
-// Rasterised at LCD size once on the screen thread. The foil is separate so a long
-// value or unit can use the whole card, and the control's focus ring stays on top.
-struct ChromeKnobArt {
-    juce::Image enamel {juce::Image::RGB, 100, 46, false};
-    juce::Image foil {juce::Image::ARGB, 32, 15, true};
-
-    ChromeKnobArt() {
-        juce::Graphics face(enamel);
-        juce::ColourGradient purple(hex(0x28103F), 12, 4, hex(0x331052), 97, 39, false);
-        purple.addColour(0.50, hex(0x1D082E));
-        face.setGradientFill(purple);
-        face.fillRect(enamel.getBounds());
-        face.setColour(hex(0x4B245F));
-        face.fillRect(0, 0, enamel.getWidth(), 1);
-
-        // A bent strip of silver, pinched in the middle, with the violet underside showing.
-        juce::Graphics g(foil);
-        juce::Path ribbon;
-        ribbon.startNewSubPath(0.4f, 12.5f);
-        ribbon.cubicTo(10, 13, 10, 2, 18, 2);
-        ribbon.cubicTo(23, 2, 18, 12, 31.5f, 0.5f);
-        ribbon.cubicTo(22, 15, 17, 11, 17, 7);
-        ribbon.cubicTo(16, 4, 11, 15, 0.4f, 12.5f);
-        ribbon.closeSubPath();
-        juce::ColourGradient metal(hex(0x5F507D), 17, 1, hex(0xA28AB8), 19, 13, false);
-        metal.addColour(0.26, hex(0xCDCBD8));
-        metal.addColour(0.40, hex(0xF1F1F5));
-        metal.addColour(0.50, hex(0x514861));
-        metal.addColour(0.73, hex(0x9288A0));
-        g.setGradientFill(metal);
-        g.fillPath(ribbon);
-
-        juce::Path fold;
-        fold.startNewSubPath(8, 14.5f);
-        fold.cubicTo(16, 13, 18, 7, 27, 5);
-        fold.cubicTo(18, 10, 20, 14, 8, 14.5f);
-        fold.closeSubPath();
-        juce::ColourGradient silver(hex(0x55416F), 10, 13, hex(0xD9D3E5), 23, 8, false);
-        g.setGradientFill(silver);
-        g.fillPath(fold);
-    }
-};
-
-const ChromeKnobArt& chrome_knob_art() {
-    static const ChromeKnobArt art;
-    return art;
-}
-} // namespace
-
 // The Shift icon: an up arrow 7 px wide, hollow, or filled while Shift is held.
 void shift_mark(Paint& p, float x, float y, juce::Colour c, bool filled) {
     juce::Path arrow;
@@ -81,15 +31,24 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
         float x = zone::pad + n * (w + gap);
         using State = KnobCard::State;
         if (c.state == State::Idle) continue; // a pot with no job draws nothing: no empty box
-        const auto* art = palette().chrome_knobs ? &chrome_knob_art() : nullptr;
-        if (art) {
+        if (palette().contour_print) {
+            // A single soft reflection across the card, rasterised once at LCD size.
+            static const juce::Image violet = [] {
+                juce::Image face(juce::Image::RGB, int(w), int(h), false);
+                juce::Graphics g(face);
+                juce::ColourGradient wash(hex(0x221031), 4, h, hex(0x432054), w - 4, 0, false);
+                wash.addColour(0.50, hex(0x2D123F));
+                g.setGradientFill(wash);
+                g.fillRect(face.getBounds());
+                return face;
+            }();
             p.g.setOpacity(1.0f);
-            p.g.drawImageAt(art->enamel, int(x), int(top));
+            p.g.drawImageAt(violet, int(x), int(top));
         } else {
             p.fill(x, top, w, h, c.state == State::Turning ? colour::bg : colour::surf, 3);
         }
         if (c.state == State::Turning) {
-            const float tint = art ? 0.12f : 0x38 / 255.0f;
+            const float tint = palette().contour_print ? 0.045f : 0x38 / 255.0f;
             p.fill(x, top, w, h, c.track.withAlpha(tint), 3);
             p.ring(x, top, w, h, c.shade, 3);
         } else if (c.focus && c.state == State::Rest) {
@@ -124,16 +83,8 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
         float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, unit) + 3 : 0.0f);
         auto shown = p.fit(c.value, value, room, type::floor); // a long name shrinks to fit
         float vw = p.text(c.value, inner, low ? top + 23 : top + 15, room, low ? 16 : 22, shown);
-        float textEnd = inner + vw;
         if (c.unit.isNotEmpty())
-            textEnd += 3 + p.text(c.unit, inner + vw + 3, low ? top + 24 : top + 18, iw - vw - 3, low ? 15 : 20, unit);
-        if (art) {
-            int foilX = int(x + w) - 3 - art->foil.getWidth();
-            if (textEnd + 2 <= foilX) {
-                p.g.setOpacity(1.0f);
-                p.g.drawImageAt(art->foil, foilX, int(top) + (low ? 24 : 21));
-            }
-        }
+            p.text(c.unit, inner + vw + 3, low ? top + 24 : top + 18, iw - vw - 3, low ? 15 : 20, unit);
         // The gauge: a 2 px track with the value filled in the knob's shade.
         float gy = top + 40, fill = std::clamp(c.fill, 0.0f, 1.0f);
         p.fill(inner, gy, iw, 2, colour::line, 1);

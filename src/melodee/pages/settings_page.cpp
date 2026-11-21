@@ -122,7 +122,8 @@ void doors_draw(Paint& p, const Snapshot& s) {
     for (unsigned n = 0; n < doors.size(); ++n) {
         float x = zone::pad + (n % 4) * (w + gap), y = top + (n / 4) * (h + gap);
         bool on = n == s.ui.settings_door % doors.size();
-        p.fill(x, y, w, h, on ? colour::raised : colour::surf, 5);
+        if (on && palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(h));
+        else p.fill(x, y, w, h, on ? colour::raised : colour::surf, 5);
         if (on) p.fill(x, y, w, 2.5f, colour::text, 1);
         auto c = on ? colour::text : colour::mid;
         icon(p, doors[n].icon, x + w / 2 - 11, y + 12, 22, c, 1.5f);
@@ -146,7 +147,11 @@ void rows_draw(Paint& p, const Snapshot& s) {
         unsigned row = unsigned(d.rows[first + k]);
         float y = zone::picture_y + 1 + k * (list_row_h + list_row_gap);
         bool cursor = row == s.ui.settings_cursor;
-        if (cursor) { p.fill(x, y, w, list_row_h, colour::raised, 3); p.fill(x, y, 2.5f, list_row_h, colour::text, 1); }
+        if (cursor) {
+            if (palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(list_row_h));
+            else p.fill(x, y, w, list_row_h, colour::raised, 3);
+            p.fill(x, y, 2.5f, list_row_h, colour::text, 1);
+        }
         p.text(Settings::row_name(row), x + 10, y, w / 2, list_row_h, plain(cursor ? colour::text : colour::sec, type::list, cursor ? Weight::Medium : Weight::Regular));
         bool waits = s.ui.settings_wait_row == int(row); // K1 turned a row that waits for it to rest: that value, amber
         Settings shown = set;

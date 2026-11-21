@@ -152,7 +152,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (muted) { // kept, not played: hollow
             p.ring(x, y, w, hgt, on ? colour::text : c.withAlpha(0.6f), 2.5f, 1.0f);
         } else if (hits == 1) {
-            p.fill(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
+            p.note_block(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
         } else { // a ratchet: its hits along the note, each as strong as it plays (the ramp)
             float each = float(e.length) / float(hits) / float(q) * column;
             for (unsigned k = 0; k < hits; ++k) {
@@ -160,7 +160,7 @@ void draw(Paint& p, const Snapshot& s) {
                 if (hxe <= gutter || hx >= right + 1) continue;
                 hx = std::max(hx, gutter + 1);
                 float v = e.hit_velocity(e.velocity, k) / 127.0f;
-                p.fill(hx, y, std::max(hxe - hx, 1.0f), hgt, on ? colour::text : c.withAlpha(0.4f + v * 0.6f), 1.5f);
+                p.note_block(hx, y, std::max(hxe - hx, 1.0f), hgt, on ? colour::text : c.withAlpha(0.4f + v * 0.6f), 1.5f);
             }
         }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);

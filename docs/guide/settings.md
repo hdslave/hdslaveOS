@@ -114,9 +114,10 @@ and no shadows, in the font you chose. On LCD and MONO every track is drawn in
 the same ink, so a track shows by its number.
 
 HDSLAVE uses the font you chose, with square panels, lavender labels and a
-static deep-purple flare on black. The three knob cards are dark violet with a
-silver flourish beside the value where space allows. Track 1 is orchid, track 2 is acid yellow
-and recording is red. Step Edit marks each group of four with a lavender edge
+static deep-purple flare on black. Violet contour lines mark selected menu
+tiles and browser rows. The three knob cards shade from aubergine to violet.
+The active page tab uses reversed ink. Track 1 is orchid, track 2 is acid
+yellow and recording is red. Step Edit marks each group of four with a lavender edge
 and outlines the current step in amber. The other colour palettes keep track 1 coral. DAY and
 CANDY use darker track colours on their light screens. The pads keep their own
 colours in every palette.

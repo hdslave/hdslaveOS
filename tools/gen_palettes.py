@@ -207,19 +207,19 @@ def build_mono():
 
 
 def build_hdslave():
-    # Ultraviolet, orchid and chrome, broken up with a few acid inks. Knobs turn either side of
+    # Violet and orchid against warm paper-white, broken up with a few acid inks. Knobs turn either side of
     # their track's hue just as they do in shades.h. These inks belong to the screen alone.
     def shades(ink):
         lightness, chroma, hue = to_oklch(hexrgb(ink))
         return [ink] + [rgbhex(oklch_rgb(lightness, chroma, hue + math.radians(angle))) for angle in (-28, 28)]
 
-    tracks = [0xD294FF, 0xD7F75B, 0xAB91FF, 0xF199DA, 0x82BAFF, 0xFF789F, 0xB0E785, 0xDA7CFF,
+    tracks = [0xD398FF, 0xCEF855, 0xA69DFF, 0xF08DDA, 0x82BAFF, 0xFF789F, 0xB0E785, 0xDA7CFF,
               0x76CDD7, 0xE1C783, 0xF594BC, 0x96D9C1, 0x919FFF, 0xFF997B, 0xF582E9, 0xC1BBD4]
     loops = [0xA795FF, 0xCFED76, 0xF28DCA, 0x8BD3DF]
-    p = build("HDSLAVE", (2, 0, 4), (50, 33, 65), (247, 240, 255), 1.0, 0,
+    p = build("HDSLAVE", (2, 0, 4), (46, 27, 70), (249, 243, 246), 1.0, 0,
               [shades(c) for c in tracks], [shades(c) for c in loops])
-    p.update(quiet=hexrgb(0x22152F), panel=hexrgb(0x30203F), line=hexrgb(0x654B77),
-             sec=hexrgb(0xE0D0EE), mid=hexrgb(0xC2B0D2), dim=hexrgb(0x9F8DAE), accented_grid=True, chrome_knobs=True,
+    p.update(quiet=hexrgb(0x211333), panel=hexrgb(0x2D1A42), line=hexrgb(0x685080),
+             sec=hexrgb(0xE0D0EE), mid=hexrgb(0xC2B0D2), dim=hexrgb(0x9F8DAE), accented_grid=True, contour_print=True,
              rec=hexrgb(0xFF6975), amber=hexrgb(0xFFD473), play=hexrgb(0xC2F769), ice=hexrgb(0xA5DBFF))
     grounds = [p[k] for k in ("bg", "surf", "raised")]
     values = [p[k] for k in ("text", "rec", "amber", "play", "ice")]
@@ -277,7 +277,7 @@ def main():
              "    bool square; // square corners and no soft shadows (ui/tokens.h corner())",
              "    Backdrop backdrop;",
              "    bool accented_grid; // group steps in fours and lift the sequencer rules and ghost notes",
-             "    bool chrome_knobs; // purple enamel and a silver flourish on the three knob cards",
+             "    bool contour_print; // contour-printed panels, cut labels and two-ink notes",
              "};",
              "",
              f"constexpr std::array<PaletteSpec, {len(all_)}> palettes {{{{"]
@@ -288,7 +288,7 @@ def main():
         b = lambda v: "true" if v else "false"
         backdrop = "HdslaveFlare" if name == "HDSLAVE" else "None"
         lines.append(f"     {b(p['light'])}, {FACE.get(name, -1)}, {b(name in NO_COLOUR)}, {b(name in SQUARE)}, "
-                     f"Backdrop::{backdrop}, {b(p.get('accented_grid', False))}, {b(p.get('chrome_knobs', False))}}},")
+                     f"Backdrop::{backdrop}, {b(p.get('accented_grid', False))}, {b(p.get('contour_print', False))}}},")
         (w, which), tr = weakest(p)
         print(f"{name:9} weakest {which} {w:.2f}  tracks min {tr:.2f}")
     lines += ["}};", "",

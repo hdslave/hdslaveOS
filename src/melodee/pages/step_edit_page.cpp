@@ -146,13 +146,13 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
             unsigned hits = e.hits();
             if (hits == 1) {
                 float bh = 4 + 6 * e.velocity / 127.0f;
-                p.fill(x + 1.5f, cy - bh / 2, colw - 3, bh, ink_note, 2);
+                p.note_block(x + 1.5f, cy - bh / 2, colw - 3, bh, ink_note, 2);
                 continue;
             }
             float gap = 0.75f, hw = (colw - 3 - gap * (hits - 1)) / hits; // a ratchet: its hits side by side
             for (unsigned h = 0; h < hits; ++h) {
                 float bh = 4 + 6 * e.hit_velocity(e.velocity, h) / 127.0f;
-                p.fill(x + 1.5f + h * (hw + gap), cy - bh / 2, hw, bh, ink_note, 1);
+                p.note_block(x + 1.5f + h * (hw + gap), cy - bh / 2, hw, bh, ink_note, 1);
             }
         }
         if (step.empty()) continue;
