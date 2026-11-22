@@ -2668,7 +2668,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   files (`SysEx/` at the card's top, where older builds read them, too).
 
 Melodee makes no folder at the card's top: what it writes is under
-`Melodee/`. `autorun/` is the release's, which the stock firmware starts.
+`Melodee/`. `autorun/` is the release's, which the stock firmware starts;
+so is `autorun.sh` at the card's top, the only autorun firmware 1.4 runs
+(`base/install/top-autorun.sh`: it runs `autorun/autorun.sh`).
 
 Nothing is created on the card until something is saved. On a host,
 `$MELODEE_PROJECTS`, `$MELODEE_SAMPLES`, `$MELODEE_INTERNAL` and

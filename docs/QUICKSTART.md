@@ -18,32 +18,37 @@ plug-in instrument. For every page and control, read the
 
 You need:
 
-- An Akai MPC Sample with firmware **1.3.0.12**. On any other firmware
-  Melodee does not start and the stock app keeps running.
+- An Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any
+  other firmware Melodee does not start and the stock app keeps running.
+- On firmware 1.4: **Developer Mode** on, in the stock app's Settings on
+  the **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
 - The release zip, `Melodee-MPC-Sample-<version>.zip`.
 
-The zip holds one folder, `autorun`. Its `README.txt` and the licences are
-inside it, in `autorun/melodee/`.
+The zip holds the `autorun` folder and an `autorun.sh` file. The
+`README.txt` and the licences are in `autorun/melodee/`.
 
 To install Melodee:
 
 1. Back up the card. If it has an `autorun` folder at its top level, move
    that folder somewhere safe. Melodee's `autorun` folder replaces it.
-2. Unzip the release and copy the `autorun` folder to the top level of the
-   card. The card now has `autorun/autorun.sh` and `autorun/melodee/`. Do
-   not edit or rename anything inside `autorun`: the MPC does not start an
-   autorun whose files have changed.
+2. Unzip the release and copy the `autorun` folder and `autorun.sh` to
+   the top level of the card. The card now has `autorun.sh`,
+   `autorun/autorun.sh` and `autorun/melodee/`. Do not edit or rename
+   anything inside them: the MPC does not start an autorun whose files
+   have changed.
 3. Optional: to use plug-ins, make a folder named `Plugins` inside the
    `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
    into it. A plug-in's release zip can go in as it is: Melodee unzips it
    the next time the plug-in picker opens. See
    [Plug-ins](guide/plug-ins.md) for what runs.
-4. Put the card in the MPC and switch it on. The stock app starts first. A
-   few seconds later Melodee starts, with a new project open on track 1.
+4. Put the card in the MPC and switch it on. The stock app starts first.
+   On firmware 1.4 it asks whether to run the card's autorun script: press
+   Yes. A few seconds later Melodee starts, with a new project open on
+   track 1.
 
 Melodee changes nothing on the MPC itself. To stop it from starting, delete
-the `autorun` folder from the card.
+the `autorun` folder and `autorun.sh` from the card.
 
 While Melodee runs, connect the MPC to a computer with USB-C and open
 **http://melodee.local** in a browser. The page installs plug-ins and

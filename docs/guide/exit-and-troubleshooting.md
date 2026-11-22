@@ -24,12 +24,16 @@ or else the last project you opened or saved.
 
 ## Troubleshooting
 
-**Melodee does not start.** Check that the MPC has firmware 1.3.0.12 and
-that the `autorun` folder is at the top level of the card, with its files
-unchanged.
+**Melodee does not start.** Check that the MPC has firmware 1.3.0.12 or
+1.4.0.7, and that the `autorun` folder and `autorun.sh` are at the top
+level of the card, with their files unchanged. On firmware 1.4, Developer
+Mode must be on (stock app Settings, **DEV ENHANCEMENTS (BETA)**), and the
+stock app asks before it runs the card's autorun script: press Yes.
 
 **The stock app came back.** If Melodee crashes or fails to start, the
 stock app starts instead. Switch the MPC off and on to start Melodee again.
+On firmware 1.4 the stock app asks to run the card's autorun script each
+time it starts: press Yes to start Melodee again.
 A crash writes a report to `Melodee/Crashes` on the card, one file a crash,
 with the last buttons pressed and the pages they were on. Add it when you
 report the problem.

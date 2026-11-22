@@ -51,9 +51,11 @@ class ReleaseTests(unittest.TestCase):
             make_release.scan(name, data)
         self.assertIn(b"v0.1.0-alpha.1", self.collect()["autorun/melodee/README.txt"])
 
-    def test_zip_is_the_autorun_folder_alone(self):
+    def test_zip_is_the_autorun_folder_and_the_top_autorun(self):
         files = self.collect()
-        self.assertEqual({name.split("/")[0] for name in files}, {"autorun"})
+        self.assertEqual({name.split("/")[0] for name in files}, {"autorun", "autorun.sh"})
+        # Firmware 1.4 runs only an autorun.sh at the card's top: it runs the folder's.
+        self.assertEqual(files["autorun.sh"], (ROOT / "base/install/top-autorun.sh").read_bytes())
         self.assertIn("autorun/melodee/licenses/LICENSE-AGPL-3.0.txt", files)
         self.assertIn(b"MIT License", files["autorun/melodee/licenses/ellic-core-LICENSE.txt"])
 
@@ -81,7 +83,9 @@ class ReleaseTests(unittest.TestCase):
             with mock.patch.object(make_release, "public_key", return_value=public.read_text()):
                 signed = make_release.sign(dict(files), key)
             listing = signed["autorun/melodee/RELEASE.sha256"].decode().splitlines()
-            self.assertEqual([line.split("  ")[1] for line in listing], sorted(files))
+            # Every file but the top autorun.sh, which the update installer of earlier releases would refuse.
+            self.assertEqual([line.split("  ")[1] for line in listing], sorted(set(files) - {"autorun.sh"}))
+            self.assertTrue(all(line.split("  ")[1].startswith("autorun/") for line in listing))
             for line in listing:
                 digest, name = line.split("  ")
                 self.assertEqual(hashlib.sha256(files[name]).hexdigest(), digest)

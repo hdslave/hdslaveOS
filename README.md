@@ -86,8 +86,10 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Requirements
 
-- Akai MPC Sample with firmware **1.3.0.12**. On any other firmware Melodee
-  does not start and the stock app keeps running.
+- Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any other
+  firmware Melodee does not start and the stock app keeps running.
+- On firmware 1.4: **Developer Mode** on, in the stock app's Settings on the
+  **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
 
 ## Install
@@ -96,10 +98,16 @@ page and control, read the [user guide](docs/GUIDE.md).
    [Releases](https://github.com/keremimo/melodee-sample/releases).
 2. Back up the card. If the card already has an `autorun` folder at its top
    level, move it somewhere safe.
-3. Unzip it. The zip holds one folder, `autorun`. Copy that folder to the
-   top level of the card. Do not edit or rename anything inside it.
+3. Unzip it. The zip holds the `autorun` folder and an `autorun.sh` file.
+   Copy both to the top level of the card. Do not edit or rename anything
+   inside them.
 4. Put the card in the MPC and switch it on. The stock app starts first.
-   A few seconds later Melodee starts.
+   On firmware 1.4 it asks whether to run the card's autorun script: press
+   Yes. A few seconds later Melodee starts.
+
+On firmware 1.4, Screen Mirror is not available and Melodee runs at
+44.1 kHz only: the firmware no longer lets apps load their own kernel
+drivers, and its audio driver takes 44.1 kHz alone.
 
 The [quickstart](docs/QUICKSTART.md) has the full steps, with screenshots.
 
