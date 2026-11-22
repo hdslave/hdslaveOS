@@ -10,4 +10,4 @@ print(' '.join(test_melodee.SOURCES))
 PY
 )
 mkdir -p build/hosttest
-c++ -std=c++17 ${OPT:--O2} ${EXTRA:-} -Wall -Wextra -Werror -Isrc -Ibase/src tests/melodee.cpp $SOURCES -o ${OUT:-build/hosttest/melodee}
+c++ -std=c++17 ${OPT:--O2} ${EXTRA:-} -Wall -Wextra -Werror -Isrc -Icore/src -Ibase/src tests/melodee.cpp $SOURCES -o ${OUT:-build/hosttest/melodee}
