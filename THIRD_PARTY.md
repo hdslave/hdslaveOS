@@ -47,6 +47,11 @@ Melodee's engine, model and shared files come from ellic-core
 `licenses/ellic-core-LICENSE.txt`; its own `THIRD_PARTY.md` lists its
 sources.
 
+hdslaveOS builds the core from the `hdslave` branch of its fork,
+https://github.com/hdslave/ellic-core: ellic-core with this fork's engine
+changes (the speed passes, resting effect chains, the empty-track solo fix and
+the plug-in key port), under the core's MIT licence.
+
 ## JUCE
 
 JUCE 9.0.5, Raw Material Software Limited, pinned commit
