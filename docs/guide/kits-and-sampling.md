@@ -310,6 +310,9 @@ to go back to **TRIM**. Chop does not work on a sampled instrument.
 
 Every cut lands on a zero crossing, so slices do not click.
 
+A slice's pad plays it with the chopped pad's tuning and Warp, as it plays
+once it is on a pad. A Manual take plays the sample at its own speed.
+
 With more than 16 slices, the pads show the bank of the selected slice. The
 bank lights and the header (**BANK B**) show which. Selecting a slice with
 **−** / **+** moves the pads to its bank.
@@ -437,7 +440,9 @@ land just next to a hand cut, the hand cut wins and no sliver is left.
 
 **B1** (**BACK**) closes the sheet. MONO, THRU and KIT's hats use the chopped
 pad's mute group, or the first free one. Slices put on pads keep the chopped pad's
-tune, Warp, mute group and other settings.
+tune, Warp, mute group and other settings. With Warp on Seq and a number of
+beats set, each slice keeps the tempo those beats give the chopped pad, so it
+plays at the same speed.
 
 The **PATTERN** card turns the pattern on or off (push the encoder on it).
 When it is on, TO PADS also writes a pattern with a note for each slice where

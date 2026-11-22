@@ -11394,7 +11394,7 @@ void mpc_chop_hits() {
         const auto& e = p.events[n];
         CHECK(e.slice == slices[n] && unsigned(e.slice - 1) < chop.count);
         // What the sampler plays for it (SamplerEngine::hit): the pad over that slice, not 1790..987775.
-        const auto played = slice_sound(pad, chop.start[size_t(e.slice - 1)], chop.stop[size_t(e.slice - 1)]);
+        const auto played = slice_sound(pad, chop.start[size_t(e.slice - 1)], chop.stop[size_t(e.slice - 1)], 0);
         CHECK(played.start == atem[e.slice - 1][0] && played.end == atem[e.slice - 1][1]);
         CHECK(note_slice(pad_note(int(e.key), 0, -1, e.slice - 1)) == e.slice - 1);
     }
