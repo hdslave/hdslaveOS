@@ -158,10 +158,15 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     auto keep = ui.pots;
     auto settings = ui.settings; // Melodee's own: they belong to no project
     auto pads_down = ui.held_pads; // the hand on the pads stays where it is
+    // The browser's rows, cursor and drive: the library's folder in view, which a project does not change. The shell
+    // copies them in only when the listing changes, so a new UiState would show an empty folder until then.
+    const auto files_cursor = ui.files_cursor, files_count = ui.files_count;
+    const auto files_drive = ui.files_drive;
     ui = UiState {};
     ui.pots = keep;
     ui.held_pads = pads_down;
     ui.settings = settings;
+    ui.files_cursor = files_cursor; ui.files_count = files_count; ui.files_drive = files_drive;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
     edits.clear();                            // its edits were made to another project
     chain_lead = -1;                          // and its chain of sequences
@@ -287,6 +292,7 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
+    if (page != ui.page && ui.page == PageId::Chop) for (unsigned n = 0; n < 16; ++n) slice_release(n); // and a slice hit held (issue 24)
     if (page != ui.page && page == PageId::Sends) ui.sends_pads = false; // SENDS opens on the tracks (B2 again: a kit's pads)
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
@@ -509,6 +515,7 @@ void Context::record(int key, int velocity, int cutoff) {
     Event e;
     e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
     if (cutoff >= 0 && track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // roadmap P3
+    if (note_slice(key) >= 0 && track().engine == EngineKind::Sampler) e.slice = uint8_t(note_slice(key) + 1); // issue 24: a slice hit
     if (!p.add(e)) { notice("Pattern full"); return; }
     sync_pattern(ui.track, track().pattern);
     if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }
@@ -527,7 +534,7 @@ void Context::record_release(int key) {
         if (!host.heard_place(h.track, hit_ns, position, ticks)) ticks = host.ticks();
         int32_t held = int32_t(ticks - h.since); // let go before the first tick (an early hit): the shortest
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
-            if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8)) {
+            if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8) && p.events[n].slice == uint8_t(note_slice(key) + 1)) {
                 p.events[n].length = uint16_t(std::clamp<int32_t>(held, 1, 65535));
                 sync_pattern(h.track, h.pattern);
                 break;
@@ -549,7 +556,7 @@ void Context::load_sound(unsigned t, EngineKind kind, unsigned sound) {
     const auto& info = engine_info(kind);
     const UserSound* own = sound >= info.sound_count ? user_sound(kind, sound - info.sound_count) : nullptr;
     if (own) { // a sound of one's own: its values and routes, as saved
-        tr.engine = kind; tr.preset = uint16_t(sound); tr.params = own->params; tr.mods = own->mods; tr.set_name(own->name);
+        tr.engine = kind; tr.preset = uint16_t(sound); tr.params = own->params; tr.mods = own->mods; tr.name_from(own->name);
         if (engine_changed) send({Type::Engine, uint8_t(t), 0, uint16_t(kind), 0});
         for (unsigned p = 0; p < info.param_count; ++p) send({Type::Param, uint8_t(t), 0, uint16_t(p), tr.params[p]});
         for (unsigned r = 0; r < mod_routes; ++r) { Command c {Type::Mod, uint8_t(t), 0, uint16_t(r)}; c.route = tr.mods[r]; send(c); }
@@ -824,13 +831,16 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopMode: // the same type again (a pot's noise): nothing, the cuts as they are
         if (ChopMode(value) == ui.chop_mode) break;
-        ui.chop_mode = ChopMode(value); rechop();
-        ui.settings.chop_mode = uint8_t(value); // the next sample with no chop of its own opens on it
-        settings_save_at = std::max<uint32_t>(now, 1) + 1000; // K3 turns in steps: the card gets the last
+        chop_change(0, [this, value] { // slice hits on any slice: asked first (issue 24)
+            ui.chop_mode = ChopMode(value); rechop();
+            ui.settings.chop_mode = uint8_t(value); // the next sample with no chop of its own opens on it
+            settings_save_at = std::max<uint32_t>(now, 1) + 1000; // K3 turns in steps: the card gets the last
+        });
         break;
     case Kind::ChopAmount:
         if (ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] == value) break;
-        ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); break;
+        chop_change(0, [this, value] { ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); });
+        break;
     case Kind::ChopStart: case Kind::ChopEnd: { // a cut moved by hand: it stays through a new chop by type or amount (in frames)
         auto was = chop_view(project, ui);
         uint32_t frames = chop_frames(project, ui), at = std::min(uint32_t(value), frames);
@@ -953,6 +963,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
     case Kind::SceneTempo: set_scene_tempo(unsigned(b.id), value * 10); break; // Patterns' SCENE: below 30, none of its own
+    case Kind::SceneColour: set_scene_colour(unsigned(b.id), value); break;
     case Kind::AutoLow: case Kind::AutoHigh: case Kind::AutoStep: case Kind::AutoLayers: case Kind::AutoHold: case Kind::AutoTail:
     case Kind::AutoTap: case Kind::AutoLoop: case Kind::AutoLevel: auto_sheet_set(b.kind, value); break; // shell/auto_sample.cpp
     case Kind::PrintTapPick: ui.print_sheet.tap = value ? PrintTap::PreFx : PrintTap::PostFx; break; // freeze plan F2c
@@ -1170,7 +1181,7 @@ void Context::finish_name() {
     case NameTarget::Sound: {
         auto& t = track();
         if (!store || t.engine == EngineKind::None || t.sampled()) break;
-        t.set_name(text.c_str());
+        t.name_from(text.c_str());
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
         break;
     }
@@ -1183,6 +1194,19 @@ void Context::finish_name() {
     }
     case NameTarget::Mixdown: mixdown(text); break;
     case NameTarget::Scene: project.scenes[name_scene_at % pattern_count].set_name(text.c_str()); dirty = true; break; // roadmap P5
+    case NameTarget::Track: { // one undo step: the name alone, nothing sent to the engine
+        auto& tr = project.tracks[name_track_at % track_count];
+        if (!tr.used()) break;
+        auto name_of = [&] { auto n = std::make_unique<TrackName>(); std::copy(tr.name, tr.name + name_length, n->text); n->named = tr.named; return n; };
+        Edit edit = begin_edit(("Name track " + std::to_string(name_track_at % track_count + 1)).c_str(), name_track_at, -1, false);
+        edit.name_before = name_of();
+        tr.set_name(text.c_str());
+        tr.named = true;
+        edit.name_after = name_of();
+        edits.push(std::move(edit));
+        dirty = true;
+        break;
+    }
     case NameTarget::None: break;
     }
 }
@@ -1229,6 +1253,8 @@ void Context::set_step(unsigned t, unsigned at, const Step& value) {
 void Context::free_retired() {
     Pattern* old = nullptr;
     while (host.take_retired_pattern(old)) delete old;
+    const Slices* chop = nullptr; // a sample's chop a newer one replaced (issue 24)
+    while (host.take_retired_chop(chop)) delete chop;
 }
 
 void Context::sync_pattern(unsigned t, unsigned p) {
@@ -1610,6 +1636,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (e.chain >= 0 && chain) restore_chain(unsigned(e.chain), *chain);
     if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
     if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
+    if (const auto& m = after ? e.name_after : e.name_before) { auto& tr = project.tracks[e.track % track_count]; tr.set_name(m->text); tr.named = m->named; }
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
     if (e.pattern_was >= 0 && e.pattern >= 0) { // the pattern it played before, or the one the edit made it play
@@ -1910,6 +1937,10 @@ void Context::chop_to_pads(SlicePlay play, bool with_pattern) {
     const uint8_t group = slice_group(parent, t.pads); // MONO and THRU: one at a time; KIT: the hats
     std::array<int, max_slices> keys; // each slice's note, for the pattern
     keys.fill(-1);
+    // A Seq Record take ends first, as Undo ends it: kept open, it would go into the history after this step, with the
+    // slices' pattern in it, and Undo would take the pattern back and leave the pads.
+    if (ui.recording) set_recording(false);
+    end_take(); // and a Chop take
     Edit edit = begin_edit("Slices to pads", ui.track, -1, false); // one undo: the pads, the pattern and which plays
     auto lay = [&](unsigned pad, const PadSound& one) {
         edit.pads_before.emplace_back(uint8_t(pad), pad_state(t, pad));

@@ -18,6 +18,7 @@ as MIDI passes.
 | Track channel | Off or 1–16: the selected track's own channel. It plays that track whichever track is selected, and the track's notes go out on it. |
 | Track MIDI in | Where the track's own channel is heard: Any, External or USB |
 | Pad MIDI in | On or off: whether notes and pressure in play the tracks |
+| Scale on white keys | On or off. On a Scale or Chords track, the white keys play the scale with the root on C4, and the black keys play nothing. See [Play the scale on the white keys](#play-the-scale-on-the-white-keys). |
 | Pad MIDI out | Never, Always or Empty (only pads and tracks with no sound of their own send notes) |
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
@@ -58,7 +59,10 @@ as MIDI passes.
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
 - **MIDI out**: pads, patterns, the arpeggiator, MIDI clock (with Start,
-  Continue, Stop and Song Position), MTC and the CV clock.
+  Continue, Stop and Song Position), MTC and the CV clock. What you play
+  (pads, keys, MIDI in, the fader, knobs) goes out at once. Patterns, the
+  arpeggiator and the clocks go out as their sound is heard, so outside
+  gear plays in time with Melodee's own tracks.
 
 ## Using a MIDI controller
 
@@ -99,6 +103,20 @@ The MPC's USB-C port is for a computer; a controller cannot plug into it.
 
 On **Step Edit**, each key writes a note at the caret. On **Roll**, a key
 writes at the cursor.
+
+#### Play the scale on the white keys
+
+1. Hold **SAMPLE** on an instrument track to see **Keys**. Set the root
+   with **K1**, the scale with **K2** and the layout to **Scale** or
+   **Chords** with **K3**.
+2. On **MIDI Config**, set **Scale on white keys** to **On**.
+3. Play the white keys. C4 plays the root, D4 the second note of the
+   scale, and so on. The black keys play nothing.
+
+In a scale of seven notes, every C plays the root. A scale with fewer or
+more notes, such as Minor pent, goes on up the white keys one note a key.
+With the Chromatic scale, every key plays as it is. Kits, and tracks on
+the Chromatic, Drums or Prog layout, are not changed.
 
 ### Example 2: keys on a synth track, pads on a kit
 

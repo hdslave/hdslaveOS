@@ -48,7 +48,7 @@ struct LoadedSample;
 class Context {
 public:
     Context(Project& project, PatternBank& patterns, UiState& ui, EngineHost& host)
-        : project(project), patterns(patterns), ui(ui), host(host) { edits.gate = &Context::edit_gate; edits.gate_owner = this; }
+        : project(project), patterns(patterns), ui(ui), host(host) { edits.gate = &Context::edit_gate; edits.gate_owner = this; edits.clock = &now; }
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
     Project& project;
@@ -290,7 +290,9 @@ public:
     // Shift + pad, or a pad on SCENES), and patterns' follow actions (model/follow.h; the audio thread brings them).
     void launch_scene(unsigned scene, bool quiet = false); // pattern `scene` on every used track: a sequence (shell/sequences.h); quiet: no notice (the chain)
     void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
+    void set_scene_colour(unsigned scene, int colour); // 0 none, 1-16 a track colour (issue 19)
     void name_scene(unsigned scene);                  // the Name sheet
+    void name_track(unsigned t);                      // the Name sheet: a name of its own, kept when its sound changes
     void clear_scene(unsigned scene);
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
     void follow_to_column();                          // and onto every track's pattern in its column, one undo
@@ -299,6 +301,7 @@ public:
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
     uint8_t name_scene_at = 0;
+    uint8_t name_track_at = 0;
     // Roadmap P5 (shell/scene_jobs.cpp): the song's tempo lane, a point at `bar` (0 tenths: none there), its shape.
     void set_song_tempo(unsigned bar, int tenths);
     void set_song_tempo_shape(unsigned bar, bool ramp);
@@ -553,6 +556,20 @@ public:
     void rechop();                                                     // Chop's slices from its type and amount
     Slices type_chop(bool* capped = nullptr) const;                    // what the type and amount cut now (no hand cuts)
     void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
+    // Issue 24, slice hits (model/slice_hits.h). Chop's pads while Seq Record runs: the slice played through its pad and
+    // written as the pad's note with the slice's number; let go, as long as it was held. False: not recording (or no
+    // pad of the track holds Chop's sample), the pad auditions as ever.
+    bool slice_hit(unsigned pad, unsigned slice, uint8_t velocity);
+    void slice_release(unsigned pad);
+    std::array<int32_t, 16> chop_held {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; // each pad's slice hit, held
+    int chop_kit_pad() const;                                          // the kit pad slice hits on Chop's sample play (-1 none)
+    const Slices& live_chop(unsigned sample) const;                      // a sample's chop as slice hits play it: Chop's own while it holds it
+    SlotTable<Slices> chops_sent;                                      // each sample's chop as the audio thread holds it
+    void sync_chops();                                                 // the chops that changed since, to the audio thread
+    // 3b: a change of Chop's slices from slice `first` on (another type or amount, Split, Merge, Erase) that slice hits
+    // on those slices would hear asks first (Ask::Rechop), once a visit to Chop; else it is made at once.
+    void chop_change(unsigned first, std::function<void()> change);
+    std::function<void()> chop_pending;                                // the change the question waits to make
     void chop_tick(uint32_t ms);                                       // Chop: a take played out ends; a moved cut heard once
     void chop_jump(int delta);                                         // Chop: SHIFT + wheel, the cut onto the next hit
     void chop_erase(unsigned slice);                                   // Chop: Erase + pad, Erase: the slice joins its neighbour
@@ -605,15 +622,17 @@ public:
     void resample_pad(unsigned kit);                      // the pad: the pattern rendered onto it
     void resample_song(unsigned kit);                     // roadmap P3: Resample on Song, the song rendered onto the pad
     void mixdown(const std::string& name);                // Song's export, Audio mixdown, after the Name sheet
-    void export_mpc3(const std::string& name);            // Song's export, MPC 3 project (shell/song_export.cpp)
-    // The MPC 3 export waits for its plug-in tracks' prints: `mpc3_pending` a bit a track still to print (one job a
-    // track, as the print engine takes them), `mpc3_printing` the track whose job runs (-1 none), then mpc3_tick()
-    // hands the project, its prints in, to the export once the last result is in.
-    std::string mpc3_name;
-    uint32_t mpc3_pending = 0;
-    int mpc3_printing = -1;
-    bool mpc3_waiting = false;
-    void mpc3_tick();
+    // Song's export, an MPC 3 project or an Ableton Live Set (`live`), after the Name sheet (shell/song_export.cpp).
+    void export_project(const std::string& name, bool live);
+    std::vector<uint8_t> export_bytes(unsigned& left);    // the project to export, slice hits laid on free pads (issue 24)
+    // Both wait for their plug-in tracks' prints: `export_pending` a bit a track still to print (one job a track, as
+    // the print engine takes them), `export_printing` the track whose job runs (-1 none), then export_tick() hands
+    // the project, its prints in, to the export once the last result is in.
+    std::string export_name;
+    uint32_t export_pending = 0;
+    int export_printing = -1;
+    bool export_waiting = false, export_live = false;
+    void export_tick();
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;
     uint32_t render_since = 0;

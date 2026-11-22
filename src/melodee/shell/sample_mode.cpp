@@ -87,7 +87,7 @@ void chop_button(Context& c) {
     auto& ui = c.ui;
     if (ui.shift) { c.toggle_note_on(); return; } // Note On, as printed
     if (ui.page == PageId::Chop) { // Erase + Chop: every cut out (one undo step); else back to Trim
-        if (ui.erase) c.chop_clear();
+        if (ui.erase && ui.slices.count > 1) c.chop_change(0, [&c] { c.chop_clear(); }); // slice hits on any slice: asked first (issue 24)
         else c.open(PageId::Trim);
         return;
     }
@@ -104,6 +104,7 @@ void chop_button(Context& c) {
             c.rechop();
         }
     }
+    ui.chop_rechop_ok = false; // a new visit: a change under slice hits asks again (issue 24)
     c.open(PageId::Chop);
 }
 

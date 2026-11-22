@@ -20,7 +20,7 @@ Previous: [Exit and troubleshooting](exit-and-troubleshooting.md) · [Contents](
 | **SAMPLE SELECT** | Sample browser on a kit or keygroup track, plug-in picker on a plug-in track, sounds on a MIDI track. Again: closes it. | Save Sample. On the browser: Save Bank. On a MIDI track: Save sound. |
 | **TAP TEMPO** | Tap tempo. Held + encoder: the tempo. Held alone: Tempo page; held again there: closes it. | Metronome Off, On, Rec |
 | Encoder push | Open, or next card (acts when let go). Held: the Menu. | Back |
-| **−** / **+** | Octave, bank, or list | Undo / redo |
+| **−** / **+** | Octave, bank, or list | Undo / redo. Hold **SHIFT** + **−**: the undo list. |
 | **SAMPLE RECORD** | On a kit: record onto a pad. On a keygroup, plug-in or MIDI track: the PRINT sheet. On an audio track: its **INPUT**. With **SEQ** held: freeze patterns. | Audio Recall |
 | **SEQ RECORD** | Arm or stop recording | Recall |
 | **STOP** | Stop. Again while stopped: all notes off. | All notes off |

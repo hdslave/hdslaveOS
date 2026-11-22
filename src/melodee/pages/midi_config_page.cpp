@@ -6,7 +6,8 @@
 // (External jacks or USB), In channel (All or 1-16: what plays the selected
 // track), Out channel, Melodee's Track Channel (the selected track's own:
 // notes on it play that track wherever you are, and its notes go out on it),
-// Track MIDI In (where that channel is heard: Any port, External, USB), Pad MIDI In, Pad MIDI Out (Never, Always,
+// Track MIDI In (where that channel is heard: Any port, External, USB), Pad MIDI In, Scale on white keys (on the
+// Scale and Chords layouts a keyboard's white keys play the scale, shell/scale_keys.h), Pad MIDI Out (Never, Always,
 // Empty), Sync In and Out (Off, MIDI Clock, MTC), Thru, Receive Program Change (patterns), the Remote rows (a
 // channel, and the CCs that select a track, launch a pattern or a scene by their value), CV/Sync Out with
 // its Base and Division (pulses a quarter: base x division), the three

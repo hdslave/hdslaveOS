@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/history_list.h"
+#include "melodee/shell/sample_lists.h"
 #include "melodee/shell/controls_rules.h"
 #include "melodee/shell/usage_log.h"
 #include "melodee/shell/stage_map.h"
@@ -9,6 +11,7 @@
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/delete_jobs.h"
+#include "melodee/shell/live_export.h"
 #include "melodee/shell/mpc3_export.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/model/progression.h"
@@ -103,7 +106,7 @@ void starter_project(Project& project, PatternBank& patterns) {
     drum_kit(project, 5);                                   // drums, with a beat
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
     project.tracks[2].octave = 4; project.tracks[3].octave = 4;
-    patterns = PatternBank {};
+    patterns.clear();
     auto note = [](Pattern& p, unsigned step, uint8_t key, uint8_t velocity, unsigned length) {
         Event e;
         e.tick = step * sixteenth_ticks; e.length = uint16_t(length * sixteenth_ticks); e.key = key; e.velocity = velocity;
@@ -534,7 +537,7 @@ void audio_scene(Snapshot& s, bool take) {
     auto& t = s.project.tracks[12];
     t = Track {};
     t.engine = EngineKind::Audio; t.set_name("VOX");
-    t.audio.source = InputSource::Mic; t.audio.monitor = TrackMonitor::On;
+    t.audio.source = InputSource::Mic; t.audio.monitor = TrackMonitor::Auto;
     const unsigned bar = s.project.bar_ticks();
     s.pattern = Pattern {};
     s.pattern.length = 2 * bar;
@@ -851,6 +854,14 @@ struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
 };
+
+// The browser at the card's Samples folder: STARRED and RECENT lead it (shell/sample_lists.h).
+void preview_lists(Snapshot& s, unsigned starred, unsigned recent) {
+    SampleFile star, last;
+    star.path = starred_list; star.name = "STARRED"; star.folder = true; star.list = 1; star.where = std::to_string(starred);
+    last.path = recent_list; last.name = "RECENT"; last.folder = true; last.list = 2; last.where = std::to_string(recent);
+    s.files.push_back(star); s.files.push_back(last);
+}
 
 const Preview previews[] {
     {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1, a synth plug-in: B1 MIX
@@ -1281,6 +1292,17 @@ const Preview previews[] {
          s.ui.auto_sheet.track = 11; s.ui.auto_sheet.row = 2;
          s.take.left = 0.25f; s.take.right = 0.18f;
      }},
+    // The run failed: the input clipped on G#3, kept on the sheet, the key in amber.
+    {"autosamplemidiclip", [](Shell&, Snapshot& s) {
+         stage_midi(s, 0, 0);
+         s.project.tracks[11].params[midi_track::AudioIn] = midi_track::AudioUsb;
+         s.ui.page = PageId::AutoSample;
+         s.ui.auto_sheet = UiState::AutoSheet {};
+         s.ui.auto_sheet.track = 11; s.ui.auto_sheet.row = 0;
+         s.ui.auto_sheet.settings.low = 36; s.ui.auto_sheet.settings.high = 96; s.ui.auto_sheet.settings.step = 2;
+         std::snprintf(s.ui.auto_sheet.error, sizeof(s.ui.auto_sheet.error), "%s", "G#3 clips");
+         s.ui.auto_sheet.error_key = 56;
+     }},
     {"autosamplemidinone", [](Shell&, Snapshot& s) {
          stage_midi(s, 0, 0);
          s.ui.page = PageId::AutoSample;
@@ -1575,14 +1597,51 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
      }},
-    {"samples", [](Shell&, Snapshot& s) { // the browser on the card: folders first, then files
-         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 3; s.sample_root = "/media/card/Melodee/Samples";
+    {"history", [](Shell&, Snapshot& s) { // Shift + Minus held: the undo list, two steps undone above NOW, the cursor three below
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
+         s.now = 3600000;
+         struct Row { const char* what; uint8_t track; uint32_t ago; HistoryKind kind; };
+         const Row rows[] {{"Take", 2, 20000, HistoryKind::Pattern}, {"Pitch A05", 3, 70000, HistoryKind::Pad},
+                           {"Load BREAK", 3, 130000, HistoryKind::Pad}, {"Slices to pads", 3, 250000, HistoryKind::Pattern},
+                           {"Delete A05", 3, 370000, HistoryKind::Pad}, {"Copy A01 to A02", 3, 420000, HistoryKind::Pad},
+                           {"New track", 2, 560000, HistoryKind::Track}};
+         for (const auto& r : rows) s.history.push_back({r.what, r.track, s.now - r.ago, r.kind});
+         s.history_redos = 2;
+         s.ui.history = true; s.ui.history_row = 5; // UNDO 3
+     }},
+    {"samples", [](Shell&, Snapshot& s) { // the browser on the card: STARRED and RECENT, folders, then files
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Melodee/Samples";
          s.files_folder = s.sample_root; s.files_top = false;
+         preview_lists(s, 12, 16);
          for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name, name, 0, true});
          const char* files[] {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"};
          for (auto name : files) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
-         s.files[4].path = s.project.samples[4].path;
+         s.files[6].path = s.project.samples[4].path;
+         s.files[5].starred = true;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"samplesstar", [](Shell&, Snapshot& s) { // Shift held on the browser: B3 STAR, its LED lit on a starred file
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 2; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = s.sample_root + "/Loops"; s.files_top = false;
+         for (auto name : {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"}) s.files.push_back({s.files_folder + "/" + name + ".wav", name, 0, false});
+         s.files[2].starred = true; s.files[4].starred = true;
+         s.ui.files_count = uint16_t(s.files.size());
+         s.ui.shift = true; s.ui.shift_used = true;
+     }},
+    {"samplesrecent", [](Shell&, Snapshot& s) { // RECENT: the last files loaded, newest first, each with its folder
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 0; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = recent_list; s.files_top = false;
+         struct Row { const char* name; const char* where; bool starred; };
+         const Row rows[] {{"KICK 909", "Drums", false}, {"BASS LOOP", "Loops", true}, {"VOX CHOP 3", "Edits", false},
+                           {"BREAK", "Samples", false}, {"RHODES C3", "Keys", false}, {"CLAP WIDE", "Drums", true}};
+         for (const auto& r : rows) {
+             SampleFile f;
+             f.path = std::string("/media/card/Melodee/Samples/") + r.where + "/" + r.name + ".wav"; f.name = r.name;
+             f.where = r.where; f.starred = r.starred;
+             s.files.push_back(f);
+         }
+         s.files[3].path = s.project.samples[4].path; // on a pad of this kit
+         s.ui.files_count = uint16_t(s.files.size());
      }},
     {"samplesdelete", [](Shell&, Snapshot& s) { // Erase on a row of the browser: the question (shell/delete_jobs.h), B3 DELETE
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Melodee/Samples";
@@ -1938,6 +1997,11 @@ const Preview previews[] {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.export_kind = 5;
          s.ui.name.start(NameTarget::Mixdown, "Project 1", 31, false);
      }},
+    {"songlive", [](Shell&, Snapshot& s) { // Export with the wheel on LIVE SET: an Ableton Live Set
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 0; s.ui.song_export = true; s.ui.export_kind = export_kinds::live;
+         Clip clip; clip.track = 2; clip.pattern = 0; clip.bar = 0; clip.bars = 16;
+         s.project.song.place(clip);
+     }},
     {"mixdownname", [](Shell&, Snapshot& s) { // Export, B2: the mixdown's name
          s.ui.page = PageId::Song; s.ui.track = 2;
          s.ui.name.start(NameTarget::Mixdown, "Project 1", 31, false);
@@ -1956,8 +2020,27 @@ const Preview previews[] {
      }},
     {"filesheetscroll", [](Shell&, Snapshot& s) { // turned to the last card: the rows scrolled, DELETE asking again
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
-         s.ui.sheet_row = 7; s.ui.delete_armed = true;
+         s.ui.sheet_row = 8; s.ui.delete_armed = true; // REVERT on the sheet too: the preview's project has changes
          preview_projects(s);
+     }},
+    // Issue 18: Settings > SEQ > Autosave Off. B1 SAVE to the project's file; its sheet's REVERT asking again;
+    // another project's LOAD saying the changes are lost; Exit leaving them behind.
+    {"projectsave", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false;
+         preview_projects(s);
+     }},
+    {"filesheetrevert", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false; s.ui.project_list = true; s.ui.project_cursor = 3;
+         s.ui.sheet_open = true; s.ui.sheet_row = 1; s.ui.delete_armed = true;
+         preview_projects(s);
+     }},
+    {"loadlost", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.settings.autosave = false; s.ui.project_list = true; s.ui.project_cursor = 4; s.ui.sheet_open = true;
+         preview_projects(s);
+     }},
+    {"exitunsaved", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Stage; s.ui.exit_open = true; s.ui.exit_pick = 1; s.ui.settings.autosave = false; s.dirty = true;
+         s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp";
      }},
     // Parity phase 10: another project's sheet with Load kit, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
@@ -3267,15 +3350,15 @@ static int mpc_import(const char* path) {
     return 0;
 }
 
-// A Melodee project (.mldp) or an MPC Sample project (.xpj, read as Melodee reads one) written as an MPC 3 project
-// into FOLDER, for the build's checks. Each change after them is made first: "T.P=PATH" puts a file or an instrument on
+// A Melodee project (.mldp) or an MPC Sample project (.xpj, read as Melodee reads one) written as an MPC 3 project, or
+// with `live` as an Ableton Live Set, into FOLDER, for the build's checks. Each change after them is made first: "T.P=PATH" puts a file or an instrument on
 // pad P of track T (from 0), "T.P^N" plays that pad's notes N semitones up, "T.P^A,B,C" each next note at the next,
 // "T@P=PATH" makes track T a plug-in track with PATH as its print of pattern P (the prints all in one folder),
 // "T.P~W" warps that pad at W (1 Seq, 50..200 %), "S:T.P@B+N" puts a song clip of pattern P on track T's lane at bar B
 // (from 0) for N bars, "L:T.P=TICKS" sets pattern P of track T that long (96 a quarter), "K:T=PATH" makes track T a
 // keygroup of PATH (its notes kept, as MIDI notes), "M:T=CH,PROG" a MIDI track on channel CH sending program PROG
 // (as Stage shows it, 0 Off; its notes kept).
-static int mpc3_export(const char* path, const char* folder, const char* name, int changes, char** change) {
+static int project_export(bool live, const char* path, const char* folder, const char* name, int changes, char** change) {
     std::ifstream file(path, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
     auto project = std::make_unique<Project>();
@@ -3411,8 +3494,18 @@ static int mpc3_export(const char* path, const char* folder, const char* name, i
             track.pads[n].own_tempo = project->tempo;
         } else { std::printf("error=change %s\n", change[c]); return 1; }
     }
-    Mpc3Export report;
     auto began = std::chrono::steady_clock::now();
+    if (live) {
+        LiveExport report;
+        const LiveColours colours = ui::track_live_colours;
+        error = export_live_set(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir, &colours);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+        if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
+        std::printf("exported tracks=%u clips=%u arranged=%u scenes=%u notes=%u samples=%u missing=%u skipped=%u ms=%lld\n", report.tracks,
+                    report.clips, report.arranged, report.scenes, report.notes, report.samples, report.missing, report.skipped, (long long)ms);
+        return 0;
+    }
+    Mpc3Export report;
     error = export_mpc3_project(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
@@ -3440,7 +3533,8 @@ std::optional<int> run_tool(int argc, char** argv) {
     // --self-test is what device.py and the SD boot run before stopping the stock app.
     if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
     if (argc == 3 && !std::strcmp(argv[1], "--mpc-import")) return mpc_import(argv[2]);
-    if (argc >= 5 && !std::strcmp(argv[1], "--mpc3-export")) return mpc3_export(argv[2], argv[3], argv[4], argc - 5, argv + 5); // IN FOLDER NAME [CHANGE...]
+    if (argc >= 5 && !std::strcmp(argv[1], "--mpc3-export")) return project_export(false, argv[2], argv[3], argv[4], argc - 5, argv + 5); // IN FOLDER NAME [CHANGE...]
+    if (argc >= 5 && !std::strcmp(argv[1], "--live-export")) return project_export(true, argv[2], argv[3], argv[4], argc - 5, argv + 5);  // the same, a Live Set
     if (argc == 3 && !std::strcmp(argv[1], "--instrument-read")) return instrument_read(argv[2]);
     if (argc == 4 && !std::strcmp(argv[1], "--mpc-track")) { // a keygroup program as MPC 3's track file, as the auto sampler writes it
         const auto error = write_mpc3_track(argv[2], argv[3]);

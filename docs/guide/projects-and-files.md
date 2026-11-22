@@ -34,6 +34,17 @@ own the first time: **Project 1**, **Project 2** and so on.
 - Undo and redo are not saved with the project.
 - To keep an earlier state, press **B1** (**SAVE AS**) before you go on.
 
+To save only when you choose, turn **Autosave** off in
+[Settings](settings.md) (**SEQ**). Then:
+
+- **B1** reads **SAVE** and writes the project to its file. A project
+  with no file yet still gets **SAVE AS**.
+- To go back to what was last saved, open the list, push the open project
+  and pick **REVERT** (**TO SAVED**). Push it again to confirm.
+- **NEW**, **LOAD** of another project and the Exit screen don't save.
+  While the project has changes they say **DISCARDS** (**LOAD**: **CHANGES
+  LOST**), and **LOAD** asks once more.
+
 The header shows **UNSAVED** in amber while the project has changes.
 
 A sample's chop is saved in the sample's WAV file, as the MPC saves slices:
@@ -73,8 +84,8 @@ out and back in.
 
 ## Naming
 
-The Name sheet opens when you save or rename a project, sample, sound, bank
-or marker.
+The Name sheet opens when you save or rename a project, sample, sound, bank,
+marker, sequence or track.
 
 ![The Name sheet](../images/screens/nameproject.png)
 
@@ -138,6 +149,7 @@ again and Melodee asks whether to eject anyway.
 | `Melodee/Stems/` | A song's stems |
 | `Melodee/MIDI/` | Exported MIDI files |
 | `Melodee/MPC 3/` | MPC 3 projects exported from Song |
+| `Melodee/Ableton/` | Ableton Live Sets exported from Song, a folder each |
 | `Melodee/Progressions/` | Chord progressions you make |
 | `Melodee/Sounds/` | Sounds you save |
 | `Melodee/Cache/` | Decoded instrument samples, and long MP3, FLAC, Ogg and AIFF samples as WAV. Safe to delete: Melodee makes them again. |

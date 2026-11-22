@@ -57,7 +57,8 @@ Sus2, Sus4, Power, Dia 9), **K2** voicing (Close, Open, Drop 2, Spread),
 ![CHORD](../images/screens/stagechord.png)
 
 **FX**: the track's effect chain. The cards edit the selected slot. Push the
-encoder for the next slot. With no effects, push opens the effect picker.
+encoder for the next slot. After the last effect comes the **+**: push there
+to open the effect picker and add one at the end.
 
 ## Keygroup tracks
 
@@ -245,7 +246,12 @@ listening to the input again. Each sample starts where its sound starts.
   **INPUT**.
 - **The input is not quiet**: something is sounding or humming at the input
   before the first note.
-- **The input clips**: turn the instrument down and sample again.
+- **G#3 clips** (the key named): the instrument reached full scale on that
+  key, three samples in a row or more. Turn the instrument down and sample
+  again. A peak that touches full scale for one or two samples is kept.
+- When sampling stops, the reason stays at the top of the sheet in amber,
+  with the key it stopped on in amber on the keys, until you press
+  **SAMPLE** again.
 - The program goes on the first empty track as a keygroup track with the
   MIDI track's patterns, Song clips and mix. The MIDI track stays as it was.
 
@@ -267,6 +273,8 @@ the scale and **K3** the pad layout.
 - Encoder push: open Edit.
 
 The key and scale belong to the project. The layout belongs to each track.
+To play the scale on a MIDI keyboard's white keys, see
+[Play the scale on the white keys](midi-and-sync.md#play-the-scale-on-the-white-keys).
 
 ## Chord progressions
 
@@ -369,7 +377,7 @@ change rows.
 
 | Page | K1 | K2 | K3 |
 | --- | --- | --- | --- |
-| **DEVICE** | **PORT** | **CHANNEL** | **DELAY**: −50 to +50 ms |
+| **DEVICE** | **PORT** | **CHANNEL** | **DELAY**: −50 to +50 ms. − sends the pattern's notes that much early, for an instrument heard late (one on a computer: about −12 ms); + later. What you play goes out at once, later only by a + delay |
 | **PROGRAM** | **BANK MSB** | **BANK LSB** | **PROGRAM**. Second row: this pattern's own program, sent when the pattern starts |
 | **SLOTS 1**–**8** | Three knobs a page, 24 in all. Second row: what each sends (CC, 14-bit CC, pitch bend, channel pressure or NRPN). | | |
 | **PADS** | **LAYOUT**, as on Keys | **NOTE**: on Drums, the note of the last pad played, with its General MIDI drum name | |
@@ -397,6 +405,12 @@ as any other track's sound does.
 | **K1** (**INPUT**) | None, Rear L, Rear R, Rear, Mic or USB. |
 | **K2** (**MONITOR**) | On: the input plays through the track. Off: the track is silent. |
 | **K3** (**LEVEL**) | The input's level in the track. |
+
+USB from a computer plays straight to the jacks while Settings' **USB-C in**
+is **Direct** (the default), at the track's **LEVEL**, level and pan but
+without its effects, so an instrument on the computer answers the pads
+sooner. **MONITOR** still turns it on and off, and muting the track fades it
+out. Set **USB-C in** to **Tracks** to hear it through the track's effects.
 
 The MPC takes sound from the mic or the rear inputs, not both at once, and
 the rear inputs come first. While another MIDI track or a Looper loop uses

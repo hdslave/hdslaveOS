@@ -3,8 +3,8 @@
 //
 // Scores Chop's Auto type (engine/auto_chop.cpp) on sounds whose cuts are known, beside Threshold and Beats.
 //
-//   c++ -std=c++17 -O2 -Isrc -Ibase/src tools/auto_chop_score.cpp src/melodee/engine/onsets.cpp
-//       src/melodee/engine/auto_chop.cpp src/melodee/engine/sample_data.cpp -o build/auto_chop_score
+//   c++ -std=c++17 -O2 -Icore/src tools/auto_chop_score.cpp core/src/melodee/engine/onsets.cpp
+//       core/src/melodee/engine/auto_chop.cpp core/src/melodee/engine/sample_data.cpp -o build/auto_chop_score
 //   build/auto_chop_score <Samples folder> [WAV ...]
 //
 // The folder is an MPC Sample's factory library (/content/Samples copied off the device; it stays in build/). From its

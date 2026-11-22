@@ -36,15 +36,19 @@ using namespace ui;
 constexpr unsigned visible = list_rows;
 const juce::Colour& amber = colour::amber; // the palette in use's, as each frame sets it (a copy would keep NIGHT's)
 
-enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit };
+enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit, Revert };
 
-// The sheet's rows for an entry: the open project's, or another's with Load first.
-unsigned actions(bool open, std::array<Action, 8>& out, bool mpc = false) {
+// The sheet's rows for an entry: the open project's, or another's with Load first. REVERT (issue 18) on the open
+// one while it has a file and changes since it was saved: the file opened again, the changes left behind.
+unsigned actions(bool open, std::array<Action, 9>& out, bool mpc = false, bool revert = false) {
     if (mpc) { out[0] = Load; out[1] = LoadKit; return 2; } // the MPC's own file is only ever read
+    if (open && revert) { out = {Save, Revert, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete}; return 9; }
     if (open) { out = {Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete}; return 8; }
     out = {Load, LoadKit, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete};
     return 8;
 }
+// Whether the open project can go back to its file (REVERT on its sheet).
+bool can_revert(bool dirty, const std::string& path) { return dirty && !path.empty(); }
 
 // The card itself: Melodee/Projects' grandparent.
 std::string card_dir(const ProjectStore::View& v) { return v.root.empty() ? std::string() : std::filesystem::path(v.root).parent_path().parent_path().string(); }
@@ -92,13 +96,18 @@ void draw_tiles(Paint& p, const Snapshot& s, const ProjectStore::View& v) {
     else if (!s.project_path.empty()) h.left.push_back(pill(Icon::Check, "SAVED", colour::play));
     h.right.push_back(label(s.project.name));
     unsigned pick = s.ui.project_pick % 3; // the wheel's tile, raised; Push presses its key
-    SoftKeys keys {{"SAVE AS", "OPEN", "NEW"}, int(pick), colour::text}; // the project saves itself: B1 saves it under a new name
+    // The project saves itself: B1 saves it under a new name. Autosave Off (issue 18): B1 saves it to its file
+    // (SAVE AS while it has none; SAVE AS NEW stays on its sheet in the list).
+    bool by_hand = !s.ui.settings.autosave && !s.project_path.empty();
+    SoftKeys keys {{by_hand ? "SAVE" : "SAVE AS", "OPEN", "NEW"}, int(pick), colour::text};
     keys.glyphs = {Icon::Save, Icon::Folder, Icon::Plus};
     frame(p, s, keys, h);
     unsigned projects = 0;
     for (const auto& e : v.entries) projects += e.kind == ProjectEntry::Kind::Project;
-    juce::String fresh = !s.dirty ? juce::String() : s.project_path.empty() ? juce::String("CHANGES LOST") : juce::String("SAVES FIRST");
-    key_tiles(p, {word_sub_tile(Icon::Save, "SAVE AS", "NEW NAME", pick == 0),
+    juce::String fresh = !s.dirty ? juce::String() : s.project_path.empty() ? juce::String("CHANGES LOST")
+                       : !s.ui.settings.autosave ? juce::String("DISCARDS") : juce::String("SAVES FIRST");
+    key_tiles(p, {by_hand ? word_sub_tile(Icon::Save, "SAVE", s.dirty ? "UNSAVED" : "SAVED", pick == 0)
+                          : word_sub_tile(Icon::Save, "SAVE AS", "NEW NAME", pick == 0),
                   word_sub_tile(Icon::Folder, "OPEN", v.root.empty() ? juce::String("NO CARD") : count_text(projects, "PROJECT", "PROJECTS"), pick == 1),
                   word_sub_tile(Icon::Plus, "NEW", fresh, pick == 2)});
 }
@@ -212,8 +221,8 @@ void draw(Paint& p, const Snapshot& s) {
     if (sheet) {
         const auto* e = in_hand;
         if (!e || e->kind != ProjectEntry::Kind::Project) return;
-        std::array<Action, 8> list {};
-        unsigned n = actions(open_one, list, mpc);
+        std::array<Action, 9> list {};
+        unsigned n = actions(open_one, list, mpc, can_revert(s.dirty, s.project_path));
         CardSheet m;
         m.chip = open_one ? "OPEN" : "PROJECT"; m.title = e->name;
         if (open_one && s.dirty) { m.detail = "UNSAVED"; m.detail_colour = amber; }
@@ -221,7 +230,11 @@ void draw(Paint& p, const Snapshot& s) {
         for (unsigned k = 0; k < n; ++k) {
             bool start = v.start == e->path;
             switch (list[k]) {
-            case Load: m.items[k] = card_item(Icon::Folder, "LOAD"); break;
+            case Load: // Autosave Off (issue 18): the open project's changes are left behind, so it asks once more
+                m.items[k] = card_item(Icon::Folder, "LOAD", !s.ui.settings.autosave && s.dirty
+                                       ? (s.ui.delete_armed && k == s.ui.sheet_row ? "PRESS AGAIN" : "CHANGES LOST") : "");
+                break;
+            case Revert: m.items[k] = card_item(Icon::Undo, "REVERT", s.ui.delete_armed && k == s.ui.sheet_row ? "PRESS AGAIN" : "TO SAVED"); break;
             case LoadKit: m.items[k] = card_item(Icon::Pads, "LOAD KIT", "NO PATTERNS"); break;
             case Save: m.items[k] = card_item(Icon::Save, "SAVE"); break;
             case SaveAsNew: m.items[k] = card_item(Icon::File, "SAVE AS NEW"); break;
@@ -253,7 +266,10 @@ void act(Context& c, Action action) {
     const auto* e = entry_at(v, c.ui.project_cursor);
     if (!e || e->kind != ProjectEntry::Kind::Project || !c.store) return;
     bool open = e->path == c.project_path;
-    if (action != Delete) c.ui.delete_armed = false;
+    // Delete, REVERT and (Autosave Off, with changes) Load ask once more: the second press does it
+    bool twice = action == Delete || action == Revert || (action == Load && !c.ui.settings.autosave && c.dirty);
+    if (!twice) c.ui.delete_armed = false;
+    else if (!c.ui.delete_armed) { c.ui.delete_armed = true; return; }
     switch (action) {
     case Load:
         if (e->mpc()) c.notice("Opening " + e->name);
@@ -265,8 +281,8 @@ void act(Context& c, Action action) {
     case Duplicate: c.store->duplicate(e->path); break;
     case NewFolder: c.store->new_folder(); break;
     case OpenAtStart: c.store->open_at_start(e->path); break;
+    case Revert: c.store->load(c.project_path); c.notice("Reverted to saved"); break; // switch_to() clears dirty
     case Delete:
-        if (!c.ui.delete_armed) { c.ui.delete_armed = true; return; } // asks once more
         c.store->remove(e->path);
         if (open) c.project_path.clear(); // still open, but no longer on the card
         c.ui.delete_armed = false;
@@ -284,8 +300,8 @@ void act(Context& c) {
     const auto* e = entry_at(v, c.ui.project_cursor);
     if (!e) return;
     bool open = e->path == c.project_path;
-    std::array<Action, 8> list {};
-    unsigned n = actions(open, list, e->mpc());
+    std::array<Action, 9> list {};
+    unsigned n = actions(open, list, e->mpc(), can_revert(c.dirty, c.project_path));
     act(c, list[c.ui.sheet_row % n]);
 }
 
@@ -327,8 +343,8 @@ void wheel(Context& c, int delta) {
     if (c.ui.sheet_open) {
         auto v = view_of(c);
         const auto* e = entry_at(v, c.ui.project_cursor);
-        std::array<Action, 8> list {};
-        unsigned n = actions(e && e->path == c.project_path, list, e && e->mpc());
+        std::array<Action, 9> list {};
+        unsigned n = actions(e && e->path == c.project_path, list, e && e->mpc(), can_revert(c.dirty, c.project_path));
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
         c.ui.delete_armed = false;
         return;
@@ -364,7 +380,8 @@ void push(Context& c) {
 
 void soft(Context& c, int key) {
     if (!c.ui.project_list) { // SAVE, OPEN, NEW
-        if (key == 0) c.name_project(true); // SAVE AS: the Name sheet, then a file of its own (the project saves itself otherwise)
+        if (key == 0 && !c.ui.settings.autosave && !c.project_path.empty()) { c.save_project(); c.notice("Saved"); } // Autosave Off: SAVE
+        else if (key == 0) c.name_project(true); // SAVE AS: the Name sheet, then a file of its own (the project saves itself otherwise)
         if (key == 1) open_list(c);
         if (key == 2) c.ask_new_project(); // asks first, as the MPC does; the open one is saved first if it has a file
         return;
@@ -437,8 +454,8 @@ bool project_erase(Context& c) {
     auto v = view_of(c);
     const auto* e = entry_at(v, c.ui.project_cursor);
     if (!e || e->kind != ProjectEntry::Kind::Project || e->mpc()) return false;
-    std::array<Action, 8> list {};
-    unsigned n = actions(e->path == c.project_path, list, e->mpc()), row = n;
+    std::array<Action, 9> list {};
+    unsigned n = actions(e->path == c.project_path, list, e->mpc(), can_revert(c.dirty, c.project_path)), row = n;
     for (unsigned k = 0; k < n; ++k) if (list[k] == Delete) row = k;
     if (row == n) return false;
     if (!c.ui.sheet_open || c.ui.sheet_row != row) { c.ui.sheet_open = true; c.ui.sheet_row = uint8_t(row); c.ui.delete_armed = false; }

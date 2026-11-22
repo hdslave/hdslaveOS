@@ -46,7 +46,9 @@ bool erase_step(Context& c) {
 // Chop: the slice in hand joins its neighbour, as Erase + its pad (Context::chop_erase); a new chop leaves its cut out.
 bool erase_slice(Context& c) {
     if (!c.ui.slices.count) return false;
-    c.chop_erase(c.ui.chop_slice);
+    if (c.ui.slices.count == 1) return true; // one slice: nothing to join
+    const unsigned slice = c.ui.chop_slice;
+    c.chop_change(slice ? slice - 1 : 0, [&c, slice] { c.chop_erase(slice); }); // slice hits from there on: asked first (issue 24)
     return true;
 }
 } // namespace

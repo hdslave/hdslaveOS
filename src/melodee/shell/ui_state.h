@@ -57,6 +57,11 @@ struct CardView {
     uint64_t returns = 0;
 };
 
+// Song's Export, what B2 makes (UiState::export_kind), in the wheel's order.
+namespace export_kinds {
+constexpr uint8_t mix32 = 0, mix24 = 1, mix16 = 2, stems = 3, midi = 4, mpc3 = 5, live = 6, count = 7;
+}
+
 // Trim's and Chop's view zoomed in, kept while its handle moves inside it (shell/zoom_view.h); key 0: none kept.
 struct ZoomView {
     uint32_t from = 0, to = 0, key = 0;
@@ -107,6 +112,9 @@ struct UiState {
     // The MENU (shell/menu.h), the encoder held: 0 closed, 1 HERE (the page's jobs as cards), 2 GO (the sixteen
     // places as the pads sit); the tile the wheel is on (a pad's index) and the card.
     uint8_t menu = 0, menu_tile = 0, menu_row = 0;
+    // The undo list (shell/history_list.h), Shift + Minus held: open, and the row the cursor is on.
+    bool history = false;
+    uint8_t history_row = 0;
     // A lesson (shell/lesson.h): which (0 none, else its number + 1), the step in hand, the button held with the
     // step's control (-1 none), where the step's knob stood when it first moved (-1 not yet), when the step began.
     uint8_t lesson = 0, lesson_step = 0;
@@ -204,8 +212,8 @@ struct UiState {
     // What the loops and MIDI tracks need of the inputs (InputRoute::need_line, need_mic, need_usb): a source on the ADC
     // side they did not get is IN USE (InputRoute::adc_taken).
     uint8_t adc_needs = 0;
-    // Roadmap P4, Song's Export: what B2 makes, the wheel's pick: a mixdown as 32-bit float, 24-bit or 16-bit (both
-    // dithered), the stems, or a MIDI file.
+    // Roadmap P4, Song's Export: what B2 makes, the wheel's pick (export_kinds): a mixdown as 32-bit float, 24-bit or
+    // 16-bit (both dithered), the stems, a MIDI file, an MPC 3 project or an Ableton Live Set.
     uint8_t export_kind = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
@@ -321,6 +329,7 @@ struct UiState {
     uint32_t chop_take_at = 0;  // ms when the take (or its part from a slice: a lit pad, the red one after) began, 0 none
     uint32_t chop_take_from = 0; // the frame it plays from
     bool chop_more = false;     // a take played out: the red stays on the next slice's pad, and tapped it plays on
+    bool chop_rechop_ok = false; // issue 24 (3b): Rechop asked and answered on this visit to Chop: no more asking
     // Auto's CLEAN (B2): its cuts found on the sample's DRUMS stem (shell/stems.h), separated once for that sample.
     bool chop_clean = false;     // on, with the stem in
     bool chop_cleaning = false;  // its stems being separated, or the DRUMS stem being read
@@ -422,7 +431,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, CaptureScene }; // CaptureScene (shell/scene_jobs.cpp): CAPTURE onto a column with notes; target the column // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use; target the picker's row, `ask_name` the old plug-in's name // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, CaptureScene, Rechop }; // Rechop (issue 24, Context::chop_change): Chop's slices renumbered under slice hits; target how many hits // CaptureScene (shell/scene_jobs.cpp): CAPTURE onto a column with notes; target the column // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use; target the picker's row, `ask_name` the old plug-in's name // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     std::array<char, 48> ask_name {}; // DeleteFile: the file's or the folder's name
@@ -481,6 +490,10 @@ struct UiState {
         // The check is still to start: once the track's plug-in is open and the print engine is free
         // (Context::autosample_tick()).
         bool check_wanted = false;
+        // Why the last check or sampling failed, its first words ("G#3 clips", "card full"), until the next starts;
+        // the key it is about (an input that clips there), -1 none.
+        char error[48] {};
+        int16_t error_key = -1;
     };
     AutoSheet auto_sheet;
     // The STEMS sheet (shell/stems_jobs.cpp): the kit pad whose sample is separated, the sample it held when the

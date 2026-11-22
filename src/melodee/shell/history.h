@@ -60,6 +60,11 @@ struct MixState {
     std::array<uint8_t, bus_count> returns {};
     bool operator==(const MixState& o) const { return level == o.level && sends == o.sends && pan == o.pan && returns == o.returns; }
 };
+// A track's name and whether it is one of its own (Tracks, Shift + Push): nothing else of the track changes with it.
+struct TrackName {
+    char text[name_length] {};
+    bool named = false;
+};
 // A track's sound: its engine's values and its mod routes.
 struct SoundState {
     std::array<int16_t, max_params> params {};
@@ -138,6 +143,7 @@ struct PluginSwap {
 
 struct Edit {
     std::string what;             // shown on undo and redo: "Delete A01"
+    uint32_t at = 0;              // when it was kept (History::clock, ms): the undo list's "2 min"
     uint8_t track = 0;
     int16_t pad = -1;             // a kit pad, or -1
     PadState pad_before, pad_after;
@@ -162,6 +168,7 @@ struct Edit {
     std::unique_ptr<Chain> chain_before, chain_after;
     std::unique_ptr<MixState> mix_before, mix_after;
     std::unique_ptr<SoundState> sound_before, sound_after;
+    std::unique_ptr<TrackName> name_before, name_after; // a track named (`track`)
     std::unique_ptr<MasterState> master_before, master_after;
     std::unique_ptr<ChopState> chop_before, chop_after;
     std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo
@@ -177,6 +184,7 @@ public:
     void push(Edit&& edit) {
         ++pushes;
         if (gate && !gate(gate_owner, edit)) return;
+        edit.at = clock ? *clock : 0;
         redo_.clear();
         undo_.push_back(std::move(edit));
         if (undo_.size() > depth) undo_.pop_front();
@@ -194,6 +202,11 @@ public:
     // Every edit kept, to undo and to redo (roadmap P3: which sample slots they could bring back).
     template <typename F> void each(F&& f) const { for (const auto& e : undo_) f(e); for (const auto& e : redo_) f(e); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)
+    const uint32_t* clock = nullptr; // the shell's clock (ms, Context::now): each edit's `at`
+    // The undo list (shell/history_list.h): the steps undone, the next redo last, and the steps done, the newest last.
+    size_t redos() const { return redo_.size(); }
+    const Edit& undone(size_t n) const { return redo_[n]; }
+    const Edit& kept(size_t n) const { return undo_[n]; }
 
 private:
     std::deque<Edit> undo_, redo_;

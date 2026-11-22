@@ -17,6 +17,7 @@
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/history_jobs.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
@@ -307,11 +308,16 @@ void Shell::press(Button b, bool pressed) {
         else if (ui.page == PageId::Roll) roll_shift_up(context_); // Roll: marking ends, or a tap clears the marks
         return;
     }
+    if (b == Button::Minus && !pressed && history_hold.down) { // Shift + Minus let go: a tap undoes one step
+        if (history_release(history_hold)) context_.undo();
+        return;
+    }
     if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (b == Button::WheelPush && !pressed) { // the encoder let go: a tap is the page's Push; held, it opened the MENU
         bool tap = encoder_release(enc);
         if (ui.lesson && !lesson_takes_push(ui)) return; // a lesson: Push acts only as its step
+        if (tap && ui.history) { history_go(context_); return; } // the undo list: to the state under the cursor
         if (tap && !ui.menu && ui.ask == UiState::Ask::None && !ui.name.open() && !ui.exit_open && !card_owns_controls(ui)) {
             page_spec(ui.page).push(context_);
             if (ui.lesson) lesson_push(ui, context_.now);
@@ -338,6 +344,9 @@ void Shell::press(Button b, bool pressed) {
     // The MENU over the page (shell/menu.h): B1 back, B2 HERE, B3 GO, Push the lit card or tile; any other
     // button closes it and does its own job.
     if (pressed && ui.menu && !ui.exit_open && menu_button(context_, b)) return;
+    // The undo list (shell/history_list.h): B1 back, B3 goes there, Minus / Plus move; any other button closes it
+    // and does its own job.
+    if (pressed && ui.history && !ui.exit_open && history_button(context_, b)) return;
     if (b == Button::Seq && (!ui.exit_open || !pressed)) { seq_press(context_, pressed); return; } // tap, hold or Shift (shell/seq_layer.cpp)
     if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
     if (pressed && !ui.exit_open && (b == Button::TopLeft || b == Button::TopMiddle || b == Button::TopRight) &&
@@ -434,10 +443,11 @@ void Shell::press(Button b, bool pressed) {
             off_after_save = ui.exit_off = b == Button::TopMiddle;
             context_.send({Command::Type::Stop});
             context_.send({Command::Type::AllNotesOff, 255});
-            // The project goes to the card first (a new file if it has none); then away.
+            // The project goes to the card first (a new file if it has none); then away. Autosave Off (issue 18):
+            // never saved here, it stays as it was last saved.
             ProjectStore::View v;
             if (store_) store_->view(v);
-            if (!v.root.empty()) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
+            if (!v.root.empty() && ui.settings.autosave) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
             else if (off_after_save) { ui.exit_saved = true; off_saved_at = context_.now; } // nothing to save: the second, then off
             else leave.store(true);
         }
@@ -521,11 +531,11 @@ void Shell::press(Button b, bool pressed) {
         context_.tap_tempo();
         tap_press(tap, context_.now); // held: the tempo on the encoder, or the Tempo page (shell/tap_hold.h)
         break;
-    // Shift + Minus / Plus: undo and redo, as printed, on every page.
+    // Shift + Minus / Plus: undo and redo, as printed, on every page. Shift + Minus held: the undo list (shell/history_list.h).
     // Pad Bank held: Minus / Plus jump banks.
     case Button::Minus:
         if (ui.sample_held && ui.light_show && !ui.shift) { light_style_step(-1); break; } // the light show's style
-        if (ui.shift) context_.undo();
+        if (ui.shift) history_press(history_hold, context_.now); // a tap undoes as it is let go; held, the undo list
         else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, -1); } // 16 Levels held
         else if (record_track_keys()) context_.record_octave(-1); // the source track's pads, while they play
         else if (!pad_bank_move(context_, -1)) page.nudge(context_, -1);
@@ -580,7 +590,7 @@ void Shell::check_pickup(unsigned n, const Binding& binding) {
 }
 
 void Shell::pot(unsigned n, int position, bool syncing) {
-    if (ui_.menu && !syncing) return; // the MENU is up: the cards under it wait
+    if ((ui_.menu || ui_.history) && !syncing) return; // the MENU or the undo list is up: the cards under it wait
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
     // A Trim or Chop handle's pot: that handle in focus, the view zoomed in round it (shell/zoom_view.h).
     if (!syncing && focus_handle(ui_, bindings[n])) bindings = page_bindings(*project_, ui_, context_.pattern());
@@ -627,6 +637,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    if (int initial = 0; ui_.erase && pad_reset_value(b, initial)) { // a kit pad's own value: back to a new pad's
+        context_.apply(b, initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
     learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
     int value = 0;
     if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);
@@ -641,6 +656,7 @@ void Shell::wheel(int delta) {
         return;
     }
     if (ui_.menu) { menu_wheel(context_, delta); return; } // the MENU: the wheel walks its cards or tiles
+    if (ui_.history) { history_wheel(context_, delta); return; } // the undo list: its rows
     if (ui_.levels_sheet) { levels_sheet_wheel(context_, delta); return; } // 16 Levels' FILE: its rows (SET: nothing)
     if (levels_held_cards(*project_, ui_) && LevelsKind(context_.track().levels_kind % unsigned(LevelsKind::Count)) == LevelsKind::Chords) {
         ui_.levels_used = true; // 16 Levels held, of type Chords: the encoder picks the progression from the card, as on Keys' Prog layout
@@ -952,6 +968,20 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             }
         if (ui_.page == PageId::Samples) {
             out.files = library_->files(); out.sample_root = library_->root(); out.files_folder = library_->folder(); out.files_top = library_->top();
+        }
+    }
+    out.history.clear();
+    out.history_redos = 0;
+    if (ui_.history) { // the undo list's rows, top down: the steps undone, then the steps done (shell/history_list.h)
+        const auto& edits = context_.edits;
+        const unsigned redos = unsigned(edits.redos()), kept = unsigned(edits.size());
+        out.history_redos = uint8_t(redos);
+        for (unsigned row = 0; row + 1 < history_rows(redos, kept); ++row) {
+            bool redo = false;
+            unsigned index = 0;
+            if (!history_edit_at(row, redos, kept, redo, index)) break;
+            const Edit& e = redo ? edits.undone(index) : edits.kept(index);
+            out.history.push_back({e.what, e.track, e.at, history_kind(e)});
         }
     }
     if (whole)

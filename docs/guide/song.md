@@ -67,10 +67,11 @@ Press **B1** (**EXPORT**):
 
 - **B2** exports. Turn the encoder first to choose what: a **MIXDOWN**
   (32-bit float, 24-bit or 16-bit WAV), **STEMS** (one WAV per track and
-  bus, plus the mix), a **MIDI FILE**, or an **MPC 3** project. The key
-  shows the choice. Then name the export (see
-  [Naming](projects-and-files.md#naming)). A **MIDI FILE** and an **MPC 3**
-  project also work with an empty song: they take the patterns.
+  bus, plus the mix), a **MIDI FILE**, an **MPC 3** project or an Ableton
+  **LIVE SET**. The key shows the choice. Then name the export (see
+  [Naming](projects-and-files.md#naming)). A **MIDI FILE**, an **MPC 3**
+  project and a **LIVE SET** also work with an empty song: they take the
+  patterns.
 - **B3** (**PATTERN**) writes the song into new patterns, end to end.
 - **B1** (**CANCEL**) goes back to the song.
 
@@ -102,6 +103,35 @@ folder with the samples. MPC One, Live, Key, X and the MPC 3 software open it.
   program. Pick its output port on the MPC.
 - Effects, sends, the song's tempo changes and samples that are
   not WAV files are left out. The message after the export says what was.
+
+### Ableton Live Set
+
+**LIVE SET** writes `Melodee/Ableton/<name> Project/` with `<name>.als` in
+it and a copy of every sample in `Samples/Imported/`. Copy the whole folder
+to a computer and open the `.als` in Ableton Live 12.1 or later.
+
+- Each pattern becomes a clip in Session View, in the scene of its number:
+  A1 is the first scene, B1 the seventeenth. Scenes keep their names and
+  tempos.
+- The song is laid out in Arrangement View. Its markers become locators,
+  its loop becomes Live's loop and its tempo changes become tempo
+  automation.
+- Notes play as they do in Melodee: swing, ratchets, the pattern's speed
+  and each lane's own length are written out.
+- Each kit track becomes a Drum Rack with a Simpler on each pad. Pads keep
+  their sample, trim, level, pan, tune, envelope, one shot or gate, loop,
+  reverse, warp and velocity layers. A mute group becomes a choke group.
+- A pad its patterns play at other pitches becomes a track of its own with
+  a Simpler. A keygroup track becomes a Simpler, or a Sampler for an
+  instrument with several zones (Sampler needs Live Standard or Suite).
+- A plug-in track becomes a MIDI track of its notes with no instrument,
+  plus an audio track of its prints beside it. The export prints each
+  pattern with notes first, as for MPC 3: save the project first.
+- A MIDI track becomes a MIDI track. Each clip sends its program.
+- An audio track's takes become audio clips.
+- Each track keeps its level, pan, mute, solo and sends. Buses that tracks
+  send to become return tracks.
+- Effects, Motion, pad filters and pad sends are left out.
 
 ---
 

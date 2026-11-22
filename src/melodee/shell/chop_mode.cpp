@@ -12,11 +12,15 @@
 // since a tap comes a little after the sound it means; it then lands on a zero
 // crossing (Zero Snap is always on).
 #include "melodee/shell/context.h"
+#include "melodee/engine/engine_host.h"
+#include "melodee/shell/ask.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/mpc_wav_slices.h"
 #include "melodee/model/slice_banks.h"
+#include "melodee/model/slice_hits.h"
 #include "melodee/shell/zoom_view.h"
+#include <algorithm>
 #include <thread>
 
 namespace melodee {
@@ -76,7 +80,74 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     }
     ui.chop_slice = uint8_t(slice);
     ui.chop_heard_at = 0; // the tap plays it
+    if (slice_hit(pad, slice, velocity)) return; // Seq Record running: through its pad, and written (issue 24)
     audition(sl.start[slice], sl.end(slice, frames));
+}
+
+// Issue 24: the kit pad that plays Chop's sample, the one chopped (the last pad) or else the first holding it.
+int Context::chop_kit_pad() const {
+    const auto& t = project.tracks[ui.track % track_count];
+    if (t.engine != EngineKind::Sampler || ui.chop_sample >= sample_slots) return -1;
+    const unsigned last = t.last_pad % sampler_pads;
+    if (t.pads[last].used() && t.pads[last].sample == ui.chop_sample) return int(last);
+    for (unsigned n = 0; n < sampler_pads; ++n) if (t.pads[n].used() && t.pads[n].sample == ui.chop_sample) return int(n);
+    return -1;
+}
+
+// A sample's chop as slice hits play it: Chop's slices while Chop holds the sample (they reach the project's chop only
+// when the region changes or the project is saved), else the project's.
+const Slices& Context::live_chop(unsigned sample) const {
+    if (sample == ui.chop_sample && sample < sample_slots && ui.slices.count) return ui.slices;
+    return project.chops[sample].slices;
+}
+
+bool Context::slice_hit(unsigned pad, unsigned slice, uint8_t velocity) {
+    if (!ui.recording || !host.playing()) return false;
+    const int kit = chop_kit_pad();
+    if (kit < 0) return false;
+    sync_chops(); // the audio thread plays the slice as Chop shows it now
+    slice_release(pad); // a pad pressed again before its release came: that one ends here
+    Command c {Command::Type::PadNote, ui.track, 64, uint16_t(kit), int16_t(velocity)};
+    c.micros = slice + 1;
+    send(c);
+    const int key = pad_note(int(sampler_first_note) + kit, 0, -1, int(slice));
+    record(key, velocity);
+    chop_held[pad % 16] = key;
+    return true;
+}
+
+void Context::slice_release(unsigned pad) {
+    const int key = chop_held[pad % 16];
+    if (key < 0) return;
+    chop_held[pad % 16] = -1;
+    note(ui.track, key & 0xffff, 0); // the pad's note let go (a Note On pad stops)
+    record_release(key);
+}
+
+// The chops that changed since they were last sent (Chop's own as it is edited), a few a pass: the audio thread swaps
+// each copy in and hands the old one back, freed in free_retired().
+void Context::sync_chops() {
+    free_retired();
+    const size_t span = std::max({project.chops.span(), chops_sent.span(), size_t(ui.chop_sample < sample_slots ? ui.chop_sample + 1 : 0)});
+    unsigned sent = 0;
+    for (size_t n = 0; n < span && n < sample_slots && sent < 64; ++n) {
+        const Slices& now = live_chop(unsigned(n));
+        const Slices& was = chops_sent[n];
+        if (now.same(was)) continue;
+        Command c {Command::Type::Chop, 0, 0, uint16_t(n)};
+        c.chop = now.count ? new Slices(now) : nullptr;
+        if (!host.send(c)) { delete c.chop; return; } // the queue full: the rest next pass
+        chops_sent.edit(n) = now;
+        ++sent;
+    }
+}
+
+// 3b (issue 24): asked first when slice hits play the slices from `first` on, once a visit to Chop.
+void Context::chop_change(unsigned first, std::function<void()> change) {
+    const unsigned hits = ui.chop_rechop_ok ? 0 : slice_hits(project, patterns, ui.chop_sample, first);
+    if (!hits) { change(); return; }
+    chop_pending = std::move(change);
+    ask(*this, UiState::Ask::Rechop, int(hits));
 }
 
 // A take is one undo step, from pad 1 (or the red pad after a take) until it plays out or anything else is done.

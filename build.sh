@@ -7,7 +7,7 @@
 # decodes) and the boot film (it fails when its frames do not decode).
 set -eu
 cd "$(dirname "$0")"
-[ -f base/base.mk ] || git submodule update --init
+[ -f base/base.mk ] && [ -f core/core.mk ] || git submodule update --init
 python3 tools/dependencies.py
 # The version the Credits page shows: ./release.sh names it, else git describe.
 MELODEE_VERSION=$(printf %s "${MELODEE_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}" | tr -cd 'A-Za-z0-9._+-')
@@ -17,4 +17,4 @@ docker build --platform linux/arm64 -t sample-base-builder base/tools
 docker build --platform linux/arm64 -t melodee-builder tools/plugin_support
 # The engine tests keep whole projects on the stack: more than the 8 MB a container gets by default.
 docker run --rm --platform linux/arm64 --ulimit stack=268435456:268435456 -v "$PWD:/work" -e MELODEE_VERSION melodee-builder \
-    sh -c 'make -j4 && make stems && python3 -m unittest discover -s tests -v && build/melodee --self-test build/test.wav && build/melodee --melodee-monkey && mkdir -p build/melodee-preview && build/melodee --melodee-preview build/melodee-preview && mkdir -p build/boot && build/melodee --melodee-boot build/boot'
+    sh -c 'make -j4 && make stems && python3 -m unittest discover -s tests -v && python3 -m unittest discover -s core/tests -v && build/melodee --self-test build/test.wav && build/melodee --melodee-monkey && mkdir -p build/melodee-preview && build/melodee --melodee-preview build/melodee-preview && mkdir -p build/boot && build/melodee --melodee-boot build/boot'

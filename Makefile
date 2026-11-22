@@ -1,9 +1,28 @@
 # Melodee on the sample-base runtime: the base layers come from the base/
-# submodule, Melodee and its main.cpp from src/. The build is base/base.mk.
+# submodule, the engine, model and files from the core/ submodule
+# (ellic-core, shared with melodee-move), Melodee's screens and main.cpp
+# from src/. The build is base/base.mk.
 BASE_SRC := base/src
 TARGET := build/melodee
 APP_SOURCES := $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 include base/base.mk
+
+# The core's objects sit beside Melodee's own in build/obj/melodee/, as
+# when they lived in src/ (layout test: no file in both).
+CORE := core
+include core/core.mk
+CORE_OBJECTS := $(patsubst core/src/%.cpp,build/obj/%.o,$(CORE_SOURCES))
+OBJECTS += $(CORE_OBJECTS)
+$(TARGET): $(CORE_OBJECTS)
+CPPFLAGS += $(CORE_CPPFLAGS)
+build/obj/%.o: core/src/%.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror -c $< -o $@
+# An object built before the core moved to core/ names its source in src/:
+# forgotten, so that it is built again from the core.
+STALE := $(shell grep -lsE '(^|[ :])src/[^ ]*\.cpp' $(CORE_OBJECTS:.o=.d))
+$(foreach d,$(STALE),$(shell rm -f $(d) $(d:.d=.o)))
+-include $(CORE_OBJECTS:.o=.d)
 
 # The version shown on the Credits page and used to compare updates
 # (shell/update.cpp): ./release.sh passes its VERSION, build.sh passes git
@@ -29,8 +48,9 @@ build/gen/web_bundle.bin: $(WEB_INPUTS)
 	python3 tools/web_bundle.py $@
 build/obj/melodee/web/web_bundle.o: build/gen/web_bundle.bin
 
-# The MPC 3 export's template (tools/mpc3_template.py), carried in the binary.
-build/obj/melodee/shell/mpc3_export.o: src/melodee/shell/mpc3_template.json
+# The MPC 3 export's template (the core's tools/mpc3_template.py), carried in the binary.
+build/obj/melodee/shell/mpc3_export.o: $(CORE_TEMPLATE)
+build/obj/melodee/shell/mpc3_export.o: CXXFLAGS += $(CORE_ASFLAGS)
 
 # JUCE's decoders, for an SFZ's FLAC, Ogg and AIFF samples and an MPC
 # expansion's MP3 previews. Melodee's alone, so the base stays as it is.

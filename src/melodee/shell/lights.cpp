@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/history_jobs.h"
 #include "melodee/shell/lesson_jobs.h"
 #include "melodee/shell/features.h"
 #include "melodee/engine/dsp.h"
@@ -12,6 +13,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
+#include "melodee/model/slice_hits.h"
 #include "melodee/shell/autosave.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/ask.h"
@@ -66,6 +68,7 @@ void Shell::autosave_tick(uint32_t now) {
     if (ui.held_pads || ui.shift || ui.seq_held || ui.pad_bank || ui.sample_held || ui.erase || tap.down) last_input_ = now;
     const auto& host = context_.host;
     AutosaveFacts f;
+    f.enabled = ui.settings.autosave;
     f.dirty = context_.dirty;
     f.playing = host.playing() || host.song_playing() || host.looper().recording() || host.looper().armed();
     f.recording = ui.recording || ui.rec_armed || host.recorder().state() != TakeRecorder::State::Idle
@@ -252,6 +255,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         context_.send({Command::Type::KeyedRoot, uint8_t(t), 0, 0, root});
     }
     context_.files_landed();  // Trim Sample, Extract, Save Sample, takes, Recall, Resample: done on the service thread
+    context_.sync_chops();    // the chops slice hits play, as Chop and the project hold them now (issue 24)
     context_.record_tick(now); // Input Config's route and monitor, settings kept, renders followed
     context_.browser_tick();  // the browser's listings and previews
     // The device's rate changed: the project again, worked out at the new rate.
@@ -286,7 +290,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
-        if (auto note = store_->take_note()) context_.notice(*note); // an MPC 3 export's outcome
+        if (auto note = store_->take_note()) context_.notice(*note); // an MPC 3 or Live Set export's outcome
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) { // loop files too
             if (!off_after_save) leave.store(true);
             else if (!ui_.exit_saved) { ui_.exit_saved = true; off_saved_at = now; } // the sheet says it is saved, then off
@@ -299,7 +303,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.free_tick();     // Free length: a take on a Free pattern grows it (shell/free_length.h)
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.print_tick();      // prints made (freeze plan F2a) into the project's records
-    context_.mpc3_tick();       // an MPC 3 export's plug-in tracks printed, then the export
+    context_.export_tick();     // an MPC 3 or Live Set export's plug-in tracks printed, then the export
     context_.stems_tick();      // a sample's stems written: onto their pads (shell/stems_jobs.cpp)
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     context_.live_erase_tick(); // Erase + pad while playing: the notes the playhead passed
@@ -364,8 +368,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track % track_count];
         const FrameView view = zoomed_view(); // a close view's frames too, drawn from memory (SampleLibrary::detail())
         const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
+        SlicedChops sliced; // slice hits' samples, their chops as they play them (issue 24)
+        for (uint16_t slot : sliced_samples(*project_, context_.patterns)) sliced.emplace_back(slot, &context_.live_chop(slot));
         auto holds = stream_holds(*project_, chop ? &ui_.slices : nullptr, chop ? ui_.chop_sample : no_sample,
-                                  view.width() ? view_sample : no_sample, HeldRange {view.from, view.to, false});
+                                  view.width() ? view_sample : no_sample, HeldRange {view.from, view.to, false}, sliced);
         auto find = [](const StreamHolds& in, unsigned slot) {
             auto at = std::lower_bound(in.begin(), in.end(), slot, [](const auto& e, unsigned s) { return e.first < s; });
             return at != in.end() && at->first == slot ? &at->second : nullptr;
@@ -378,6 +384,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         holds_sent = std::move(holds);
     }
     if (encoder_tick(enc, now)) menu_open(context_); // the encoder held: the MENU (shell/menu.h)
+    if (history_tick(history_hold, now)) history_open(context_); // Shift + Minus held: the undo list (shell/history_list.h)
     lesson_tick(context_, now); // a lesson: its kit loaded, or its last step done (shell/lesson_jobs.h)
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
     // Tap Tempo held half a second with nothing turned: the Tempo page; held on it, back to the page under it.
@@ -600,7 +607,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool erase_pots = false;
     {
         auto bindings = page_bindings(project, ui, context_.pattern());
-        for (const auto& b : bindings) erase_pots |= b.kind == Binding::Kind::Param;
+        for (const auto& b : bindings) erase_pots |= erase_resets(b);
     }
     bool kit = kit_pads();
     uint64_t levels = 0; // two bits a button, for `status`

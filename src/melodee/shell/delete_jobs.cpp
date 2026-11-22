@@ -6,6 +6,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/sample_lists.h"
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -59,6 +60,8 @@ bool samples_erase(Context& c) {
     const auto files = c.library->files();
     if (files.empty()) return false;
     const auto& file = files[std::min<size_t>(c.ui.files_cursor, files.size() - 1)]; // as the page draws the cursor
+    if (file.list) return false; // STARRED and RECENT themselves stay
+    if (list_folder(c.library->folder())) { c.library->unlist(file.path); return true; } // in a list: off it, the file kept
     const std::string card = c.library->card(), samples = samples_folder(card); // <card>/Melodee/Samples
     const std::string name = fs::path(file.path).filename().string();
     if (file.path.find('#') != std::string::npos) { c.notice("Delete: its file, not a preset of it"); return true; }

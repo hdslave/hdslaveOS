@@ -6,6 +6,7 @@
 // to the MIDI thread, which loads the files as it loads any other.
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/sample_memory.h"
+#include "melodee/shell/stems_find.h"
 #include "drivers/platform.h"
 #include <algorithm>
 #include <cstdlib>
@@ -31,15 +32,11 @@ std::string file_name(const char* name) {
 
 std::string SampleLibrary::stems_program(const std::string& card_top) {
     if (const char* named = std::getenv("MELODEE_STEMS_ENGINE"); named && *named) return named;
-    if (card_top.empty()) return {};
-    // A release's folder (tools/make_release.py), else the folder `device.py install-sd` starts the app from
-    // (autorun/sample-base; sample-base at the card's top for an install from before).
+    // The card folder the app was copied from, which sd-worker.sh writes beside its copy in RAM, else the fixed
+    // folders (shell/stems_find.h).
     std::error_code error;
-    for (const char* folder : {"/autorun/melodee", "/autorun/sample-base", "/sample-base"}) {
-        const std::string path = card_top + folder + "/stems/melodee-stems";
-        if (fs::is_regular_file(path, error)) return path;
-    }
-    return card_top + "/autorun/melodee/stems/melodee-stems";
+    const auto exe = fs::read_symlink("/proc/self/exe", error);
+    return find_stems_program(card_top, error ? std::string() : release_sd_folder(exe.parent_path()));
 }
 
 bool SampleLibrary::take_stems(StemsResult& out) {

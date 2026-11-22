@@ -38,7 +38,7 @@ struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume,
-                         CpuSpeed, Refresh, DimAfter, PadLevel, Rows };
+                         CpuSpeed, Refresh, DimAfter, PadLevel, UsbDirect, DirectLevel, Autosave, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -79,6 +79,9 @@ struct Settings {
     uint8_t pad_fade = 1;
     uint32_t fade_ms() const { return fades[pad_fade % fades.size()]; }
     bool tap_light = true;    // Tap Tempo flashes on the beat while playing
+    // Background save (shell/autosave.h, issue 18): On, the project saves itself a moment after the controls rest; Off,
+    // only SAVE writes it, and what was not saved can be put back with REVERT or left behind (New, Load, Exit).
+    bool autosave = true;
     // Step Edit and Roll while the pattern plays (shell/step_edit.cpp seq_follow): 0 Off, they stay where they are;
     // 1 Page, the caret goes to the same step of the bar that plays when a new bar starts; 2 Step, the caret on the
     // step that plays.
@@ -99,6 +102,13 @@ struct Settings {
     // USB volume: what a computer records over USB-C (channels 1 and 2) at full main volume, the knob left out
     // (Full), or as the jacks play it (Knob).
     bool usb_full = true;
+    // USB-C in: Direct, heard straight at the jacks a few milliseconds after it comes, dry, at the direct level
+    // (drivers/direct_monitor.h), wherever Melodee would play it (a MIDI track's AUDIO input with MONITOR on, Input
+    // Config's Monitor, a loop on it); Tracks, through those, with their effects, about 8 ms later.
+    bool usb_direct = true;
+    static constexpr std::array<int8_t, 9> direct_levels {{-24, -18, -12, -9, -6, -3, 0, 3, 6}}; // dB
+    uint8_t direct_level = 6; // 0 dB
+    float direct_gain() const { return std::pow(10.0f, float(direct_levels[direct_level % direct_levels.size()]) / 20.0f); }
     // Power (melodee-hdslave; optimization.md). None of them changes what is heard.
     // CPU speed: the CPUs' top speed. Full (the default) leaves them at the kernel's, the fastest they go; only a
     // lower one picked here slows them. Auto holds 1.4 GHz, the fastest at the lowest CPU voltage, and goes to full
@@ -134,6 +144,7 @@ struct Settings {
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     SamplingPrefs sampling;   // how Audio Recall cuts the ring, and when a Free take ends on its own
     MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
+    bool scale_keys = false;  // MIDI Config's Scale on white keys: MIDI in's white keys play the scale (shell/scale_keys.h)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
     static constexpr unsigned engines = 11, sounds = 256; // a row per EngineKind (MIDI the eighth, PLUGIN the ninth, KEYGROUP the tenth, AUDIO the eleventh)
     std::array<std::bitset<sounds>, engines> favourites {};
@@ -159,7 +170,8 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "CPU speed", "Refresh", "Dim after", "Pad brightness"};
+                                    "CPU speed", "Refresh", "Dim after", "Pad brightness",
+                                    "USB-C in", "Direct level", "Autosave"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -199,6 +211,7 @@ struct Settings {
         case MirrorRate: return std::to_string(mirror_mode().fps) + " fps";
         case PadFade: return std::to_string(fade_ms()) + " ms";
         case TapLight: return tap_light ? "On" : "Off";
+        case Autosave: return autosave ? "On" : "Off";
         case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
         case RecQuantize: return rec_quantize ? "On" : "Off";
@@ -207,6 +220,8 @@ struct Settings {
         case Refresh: return std::to_string(refresh_fps()) + " fps";
         case DimAfter: return dim_ms() ? std::to_string(dim_minutes[dim_after % dim_minutes.size()]) + " min" : "Off";
         case PadLevel: return std::to_string(pad_percent()) + " %";
+        case UsbDirect: return usb_direct ? "Direct" : "Tracks";
+        case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
         default: return std::to_string(screen) + " %";
         }
     }
@@ -239,6 +254,7 @@ struct Settings {
         case MirrorRate: mirror_fps = way < 0 ? 30 : 60; break;
         case PadFade: pad_fade = uint8_t(step_in(pad_fade % fades.size(), unsigned(fades.size()), way)); break;
         case TapLight: tap_light = !tap_light; break;
+        case Autosave: autosave = !autosave; break;
         case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
         case RecQuantize: rec_quantize = !rec_quantize; break;
@@ -247,6 +263,8 @@ struct Settings {
         case Refresh: refresh = uint8_t(step_in(refresh % refresh_rates.size(), unsigned(refresh_rates.size()), way)); break;
         case DimAfter: dim_after = uint8_t(step_in(dim_after % dim_minutes.size(), unsigned(dim_minutes.size()), way)); break;
         case PadLevel: pad_level = uint8_t(step_in(pad_level % pad_levels.size(), unsigned(pad_levels.size()), way)); break;
+        case UsbDirect: usb_direct = !usb_direct; break;
+        case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
         default: break;
         }
     }
@@ -274,6 +292,7 @@ struct Settings {
         case Refresh: return unsigned(refresh_rates.size());
         case DimAfter: return unsigned(dim_minutes.size());
         case PadLevel: return unsigned(pad_levels.size());
+        case DirectLevel: return unsigned(direct_levels.size());
         default: return row < Rows ? 2 : 1; // On / Off, and the two-way rows
         }
     }
@@ -305,6 +324,7 @@ struct Settings {
         case MirrorRate: return mirror_fps == 60;
         case PadFade: return pad_fade % fades.size();
         case TapLight: return tap_light;
+        case Autosave: return autosave;
         case RepeatVelocity: return repeat_pressure;
         case SeqFollow: return seq_follow % 3u;
         case RecQuantize: return rec_quantize;
@@ -313,6 +333,8 @@ struct Settings {
         case Refresh: return unsigned(refresh % refresh_rates.size());
         case DimAfter: return unsigned(dim_after % dim_minutes.size());
         case PadLevel: return unsigned(pad_level % pad_levels.size());
+        case UsbDirect: return usb_direct;
+        case DirectLevel: return direct_level % direct_levels.size();
         default: return 0;
         }
     }
@@ -345,6 +367,7 @@ struct Settings {
         case MirrorRate: mirror_fps = n ? 60 : 30; break;
         case PadFade: pad_fade = uint8_t(n); break;
         case TapLight: tap_light = n; break;
+        case Autosave: autosave = n; break;
         case RepeatVelocity: repeat_pressure = n; break;
         case SeqFollow: seq_follow = uint8_t(n); break;
         case RecQuantize: rec_quantize = n; break;
@@ -353,6 +376,8 @@ struct Settings {
         case Refresh: refresh = uint8_t(n); break;
         case DimAfter: dim_after = uint8_t(n); break;
         case PadLevel: pad_level = uint8_t(n); break;
+        case UsbDirect: usb_direct = n; break;
+        case DirectLevel: direct_level = uint8_t(n); break;
         default: break;
         }
     }
@@ -389,7 +414,7 @@ struct Settings {
     std::string text() const {
         std::ostringstream out;
         // pickup= stays for the builds before parity phase 8, which know only that.
-        out << "features=" << int(full_features) << "\nlessons=" << int(lessons_done) << "\nusage_log=" << int(usage_log) << "\npad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light)
+        out << "features=" << int(full_features) << "\nlessons=" << int(lessons_done) << "\nusage_log=" << int(usage_log) << "\npad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light) << "\nautosave=" << int(autosave)
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
@@ -402,8 +427,9 @@ struct Settings {
             << "\nrecall_grab=" << int(sampling.grab) << "\nrecall_gap=" << int(sampling.gap) << "\nrecall_trim=" << int(sampling.trim_end)
             << "\nauto_end=" << int(sampling.auto_end) << "\nauto_end_after=" << int(sampling.end_after)
             << "\nsilence_db=" << sampling.silence_db()
-            << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full)
+            << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
+            << "\nscale_keys=" << int(scale_keys)
             << "\ncpu_speed=" << int(cpu_speed) << "\nrefresh=" << int(refresh_fps()) << "\ndim_after=" << int(dim_minutes[dim_after % dim_minutes.size()])
             << "\npad_level=" << int(pad_percent()) << '\n';
         write_midi_config(out, midi);
@@ -436,6 +462,7 @@ struct Settings {
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
             else if (key == "pad_fade") pad_fade = uint8_t(std::clamp(value, 0, int(fades.size()) - 1));
             else if (key == "tap_light") tap_light = value != 0;
+            else if (key == "autosave") autosave = value != 0;
             else if (key == "pickup") pickup = value != 0;
             else if (key == "knob_takeover") knob_takeover = takeover(value);
             else if (key == "knob_fx_takeover") knob_fx_takeover = takeover(value);
@@ -478,6 +505,8 @@ struct Settings {
             else if (key == "silence_db") sampling.silence = SamplingPrefs::silence_index(value);
             else if (key == "audio_rate") { if (std::find(rates.begin(), rates.end(), unsigned(value)) != rates.end()) audio_rate = uint32_t(value); }
             else if (key == "usb_volume") usb_full = value != 0;
+            else if (key == "usb_direct") usb_direct = value != 0;
+            else if (key == "direct_level") direct_level = uint8_t(std::clamp(value, 0, int(direct_levels.size()) - 1));
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
@@ -487,6 +516,7 @@ struct Settings {
             else if (key == "refresh") refresh = value >= 45 ? 0 : value >= 25 ? 1 : 2;
             else if (key == "dim_after") { dim_after = 0; for (unsigned n = 0; n < dim_minutes.size(); ++n) if (value >= int(dim_minutes[n])) dim_after = uint8_t(n); }
             else if (key == "pad_level") { pad_level = 0; for (unsigned n = 0; n < pad_levels.size(); ++n) if (value <= int(pad_levels[n])) pad_level = uint8_t(n); }
+            else if (key == "scale_keys") scale_keys = value != 0;
             else if (read_midi_config(midi, key, value)) {}
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));

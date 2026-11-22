@@ -36,6 +36,7 @@ void Context::print(const PrintAsk& ask) {
     if (none) job.patterns.push_back(project.tracks[t].pattern); // the one it plays
     if (job.patterns.empty()) { printer->note("track " + std::to_string(t + 1) + " has no pattern with notes"); return; }
     job.project = std::make_unique<Project>(project);
+    if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // slice hits as Chop has them (issue 24)
     job.bank = std::make_unique<PatternBank>(patterns);
     if (plugins) job.states = plugins->states();
     if (library) job.card_top = library->card();
@@ -175,6 +176,7 @@ void Context::print_tick() {
         for (unsigned p = 0; p < pattern_count; ++p)
             if (f.plays(p) && !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
         job.project = std::make_unique<Project>(project);
+        if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // slice hits as Chop has them (issue 24)
         job.bank = std::make_unique<PatternBank>(patterns);
         if (plugins) job.states = plugins->states();
         if (library) job.card_top = library->card();

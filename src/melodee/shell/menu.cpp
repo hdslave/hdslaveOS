@@ -94,6 +94,7 @@ void run(Context& c, MenuJob job) {
     case J::PatternDouble: c.double_length(); break;
     case J::PatternHalf: c.half_length(); break;
     case J::PatternClear: ask(c, UiState::Ask::ClearPattern, int(column)); break; // asked first, as Seq + Erase + pad
+    case J::TrackName: c.name_track(ui.track); break;
     case J::TrackMove: start_track_pick(ui, true); break;  // then the track, then where
     case J::TrackCopy: start_track_pick(ui, false); break;
     case J::TrackClear: { // asked first, as Pad Bank + Erase + pad
@@ -123,6 +124,7 @@ void menu_open(Context& c) {
     if (ui.menu || ui.ask != UiState::Ask::None || ui.name.open() || ui.exit_open || ui.loading || card_owns_controls(ui) || ui.levels_sheet) return;
     ui.stop_copying(); // a copy or a move waiting for its pads gives way
     ui.scene_capture = false;
+    ui.history = false; // the undo list gives way
     ui.menu = here_count(c) ? menu_here_view : menu_go_view;
     ui.menu_row = 0;
     ui.menu_tile = uint8_t(menu_tile_of(ui.page));

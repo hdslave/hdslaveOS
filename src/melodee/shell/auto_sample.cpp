@@ -9,6 +9,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 
@@ -36,6 +37,12 @@ bool midi_input(const Track& tr, InputSource& out) {
     case midi_track::AudioUsb: out = InputSource::Usb; return true;
     default: return false;
     }
+}
+
+// An error's first words, before any ":" (what follows says what to do): kept on the sheet.
+void keep_error(UiState::AutoSheet& sheet, const std::string& error, int key) {
+    std::snprintf(sheet.error, sizeof(sheet.error), "%s", error.substr(0, error.find(':')).c_str());
+    sheet.error_key = int16_t(key);
 }
 
 // The plug-in of track `t` on the live rack. Ready where there is none to wait for (a track with no plug-in, no rack:
@@ -166,7 +173,7 @@ void Context::autosample_tick() {
         if (!sheet.checking || sheet.check_wanted || sheet.track != heard.track) continue; // called off, an earlier one's, or another's
         sheet.checking = false;
         if (heard.error.empty()) sheet.settings.found = heard.found;
-        else if (heard.error != "stopped") notice("Check: " + heard.error);
+        else if (heard.error != "stopped") keep_error(sheet, heard.error, heard.key); // on the sheet, which is in view
     }
     // The sheet's check, once the track's plug-in is open and the print engine is free. A plug-in such as Surge XT
     // reads thousands of files from the card as it opens: the print host's own copy opened beside the live one would
@@ -182,6 +189,7 @@ void Context::autosample_tick() {
                 notice("Check: the plug-in is not open");
             } else if (status == PluginStatus::Ready && !printer->busy()) {
                 sheet.check_wanted = false;
+                sheet.error[0] = 0; sheet.error_key = -1;
                 sheet.checking = autosample_check(t, sheet.settings);
             }
         }
@@ -194,7 +202,9 @@ void Context::autosample_tick() {
         const bool shown = sheet.sampling && sheet.track == r.track;
         if (shown) sheet.sampling = false;
         if (!r.error.empty()) {
-            notice(r.error == "stopped" ? std::string("Auto sample called off") : "Auto sample: " + r.error);
+            if (r.error == "stopped") notice("Auto sample called off");
+            else if (shown) keep_error(sheet, r.error, r.key); // the whole run for nothing: kept on the sheet, not a moment's notice
+            else notice("Auto sample: " + r.error.substr(0, r.error.find(':')));
             continue; // the sheet stays, to try again
         }
         if (r.project_path != project_path) { notice("Saved Keygroups/" + r.name); continue; } // another project's
@@ -307,6 +317,7 @@ void Context::auto_sheet_go() {
     const EngineKind engine = project.tracks[sheet.track % track_count].engine;
     if (engine != EngineKind::Plugin && engine != EngineKind::Midi) { notice("Auto sample: plug-in and MIDI tracks"); return; }
     if (first_empty_track() < 0) notice("No empty track: the program is only saved");
+    sheet.error[0] = 0; sheet.error_key = -1;
     autosample(sheet.track, sheet.settings);
     sheet.sampling = autosample_track == int8_t(sheet.track);
 }

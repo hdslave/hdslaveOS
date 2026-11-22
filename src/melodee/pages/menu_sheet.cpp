@@ -23,7 +23,7 @@ Icon job_icon(MenuJob job) {
     using J = MenuJob;
     switch (job) {
     case J::SequenceCapture: return Icon::Copy;
-    case J::SequenceName: return Icon::Keyboard;
+    case J::SequenceName: case J::TrackName: return Icon::Keyboard;
     case J::SequenceFollowAll: return Icon::ArrowRight;
     case J::SequenceLaunch: return Icon::Play;
     case J::SequenceClear: case J::PatternClear: case J::TrackClear: return Icon::Trash;

@@ -2,3 +2,7 @@
 	path = base
 	url = ../sample-base.git
 	branch = hdslave
+[submodule "core"]
+	path = core
+	url = ../ellic-core.git
+	branch = hdslave

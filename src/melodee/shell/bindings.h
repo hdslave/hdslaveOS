@@ -123,6 +123,7 @@ struct Binding {
         // WARP (B1's third page): K1 0 Off, 1 Stretch, 2 Repitch; K2 the tempo it was recorded at (tenths of a BPM); K3
         // its semitones, Shift + K3 its cents (Stretch moves its pitch by them).
         RegionWarp, RegionBpm, RegionSemi, RegionFine,
+        SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -209,6 +210,12 @@ std::array<Binding, 3> favourite_bindings(const Track& track);
 // (an engine parameter, a kit pad's own value on the last pad, the mod
 // wheel), -1 where it lands in none.
 int binding_lane(const Track& track, const Binding& b);
+// Erase + pot on a kit pad's own value (Tune, Mix, Play's offset, the envelopes, the filter, its sends, cloud and loop
+// crossfade): the card's value on a new pad, false for Trim's handles, a toggle or a choice.
+bool pad_reset_value(const Binding& b, int& value);
+// Whether Erase + pot sends the card back to its initial value: an engine's, Knob FX's or a plug-in's parameter, or a
+// kit pad's own value.
+bool erase_resets(const Binding& b);
 // Roll's Shift + K1 NUDGE (round 2): how far `e` sits off its nearest grid line of Q, in ticks (-q/2 .. q/2 - 1);
 // turning it moves the note to that line plus the offset.
 Binding nudge_card(const Pattern& pattern, const Event& e);

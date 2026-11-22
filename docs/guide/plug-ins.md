@@ -208,8 +208,9 @@ there. On a Mac, press Cmd-Shift-. in Finder to show it.
 
 ## Latency and sample rate
 
-Melodee compensates for plug-in latency: tracks, buses and MIDI out are
-delayed to line up with the slowest path. Settings' **AUDIO** page shows
+Melodee compensates for plug-in latency: tracks, buses and sequenced MIDI
+out are delayed to line up with the slowest path. MIDI you play goes out at
+once. Settings' **AUDIO** page shows
 the compensation (**PDC**). Open MPC plug-ins run at 44.1 kHz. At 48 or 96
 kHz Melodee converts their audio, so they play in tune at any rate.
 

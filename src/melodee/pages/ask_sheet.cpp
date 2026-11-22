@@ -109,6 +109,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         juce::String name = s.project.name[0] ? juce::String::fromUTF8(s.project.name) : juce::String("This project");
         if (s.ui.ask_target == 1) sheet.lines = {name + " is saved first.", ""};
         else if (s.ui.ask_target == 2) sheet.lines = {"This project was never saved.", "Its changes are lost."};
+        else if (s.ui.ask_target == 3) sheet.lines = {name + " stays as last saved.", "Its changes are lost."}; // Autosave Off
         else sheet.lines = {name + " has nothing unsaved.", ""};
         verb = "NEW"; verb_glyph = Icon::Check;
         middle = "KIT"; // B3: no tracks, the track types on track 1; B2: the MPC's factory kit on track 1
@@ -182,6 +183,18 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         sheet.chip = instrument ? "TRACK " + juce::String(track + 1) : juce::String("EFFECT");
         sheet.chip_colour = colour_of(s);
         verb = "REPLACE"; verb_glyph = Icon::Swap;
+        break;
+    }
+    case Ask::Rechop: { // issue 24 (3b): Chop renumbers slices that slice hits play (Context::chop_change)
+        unsigned hits = unsigned(std::max(0, int(s.ui.ask_target)));
+        sheet.icon = Icon::Scissors;
+        const juce::String name = s.ui.chop_sample < sample_slots ? juce::String::fromUTF8(s.project.samples[s.ui.chop_sample].name) : juce::String();
+        sheet.title = "Rechop " + name + "?";
+        sheet.lines = {count_of(hits, "slice hit changes", "slice hits change") + " sound.", hits == 1 ? juce::String("Undo brings it back.") : undo_line};
+        sheet.chip = "TRACK " + juce::String(track + 1);
+        sheet.chip_colour = colour_of(s);
+        sheet.undo = true;
+        verb = "RECHOP"; verb_glyph = Icon::Scissors;
         break;
     }
     case Ask::Unfreeze: { // freeze plan F2c: an edit of a frozen track

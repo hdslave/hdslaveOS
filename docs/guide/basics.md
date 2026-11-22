@@ -137,7 +137,19 @@ until they meet. Change this in [Settings](settings.md) (**KNOBS**).
 ## Undo
 
 **SHIFT** + **−** undoes, **SHIFT** + **+** redoes. Melodee keeps the last
-32 steps. A recording take is one step. Turning a knob is one step per
+32 steps.
+
+Hold **SHIFT** + **−** for a moment to open the undo list. It shows the
+steps, newest on top, each with its track and how long ago. **NOW** marks
+where you are; steps you undid are above it, dim.
+
+- Turn the encoder, or press **−** / **+**, to pick a step. The steps above
+  it go dim: they are undone when you go there.
+- Push the encoder, or press **B3** (**UNDO** or **REDO** and how many), to
+  go back or forward to the state after that step. **START** is the state
+  before every step in the list.
+- **B1** (**BACK**) closes the list with no change. Any other button closes
+  it and does its own job. A recording take is one step. Turning a knob is one step per
 control. Mute, solo and the transport are not undo steps. Loading or
 creating a project clears the undo history.
 

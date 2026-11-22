@@ -68,8 +68,9 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(edit_pattern_chip(s));
     if (!ui.recording) {
         if (focused && ui.held_note >= 0) h.left.push_back(pill("LOCK", c)); // its pad held: the pots lock it (roadmap P1)
-        if (focused) // where it sits: the place bar's
-            h.left.push_back(chip(Icon::Note, juce::String(lane >= 0 ? note_name(roll_row(*focused, lane) + named_by) : key_label(track, focused->key)), c));
+        if (focused) // where it sits: the place bar's; a slice hit's slice after its pad (issue 24)
+            h.left.push_back(chip(Icon::Note, juce::String(lane >= 0 ? note_name(roll_row(*focused, lane) + named_by) : key_label(track, focused->key)) +
+                                                  (focused->slice ? juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(focused->slice)) : juce::String()), c));
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
     }
     if (marks) { // how many are marked; grey while Shift still marks
@@ -199,7 +200,7 @@ void draw(Paint& p, const Snapshot& s) {
         CardSheet m;
         m.chip = "NOTE"; m.chip_colour = c; m.accent = c;
         m.title = juce::String(lane >= 0 ? note_name(roll_row(*focused, lane) + named_by) : key_label(track, focused->key)) + juce::String::fromUTF8(" \xc2\xb7 ") +
-                  where(s, focused->tick);
+                  (focused->slice ? juce::String(int(focused->slice)) + juce::String::fromUTF8(" \xc2\xb7 ") : juce::String()) + where(s, focused->tick);
         auto flag = [&](uint8_t f) { return bool(focused->flags & f); };
         auto state = [&](uint8_t f) { return juce::String(flag(f) ? "ON" : "OFF"); };
         m.items[RowAccent] = card_item(Icon::Accent, "ACCENT", state(step_accent), flag(step_accent));

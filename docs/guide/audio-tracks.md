@@ -31,7 +31,7 @@ bars under it show the input's level, left over right.
 | Control | Action |
 | --- | --- |
 | **K1** (**SOURCE**) | What the track records: Rear L+R, Rear L, Rear R, Mic, USB L+R, USB L or USB R. |
-| **K2** (**MONITOR**) | **On**: you hear the input while the track is armed or recording. **Off**: you never hear it. |
+| **K2** (**MONITOR**) | **Auto**: you hear the input while the track is armed or recording. **On**: you always hear it, also while you play or stop, and while a track that is not an audio track is selected (the first audio track set to On). **Off**: you never hear it. |
 | **K3** (**GAIN**) | The input's gain, −12 to +24 dB (the same gain as Input Config's). |
 
 With the built-in mic as the source, the speaker goes quiet while you hear

@@ -139,7 +139,8 @@ shows a track that is on a pattern of its own.
 ![Recording armed](../images/screens/recarmed.png)
 
 Recording adds to the notes already in the pattern. Each take is one undo
-step. Turn a knob while recording to record it as Motion.
+step. Turn a knob while recording to record it as Motion. On Chop, the slice
+pads record too (see [Recording slices](kits-and-sampling.md#recording-slices)).
 
 - **SHIFT** + **Pad 4**: count-in on or off. A pad hit in the last
   sixteenth of the count-in records at the start of the take, as long as
@@ -470,9 +471,9 @@ Patterns, cell n is also sequence n.
   to pattern n, at the sequence's tempo. Tracks with no notes in that column
   are silent.
 - **SHIFT** + **B1** (**SEQUENCE**): **K1** sets the sequence's tempo
-  (below 30 is None). Push the encoder to name the sequence. Press **ERASE**
-  to clear the sequence's name and tempo. The header shows **SEQ** and the
-  sequence's number, and its name.
+  (below 30 is None), **K2** its colour. Push the encoder to name the
+  sequence. Press **ERASE** to clear the sequence's name, tempo and colour.
+  The header shows **SEQ** and the sequence's number, and its name.
 
 ![SEQUENCE](../images/screens/patternsscene.png)
 
@@ -494,9 +495,10 @@ pattern: what the pattern does after it has played for a while.
 
 - The pads are the bank's 16 sequences, laid out as the pads. Press a pad
   to launch its sequence at the next bar. **ERASE** + pad clears the sequence's
-  name and tempo. **PAD BANK** steps the bank.
+  name, tempo and colour. **PAD BANK** steps the bank.
 - The sequence launched last is the sequence in hand. The encoder sets its tempo
-  (below 30 is None). Push the encoder to name it. **ERASE** clears it.
+  (below 30 is None). **SHIFT** + encoder sets its colour: its cell and its pad
+  light in it. Push the encoder to name it. **ERASE** clears it.
 - **K1**–**K3** set the selected pattern's follow action, as on **FOLLOW**.
   **SHIFT** + **K1** sets the second action. **SHIFT** + **B3** (**ALL**)
   puts the follow action on every track's pattern in that column. In Basic

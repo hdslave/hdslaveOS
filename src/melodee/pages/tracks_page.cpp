@@ -56,6 +56,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + delta + int(track_count)) % track_count); }
 void push(Context& c) {
     if (!c.track().used()) { offer_new_track(c); return; } // an empty track: its doors, then back here
+    if (c.ui.shift) { c.ui.shift_used = true; c.name_track(c.ui.track); return; } // a name of its own (the Name sheet)
     c.open(PageId::Stage);
 }
 

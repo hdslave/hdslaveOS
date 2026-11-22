@@ -68,6 +68,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (checking) h.left.push_back(chip(Icon::Clock, check_word, colour::ice));
     else if (sampling) h.left.push_back(pill(kind_icon, ours ? "SAMPLING " + juce::String(std::min<unsigned>(job.through + 1, job.count)) + "/" + juce::String(job.count)
                                                             : juce::String("SAMPLING"), colour::ice));
+    else if (sheet.error[0]) h.left.push_back(chip(Icon::Warn, juce::String::fromUTF8(sheet.error).toUpperCase(), colour::amber)); // why the last run failed
     else h.left.push_back(chip(kind_icon, !a.found.heard ? "AUTO SAMPLE" : a.found.split ? "SPLIT" : a.found.kind == AutoKind::Mono ? "MONO" : drums ? "DRUMS" : "KEYS", colour::ice));
     h.right.push_back(tag_of(s, t));
     SoftKeys keys {{busy ? "CANCEL" : "BACK", busy ? "" : rows[sheet.row % 3], busy ? "" : "SAMPLE"}, -1, c,
@@ -88,6 +89,7 @@ void draw(Paint& p, const Snapshot& s) {
         const bool in = k >= a.low && k <= a.high && (!drums || found.sounds(k));
         juce::Colour fill = black(k) ? colour::quiet : colour::line;
         if (in) fill = black(k) ? c.withAlpha(0.45f) : c.withAlpha(0.8f);
+        if (!busy && int(k) == sheet.error_key) fill = colour::amber; // the key the last run failed on
         p.fill(x0 + (k - first) * kw, ky, std::max(1.0f, kw - (zoom ? 1.5f : 0.4f)), black(k) ? kh * 0.62f : kh, fill, zoom ? 2.0f : 0.0f);
     }
     // A split: a line where the upper sound starts.
@@ -102,6 +104,8 @@ void draw(Paint& p, const Snapshot& s) {
         if (playing && (s.now / 250) % 2) mark = c;
         p.fill(rx - 1.5f, ky - 9, 3, 7, mark, 1.5f);
     }
+    if (!busy && sheet.error_key >= int(first) && sheet.error_key <= int(last))
+        p.fill(x0 + (unsigned(sheet.error_key) - first + 0.5f) * kw - 1.5f, ky - 9, 3, 7, colour::amber, 1.5f);
     // Octave names under the keys: every second C (C-1, C1, C3 ...); zoomed, each C in view (11 px).
     for (unsigned k = (first + 11) / 12 * 12; k <= last; k += zoom && count <= 48 ? 12 : 24)
         p.text(juce::String(note_name(int(k))), x0 + (k - first) * kw, ky + kh + 3, 34, 12, plain(colour::mid, type::small));

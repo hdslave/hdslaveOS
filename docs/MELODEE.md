@@ -146,7 +146,7 @@ cards.
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: marks notes; the wheel alone walks each chord's notes, then the next step) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Patterns the track; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Patterns the track; sampler pages and Punch the bank | Undo / redo, on every page; Shift + − undoes as it is let go, and held 0.4 s opens the undo list |
 | Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into the pattern it plays when empty, else its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -397,7 +397,9 @@ beat; the meters show the mix.
   play that much faster or slower against the tempo, their notes and
   motion as written, ×1½ turning sixteenths into sixteenth triplets; the
   header names it, Patterns too; kept in TSPD);
-  the wheel or −/+ the track, Push its Stage; the fader is its level. The MIX
+  the wheel or −/+ the track, Push its Stage, Shift + Push its name (the
+  Name sheet, one undo step; a name of its own stays when its sound or
+  plug-in changes, kept in TNAM); the fader is its level. The MIX
   hub's keys, **B1 TRACKS**, **B2 SENDS**, **B3 FX** (Tracks, Sends and the
   chains share them; FX steps track, bus, master, a kit's pad); with Shift,
   **MOVE** and **COPY** (below). Pad Bank
@@ -972,11 +974,19 @@ hold to steer, Shift + Seq to zoom in**.
   mix as `Mix.wav` and each track with a sound, `NN <name>.wav`, as it
   joins the mix after its chain, level, pan and mute, and each bus a
   track sends into, after its chain at its return; all 32-bit float,
-  the same frames, in one real-time pass), or a MIDI FILE
+  the same frames, in one real-time pass), a MIDI FILE
   (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
   song each track's pattern once; a kit's pads as notes 36 on, on channel
-  10, a MIDI track on its own). A `.mid` in the browser (a note glyph,
+  10, a MIDI track on its own), an MPC 3 project
+  (`Melodee/MPC 3/<name>.xpj`, `shell/mpc3_export.h`) or an Ableton LIVE
+  SET (`Melodee/Ableton/<name> Project/<name>.als` and its samples in
+  `Samples/Imported/`, Live 12.1 or later, `shell/live_export.h` in the
+  core: each pattern a Session View clip in the scene of its number, the
+  song in Arrangement View, a kit a Drum Rack of Simplers, a plug-in track
+  its notes and its prints, printed first as for MPC 3; no effects; track
+  colours as Live's nearest, `ui/shades.h`). Both run on the project
+  store's export thread, slice hits laid on free pads first. A `.mid` in the browser (a note glyph,
   MIDI) loads with Push: every note onto the selected track's pattern
   playing, as many bars as they take (128 at most), one undo; a kit takes
   notes 36 on as its pads.
@@ -1281,7 +1291,13 @@ away, gives the silence (2.5 times its peak, -70 dB at least; over
 sent and cut to a millisecond before its own first frame over that level
 (looked for until 50 ms after the delay: the delay is never twice the
 same), and ends once the input has been under the silence for 0.2 s
-(TAIL at most). A frame at full scale fails the job ("the input clips").
+(TAIL at most). Three frames or more in a row at full scale (0.999) on one
+side fail the job, named by the key then sounding ("G#3 clips: turn the
+instrument down"; "the input clips" when several keys sound); one or two
+frames that touch it are a peak and pass. A failed check or sampling keeps
+its first words (before any ":") on the sheet as an amber chip, and the key
+in amber on the strip, until SAMPLE or the next check (UiState::AutoSheet
+error, error_key); `melodee-print status` keeps the whole line.
 The check runs first in the same job (`probe_first`), its notes played
 the same way; the sequencer starting calls the job off. The sheet has
 INPUT in TAP's place and the input's meter (IN), amber within 3 dB of
@@ -1404,7 +1420,16 @@ the file holds, to the bit.
   (`SampleFill`, `AudioReader`), and the voice reads only what has landed
   (`SampleGrowth`), holding silent at that edge should the reading fall
   behind; Shift + pad loads onto the
-  next empty pad. Melodee writes only to the card. On **Pads** every pad that
+  next empty pad. Shift + B3 STAR (its LED lit on a starred file) stars or
+  unstars the file under the cursor; a starred row shows a star. The card's
+  `Melodee/Samples` and the card's top lead with two rows, STARRED (by name)
+  and RECENT (the last 16 files loaded from the browser, newest first), each
+  with how many it holds; Push opens one as a folder, its rows each with the
+  folder its file is in, B1 back to where it opened. Erase in one takes the
+  row off that list and keeps the file. They are kept on the card as
+  `Melodee/Starred.txt` and `Melodee/Recent.txt`, a path a line (a card's
+  file from the card's top, an internal one whole; `shell/sample_lists.h`);
+  a file gone from the card is left out. Melodee writes only to the card. On **Pads** every pad that
   sounds lights, with a head through its waveform as far as its newest voice
   has played through its region.
 - **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as
@@ -1686,7 +1711,8 @@ the file holds, to the bit.
   New MIDI Track, a note for each slice where it falls, at the pad's speed
   (Warp's Seq or Follow: the region's own tempo; 50-200 %; else as
   recorded), KIT's on its sound's pad, into the track's pattern when empty,
-  else the first empty one, which then plays; one undo step with the pads)
+  else the first empty one, which then plays; one undo step with the pads,
+  a Seq Record take ended first as Undo ends it)
   and lays the slices on pads, B1 CANCEL drops
   the chop. As on the MPC, slices belong to the sample and live in its WAV
   file (the `atem` and `slic` chunks, `shell/mpc_wav_slices.cpp`; beside
@@ -1832,7 +1858,11 @@ the file holds, to the bit.
   are files on the card, `autorun/melodee/stems/melodee-stems` and
   `spleeter-4stems.f16` beside it (80 MB; with `device.py install-sd`, in
   `autorun/sample-base/stems/`, or `sample-base/stems/` at the card's top
-  for an install from before), not part of the binary. A job copies the program
+  for an install from before), not part of the binary. Melodee looks
+  first in the folder it was started from, which `sd-worker.sh` writes to
+  `sd-folder` beside the app's copy in RAM, so a release kept by a boot
+  menu (SampleBoot's `autorun/mods/<name>/melodee/stems/`) uses its own
+  program. A job copies the program
   into RAM (`/run/melodee-stems`, the card being `noexec`), runs it there
   on three threads at the lowest priority and removes it after; the model
   is read where it is. A job that would leave under 192 MB of memory free
@@ -2013,7 +2043,8 @@ shows it, the header says what and how much.
 it, Push does MIDI Panic and Reset, B1 back): port (External jacks or USB), In channel (All, 1–16: plays the
 selected track), Out channel, Track Channel (a track's own: plays it
 whichever is selected, and its notes go out there), Pad MIDI In / Out
-(Never, Always, Empty), Sync In / Out (Off, MIDI Clock, MTC), Thru, Program
+(Never, Always, Empty), Scale on White Keys (on a Scale or Chords track the white keys play the project's
+scale from the root on C4, the black keys nothing; `shell/scale_keys.h`), Sync In / Out (Off, MIDI Clock, MTC), Thru, Program
 Change (launches that pattern), CV/Sync Out with Base 1–8 and Division 1–24
 (pulses a quarter), the three takeover rows, MIDI Panic (Push: every note
 here ends, and All Sound Off, All Notes Off and pitch bend centre go out on
@@ -2087,6 +2118,15 @@ while following.
   Open at start, Delete (asks again); on another Load and **Load kit (no
   patterns)** (its first kit onto the selected track, one undo) first.
   Settings and About are Shift + Pad 8's.
+  **Autosave Off** (Settings > SEQ, issue 18; `Settings::autosave`, On by
+  default, `autosave=` in the settings file): no background save. B1 reads
+  **SAVE** (to the project's file; SAVE AS while it has none, SAVE AS NEW on
+  its sheet); the open project's sheet gains **REVERT** (TO SAVED, second
+  card) while it has a file and changes: pressed twice, the file is opened
+  again. NEW asks with "Its changes are lost" and saves nothing; LOAD of
+  another project says CHANGES LOST and asks once more; Exit's POWER OFF
+  and MPC APP leave without saving (DISCARDS under them). An update's
+  install still saves first.
 - **Loading**: a project loaded, imported or new (and a change of sample
   rate) fades the sound out over 10 ms and parks the audio thread, silent,
   while the MIDI thread builds the whole project, so however many effects
@@ -2209,7 +2249,8 @@ while following.
   keeps.
 - **Exit** (Power, short): a tile under each key. B3 MPC APP saves the
   project first, then returns to the stock app; B2 POWER OFF saves it, then
-  turns the MPC off; the header says UNSAVED while there are changes and
+  turns the MPC off (with Autosave Off neither saves: DISCARDS under
+  them while there are changes); the header says UNSAVED while there are changes and
   SAVED once they are kept (or NO CARD); B1 stays
   (and calls off a save still on its way). At the next start Melodee opens
   the project set to open at start, or else the one last opened or saved.
@@ -2313,7 +2354,16 @@ while following.
   the pots or the fader do to it while it is held (undo while holding takes
   that step back). The note cards and Roll's NUDGE are steps like any
   pot; on Step Edit each step typed in is one. Mute, solo, mode buttons and the transport are not steps.
-  A load or a new project forgets them.
+  A load or a new project forgets them. Shift + − undoes as it is let go; held
+  0.4 s it opens the undo list (`shell/history_list.h`, `pages/history_sheet.cpp`)
+  over the page: the steps kept, newest on top, each with its glyph, its
+  track's number on its colour and how long ago; the steps undone first
+  (dim), then the steps done, then START; NOW marks the state in hand and
+  the cursor opens there. The wheel and −/+ move it, the rows above it dim;
+  Push or B3 (UNDO n, REDO n) undoes or redoes one step at a time up to it,
+  stopping where a step waits or asks first (a frozen track). B1 BACK; any
+  other button closes it and does its job; Play, Stop and Shift leave it
+  open; K1-K3 wait. Eight rows show.
 - **Takeover**: a pot drives its value once it meets it (Pickup), moves it
   part of the way (Scaled) or at once (Instant); the card shows the value
   dim with a tick where the pot sits until then.
@@ -2584,7 +2634,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SLCE` (slice notes recorded on Chop: each note's slice), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
   `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds
@@ -2636,7 +2686,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   files are. Safe to delete: each is made again when its sample next loads.
 - `Melodee/Projects/**/<project> Loops/Loop N.wav`: a project's loops.
   `Melodee/Mixdowns/` holds song mixdowns, `Melodee/Stems/` stems,
-  `Melodee/MIDI/` MIDI files, `Melodee/SysEx/` a MIDI track's `.syx`
+  `Melodee/MIDI/` MIDI files, `Melodee/MPC 3/` and `Melodee/Ableton/`
+  exported projects, `Melodee/SysEx/` a MIDI track's `.syx`
   files (`SysEx/` at the card's top, where older builds read them, too).
 
 Melodee makes no folder at the card's top: what it writes is under
@@ -2666,6 +2717,10 @@ and Melodee's:
   commit N [note]` (docs/LOOPER.md).
 - `melodee-render [serial|parallel]`: the render workers left asleep (the
   audio thread renders alone) or used again, from the next block.
+- `melodee-usb-input`: USB-C in as JSON (`UsbAudioInput::json()`): whether
+  the computer is locked to the MPC's clock, the pitch it is asked to send
+  at, the ring's target and lowest fill, underruns (base/docs/HARDWARE.md,
+  Input recording showcase).
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
   the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI
   Panic.

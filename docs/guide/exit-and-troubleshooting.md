@@ -15,7 +15,9 @@ Press **POWER** briefly. The Exit screen opens.
 
 Or turn the encoder to pick one and push it. **STAY** is picked when the
 screen opens. The header shows **UNSAVED** while the project has changes,
-and **SAVED** once they are kept.
+and **SAVED** once they are kept. With **Autosave** off in Settings,
+**POWER OFF** and **MPC APP** don't save: they say **DISCARDS** while
+the project has changes.
 
 The next time Melodee starts, it opens the project set to open at start,
 or else the last project you opened or saved.

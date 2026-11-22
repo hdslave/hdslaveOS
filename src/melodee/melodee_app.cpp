@@ -3,6 +3,7 @@
 #include "melodee/melodee_app.h"
 #include "melodee/crash_log.h"
 #include "drivers/card_share.h"
+#include "drivers/direct_monitor.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "surface/pads.h"
@@ -66,6 +67,8 @@ MelodeeApp::MelodeeApp()
     printer.set_pager(&host.streams()); // freeze plan F2b: prints are read through the instruments' pager
     shell.set_store(&store);
     shell.set_input(&input_route);
+    // MIDI played by hand goes out as the audio thread emits it, not at the MIDI loop's next pass.
+    host.set_hand_waker([](void* app) { static_cast<MelodeeApp*>(app)->session().wake_midi(); }, this);
     // The card's settings now, not first on the service thread: the runtime opens the audio device with
     // audio_format() as it starts, and Settings' rate from that first open spares a reopen moments later
     // (the codec powered down and up again, its mute shut a second, and the USB-C gadget rebound twice).
@@ -134,8 +137,15 @@ static_assert(usb_stem_count == melodee::track_count && usb_stem_frames == melod
 
 void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
     usb_full = shell.usb_full_volume();
+    const bool direct = shell.usb_direct_on();
+    host.set_usb_direct(direct);
     host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames),
                 usb_full ? usb_block.data() : nullptr);
+    // Settings' USB-C in Direct: what a computer plays goes straight to the jacks, dry, while something here would
+    // have played it, at the level it would have (before its effects), the direct level and the main volume, eased
+    // (base's drivers/direct_monitor.h).
+    const float gain = shell.volume() * shell.usb_direct_gain();
+    direct_monitor().set(direct && host.usb_heard(), gain * host.usb_gain_left(), gain * host.usb_gain_right());
 }
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
@@ -236,6 +246,14 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    // USB-C in now, as UsbAudioInput::json(), and the round trip from a Note On played by hand to its sound back on it.
+    if (action == "melodee-usb-input") { // and direct monitoring's counters (base's drivers/direct_monitor.h)
+        const auto& d = direct_monitor();
+        return "OK " + input_route.usb_json() + " loop=" + input_route.loop_json() + " direct={\"on\":" + std::to_string(int(d.on())) +
+               ",\"attached\":" + std::to_string(int(d.attached())) + ",\"added\":" + std::to_string(d.added()) +
+               ",\"slips\":" + std::to_string(d.slips()) + ",\"nudges\":" + std::to_string(d.nudges()) + ",\"short\":" + std::to_string(d.short_writes()) +
+               ",\"lead\":" + std::to_string(d.lead()) + "}";
+    }
     if (action == "melodee-render") { // melodee-render serial|parallel: the render workers left asleep or used again
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";

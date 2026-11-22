@@ -5,8 +5,10 @@
 #include "melodee/model/print.h"
 #include "melodee/model/sampler.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/input_route.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/scale_keys.h"
 #include "melodee/shell/step_edit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
@@ -38,23 +40,31 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     t %= track_count;
     if (k < 0 || k > 127) return;
     auto& tr = project.tracks[t];
-    if (down) midi_held[t].set(size_t(k));
-    else if (midi_held[t].test(size_t(k))) midi_held[t].reset(size_t(k));
-    else return; // never started here (or already let go)
-    // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key
-    // played. Kept from the press, so its end finds it whatever has changed meanwhile.
+    // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key played. With Scale on white keys,
+    // a white key is a note of the scale and a black key nothing (shell/scale_keys.h). Kept from the press, so its
+    // end finds it whatever has changed meanwhile.
     const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
     const bool instrument = project.samples[pad.sample % sample_slots].instrument();
     const int root = levels_root_shift(project, tr); // a single sample: its note, key 60 + root its own pitch
     const int levels = levels_key(tr, k, instrument, root);
-    if (down) midi_played[t][size_t(k)] = levels >= 0 ? levels : k;
+    if (down) {
+        const bool scale = levels < 0 && ui.settings.scale_keys && scale_keys_on(project, tr);
+        const int note = levels >= 0 ? levels : scale ? scale_key_note(project, k) : k;
+        if (note < 0) return; // a black key: not held, so its release does nothing
+        midi_held[t].set(size_t(k));
+        midi_played[t][size_t(k)] = note;
+    } else if (midi_held[t].test(size_t(k))) {
+        midi_held[t].reset(size_t(k));
+    } else {
+        return; // never started here (or already let go)
+    }
     const int played = midi_played[t][size_t(k)];
     from_midi = true;
     if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history; Step Edit and Roll write it
         if (down && played == k && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
         key(played, velocity, down);
         if (levels >= 0) midi_entry(*this, int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - (instrument ? int(pad.pitch) : root), uint8_t(velocity), down);
-        else midi_entry(*this, k, 0, uint8_t(velocity), down);
+        else midi_entry(*this, played, 0, uint8_t(velocity), down);
     } else { // a track on its own channel: played as the selected one is, and Seq Record takes it too (every track at once)
         const uint8_t selected = ui.track;
         ui.track = uint8_t(t);
@@ -249,12 +259,15 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         int value = m.isAftertouch() ? m.getAfterTouchValue() : m.getChannelPressureValue();
         for (unsigned t = 0; t < track_count; ++t) {
             if (!((tracks >> t) & 1)) continue;
+            // On a synth, the note a held key plays (Scale on white keys moves it); a kit's pads as they were.
+            const bool kit = c.project.tracks[t].engine == EngineKind::Sampler;
+            auto sounding = [&](int k) { return !kit && c.midi_held[t].test(size_t(k)) ? int(c.midi_played[t][size_t(k)]) : k; };
             if (m.isAftertouch()) {
                 int key = note_key(c.project.tracks[t], m.getNoteNumber());
-                if (key >= 0) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(key), int16_t(value)});
+                if (key >= 0) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(sounding(key)), int16_t(value)});
             } else {
                 for (int k = 0; k < 128; ++k)
-                    if (c.midi_held[t].test(size_t(k))) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(k), int16_t(value)});
+                    if (c.midi_held[t].test(size_t(k))) c.send({Type::Pressure, uint8_t(t), 0, uint16_t(sounding(k)), int16_t(value)});
             }
         }
         return;
@@ -450,10 +463,7 @@ bool MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, Mid
 
 void MidiIo::panic(Context& c, MidiOutput& out) {
     // Notes waiting for their frame would start again after it: they go; their offs, the clocks and the rest stay.
-    unsigned kept = 0;
-    for (unsigned n = 0; n < pending_count; ++n)
-        if (pending[n].event.kind != MidiOutEvent::Kind::NoteOn) pending[kept++] = pending[n];
-    pending_count = kept;
+    pending.keep_if([](const MidiOutEvent& e) { return e.kind != MidiOutEvent::Kind::NoteOn; });
     for (const auto& port : out.ports()) {
         if (!port.output || port.surface) continue;
         for (int ch = 1; ch <= 16; ++ch) {
@@ -604,32 +614,43 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     int64_t now_ns = ns_of(now);
     MidiOutEvent e;
     while (c.host.take_midi(e)) {
-        int64_t due = clock.known() ? clock.heard_at(e.frame) : now_ns;
-        if (pending_count == pending.size()) { deliver(c, out, e); continue; } // no room to wait: now
-        unsigned at = pending_count;
-        while (at > 0 && pending[at - 1].due > due) { pending[at] = pending[at - 1]; --at; } // after those due at the same time
-        pending[at] = {due, e};
-        ++pending_count;
+        // Played by hand: at once (from when it was played, plus a positive DELAY); the rest when its frame is heard.
+        int64_t due = !clock.known() ? now_ns : e.live ? clock.rendered_at(e.frame) : clock.heard_at(e.frame);
+        if (e.live && (e.kind == MidiOutEvent::Kind::NoteOn || e.kind == MidiOutEvent::Kind::NoteOff))
+            superseded.fetch_add(pending.supersede(e, due), std::memory_order_relaxed);
+        if (pending.full()) { deliver(c, out, e); continue; } // no room to wait: now
+        pending.add(e, due);
     }
     // Due within a fifth of a millisecond: now (the next wake-up would be later than that); none while SysEx goes out.
     unsigned sent = 0;
-    while (!sysex.active && sent < pending_count && pending[sent].due <= now_ns + 200000) {
-        // How late this thread sends against when the frame is heard (USB or the UART add their own after).
+    while (!sysex.active && sent < pending.size() && pending[sent].due <= now_ns + 200000) {
+        // How late this thread sends against when the frame is heard, or played by hand against when it was played
+        // (USB or the UART add their own after).
         int64_t late = std::max<int64_t>(0, now_ns - pending[sent].due);
-        late_sum += late; ++late_count; late_max = std::max(late_max, late);
+        if (pending[sent].event.live) {
+            hand_sum += late; ++hand_count; hand_max = std::max(hand_max, late);
+            if (pending[sent].event.made_ns) { // played to emitted (the audio thread taking it), emitted to sent (this thread)
+                hand_made_sum += std::max<int64_t>(0, pending[sent].event.made_ns - pending[sent].due);
+                hand_woke_sum += std::max<int64_t>(0, now_ns - pending[sent].event.made_ns);
+            }
+            if (pending[sent].event.kind == MidiOutEvent::Kind::NoteOn && c.input) c.input->note_sent(ns_of(Clock::now())); // the loop probe
+        }
+        else { late_sum += late; ++late_count; late_max = std::max(late_max, late); }
         deliver(c, out, pending[sent++].event);
     }
     if (late_count >= 200) { // kept per 200 messages for `status`
         late_avg_us.store(unsigned(late_sum / late_count / 1000)); late_max_us.store(unsigned(late_max / 1000));
         late_sum = late_max = 0; late_count = 0;
     }
-    if (sent) {
-        std::copy(pending.begin() + sent, pending.begin() + pending_count, pending.begin());
-        pending_count -= sent;
+    if (hand_count >= 20) { // per 20 played by hand
+        hand_avg_us.store(unsigned(hand_sum / hand_count / 1000)); hand_max_us.store(unsigned(hand_max / 1000));
+        hand_made_us.store(unsigned(hand_made_sum / hand_count / 1000)); hand_woke_us.store(unsigned(hand_woke_sum / hand_count / 1000));
+        hand_sum = hand_max = hand_made_sum = hand_woke_sum = 0; hand_count = 0;
     }
+    pending.drop_front(sent);
     // While SysEx goes out nothing above is sent, so a message already due would wake this thread again at once,
     // and again, for as long as the SysEx takes: woken a millisecond on instead.
-    if (pending_count) out.wake_at(Clock::time_point(std::chrono::nanoseconds(sysex.active ? std::max(pending[0].due, now_ns + 1000000) : pending[0].due)));
+    if (pending.size()) out.wake_at(Clock::time_point(std::chrono::nanoseconds(sysex.active ? std::max(pending[0].due, now_ns + 1000000) : pending[0].due)));
 }
 
 std::string MidiIo::summary(const EngineHost& host) const {
@@ -661,7 +682,10 @@ std::string MidiIo::summary(const EngineHost& host) const {
            " melodee_cv_pulses=" + std::to_string(cv_pulses.load()) + " melodee_cv_ok=" + std::to_string(int(cv_ok.load())) +
            " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_track_out=" + std::to_string(track_outs.load()) +
            " melodee_midi_last_out=" + last_text(last_out.load()) + " melodee_midi_last_dest=" + std::to_string(last_dest.load()) +
-           " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
+           " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_hand_us=" + std::to_string(hand_avg_us.load()) + "/" +
+           std::to_string(hand_max_us.load()) + " melodee_midi_hand_split_us=" + std::to_string(hand_made_us.load()) + "/" +
+           std::to_string(hand_woke_us.load()) + " melodee_midi_superseded=" + std::to_string(superseded.load()) +
+           " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
            std::to_string(late_max_us.load());
 }
 

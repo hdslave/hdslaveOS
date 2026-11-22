@@ -55,6 +55,7 @@ class ReleaseTests(unittest.TestCase):
         files = self.collect()
         self.assertEqual({name.split("/")[0] for name in files}, {"autorun"})
         self.assertIn("autorun/melodee/licenses/LICENSE-AGPL-3.0.txt", files)
+        self.assertIn(b"MIT License", files["autorun/melodee/licenses/ellic-core-LICENSE.txt"])
 
     def test_the_stem_separator_ships_in_a_folder_of_its_own(self):
         files = self.collect()

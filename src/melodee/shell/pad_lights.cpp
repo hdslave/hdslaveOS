@@ -335,9 +335,11 @@ Look tracks_look(const PadScene& s, unsigned pad) {
 }
 // ---- SCENES (roadmap P5): a pad a scene, the column of patterns it launches. The one playing (every track with notes
 // there playing it) bright, one waiting for its bar blinking, the rest as many tracks as hold notes there; Erase held:
-// the scenes with a name or tempo to clear.
+// the scenes with a name, tempo or colour to clear. A scene with a colour (issue 19) lights in it, else white.
 Look scenes_look(const PadScene& s, unsigned pad) {
     unsigned n = s.ui.pad_pattern(pad), with = 0, on = 0, waiting = 0; // the bank in view's
+    const unsigned hue = s.project.scenes[n].colour;
+    auto lit = [hue](float level) { return hue ? track(hue - 1, level) : white(level); };
     bool rolling = s.host.playing();
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = s.project.tracks[t];
@@ -348,10 +350,10 @@ Look scenes_look(const PadScene& s, unsigned pad) {
         waiting += rolling && !live && tr.pattern == n;
     }
     if (s.ui.erase) return s.project.scenes[n].plain() ? Look {} : red(dim);
-    if (with && on == with) return white(full);
-    if (waiting) return (s.now / 150) % 2 ? white(mid) : white(faint);
-    if (!with) return s.project.scenes[n].plain() ? Look {} : white(faint);
-    return with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
+    if (with && on == with) return lit(full);
+    if (waiting) return (s.now / 150) % 2 ? lit(mid) : lit(faint);
+    if (!with) return s.project.scenes[n].plain() ? Look {} : lit(faint);
+    return with == 1 ? lit(faint) : with < 4 ? lit(dim) : lit(mid);
 }
 
 Look song_look(const PadScene& s, unsigned pad) {
