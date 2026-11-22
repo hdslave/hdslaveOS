@@ -16,6 +16,7 @@
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
+#include <melodee_screen.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -361,6 +362,7 @@ public:
         instance->setPlayHead(&clock);
         idle.reset(is_instrument, this->plugin_rate);
         clap = dynamic_cast<ClapInstance*>(instance.get());
+        has_screen = clap && clap->hasScreen();
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -471,6 +473,11 @@ public:
     std::string folder;                  // where it was picked from (an Open MPC folder holds its skin)
     std::vector<PluginPage> file_pages;  // a page file's pages (plugin/page_file.h), kept for a CLAP page change
     std::shared_ptr<const PluginSkin> skin; // its skin (plugin/plugin_skin.h), null none
+    // Its own screen (plugin/plugin_screen.h): whether it offers one; once it has drawn (under the rack's lock), and
+    // the parameters it puts on K1-K3 (indices in getParameters(), -1 none).
+    bool has_screen = false;
+    bool screen_drawn = false;
+    std::array<int, 3> screen_controls {-1, -1, -1};
     bool qlinks = false;
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
@@ -561,6 +568,12 @@ PluginRack::PluginRack(EngineHost& engine, std::string stage) : host(engine), st
 }
 
 PluginRack::~PluginRack() {
+    {
+        std::lock_guard<std::mutex> held(screen_lock);
+        screen_stop = true;
+    }
+    screen_wake.notify_all();
+    if (screen_thread.joinable()) screen_thread.join(); // before the plug-ins it draws go
     {
         std::lock_guard<std::mutex> held(lock);
         stopping = true;
@@ -839,6 +852,20 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         if (at >= layout.slots.size()) break;
         read(at, out.window[k]);
     }
+    // Its own screen in view, once it has drawn: K1-K3 are the three it names (PluginPanel::screen).
+    out.has_screen = h->has_screen;
+    bool in_view = false;
+    {
+        std::lock_guard<std::mutex> seen(screen_lock);
+        in_view = screen_now.entry == entry;
+    }
+    if (h->has_screen && h->screen_drawn && in_view) {
+        out.screen = true;
+        for (unsigned k = 0; k < 3; ++k) {
+            out.params[k] = {};
+            read_param(h->screen_controls[k], {}, out.params[k]);
+        }
+    }
     // The skin's page for this one (by its name), an effect's strip: its controls' parameters and where they are.
     if (h->skin && out.pages) {
         const PluginSkin::Page* page = nullptr;
@@ -884,6 +911,17 @@ void PluginRack::set_param(unsigned entry, unsigned shown_index, int value) {
     auto* p = h->instance->getParameters()[index];
     float v = std::clamp(value, 0, plugin_param_max) / float(plugin_param_max);
     p->setValue(v);
+}
+
+void PluginRack::set_screen_param(unsigned entry, unsigned k, int value) {
+    if (entry >= max_plugins || k >= 3) return;
+    std::lock_guard<std::mutex> held(lock);
+    auto* h = entries[entry].live;
+    if (!h || !h->has_screen) return;
+    int index = h->screen_controls[k];
+    const auto& params = h->instance->getParameters();
+    if (index < 0 || index >= params.size()) return;
+    params[index]->setValue(std::clamp(value, 0, plugin_param_max) / float(plugin_param_max));
 }
 
 PluginPrograms PluginRack::programs(unsigned entry) const {
@@ -1404,8 +1442,11 @@ void PluginRack::destroy(PluginHandle* handle) {
         else owned.reset(handle); // never made it into the list (a stale load)
     }
     std::string stage = owned->stage;
-    if (juce_hosted(owned->format)) message_thread().run([&] { owned.reset(); });
-    else owned.reset();
+    {
+        std::lock_guard<std::mutex> calls(screen_calls); // the screen thread is not inside it
+        if (juce_hosted(owned->format)) message_thread().run([&] { owned.reset(); });
+        else owned.reset();
+    }
     std::error_code e;
     if (!stage.empty()) fs::remove_all(stage, e);
     give_back_memory();
@@ -1446,6 +1487,148 @@ void PluginRack::idle_plugins() {
         moved = true;
     }
     if (moved) changed();
+}
+
+// --- A plug-in's own screen (plugin/plugin_screen.h, sdk/melodee-screen/melodee_screen.h) ---
+
+void PluginRack::screen_view(const ScreenView& view) {
+    bool poke = false;
+    {
+        std::lock_guard<std::mutex> held(screen_lock);
+        if (screen_stop) return;
+        if (view.entry != no_plugin && !screen_thread.joinable()) screen_thread = std::thread([this] { screen_run(); });
+        poke = view != screen_now;
+        screen_now = view;
+        screen_poked = screen_poked || poke;
+    }
+    if (poke) screen_wake.notify_one();
+}
+
+void PluginRack::screen_input(unsigned entry, const ScreenInput& input) {
+    {
+        std::lock_guard<std::mutex> held(screen_lock);
+        if (entry != screen_now.entry || screen_inputs.size() >= 64) return; // not the page in view; a flood: dropped
+        screen_inputs.emplace_back(entry, input);
+    }
+    screen_wake.notify_one();
+}
+
+ScreenPicturePtr PluginRack::screen_picture() const {
+    std::lock_guard<std::mutex> held(screen_lock);
+    if (!screen_latest || screen_latest->entry != screen_now.entry || screen_latest->area != screen_now.area) return nullptr;
+    return screen_latest;
+}
+
+// The screen thread. It owns the frame the plug-in draws into, which keeps that plug-in's last picture between draws;
+// another plug-in in view, or the same one's other area, starts with a whole picture. It draws when the plug-in asks
+// (redraw), after an input and when what the page tells it changes, at most every `gap`. A call the plug-in's other
+// calls keep waiting is tried again a tick later, so a preset load on the rack's thread never holds this one up.
+void PluginRack::screen_run() {
+    using Clock = std::chrono::steady_clock;
+    using std::chrono::milliseconds;
+    constexpr milliseconds gap {16}, tick {16}, missing {100}, rest {500};
+    const auto start = Clock::now();
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0);
+    std::array<std::shared_ptr<ScreenPicture>, 3> pool {};
+    std::deque<std::pair<unsigned, ScreenInput>> inputs;
+    const PluginHandle* drawn = nullptr;
+    unsigned drawn_entry = no_plugin;
+    uint8_t drawn_area = 0;
+    uint32_t serial = 0;
+    bool whole = true, owed = false, ask_controls = false;
+    Clock::time_point last = start - std::chrono::seconds(1);
+    milliseconds wait = rest;
+    for (;;) {
+        ScreenView view;
+        {
+            std::unique_lock<std::mutex> held(screen_lock);
+            screen_wake.wait_for(held, wait, [&] { return screen_stop || screen_poked || !screen_inputs.empty(); });
+            if (screen_stop) return;
+            owed = owed || screen_poked;
+            screen_poked = false;
+            view = screen_now;
+            for (auto& in : screen_inputs) inputs.push_back(in);
+            screen_inputs.clear();
+        }
+        inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&](const auto& in) { return in.first != view.entry; }), inputs.end());
+        if (view.entry >= max_plugins) { wait = rest; drawn = nullptr; continue; }
+        wait = tick;
+        std::lock_guard<std::mutex> calls(screen_calls); // destroy() frees no plug-in meanwhile
+        PluginHandle* h = nullptr;
+        {
+            std::lock_guard<std::mutex> held(lock);
+            const auto& e = entries[view.entry];
+            if (e.live && e.status == PluginStatus::Ready && e.live->has_screen) h = e.live;
+        }
+        if (!h || !h->clap) { wait = missing; continue; }
+        if (h != drawn || view.entry != drawn_entry || view.area != drawn_area) {
+            drawn = h; drawn_entry = view.entry; drawn_area = view.area;
+            whole = owed = ask_controls = true;
+        }
+        if (h->clap->takeRedraw()) owed = true;
+        while (!inputs.empty()) {
+            const auto& in = inputs.front().second;
+            melodee_screen_input_t raw {uint32_t(in.key), in.value, in.shift ? 1u : 0u};
+            bool used = false;
+            if (!h->clap->screenInput(raw, used)) break; // busy: the next tick
+            inputs.pop_front();
+            owed = ask_controls = true;
+        }
+        const auto now = Clock::now();
+        if (owed && now - last < gap) {
+            wait = std::chrono::duration_cast<milliseconds>(gap - (now - last)) + milliseconds(1);
+        } else if (owed) {
+            const unsigned height = view.area ? picture_strip_rows : picture_page_rows;
+            if (whole) std::fill(canvas.begin(), canvas.end(), 0u);
+            melodee_screen_frame_t frame {};
+            frame.pixels = canvas.data();
+            frame.width = picture_width;
+            frame.height = height;
+            frame.stride = picture_width;
+            frame.area = view.area;
+            frame.redraw_all = whole ? 1u : 0u;
+            frame.colour = view.colour & 0xffffffu;
+            frame.time_ms = uint64_t(std::chrono::duration_cast<milliseconds>(now - start).count());
+            frame.playing = view.playing ? 1 : 0;
+            frame.shift = view.shift ? 1 : 0;
+            for (unsigned k = 0; k < 3; ++k) { frame.pots[k] = view.pots[k]; frame.pots_live[k] = view.live[k]; }
+            bool changed = false;
+            if (h->clap->screenDraw(frame, changed)) {
+                last = now;
+                owed = false;
+                ask_controls = true;
+                if (changed || whole) {
+                    std::shared_ptr<ScreenPicture> picture;
+                    for (auto& p : pool) // one no snapshot holds any more, nor screen_latest
+                        if (!p || p.use_count() == 1) { if (!p) p = std::make_shared<ScreenPicture>(); picture = p; break; }
+                    if (!picture) picture = std::make_shared<ScreenPicture>();
+                    picture->entry = uint8_t(view.entry);
+                    picture->area = view.area;
+                    picture->serial = ++serial;
+                    picture->width = uint16_t(picture_width);
+                    picture->height = uint16_t(height);
+                    const size_t count = size_t(picture_width) * height;
+                    picture->pixels.resize(count);
+                    for (size_t n = 0; n < count; ++n) picture->pixels[n] = canvas[n] | 0xff000000u; // opaque
+                    {
+                        std::lock_guard<std::mutex> held(screen_lock);
+                        screen_latest = picture;
+                    }
+                    std::lock_guard<std::mutex> held(lock);
+                    h->screen_drawn = true;
+                }
+                whole = false;
+            }
+        }
+        if (ask_controls) {
+            std::array<int, 3> controls {-1, -1, -1};
+            if (h->clap->screenControls(controls)) {
+                ask_controls = false;
+                std::lock_guard<std::mutex> held(lock);
+                h->screen_controls = controls;
+            }
+        }
+    }
 }
 
 // Freeze plan F2d: what a plug-in freed goes back to the system (glibc keeps freed heap for the process otherwise,

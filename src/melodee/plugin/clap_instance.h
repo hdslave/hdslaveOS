@@ -35,6 +35,9 @@ struct clap_plugin_note_ports;
 struct clap_plugin_preset_load;
 struct clap_event_header;
 struct clap_output_events;
+struct melodee_screen;
+struct melodee_screen_frame;
+struct melodee_screen_input;
 
 namespace melodee {
 
@@ -100,6 +103,15 @@ public:
     std::string module (int index) const;
     std::vector<RemotePage> remotePages();
     bool remotePagesChanged() const;
+    // Its own screen (sdk/melodee-screen/melodee_screen.h, plugin/plugin_screen.h), when it offers one. Each call is
+    // made only while no other main-thread call runs: false, and nothing done, while one does (try again later).
+    // screenControls(): the parameters K1-K3 turn, as getParameters() numbers them, -1 none. takeRedraw(): it asked
+    // for a draw since the last call.
+    bool hasScreen() const { return screen != nullptr; }
+    bool screenDraw (const melodee_screen_frame& frame, bool& changed);
+    bool screenInput (const melodee_screen_input& input, bool& used);
+    bool screenControls (std::array<int, 3>& indices);
+    bool takeRedraw();
     int getNumPrograms() override;                      // its presets (1 with none, as JUCE has it)
     int getCurrentProgram() override;                   // the one loaded here last (0 none yet)
     void setCurrentProgram (int) override;              // loads that preset, again if it is the one loaded
@@ -134,6 +146,7 @@ private:
     const clap_plugin_latency* latency = nullptr;
     const clap_plugin_tail* tail = nullptr;
     const clap_plugin_preset_load* presetLoad = nullptr;
+    const melodee_screen* screen = nullptr;
     std::vector<Preset> presets;    // under `mainLock`
     int currentPreset = -1;         // under `mainLock`
     juce::File file;

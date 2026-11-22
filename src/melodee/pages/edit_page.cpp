@@ -253,7 +253,10 @@ void plugin_page_step(Context& c, int way) {
 namespace {
 
 void wheel(Context& c, int delta) {
-    if (c.track().engine == EngineKind::Plugin) { plugin_rows(c, delta); return; }
+    if (c.track().engine == EngineKind::Plugin) { // its own screen takes the wheel, else its rows
+        if (!c.plugin_screen_input(ScreenKey::Wheel, delta)) plugin_rows(c, delta);
+        return;
+    }
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track, count = edit_page_count(info);
@@ -266,6 +269,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
+    if (c.track().engine == EngineKind::Plugin && c.plugin_screen_input(ScreenKey::Push, 1)) return; // its own screen's
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track;
@@ -288,7 +292,7 @@ void push(Context& c) {
 
 // Minus / Plus: the octave, or on a PLUGIN track its pages (the wheel walks its rows).
 void nudge(Context& c, int way) {
-    if (c.track().engine == EngineKind::Plugin) plugin_page_step(c, way);
+    if (c.track().engine == EngineKind::Plugin) { if (!c.plugin_screen_input(ScreenKey::Step, way)) plugin_page_step(c, way); }
     else octave(c, way);
 }
 } // namespace

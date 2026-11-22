@@ -70,11 +70,12 @@ build/obj/melodee/shell/sample_decode.o: CPPFLAGS += $(FORMAT_FLAGS)
 # Plug-ins (docs/MELODEE.md, Plug-ins): JUCE's headless plug-in hosting with
 # VST3 and LV2 (lilv and its libraries, bundled in JUCE; VST2, CLAP and the
 # armv7 bridge are Melodee's own, src/melodee/plugin/; CLAP's headers from
-# build/deps/clap, src/melodee/dependencies.py), and
+# build/deps/clap, src/melodee/dependencies.py; the plug-in screen header,
+# sdk/melodee-screen, MIT), and
 # the support pack (GUI stubs, the bridge and its armhf runtime) linked into
 # the binary. The pack needs Melodee's build image (tools/plugin_support/Dockerfile).
 HOSTING := $(JUCE)/juce_audio_processors_headless
-CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -DJUCE_PLUGINHOST_LV2=1 -I$(HOSTING)/format_types/VST3_SDK -Ibuild/deps/clap/include
+CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -DJUCE_PLUGINHOST_LV2=1 -I$(HOSTING)/format_types/VST3_SDK -Ibuild/deps/clap/include -Isdk/melodee-screen
 LV2_SDK := $(HOSTING)/format_types/LV2_SDK
 LV2_INCLUDES := $(addprefix -I$(LV2_SDK),/ /lv2 /serd /sord /sord/src /sratom /lilv /lilv/src)
 PLUGIN_OBJECTS := build/obj/juce_audio_processors_headless.o build/obj/juce_audio_processors_headless_lv2_libs.o build/obj/plugin_support_pack.o

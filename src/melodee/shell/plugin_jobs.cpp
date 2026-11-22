@@ -15,6 +15,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -22,6 +23,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/ui/tokens.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -192,9 +194,16 @@ void Context::swap_plugin(Edit& e, bool after) {
 void Context::set_plugin_param(int32_t id, int value) {
     if (!plugins) return;
     unsigned entry = plugin_binding_entry(id), shown = plugin_binding_shown(id);
-    plugins->set_param(entry, shown, value);
     auto& panel = ui.plugin_panel;
-    if (panel.entry == entry)
+    if (shown >= plugin_screen_slot) { // one of the three its own screen names
+        unsigned k = shown - plugin_screen_slot;
+        plugins->set_screen_param(entry, k, value);
+        if (panel.entry == entry && panel.screen && k < 3) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
+        dirty = true;
+        return;
+    }
+    plugins->set_param(entry, shown, value);
+    if (panel.entry == entry && !panel.screen)
         for (unsigned k = 0; k < 3; ++k)
             if (panel.row * 3u + k == shown) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
     dirty = true;
@@ -270,6 +279,26 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
+// A plug-in's own screen (plugin/plugin_screen.h): the entry whose screen the page in view shows (Edit on its PLUGIN
+// track, Stage's EDIT), -1 none.
+int Context::plugin_screen_entry() const {
+    const auto& panel = ui.plugin_panel;
+    if (!panel.has_screen || panel.status != PluginStatus::Ready) return -1;
+    const auto& t = project.tracks[ui.track % track_count];
+    if (t.engine != EngineKind::Plugin || t.plugin != panel.entry) return -1;
+    if (ui.page == PageId::Edit) return t.plugin;
+    if (ui.page == PageId::Stage && stage_page_now(ui, t, false).kind == StageKind::PluginEdit) return t.plugin;
+    return -1;
+}
+
+// An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
+bool Context::plugin_screen_input(ScreenKey key, int value) {
+    int entry = plugin_screen_entry();
+    if (entry < 0 || !plugins || !ui.plugin_panel.screen) return false;
+    plugins->screen_input(unsigned(entry), {key, int32_t(value), ui.shift});
+    return true;
+}
+
 int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
@@ -296,6 +325,17 @@ void Context::plugins_tick(uint32_t at) {
         ui.plugins_count = uint16_t(view.files.size());
         if (view.came_from >= 0 && !plugin_came_back) { ui.plugins_cursor = uint16_t(view.came_from); plugin_came_back = true; }
         if (ui.plugins_cursor >= ui.plugins_count) ui.plugins_cursor = uint16_t(ui.plugins_count ? ui.plugins_count - 1 : 0);
+    }
+    { // A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once.
+        ScreenView view;
+        if (int on = plugin_screen_entry(); on >= 0) {
+            view.entry = uint8_t(on);
+            view.shift = ui.shift;
+            view.playing = host.playing();
+            view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;
+            for (unsigned k = 0; k < 3; ++k) { view.pots[k] = ui.pots[k].position; view.live[k] = ui.pots[k].engaged ? 1 : 0; }
+        }
+        plugins->screen_view(view);
     }
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
     plugin_panel_at = at;

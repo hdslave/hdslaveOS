@@ -1266,7 +1266,10 @@ void wheel(Context& c, int delta) {
         return;
     }
     if (page.kind == StageKind::PluginSound) { c.plugin_preset_turn(delta); return; } // its presets (none: nothing)
-    if (page.kind == StageKind::PluginEdit) { plugin_rows(c, delta); return; }       // its rows of three
+    if (page.kind == StageKind::PluginEdit) { // its own screen's wheel, else its rows of three
+        if (!c.plugin_screen_input(ScreenKey::Wheel, delta)) plugin_rows(c, delta);
+        return;
+    }
     int n = stage_focus(c.ui, c.track());
     if (!c.track().used()) { // the carousel: Push makes the card in the middle
         new_pick_turn(c.ui, delta, c.now);
@@ -1284,6 +1287,7 @@ void push(Context& c) {
     auto& t = c.track();
     const auto& page = stage_page_now(c.ui, t, stage_skip(c.project, c.ui, t));
     if (!t.used()) { new_track_push(c); return; } // the card in the middle: a type's sources, or the track made
+    if (page.kind == StageKind::PluginEdit && c.plugin_screen_input(ScreenKey::Push, 1)) return; // its own screen's
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
     if (page.kind == StageKind::Fx) { // the chain's effects, then its open slot (the plus), where Push adds one
         auto& slot = c.ui.fx_cursor[UiState::cursor_of(c.ui.track)];
@@ -1317,7 +1321,10 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
-    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { plugin_page_step(c, way); return; } // its pages, as Edit's
+    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { // its own screen's, else its pages
+        if (!c.plugin_screen_input(ScreenKey::Step, way)) plugin_page_step(c, way);
+        return;
+    }
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);
     else octave(c, way);
 }

@@ -17,7 +17,7 @@ OBJECTS = ["melodee/plugin/plugin_files.o", "juce_core.o", "juce_core_Compilatio
            "juce_events.o", "juce_audio_basics.o", "juce_audio_processors_headless.o",
            "juce_audio_processors_headless_lv2_libs.o"]
 LV2_SDK = "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK"
-INCLUDES = ["src", "core/src", "base/src", "build/deps/JUCE/modules", "build/deps/clap/include"]
+INCLUDES = ["src", "core/src", "base/src", "build/deps/JUCE/modules", "build/deps/clap/include", "sdk/melodee-screen"]
 DEFINES = ["-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1", "-DJUCE_STANDALONE_APPLICATION=1", "-DJUCE_USE_CURL=0",
            "-DJUCE_WEB_BROWSER=0", "-DNDEBUG", "-DJUCE_PLUGINHOST_VST3=1", "-DJUCE_PLUGINHOST_LV2=1"]
 FLAGS = ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", *["-I" + str(ROOT / i) for i in INCLUDES],

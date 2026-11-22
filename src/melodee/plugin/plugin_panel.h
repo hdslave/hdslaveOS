@@ -33,6 +33,10 @@ struct PluginPanel {
     PluginStatus status = PluginStatus::None;
     bool instrument = false;
     bool qlinks = false;           // the rows follow an Open MPC skin's Q-Link pages
+    // Its own screen (plugin/plugin_screen.h): `has_screen` it offers one; `screen` the page in view is that screen,
+    // drawn at least once, and `params` hold the three it puts on K1-K3 (bound as plugin_screen_slot + k).
+    bool has_screen = false;
+    bool screen = false;
     char name[32] {};
     char format[8] {};             // VST3, VST2, ARMV7
     char error[64] {};             // why it failed
@@ -134,10 +138,22 @@ constexpr int plugin_param_max = 1000; // a card's range for a plug-in parameter
 constexpr int32_t plugin_binding(unsigned entry, unsigned shown) { return int32_t(entry << 16 | shown); }
 constexpr unsigned plugin_binding_entry(int32_t id) { return unsigned(id) >> 16; }
 constexpr unsigned plugin_binding_shown(int32_t id) { return unsigned(id) & 0xffff; }
+// A plug-in's own screen names its three (PluginPanel::screen): K`k` is bound as plugin_screen_slot + k.
+constexpr unsigned plugin_screen_slot = 0x8000;
+// Which of K1-K3 a binding id is on.
+constexpr unsigned plugin_binding_k(int32_t id) {
+    return plugin_binding_shown(id) >= plugin_screen_slot ? (plugin_binding_shown(id) - plugin_screen_slot) % 3 : plugin_binding_shown(id) % 3;
+}
 // The panel's card for a binding id, null when that parameter is not on K1-K3 now.
 inline const PluginPanelParam* plugin_card(const PluginPanel& panel, int32_t id) {
     unsigned shown = plugin_binding_shown(id);
-    if (panel.entry != plugin_binding_entry(id) || shown < panel.row * 3u || shown >= panel.row * 3u + 3) return nullptr;
+    if (panel.entry != plugin_binding_entry(id)) return nullptr;
+    if (shown >= plugin_screen_slot) {
+        if (!panel.screen || shown - plugin_screen_slot >= 3) return nullptr;
+        const auto& card = panel.params[shown - plugin_screen_slot];
+        return card.used ? &card : nullptr;
+    }
+    if (panel.screen || shown < panel.row * 3u || shown >= panel.row * 3u + 3) return nullptr;
     const auto& card = panel.params[shown - panel.row * 3u];
     return card.used ? &card : nullptr;
 }

@@ -4,6 +4,7 @@
 #include "melodee/model/project.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_panel.h"
+#include "melodee/plugin/plugin_screen.h"
 #include "melodee/plugin/plugin_sleep.h"
 #include <array>
 #include <atomic>
@@ -84,6 +85,14 @@ public:
     // K1-K3; a parameter by its place among the shown ones, 0..plugin_param_max.
     void panel(unsigned entry, unsigned row, PluginPanel& out) const;
     void set_param(unsigned entry, unsigned shown, int value);
+    // A plug-in's own screen (plugin/plugin_screen.h). MIDI thread: screen_view() each tick, the page in view (entry
+    // no_plugin: none); screen_input() an input on that page, handed to the plug-in by the screen thread;
+    // set_screen_param() a value for the parameter its screen puts on K`k`. screen_picture(): the newest picture of
+    // the screen in view, null none (any thread). panel() gives `screen` once the plug-in has drawn and named K1-K3.
+    void screen_view(const ScreenView& view);
+    void screen_input(unsigned entry, const ScreenInput& input);
+    void set_screen_param(unsigned entry, unsigned k, int value);
+    ScreenPicturePtr screen_picture() const;
     // Its skin (plugin/plugin_skin.h), null none; loaded with it and never changed after. Any thread.
     std::shared_ptr<const PluginSkin> skin(unsigned entry) const;
     // PRESETS: the plug-in's named programs, and one of them picked (by its
@@ -148,6 +157,7 @@ private:
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
     void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)
     void destroy(PluginHandle* handle);
+    void screen_run();                              // the screen thread: draws the screen in view
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);
     void changed() { change_count.fetch_add(1, std::memory_order_acq_rel); }
@@ -176,6 +186,16 @@ private:
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0};
     std::thread thread;
+    // The screen thread's: what the MIDI thread told it and the newest picture (under `screen_lock`, never held while
+    // `lock` is taken); `screen_calls` held while it calls into a plug-in, so destroy() frees none meanwhile.
+    mutable std::mutex screen_lock;
+    std::condition_variable screen_wake;
+    bool screen_stop = false, screen_poked = false;
+    ScreenView screen_now;
+    std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
+    ScreenPicturePtr screen_latest;
+    std::mutex screen_calls;
+    std::thread screen_thread;
 };
 
 } // namespace melodee

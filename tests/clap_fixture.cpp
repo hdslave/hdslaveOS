@@ -13,8 +13,13 @@
 // for ("gain" Test Gain, "-" no one named; else Test Sine). A file of several
 // gives each its line number as its load key. fixture_preset_reads() counts
 // the files read.
+//
+// Test Sine draws its own screen (sdk/melodee-screen/melodee_screen.h): a bar
+// as wide as Level in the track's colour over a dark page.
 #include <clap/clap.h>
+#include <melodee_screen.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -38,6 +43,7 @@ struct Plugin {
     double rate = 44100, level = 0.5, wave = 0, gain = 1;
     std::map<int, double> phases; // key: phase of its sine
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
+    int drawnBar = -1;            // its screen's bar as last drawn, pixels
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
     void audio() { if (threads && !threads->is_audio_thread(host)) ++wrongThread; }
@@ -272,7 +278,41 @@ bool remotePage(const clap_plugin* p, uint32_t i, clap_remote_controls_page* pag
 }
 const clap_plugin_remote_controls remoteControls {remoteCount, remotePage};
 
+// Its own screen, Test Sine's alone: the bar; the wheel turns Level a hundredth a detent (it asks for a draw and a
+// block, and says its values moved), Push steps Wave, Minus / Plus are not its; K1 Level, K2 Wave, K3 nothing.
+bool screenDraw(const void* p, const melodee_screen_frame_t* frame) {
+    auto& s = of(static_cast<const clap_plugin*>(p));
+    s.main();
+    int bar = int(std::lround(s.level * frame->width));
+    if (!frame->redraw_all && bar == s.drawnBar) return false;
+    for (uint32_t y = 0; y < frame->height; ++y)
+        for (uint32_t x = 0; x < frame->width; ++x)
+            frame->pixels[y * frame->stride + x] = y < 10 && int(x) < bar ? frame->colour : 0x101010u;
+    s.drawnBar = bar;
+    return true;
+}
+bool screenInput(const void* p, const melodee_screen_input_t* in) {
+    auto& s = of(static_cast<const clap_plugin*>(p));
+    s.main();
+    if (in->kind == MELODEE_SCREEN_WHEEL) s.level = std::clamp(s.level + in->value * 0.01, 0.0, 1.0);
+    else if (in->kind == MELODEE_SCREEN_PUSH) s.wave = std::fmod(s.wave + 1, 3);
+    else return false;
+    if (auto* told = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)))
+        told->redraw(s.host, MELODEE_SCREEN_RUN);
+    if (auto* hp = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS)))
+        hp->rescan(s.host, CLAP_PARAM_RESCAN_VALUES);
+    return true;
+}
+void screenControls(const void* p, uint32_t ids[3]) {
+    of(static_cast<const clap_plugin*>(p)).main();
+    ids[0] = 7;
+    ids[1] = 9;
+    ids[2] = MELODEE_SCREEN_NO_CONTROL;
+}
+const melodee_screen_t screen {screenDraw, screenInput, screenControls};
+
 const void* extension(const clap_plugin* p, const char* id) {
+    if (!std::strcmp(id, MELODEE_SCREEN_CLAP) && of(p).instrument) return &screen;
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
     if (!std::strcmp(id, CLAP_EXT_STATE)) return &state;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;

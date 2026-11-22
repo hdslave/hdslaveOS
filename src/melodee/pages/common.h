@@ -99,6 +99,11 @@ void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top
 // plug-in is open and the pots are its own (not Knob FX's): plugin_page_shown().
 bool plugin_page_shown(const Snapshot& s, unsigned entry);
 void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui::SoftKeys& keys);
+// A plug-in's own picture (plugin/plugin_screen.h) at x, y: its page, or an effect's strip.
+// plugin_screen_shown(): the page in view is a plug-in's own screen (Edit on its track, Stage's EDIT), which Melodee
+// draws nothing over but its MENU, notices and questions.
+bool plugin_screen_shown(const Snapshot& s);
+void draw_screen_picture(ui::Paint& p, const ScreenPicture& picture, float x, float y);
 void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
 // An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
 void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);

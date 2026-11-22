@@ -12,6 +12,7 @@
 #include "melodee/pages/sampler_common.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/ui/knobs.h"
 #include "melodee/ui/widgets.h"
 #include <cmath>
@@ -438,9 +439,43 @@ void draw_skin_page(Paint& p, const Snapshot& s, const PluginSkin& skin, const P
 }
 } // namespace
 
+// A plug-in's own picture (plugin/plugin_screen.h) at x, y. Made into an image again only when a new one came; the
+// screen thread draws every page, so the image kept here is that thread's alone.
+void draw_screen_picture(Paint& p, const ScreenPicture& picture, float x, float y) {
+    static juce::Image image;
+    static uint32_t serial = 0;
+    static uint8_t entry = no_plugin;
+    const int w = picture.width, h = picture.height;
+    if (picture.pixels.size() < size_t(w) * size_t(h) || w <= 0 || h <= 0) return;
+    if (!image.isValid() || image.getWidth() != w || image.getHeight() != h || serial != picture.serial || entry != picture.entry) {
+        if (!image.isValid() || image.getWidth() != w || image.getHeight() != h) image = juce::Image(juce::Image::ARGB, w, h, false);
+        juce::Image::BitmapData bits(image, juce::Image::BitmapData::writeOnly);
+        for (int row = 0; row < h; ++row) {
+            auto* line = reinterpret_cast<juce::PixelARGB*>(bits.getLinePointer(row));
+            const uint32_t* from = picture.pixels.data() + size_t(row) * size_t(w);
+            for (int col = 0; col < w; ++col) {
+                uint32_t c = from[col];
+                line[col].setARGB(0xff, uint8_t(c >> 16), uint8_t(c >> 8), uint8_t(c));
+            }
+        }
+        serial = picture.serial;
+        entry = picture.entry;
+    }
+    p.g.drawImageAt(image, int(x), int(y));
+}
+
+bool plugin_screen_shown(const Snapshot& s) {
+    const auto& panel = s.ui.plugin_panel;
+    if (!panel.screen || !s.plugin_picture || s.plugin_picture->entry != panel.entry) return false;
+    const auto& t = s.project.tracks[s.ui.track % track_count];
+    if (t.engine != EngineKind::Plugin || t.plugin != panel.entry) return false;
+    if (s.ui.page == PageId::Edit) return true;
+    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, false).kind == StageKind::PluginEdit;
+}
+
 bool plugin_page_shown(const Snapshot& s, unsigned entry) {
     const auto& panel = s.ui.plugin_panel;
-    if (entry >= max_plugins || panel.entry != entry || panel.status != PluginStatus::Ready || !panel.rows) return false;
+    if (entry >= max_plugins || panel.entry != entry || panel.status != PluginStatus::Ready || (!panel.rows && !panel.screen)) return false;
     auto cards = cards_of(s);
     return std::none_of(cards.begin(), cards.end(), [](const ui::KnobCard& c) { return c.knob_fx; });
 }
@@ -452,6 +487,10 @@ void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKey
     if (auto* seen = controls_sink()) { // the preview's controls audit: the arcs are this page's pots
         seen->knobs_drawn = true;
         for (unsigned k = 0; k < 3; ++k) seen->knobs[k] = panel.params[k].used ? juce::String::fromUTF8(panel.params[k].name) : juce::String();
+    }
+    if (panel.screen && s.plugin_picture && s.plugin_picture->entry == entry && s.plugin_picture->area == 0) {
+        draw_screen_picture(p, *s.plugin_picture, 0, float(zone::header_y)); // its own page under B1-B3, all of it
+        return;
     }
     if (s.ui.settings.plugin_skins && panel.skin_page >= 0) // the maker's skin, under B1-B3; Melodee's dots over it
         if (const auto* page = skin_page_of(s)) {

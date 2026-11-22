@@ -715,11 +715,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PluginParam: { // as the shell last read it from the plug-in (plugin/plugin_panel.h)
-        const auto& card = s.ui.plugin_panel.params[plugin_binding_shown(b.id) % 3];
+        const unsigned k = plugin_binding_k(b.id), shown = plugin_binding_shown(b.id);
+        const auto& card = s.ui.plugin_panel.params[k];
         // Its name as the plug-in gives it (capitals, else mixed case, else over two lines: ui/knobs.cpp); its number
         // where it has none.
         auto name = juce::String::fromUTF8(card.name).trim();
-        c.label = name.isEmpty() ? juce::String(plugin_binding_shown(b.id) + 1) : name.toUpperCase();
+        c.label = name.isEmpty() ? juce::String(shown >= plugin_screen_slot ? k + 1 : shown + 1) : name.toUpperCase();
         if (name.isNotEmpty()) c.label_mixed = name;
         c.value = juce::String::fromUTF8(card.text);
         c.fill = std::clamp(b.value / float(plugin_param_max), 0.0f, 1.0f);

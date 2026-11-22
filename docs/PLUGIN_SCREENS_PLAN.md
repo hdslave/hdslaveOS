@@ -1,7 +1,7 @@
 # Plug-in screens: plan
 
-Status: proposed 2026-11-22. Nothing built. Pick 1 made (a); four open (end of
-this file); mocks on the plug-in pages artifact.
+Status: step 1 built 2026-11-22. All picks made (end of this file); mocks on
+the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
 CLAP and VST2 first; VST3 and LV2 later.
@@ -91,6 +91,13 @@ host test checks its pixels, inputs and controls. A preview tool,
 PNGs after each step (wheel, Push, Minus / Plus, Shift, pots), for makers
 without an MPC at hand.
 
+Built: the header, ClapInstance, the rack's screen thread (it starts with the
+first screen in view), the Snapshot's picture, Edit and Stage's EDIT, inputs,
+K1-K3 bound as `plugin_screen_slot + k`, Shift's layer kept off the page, the
+preview tool. Checked on the MPC with the CLAP fixture on an empty track: its
+page under EDIT, the wheel and K1 moving its bar, the page drawn again after
+leaving and coming back; then the track undone and the file removed.
+
 **2. VST2.** Vst2Instance: the vendor call, canDo and `redraw`. A VST2 test
 fixture (there is none today) built from vst2_abi.h; tests.
 
@@ -117,21 +124,21 @@ JUCE change or Melodee's own LV2 instance). Helpers for plug-in frameworks.
    a. The plug-in draws everything, its own pickup marks from `pots`.
    b. Melodee's rings round the plug-in's controls.
    c. Melodee's K1-K3 cards along the bottom.
-2. Effects in a track's FX chain.
+2. Effects in a track's FX chain. **Picked a.**
    a. The plug-in draws everything under the chain's slots, its knobs once
       (320 × 144, no K1-K3 cards); Push opens its full page. (recommended)
    b. Melodee's own strip and K1-K3 cards, as today; its full page from a
       PANEL card in the slot's sheet.
-3. Melodee's pages for a plug-in with its own screen.
+3. Melodee's pages for a plug-in with its own screen. **Picked a.**
    a. One press away: on Stage, B1's cycle goes PRESETS, PANEL (its
       screen), EDIT (Melodee's pages of every parameter); on Edit, a free
       Shift + B key swaps the two. (recommended)
    b. None: its screen is its only page.
-4. Setting.
+4. Setting. **Picked a.**
    a. Settings > SCREEN > Plug-in skins becomes Plug-in screens and covers
       both. (recommended)
    b. A row of its own.
-5. Skins (built b8ed56c) show the same doubles: Melodee's ring round each
+5. **Picked a.** Skins (built b8ed56c) show the same doubles: Melodee's ring round each
    of the maker's knobs, K1-K3 cards under a skin's strip.
    a. Kept, each control drawn once: no rings; a white dot where the pot sits
       only while it has not reached its value, the fader and Shift marks only

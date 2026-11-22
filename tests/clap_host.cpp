@@ -3,11 +3,14 @@
 // Melodee's CLAP host (plugin/clap_instance.h) against tests/clap_fixture.cpp:
 // listing a library, notes as CLAP notes and CCs as MIDI, parameters both ways,
 // state, latency, the main-thread callback, presets found (with their folders,
-// kept in a cache) and loaded, and every call on the right thread.
+// kept in a cache) and loaded, a plug-in's own screen, and every call on the right
+// thread.
 // Built and run by tests/test_plugin_hosts.py on aarch64 Linux, with Melodee's objects.
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/plugin_files.h"
+#include <melodee_screen.h>
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <dlfcn.h>
@@ -116,6 +119,33 @@ int main(int argc, char** argv) {
         CHECK(sine->wantsProcess()); // the fixture's on_main_thread asked to be run
         run(*sine);
         CHECK(!sine->wantsProcess());
+
+        // Its own screen (sdk/melodee-screen/melodee_screen.h): the fixture's bar is as wide as Level.
+        CHECK(sine->hasScreen());
+        std::vector<uint32_t> pixels(320 * 218, 0x123456u);
+        melodee_screen_frame_t frame {};
+        frame.pixels = pixels.data();
+        frame.width = 320; frame.height = 218; frame.stride = 320;
+        frame.redraw_all = 1;
+        frame.colour = 0xff8000u;
+        bool changed = false, used = false;
+        CHECK(sine->screenDraw(frame, changed) && changed);
+        CHECK(pixels[0] == 0xff8000u && pixels[150] == 0xff8000u && pixels[200] == 0x101010u && pixels[320 * 217] == 0x101010u);
+        frame.redraw_all = 0;
+        CHECK(sine->screenDraw(frame, changed) && !changed); // nothing new to draw
+        CHECK(!sine->takeRedraw());
+        melodee_screen_input_t wheel {MELODEE_SCREEN_WHEEL, 10, 0};
+        CHECK(sine->screenInput(wheel, used) && used);
+        CHECK(sine->takeRedraw() && !sine->takeRedraw()); // it asked once
+        CHECK(sine->wantsProcess());                      // and to be run: its audio side takes the new Level
+        sine->idle();                                     // its values moved: read again
+        CHECK(std::abs(level->getValue() - (64.0f / 127.0f + 0.1f)) < 1e-3f);
+        CHECK(sine->screenDraw(frame, changed) && changed && pixels[190] == 0xff8000u);
+        melodee_screen_input_t step {MELODEE_SCREEN_STEP, 1, 0};
+        CHECK(sine->screenInput(step, used) && !used); // Minus / Plus are not its
+        std::array<int, 3> controls {};
+        CHECK(sine->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1); // Level, Wave
+        run(*sine);
         sine->releaseResources();
     }
 
@@ -125,6 +155,7 @@ int main(int argc, char** argv) {
         if (!gain) return 1;
         CHECK(gain->getName() == "Test Gain" && !gain->acceptsMidi() && gain->getTotalNumInputChannels() == 2);
         CHECK(gain->module(0) == "Out" && gain->remotePages().empty()); // no remote-controls
+        CHECK(!gain->hasScreen());
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1

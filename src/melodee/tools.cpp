@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
@@ -37,9 +38,11 @@
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/ui/boot.h"
 #include "melodee/ui/shades.h"
+#include "melodee/ui/tokens.h"
 #include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
+#include <melodee_screen.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -50,6 +53,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace melodee {
@@ -3378,6 +3382,119 @@ static int project_export(bool live, const char* path, const char* folder, const
     return 0;
 }
 
+namespace {
+// A plug-in's own screen (sdk/melodee-screen/melodee_screen.h) for its maker, without an MPC: opens the first plug-in
+// of the CLAP library at `path` as Edit on its PLUGIN track shows it and writes the screen into `folder` as PNGs, 0.png
+// and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
+// k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
+int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps) {
+    juce::String error;
+    auto plugin = ClapInstance::load(juce::File(juce::String(path)), 0, 48000.0, 256, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    if (!plugin->hasScreen()) { std::printf("error=no screen (%s)\n", MELODEE_SCREEN_CLAP); return 1; }
+    plugin->prepareToPlay(48000.0, 256);
+    std::error_code made;
+    std::filesystem::create_directories(folder, made);
+    EngineHost host;
+    Shell shell(host);
+    board_project(shell);
+    auto s = std::make_unique<Snapshot>();
+    shell.snapshot(*s, 100000);
+    s->ui = UiState {};
+    s->now = 100000;
+    plugin_track(*s, PluginStatus::Ready);
+    auto& panel = s->ui.plugin_panel;
+    std::snprintf(panel.name, sizeof(panel.name), "%s", plugin->getName().toRawUTF8());
+    std::snprintf(panel.format, sizeof(panel.format), "CLAP");
+    panel.has_screen = panel.screen = true;
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    frame.redraw_all = 1;
+    frame.colour = ui::track_colour(s->ui.track).getARGB() & 0xffffffu;
+    for (auto& p : frame.pots) p = -1;
+    std::array<int, 3> controls {-1, -1, -1};
+    const auto& params = plugin->getParameters();
+    const auto start = std::chrono::steady_clock::now();
+    unsigned written = 0;
+    uint32_t serial = 0;
+    auto run_block = [&] { // values set here reach it with its next block
+        juce::AudioBuffer<float> buffer(std::max(2, plugin->getTotalNumOutputChannels()), 256);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        plugin->processBlock(buffer, midi);
+        plugin->idle();
+    };
+    auto shoot = [&] {
+        frame.time_ms = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
+        bool changed = false;
+        plugin->screenDraw(frame, changed);
+        frame.redraw_all = 0;
+        auto picture = std::make_shared<ScreenPicture>();
+        picture->entry = 0;
+        picture->serial = ++serial;
+        picture->pixels.resize(canvas.size());
+        for (size_t n = 0; n < canvas.size(); ++n) picture->pixels[n] = canvas[n] | 0xff000000u;
+        s->plugin_picture = picture;
+        plugin->screenControls(controls);
+        for (unsigned k = 0; k < 3; ++k) {
+            auto& card = panel.params[k];
+            card = {};
+            if (controls[k] < 0 || controls[k] >= params.size()) continue;
+            auto* p = params[controls[k]];
+            card.used = true;
+            std::snprintf(card.name, sizeof(card.name), "%s", p->getName(int(sizeof(card.name)) - 1).toRawUTF8());
+            std::snprintf(card.text, sizeof(card.text), "%s", p->getText(p->getValue(), 64).toRawUTF8());
+            card.value = int16_t(std::lround(std::clamp(p->getValue(), 0.0f, 1.0f) * plugin_param_max));
+            s->ui.pots[k].position = frame.pots[k];
+            s->ui.pots[k].engaged = frame.pots_live[k] != 0;
+        }
+        s->ui.shift = frame.shift != 0;
+        s->playing = frame.playing != 0;
+        juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
+        { juce::Graphics g(image); draw(g, *s); }
+        save_png(image, folder + "/" + std::to_string(written++) + ".png");
+    };
+    shoot();
+    for (const auto& step : steps) {
+        const auto colon = step.find(':');
+        const std::string word = step.substr(0, colon);
+        const int value = colon == std::string::npos ? 0 : std::atoi(step.c_str() + colon + 1);
+        auto send = [&](uint32_t kind, int32_t v) {
+            melodee_screen_input_t in {kind, v, frame.shift};
+            bool used = false;
+            plugin->screenInput(in, used);
+        };
+        if (word == "wheel") send(MELODEE_SCREEN_WHEEL, value);
+        else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
+        else if (word == "minus") send(MELODEE_SCREEN_STEP, -1);
+        else if (word == "plus") send(MELODEE_SCREEN_STEP, 1);
+        else if (word == "shift") frame.shift = frame.shift ? 0 : 1;
+        else if (word == "play" || word == "stop") frame.playing = word == "play" ? 1 : 0;
+        else if (word.size() == 2 && word[0] == 'k' && word[1] >= '1' && word[1] <= '3') {
+            const unsigned k = unsigned(word[1] - '1');
+            frame.pots[k] = int16_t(std::clamp(value, 0, 127));
+            frame.pots_live[k] = 1;
+            if (controls[k] >= 0 && controls[k] < params.size()) params[controls[k]]->setValue(float(frame.pots[k]) / 127.0f);
+        } else if (word == "wait") {
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, value)));
+            continue;
+        } else {
+            std::printf("error=unknown step %s\n", step.c_str());
+            return 1;
+        }
+        run_block();
+        shoot();
+    }
+    plugin->releaseResources();
+    std::printf("written=%u\n", written);
+    return 0;
+}
+} // namespace
+
 std::optional<int> run_tool(int argc, char** argv) {
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
         auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
@@ -3406,6 +3523,8 @@ std::optional<int> run_tool(int argc, char** argv) {
         return error.empty() ? 0 : 1;
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
+    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) // PLUGIN.clap DIR [STEP...]
+        return plugin_screen(argv[2], argv[3], std::vector<std::string>(argv + 4, argv + argc));
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-print-spike")) return print_spike(argc, argv);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {

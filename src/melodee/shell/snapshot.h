@@ -94,6 +94,7 @@ struct Snapshot {
     PluginRack::View plugins;          // the PLUG-INS picker: the folder listed
     PluginPrograms presets;            // PRESETS: the plug-in's programs
     std::shared_ptr<const PluginSkin> plugin_skin; // the plug-in in the panel's skin (plugin/plugin_skin.h), null none
+    ScreenPicturePtr plugin_picture; // its own screen's newest picture (plugin/plugin_screen.h), null none
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;

@@ -865,6 +865,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
     out.plugin_skin = context_.plugins && ui_.plugin_panel.skin_page != -1 ? context_.plugins->skin(ui_.plugin_panel.entry) : nullptr;
+    out.plugin_picture = context_.plugins && ui_.plugin_panel.screen ? context_.plugins->screen_picture() : nullptr;
     if (context_.plugins && ui_.page == PageId::Stage) { // Stage PRESETS: the track's plug-in's
         const auto& t = project_->tracks[ui_.track % track_count];
         if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && stage_page_now(ui_, t, false).kind == StageKind::PluginSound)

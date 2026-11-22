@@ -131,6 +131,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The Shift jobs are printed on the MPC: the page stays as it is, and
     // the knob strip shows the cards Shift turns (Shift + K), or dims when
     // there are none.
+    if (plugin_screen_shown(s)) return; // a plug-in's own screen: it draws Shift itself (the frame's `shift`)
     auto cards = cards_of(s);
     bool any = false;
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }

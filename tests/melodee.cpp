@@ -5534,7 +5534,7 @@ void stage() {
     {
         // Shift + wheel: a parameter with 401 values (x42 Fat1's Tuning, 400-480 Hz) moves one of them a detent, so
         // 440 Hz (500) is reached and a detent is never rounded back; a smooth one moves a thousandth.
-        const auto& b = cards(false)[0];
+        const auto b = cards(false)[0]; // a copy: cards() gives its array by value
         CHECK(plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[0]);
         PluginPanelParam tuning; tuning.used = true; tuning.steps = 401;
         CHECK(plugin_param_step(tuning, 500, 1) == 503 && plugin_param_step(tuning, 503, -1) == 500 &&
@@ -5542,6 +5542,16 @@ void stage() {
         PluginPanelParam smooth; smooth.used = true;
         CHECK(plugin_param_step(smooth, 500, 1) == 501 && plugin_param_step(smooth, 0, -1) == 0);
         ui.plugin_panel.row = 1; CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
+        // Its own screen (plugin/plugin_screen.h) names its three: bound apart from the rows, each once.
+        ui.plugin_panel.row = 0;
+        ui.plugin_panel.screen = true;
+        ui.plugin_panel.params[1].used = ui.plugin_panel.params[2].used = true;
+        const auto own = cards(false);
+        CHECK(own[0].kind == K::PluginParam && plugin_binding_shown(own[0].id) == plugin_screen_slot && plugin_binding_k(own[2].id) == 2);
+        CHECK(plugin_card(ui.plugin_panel, own[1].id) == &ui.plugin_panel.params[1]);
+        CHECK(!plugin_card(ui.plugin_panel, b.id)); // a row's binding while its screen is in view: none
+        ui.plugin_panel.screen = false;
+        CHECK(!plugin_card(ui.plugin_panel, own[1].id) && plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[0]);
     }
     ui.plugin_panel = {};
 
