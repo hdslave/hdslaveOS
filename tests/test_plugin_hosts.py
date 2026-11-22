@@ -95,6 +95,18 @@ class PluginHostTests(unittest.TestCase):
             for name in want:
                 self.assertTrue((Path(temp) / "out" / (name + ".png")).is_file())
 
+    def test_user_preset_across_projects_and_sampler_shortcuts(self):
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Test.clap"
+            plugin.parent.mkdir(parents=True)
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            for mode in ("save", "load"):
+                subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
+                               check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"

@@ -219,6 +219,17 @@ void Context::toggle_plugin_transport(unsigned entry) {
     if (plugins) plugins->sync(project, plugins_asleep()); // heard from the next block
 }
 
+void Context::name_plugin_preset() {
+    name_preset_entry = track().plugin;
+    name_preset_generation = plugins ? plugins->preset_generation(name_preset_entry) : 0;
+    if (!name_preset_generation) { notice("Synth is not ready"); return; }
+    if (ui.page == PageId::PluginPresets && ui.presets_entry != name_preset_entry) {
+        notice("Open the synth to save its preset");
+        return;
+    }
+    open_name(NameTarget::PluginPreset, "My Patch", NameEntry::capacity - 1, false);
+}
+
 void Context::open_plugin_presets(unsigned entry) {
     if (!plugins || entry >= max_plugins) return;
     if (ui.preset_due && ui.presets_entry == entry) { // Stage's turn still to load: now, as the cursor means a row here
@@ -240,6 +251,10 @@ void Context::choose_plugin_program(int index) {
     auto programs = plugins->programs(ui.presets_entry);
     if (index < 0 || size_t(index) >= programs.list.size()) return;
     const auto& picked = programs.list[size_t(index)];
+    if (picked.user()) {
+        plugins->load_user_preset(ui.presets_entry, picked.name);
+        return;
+    }
     plugins->select_program(ui.presets_entry, picked.index);
     if (ui.presets_entry < max_plugins) // its name kept with the project, shown again when it is opened
         std::snprintf(project.plugins[ui.presets_entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(picked).c_str());
@@ -307,6 +322,24 @@ void Context::plugins_tick(uint32_t at) {
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it
     split_shared_plugins();
     plugins->sync(project, plugins_asleep());
+    PluginRack::PresetResult result;
+    while (plugins->take_preset_result(result)) {
+        if (!result.error.empty()) { notice(result.error); continue; }
+        if (result.saving) notice("Saved " + result.name);
+        if (result.entry == no_plugin) continue;
+        auto& ref = project.plugins[result.entry];
+        std::snprintf(ref.preset, sizeof(ref.preset), "/user/%s", result.name.c_str());
+        if (!result.saving) plugins->restore(result.entry, std::move(result.state));
+        plugins->sync(project, plugins_asleep());
+        if (result.saving && ui.page == PageId::PluginPresets && ui.presets_entry == result.entry) {
+            auto programs = plugins->programs(result.entry);
+            auto place = preset_place(programs.list, programs.current);
+            set_presets_folder(ui, place.folder);
+            ui.presets_cursor = uint16_t(place.row);
+        }
+        plugin_panel_at = at - 50; // enable PRESETS immediately, including a synth's very first patch
+        dirty = true;
+    }
     { // the plug-in screen in view, and what it is told: each tick, so a pot's move reaches its picture at once
         int entry = plugin_screen_in_view();
         PluginScreenContext told;

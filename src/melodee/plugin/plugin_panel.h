@@ -57,6 +57,7 @@ struct PluginProgram {
     int index = 0;
     std::string name;
     std::string folder;
+    bool user() const { return index < -1; }
 };
 // The list shared rather than copied: a plug-in may have thousands of presets
 // (Surge XT), and the pages take it with every frame. Never changed once made.
@@ -74,7 +75,7 @@ private:
     std::shared_ptr<const std::vector<PluginProgram>> items_;
 };
 // A program's key as PluginRef::preset keeps it: "folder/name", or the name alone.
-inline std::string program_key(const PluginProgram& p) { return p.folder.empty() ? p.name : p.folder + "/" + p.name; }
+inline std::string program_key(const PluginProgram& p) { return p.user() ? "/user/" + p.name : (p.folder.empty() ? p.name : p.folder + "/" + p.name); }
 // The program with that key (its number in the plug-in), -1 none.
 inline int program_keyed(const PluginProgramList& list, const std::string& key) {
     if (key.empty()) return -1;

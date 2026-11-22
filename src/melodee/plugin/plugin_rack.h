@@ -91,6 +91,18 @@ public:
     // presets are files: listed once the rack has looked for them (`finding`).
     PluginPrograms programs(unsigned entry) const;
     void select_program(unsigned entry, int program);
+    // The name sheet binds the instrument generation so a project change cannot target another synth.
+    uint32_t preset_generation(unsigned entry) const;
+    void save_user_preset(unsigned entry, uint32_t generation, const std::string& name);
+    void load_user_preset(unsigned entry, const std::string& name);
+    struct PresetResult {
+        unsigned entry;
+        uint32_t generation, selection;
+        bool saving;
+        std::string name, error;
+        std::vector<uint8_t> state; // a completed read, restored on the MIDI thread like project state
+    };
+    bool take_preset_result(PresetResult& result);
     PluginStatus status(unsigned entry) const;
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
     // A drum plug-in's voices (plugin/drum_map.h) on `entry`; none for any other.
@@ -131,22 +143,27 @@ private:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
         std::string preset;               // the preset picked last (PluginRef::preset), named again when it reopens
+        uint32_t selection = 0; // invalidates a pending user preset read when a later program is picked
         std::string error;
         PluginFile file;
     };
+    struct PatchWrite;
     struct Job {
-        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep, Presets } kind = Kind::Browse;
+        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep, Presets, SavePatch, LoadPatch } kind = Kind::Browse;
         unsigned entry = 0;
         uint32_t generation = 0;
         std::string path;
         double rate = 0;
         int32_t id = 0;
+        uint32_t selection = 0;
+        std::shared_ptr<const PatchWrite> patch {};
     };
     void run();                                     // the rack's thread
     void load(const Job& job);
     void unload(unsigned entry, uint32_t generation);
     void sleep(unsigned entry, uint32_t generation); // freeze plan F2d: its state taken, then let go as unload() does
     void switch_program(unsigned entry, uint32_t generation, int program);
+    void user_preset(const Job& job);
     void find_presets(unsigned entry, uint32_t generation); // a CLAP plug-in's, once it plays
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
     void list(const std::string& folder, int came_from);
@@ -167,6 +184,7 @@ private:
     std::vector<PluginHandle*> retiring;            // offered away: freed once the host gives them back
     std::vector<std::pair<unsigned, PluginHandle*>> unoffered; // offers the host's queue had no room for yet
     std::deque<Job> jobs;
+    std::deque<PresetResult> preset_results;
     std::condition_variable wake;
     bool stopping = false;
     std::string card_top, root, folder;

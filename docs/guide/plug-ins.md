@@ -143,6 +143,14 @@ Melodee reads every preset file, which takes a while for a plug-in with
 thousands. It keeps what it read in `Melodee/Plugin Data/.cache`, so later
 it reads only new or changed files.
 
+To save an edited synth patch, hold **SHIFT** and press **SAMPLE SELECT** on
+its plug-in track. Name the patch and press **B3** (**SAVE**) or push the
+encoder. Use a fresh name for each variation. In any project, load the
+same synth, open **PRESETS**, then **User Presets**, and push the encoder
+on the patch. **B1** goes up a folder if the list opens inside a factory
+bank. User patches are stored on the SD card under
+`Melodee/Plugin Data/User Presets/`.
+
 The project saves each plug-in's state, so presets and edits come back when
 you load the project.
 

@@ -5,6 +5,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/idle_gate.h"
+#include "melodee/plugin/user_presets.h"
 #include "melodee/plugin/melodee_screen.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
@@ -370,6 +371,8 @@ public:
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
+    UserPresets user_presets;
+    PluginProgramList factory_programs;
     PluginProgramList programs;          // its named programs, as it listed them on opening (a CLAP one's: once found)
     int program = -1;                    // the one picked last here (under the rack's lock)
     bool switching = false;              // a pick queued for the rack's thread (under the rack's lock)
@@ -492,8 +495,10 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             auto& entry = entries[e];
             entry.transport = project.plugins[e].transport;
             if (entry.live) entry.live->transport.store(entry.transport, std::memory_order_relaxed);
-            entry.preset = project.plugins[e].preset;
-            if (entry.live && entry.live->program < 0) entry.live->program = program_keyed(entry.live->programs, entry.preset);
+            if (entry.preset != project.plugins[e].preset) {
+                entry.preset = project.plugins[e].preset;
+                if (entry.live) entry.live->program = program_keyed(entry.live->programs, entry.preset);
+            }
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
             // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
@@ -735,6 +740,7 @@ void PluginRack::select_program(unsigned entry, int program) {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
         if (!e.live || e.status != PluginStatus::Ready) return;
+        ++e.selection;
         e.live->program = program;
         e.live->switching = true;
         for (const auto& p : e.live->programs) if (p.index == program) { e.preset = program_key(p); break; }
@@ -742,6 +748,92 @@ void PluginRack::select_program(unsigned entry, int program) {
     }
     push(std::move(job));
     changed();
+}
+
+struct PluginRack::PatchWrite {
+    UserPresets library;
+    juce::MemoryBlock state;
+};
+
+uint32_t PluginRack::preset_generation(unsigned entry) const {
+    std::lock_guard<std::mutex> held(lock);
+    if (entry >= max_plugins) return 0;
+    const auto& e = entries[entry];
+    return e.status == PluginStatus::Ready && e.live && e.live->instrument ? e.generation : 0;
+}
+
+void PluginRack::save_user_preset(unsigned entry, uint32_t generation, const std::string& name) {
+    if (entry >= max_plugins) return;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        const auto& e = entries[entry];
+        const auto* h = e.live;
+        if (generation != e.generation || e.status != PluginStatus::Ready || !h || !h->instrument) {
+            preset_results.push_back({entry, generation, e.selection, true, name, "Synth changed", {}});
+            return;
+        }
+        // Snapshot at confirmation, as for a project save. Further edits or unloading the track while the
+        // card is busy cannot change what gets written.
+        auto patch = std::make_shared<PatchWrite>();
+        patch->library = h->user_presets;
+        h->instance->getStateInformation(patch->state);
+        // The adapters write only a format header when the plug-in has no state to save.
+        if ((h->clap && patch->state.getSize() <= 4)
+            || ((h->format == PluginFormat::Vst2 || h->format == PluginFormat::Vst2Arm32) && patch->state.getSize() <= 5))
+            patch->state.reset();
+        jobs.push_back({Job::Kind::SavePatch, entry, generation, name, 0, 0, e.selection, std::move(patch)});
+    }
+    wake.notify_one();
+}
+
+void PluginRack::load_user_preset(unsigned entry, const std::string& name) {
+    if (entry >= max_plugins) return;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        jobs.push_back({Job::Kind::LoadPatch, entry, e.generation, name, 0, 0, ++e.selection});
+    }
+    wake.notify_one();
+}
+
+void PluginRack::user_preset(const Job& job) {
+    PresetResult result {job.entry, job.generation, job.selection, job.kind == Job::Kind::SavePatch, job.path, {}, {}};
+    if (!result.saving) {
+        UserPresets library;
+        {
+            std::lock_guard<std::mutex> held(lock);
+            const auto& e = entries[job.entry];
+            if (e.generation != job.generation || e.selection != job.selection || !e.live) return;
+            library = e.live->user_presets;
+        }
+        result.error = library.load(job.path, result.state);
+    } else {
+        const auto& library = job.patch->library;
+        result.error = library.save(job.path, job.patch->state);
+        if (result.error.empty()) {
+            auto names = library.names();
+            std::lock_guard<std::mutex> held(lock);
+            for (auto& e : entries) {
+                if (!e.live || e.live->user_presets.folder != library.folder) continue;
+                e.live->programs = with_user_presets(e.live->factory_programs, names);
+                e.live->program = program_keyed(e.live->programs, e.preset);
+            }
+        }
+    }
+    std::lock_guard<std::mutex> held(lock);
+    preset_results.push_back(std::move(result));
+}
+
+bool PluginRack::take_preset_result(PresetResult& result) {
+    std::lock_guard<std::mutex> held(lock);
+    while (!preset_results.empty()) {
+        result = std::move(preset_results.front());
+        preset_results.pop_front();
+        const auto& e = entries[result.entry];
+        if (e.generation == result.generation && e.selection == result.selection) return true;
+        if (result.saving) { result.entry = no_plugin; return true; } // report the write without changing another patch
+    }
+    return false;
 }
 
 // Rack thread. A VST3 plug-in hears a program as its program parameter's
@@ -860,6 +952,7 @@ void PluginRack::run() {
             probe_listed();
             break;
         }
+        case Job::Kind::SavePatch: case Job::Kind::LoadPatch: user_preset(job); break;
         case Job::Kind::Probe: probe_listed(); break;
         case Job::Kind::Program: switch_program(job.entry, job.generation, job.id); break;
         case Job::Kind::Presets: find_presets(job.entry, job.generation); break;
@@ -1087,7 +1180,13 @@ void PluginRack::load(const Job& job) {
     auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, device_rate, rate);
     handle->stage = stage.string();
     handle->format = file.format;
-    handle->programs = named_programs(*handle->instance);
+    handle->factory_programs = named_programs(*handle->instance);
+    if (is_instrument) {
+        auto id = handle->clap ? juce::String(handle->clap->clapId())
+                               : description.manufacturerName + "/" + description.name + "/" + juce::String::toHexString(description.uniqueId);
+        handle->user_presets = UserPresets(home, juce::String(format_tag(file.format)) + "/" + id);
+    }
+    handle->programs = with_user_presets(handle->factory_programs, handle->user_presets.names());
     handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
     if (auto* clap = dynamic_cast<ClapInstance*>(handle->instance.get())) handle->screen = clap->hasScreen();
     if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) { // an Open MPC skin's Q-Link pages first, then the rest
@@ -1140,12 +1239,15 @@ void PluginRack::load(const Job& job) {
 // while: thousands of files), then PRESETS' programs.
 void PluginRack::find_presets(unsigned entry, uint32_t generation) {
     ClapInstance* clap = nullptr;
+    UserPresets user_presets;
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
         if (e.generation != generation || !e.live) return; // changed since: the plug-in it was for is gone
+        user_presets = e.live->user_presets;
         clap = dynamic_cast<ClapInstance*>(e.live->instance.get()); // freed only on this thread, so it outlives this
     }
+    auto user_names = user_presets.names();
     std::vector<PluginProgram> list;
     if (clap) {
         auto found = clap->findPresets(clap_preset_cache(use_plugin_home(), clap->clapId()));
@@ -1157,9 +1259,10 @@ void PluginRack::find_presets(unsigned entry, uint32_t generation) {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
         if (e.generation == generation && e.live && e.live->instance.get() == clap) {
-            e.live->programs = PluginProgramList(std::move(list));
+            e.live->factory_programs = PluginProgramList(std::move(list));
+            e.live->programs = with_user_presets(e.live->factory_programs, user_names);
             e.live->finding = false;
-            if (e.live->program < 0) e.live->program = program_keyed(e.live->programs, e.preset); // as at opening
+            if (e.live->program == -1) e.live->program = program_keyed(e.live->programs, e.preset); // as at opening
 
         }
     }

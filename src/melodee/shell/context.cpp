@@ -1185,6 +1185,9 @@ void Context::finish_name() {
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
         break;
     }
+    case NameTarget::PluginPreset:
+        if (plugins) plugins->save_user_preset(name_preset_entry, name_preset_generation, text);
+        break;
     case NameTarget::Sample: save_sample_as(text); break;
     case NameTarget::Bank: {
         auto& t = track();

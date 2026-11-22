@@ -99,3 +99,7 @@ STEMS := build/stems/melodee-stems
 stems: $(STEMS)
 $(STEMS): tools/stems/build.py tools/stems/stems_engine.c tools/stems/convert_model.py
 	python3 tools/stems/build.py build/stems
+
+# Exercise the same shortcut, synth rack, and preset browser as the device.
+build/test-user-presets: tests/user_presets.cpp $(OBJECTS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror $< $(filter-out build/obj/main.o,$(OBJECTS)) $(LDLIBS) -o $@

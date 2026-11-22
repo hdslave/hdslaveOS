@@ -17,7 +17,7 @@ Previous: [Exit and troubleshooting](exit-and-troubleshooting.md) · [Contents](
 | **MUTE** | Mute mode. Tap to latch, hold for momentary. On Roll: mute the marked notes. | Unmute all |
 | **LOOP** | Loop the last pad. On Roll and Step Edit: loop the bars in view. On Song: loop the clip's bars. Held: the pads control the Looper. With **16 LEVELS**: open the Looper. | Reverse (on Roll and Step Edit, the notes). Hold 0.5 s: Looper on or off. |
 | **16 LEVELS** | 16 Levels on or off. Held: **K1**–**K3** its settings, **−** / **+** its octave, **B1** **SCALE**, **B2** **CHORDS**; on Chords **B2** **FILE** and **B3** **SET**. | 16 Levels type |
-| **SAMPLE SELECT** | Sample browser on a kit or keygroup track, plug-in picker on a plug-in track, sounds on a MIDI track. Again: closes it. | Save Sample. On the browser: Save Bank. On a MIDI track: Save sound. |
+| **SAMPLE SELECT** | Sample browser on a kit or keygroup track, plug-in picker on a plug-in track, sounds on a MIDI track. Again: closes it. | Save Sample. On the browser: Save Bank. On a plug-in synth track: Save Preset. On a MIDI track: Save sound. |
 | **TAP TEMPO** | Tap tempo. Held + encoder: the tempo. Held alone: Tempo page; held again there: closes it. | Metronome Off, On, Rec |
 | Encoder push | Open, or next card (acts when let go). Held: the Menu. | Back |
 | **−** / **+** | Octave, bank, or list | Undo / redo. Hold **SHIFT** + **−**: the undo list. |

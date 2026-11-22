@@ -355,7 +355,7 @@ const clap_plugin_melodee_screen screenExt {screenPaint, screenInput, screenKnob
 const void* extension(const clap_plugin* p, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_MELODEE_SCREEN)) return of(p).instrument ? &screenExt : nullptr;
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
-    if (!std::strcmp(id, CLAP_EXT_STATE)) return &state;
+    if (!std::strcmp(id, CLAP_EXT_STATE)) return std::getenv("MELODEE_TEST_PARAMETER_ONLY") ? nullptr : &state;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;

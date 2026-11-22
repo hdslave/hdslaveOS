@@ -34,6 +34,7 @@ struct AudioScope
 };
 
 constexpr char stateTag[4] = { 'M', 'C', 'L', 'P' };
+constexpr char parameterTag[4] = { 'M', 'C', 'P', '1' };
 constexpr uint32_t maxEvents = 1024;
 
 String text (const char* s) { return s != nullptr ? String::fromUTF8 (s).trim() : String(); }
@@ -716,8 +717,18 @@ double ClapInstance::getTailLengthSeconds() const
 void ClapInstance::getStateInformation (MemoryBlock& out)
 {
     out.reset();
+    if (state == nullptr) {
+        // Parameter-only instruments: keep writable controls by their stable CLAP IDs.
+        MemoryOutputStream stream (out, false);
+        stream.write (parameterTag, sizeof (parameterTag));
+        for (auto* p : parameters) {
+            if (p->flags & CLAP_PARAM_IS_READONLY) continue;
+            stream.writeInt ((int) p->id);
+            stream.writeDouble (p->plain (p->getValue()));
+        }
+        return;
+    }
     out.append (stateTag, sizeof (stateTag));
-    if (state == nullptr) return;
     std::lock_guard<std::recursive_mutex> held (mainLock);
     clap_ostream stream { &out, [] (const clap_ostream* s, const void* data, uint64_t size) -> int64_t {
         static_cast<MemoryBlock*> (s->ctx)->append (data, (size_t) size);
@@ -728,7 +739,22 @@ void ClapInstance::getStateInformation (MemoryBlock& out)
 
 void ClapInstance::setStateInformation (const void* data, int size)
 {
-    if (state == nullptr || size < (int) sizeof (stateTag) || std::memcmp (data, stateTag, sizeof (stateTag)) != 0) return;
+    if (size < (int) sizeof (stateTag)) return;
+    if (std::memcmp (data, parameterTag, sizeof (parameterTag)) == 0) {
+        const int length = size - (int) sizeof (parameterTag);
+        if (length % 12 != 0) return;
+        MemoryInputStream stream (static_cast<const uint8_t*> (data) + sizeof (parameterTag), size_t (length), false);
+        while (! stream.isExhausted()) {
+            auto id = (uint32_t) stream.readInt();
+            auto plain = stream.readDouble();
+            auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, -1));
+            if (it == byId.end() || it->first != id || ! std::isfinite (plain)) continue;
+            auto* p = parameters[size_t (it->second)];
+            if (! (p->flags & CLAP_PARAM_IS_READONLY)) p->setValue ((float) p->normalise (plain));
+        }
+        return;
+    }
+    if (state == nullptr || std::memcmp (data, stateTag, sizeof (stateTag)) != 0) return;
     struct Reader { const uint8* at; uint64_t left; } reader { static_cast<const uint8*> (data) + sizeof (stateTag), (uint64_t) size - sizeof (stateTag) };
     clap_istream stream { &reader, [] (const clap_istream* s, void* to, uint64_t want) -> int64_t {
         auto& r = *static_cast<Reader*> (s->ctx);

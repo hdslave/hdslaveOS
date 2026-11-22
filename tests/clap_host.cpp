@@ -246,6 +246,27 @@ int main(int argc, char** argv) {
         auto its = gain->findPresets({}); // no cache: every file read
         CHECK(its.size() == 2 && its[0].name == "Loud" && its[1].name == "Soft");
     }
+    {
+        setenv("MELODEE_TEST_PARAMETER_ONLY", "1", 1);
+        auto sine = ClapInstance::load(file, 0, rate, block, error);
+        CHECK(sine != nullptr);
+        if (!sine) return 1;
+        sine->prepareToPlay(rate, block);
+        auto* level = param(*sine, "Level");
+        auto* wave = param(*sine, "Wave");
+        level->setValue(0.75f);
+        wave->setValue(1.0f);
+        juce::MemoryBlock patch;
+        sine->getStateInformation(patch);
+        level->setValue(0.25f);
+        wave->setValue(0);
+        run(*sine);
+        sine->setStateInformation(patch.getData(), int(patch.getSize()));
+        run(*sine);
+        CHECK(level->getValue() == 0.75f && wave->getValue() == 1.0f);
+        sine->releaseResources();
+        unsetenv("MELODEE_TEST_PARAMETER_ONLY");
+    }
     CHECK(ClapInstance::load(file, 12345, rate, block, error) == nullptr && error == "No longer in its library");
 
     counts(&wrong, &callbacks, &inits);

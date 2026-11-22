@@ -20,7 +20,7 @@ inline unsigned name_suggestions(const NameEntry& e, std::array<const char*, max
     auto add = [&](const char* const* list, unsigned count) { for (unsigned k = 0; k < count && n < max_suggestions; ++k) out[n++] = list[k]; };
     switch (e.target) {
     case NameTarget::Marker: case NameTarget::Scene: add(Song::marker_names, Song::marker_name_count); break; // a scene: a part
-    case NameTarget::Sound: add(sounds, 7); break;
+    case NameTarget::PluginPreset: case NameTarget::Sound: add(sounds, 7); break;
     case NameTarget::Bank: add(banks, 6); break;
     case NameTarget::Track: add(tracks, 8); break;
     case NameTarget::None: case NameTarget::Sample: break; // a sample keeps its own name first
