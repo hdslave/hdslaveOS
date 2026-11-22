@@ -6,6 +6,7 @@
 #include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/mute_mode.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/step_edit.h"
@@ -57,7 +58,7 @@ void Context::send(const Command& command) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Bend: case Type::Pressure:
     case Type::Control: case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
-    case Type::Click: break;
+    case Type::Click: case Type::MuteMode: break;
     default: dirty = true;
     }
     // A note played by hand or by MIDI in plays at the frame it came in, a block late, not at the next block's start.
@@ -185,6 +186,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     ui.loading_total = ui.loading_left = uint16_t(ui.loading_samples + ui.loading_files);
     send_click(); // the metronome is Melodee's, and no take is running now
     send_repeat_velocity();
+    send_mute_kind();
     project_path = path;
     if (store) store->opened(path); // a file of its own: the one the next start resumes
     dirty = false;
@@ -687,7 +689,7 @@ void Context::apply(const Binding& b, int value) {
         set_route(unsigned(b.id), route);
         break;
     }
-    case Kind::PatternBars: set_length(uint32_t(value) * project.bar_ticks()); break;
+    case Kind::PatternSteps: set_length(uint32_t(value) * sixteenth_ticks); break; // issue 27: 5/16, 7/16 ..
     case Kind::PatternLength: // below 1 bar: Free (shell/free_length.h)
         if (value < 0) set_free();
         else set_length(pattern_lengths[unsigned(value) % pattern_length_count] * project.bar_ticks());
@@ -970,6 +972,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
     case Kind::SceneTempo: set_scene_tempo(unsigned(b.id), value * 10); break; // Patterns' SCENE: below 30, none of its own
     case Kind::SceneColour: set_scene_colour(unsigned(b.id), value); break;
+    case Kind::PadMute: set_pad_mute(*this, ui.track, unsigned(b.id), value != 0); break; // issue 32: Motion's card, kept while Seq Record runs
     case Kind::AutoLow: case Kind::AutoHigh: case Kind::AutoStep: case Kind::AutoLayers: case Kind::AutoHold: case Kind::AutoTail:
     case Kind::AutoTap: case Kind::AutoLoop: case Kind::AutoLevel: auto_sheet_set(b.kind, value); break; // shell/auto_sample.cpp
     case Kind::PrintTapPick: ui.print_sheet.tap = value ? PrintTap::PreFx : PrintTap::PostFx; break; // freeze plan F2c
@@ -1056,6 +1059,7 @@ void Context::set_route(unsigned r, const ModRoute& value) {
 void Context::change_setting(unsigned row, int way) {
     ui.settings.step(row, way);
     if (row == Settings::RepeatVelocity || row == Settings::PadResponse || row == Settings::PadPressure) send_repeat_velocity();
+    if (row == Settings::MuteKind) send_mute_kind();
     if (store) store->save_settings(ui.settings.text());
 }
 
@@ -1071,6 +1075,7 @@ void Context::set_setting(unsigned row, unsigned value) {
     if (ui.settings.choice(row) == value) return;
     ui.settings.set_choice(row, value);
     if (row == Settings::RepeatVelocity || row == Settings::PadResponse || row == Settings::PadPressure) send_repeat_velocity();
+    if (row == Settings::MuteKind) send_mute_kind();
     settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
 }
 
@@ -2176,6 +2181,8 @@ void Context::set_click(unsigned mode) {
 void Context::send_repeat_velocity() {
     for (unsigned t = 0; t < track_count; ++t) send({Type::Repeat, uint8_t(t), 0, 5, int16_t(ui.settings.repeats_by_pressure())});
 }
+
+void Context::send_mute_kind() { send({Type::MuteMode, 0, 0, 0, int16_t(ui.settings.note_mutes)}); }
 
 void Context::send_click() {
     const auto& set = ui.settings;

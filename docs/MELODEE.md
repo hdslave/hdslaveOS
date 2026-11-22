@@ -651,8 +651,8 @@ hold to steer, Shift + Seq to zoom in**.
     follows the selected track's pattern again whenever that changes. Hold
     a pad, step the bank, tap a pad: a copy across banks.
   - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
-    or tenths); K1–K3 the pattern's length, Q and swing (Shift: any bar
-    count, time signature, metronome level), over Knob FX's.
+    or tenths); K1–K3 the pattern's length, Q and swing (Shift: the length
+    in sixteenths 1–64, time signature, metronome level), over Knob FX's.
   - B1–B3 open Sequences, Roll and Motion (the sheet stays away until Seq is
     let go); Seq Record starts a new take in the next empty pattern, armed
     (playing: recording at once). Other buttons keep their jobs.
@@ -843,6 +843,13 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
+- **Mute** (Settings > SEQ, issue 27; `Settings::note_mutes`, Command
+  MuteMode): Audio (first) silences a muted track or kit pad at once;
+  Notes stops its new notes (pattern, pads, MIDI in, arp, Note Repeat, MIDI
+  out) and lets what it plays ring: the mix keeps it, a kit pad's voices
+  play on, a MIDI track's Note Offs go when due (no All Notes Off). AUDIO
+  tracks and frozen tracks play audio: muted, they are silent either way.
+  Back to Audio, what muted tracks and pads still play goes.
 - **Note preview** (Settings > SEQ, On by first; `Settings::note_preview`,
   shell/note_preview.h): a note written or moved on Step Edit or Roll
   without a pad or key playing it is heard once on the track, as long as the
@@ -856,8 +863,11 @@ hold to steer, Shift + Seq to zoom in**.
   next is asked for. Pads and MIDI keys sound as they play, either way.
 - **Motion** (B3): the lanes of recorded pot moves (Seq Record + a pot
   writes at the playing tick; a kit pad's level, tune, pan, envelopes,
-  filter and more are lanes of that pad; Erase + pot asks, then clears the
-  lane, locks too), all three on one large graph in their knobs' colours,
+  filter and more are lanes of that pad, and so is its mute, issue 32:
+  Seq Record + Mute + pad writes the pad's MUTE lane, 1 or 0 with no glide,
+  `motion_pad_mute`; the pattern's start and Stop put the pads' mutes back
+  as set, and in mute mode the pads light the mute heard now; Erase + pot
+  asks, then clears the lane, locks too), all three on one large graph in their knobs' colours,
   the one in hand heavy, each lock a short raised bar at its value for as
   long as it holds; the cards are its legend. Motion is each pattern's own
   (up to 8192 points, at tick resolution): it goes with the pattern when it
@@ -2305,7 +2315,9 @@ while following.
   held where Shift + Play carries on.
 - **Mute mode** (Mute): the pads mute kit pads (bank in view) where they
   play a kit, tracks elsewhere; Shift + pad solos. Muted pads red, soloed
-  white. Shift + Mute unmutes everything. Kit pad mutes are saved.
+  white. Shift + Mute unmutes everything. Kit pad mutes are saved. With Seq
+  Record on, kit pad mutes land on the pads' MUTE lanes (Motion). Settings'
+  Mute: Audio or Notes (issue 27).
 - **Erase**: + pad on a kit, stopped, empties the pad; + an empty pad closes
   the gap: the pads after it move down one through its bank and the next
   (A's gap takes B01 onto A16 and B's pads down one, B16 left empty; C stays;

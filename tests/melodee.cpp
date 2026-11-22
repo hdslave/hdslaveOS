@@ -1327,7 +1327,7 @@ void button_remap() {
     cards = page_bindings(*project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::PatternLength && cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     cards = page_bindings(*project, ui, pattern, true);
-    CHECK(cards[0].kind == Binding::Kind::PatternBars && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
+    CHECK(cards[0].kind == Binding::Kind::PatternSteps && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
     project->knob_fx.on = true; project->knob_fx.kind = 1;
     CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::PatternLength);
     ui.seq_held = false;
@@ -1691,6 +1691,21 @@ void button_remap() {
         off.reset_factory();
         CHECK(off.autosave);
     }
+    // Settings > SEQ > Mute (issue 27): Audio unless the file says Notes.
+    {
+        Settings fresh;
+        CHECK(!fresh.note_mutes && fresh.value_text(Settings::MuteKind) == "Audio" && fresh.choice(Settings::MuteKind) == 0 &&
+              std::string(Settings::row_name(Settings::MuteKind)) == "Mute" && fresh.choices(Settings::MuteKind) == 2);
+        Settings notes = fresh;
+        notes.step(Settings::MuteKind, 1);
+        CHECK(notes.note_mutes && notes.value_text(Settings::MuteKind) == "Notes");
+        Settings back; back.read(notes.text());
+        CHECK(back.note_mutes);
+        Settings old; old.read("seq_follow=1\n"); // a file from before the row: Audio
+        CHECK(!old.note_mutes);
+        notes.set_choice(Settings::MuteKind, 0);
+        CHECK(!notes.note_mutes);
+    }
     // Settings > SEQ > Note preview (shell/note_preview.h): On unless the file says Off; how long a note sounds and
     // which of a list are heard.
     {
@@ -1900,6 +1915,30 @@ void parity_1c() {
     CHECK(kit.pad_muted(100) && !kit.pad_muted(3) && kit.any_pad_muted() && pad_soloed(kit, 3) && !pad_soloed(kit, 100));
     kit.set_pad_muted(100, false);
     CHECK(!kit.any_pad_muted() && !pad_soloed(kit, 3));
+    { // Issue 32: a kit pad's mute lane. Motion lists it for the last pad hit and names it for its pad; its card is the
+      // pad's mute; while the pattern plays, the mute heard follows the lane (before its first point, as set).
+        auto lanes_project = std::make_unique<Project>();
+        auto& drums = lanes_project->tracks[0];
+        drums.engine = EngineKind::Sampler; drums.pads[4].sample = 0; drums.pads[5].sample = 0; drums.last_pad = 4;
+        Pattern p;
+        MotionPoint on; on.tick = 4 * sixteenth_ticks; on.param = uint8_t(motion_pad_mute); on.pad = 4; on.value = 1;
+        MotionPoint off = on; off.tick = 8 * sixteenth_ticks; off.value = 0;
+        CHECK(p.write_motion(on) && p.write_motion(off));
+        UiState mui; mui.page = PageId::Motion;
+        auto lanes = motion_lanes(*lanes_project, mui, p);
+        CHECK(lanes[0] == motion_lane(motion_pad_mute, 4) && lane_name(drums, lanes[0]) == "A05 MUTE");
+        auto cards = page_bindings(*lanes_project, mui, p);
+        CHECK(cards[0].kind == Binding::Kind::PadMute && cards[0].id == 4 && cards[0].min == 0 && cards[0].max == 1 && cards[0].value == 0);
+        drums.set_pad_muted(4, true);
+        CHECK(page_bindings(*lanes_project, mui, p)[0].value == 1 && motion_param(drums, lanes[0]).value == 1);
+        drums.last_pad = 5; // another pad's lane waits for that pad
+        CHECK(motion_lanes(*lanes_project, mui, p)[0] != lanes[0]);
+        drums.set_pad_muted(4, false);
+        CHECK(!pad_muted_now(drums, p, -1, 4) && !pad_muted_now(drums, p, 0, 4) && pad_muted_now(drums, p, 5 * sixteenth_ticks, 4));
+        CHECK(!pad_muted_now(drums, p, 9 * sixteenth_ticks, 4) && !pad_muted_now(drums, p, 5 * sixteenth_ticks, 5));
+        drums.set_pad_muted(4, true);
+        CHECK(pad_muted_now(drums, p, 0, 4) && pad_muted_now(drums, p, -1, 4) && !pad_muted_now(drums, p, 9 * sixteenth_ticks, 4));
+    }
 
     // Pad Bank held or a track copy: the pads are the tracks; Shift + Erase there copies.
     UiState held; held.pad_bank = true;
@@ -2227,7 +2266,8 @@ void timing() {
         CHECK(peak_of(first_bar, 0, 40000) == 0 && peak_of(second) > 0.005f);
     }
 
-    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 any count, Shift + K2 the time signature.
+    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 in sixteenths up to four bars (issue 27), Shift + K2 the
+    // time signature.
     {
         Project project;
         UiState ui; ui.page = PageId::Patterns;
@@ -2235,7 +2275,9 @@ void timing() {
         auto base = page_bindings(project, ui, five, false);
         CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == 7 && pattern_lengths[base[0].value] == 4);
         auto shifted = page_bindings(project, ui, five, true);
-        CHECK(shifted[0].kind == Binding::Kind::PatternBars && shifted[0].value == 5 && shifted[0].max == 128);
+        CHECK(shifted[0].kind == Binding::Kind::PatternSteps && shifted[0].value == 64 && shifted[0].min == 1 && shifted[0].max == 64);
+        Pattern seven; seven.length = 7 * sixteenth_ticks; seven.free = false; // 7/16 against a bar on another track
+        CHECK(page_bindings(project, ui, seven, true)[0].value == 7 && pattern_lengths[page_bindings(project, ui, seven, false)[0].value] == 1);
         CHECK(shifted[1].kind == Binding::Kind::TimeSignature && shifted[1].value == int(common_time));
         CHECK(shifted[2].kind == Binding::Kind::ClickLevel);
         ui.page = PageId::TimeCorrect; five.feel.strength = 70; five.feel.swing = 60; five.feel.humanize = 20;

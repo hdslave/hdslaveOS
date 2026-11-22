@@ -368,7 +368,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = "AMOUNT"; c.bipolar = true;
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
         break;
-    case Kind::PatternBars: case Kind::PatternLength: { // by the bar; a length that is not whole bars by the step of Q
+    case Kind::PatternSteps: case Kind::PatternLength: { // by the bar; a length not whole bars in sixteenths (issue 27), else steps of Q
         unsigned bar = std::max(s.project.bar_ticks(), 1u);
         juce::String which = "P" + juce::String(s.track().pattern % pattern_count + 1) + " "; // the pattern it belongs to
         c.label = which + "LENGTH"; c.label_mixed = which + "Length"; // mixed case where capitals don't fit (P128)
@@ -380,6 +380,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         }
         uint32_t length = free_shown(s.pattern, s.ui.column_ticks); // a Free pattern: the take's length (0 Free)
         if (!length) { c.value = "Free"; break; }
+        if (length % bar && length % sixteenth_ticks == 0) { c.value = juce::String(length / sixteenth_ticks) + "/16"; break; }
         if (length % bar) { c.value = juce::String((length + s.pattern.q() - 1) / s.pattern.q()); c.unit = "steps"; break; }
         unsigned bars = length / bar;
         c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars";
@@ -399,6 +400,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::JamFrom: c.label = "FROM"; c.value = juce::String(b.value); c.unit = "bar"; break;
     case Kind::JamTo: c.label = "TO"; c.value = juce::String(b.value); c.unit = "bar"; break;
+    case Kind::PadMute: { // issue 32: a kit pad's mute lane on Motion
+        char label[4];
+        pad_label(unsigned(b.id), label);
+        c.label = juce::String(label) + " MUTE"; c.value = b.value ? "On" : "Off";
+        break;
+    }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
     case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
     case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;

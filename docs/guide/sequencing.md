@@ -79,7 +79,7 @@ Push the encoder to put every track back. The pads light as the cells.
 | Encoder push | Launch the sequence in hand again: every track goes back to the pattern it keeps. |
 | **PAD BANK** | Pattern bank A–H. The bank LEDs show it. |
 | **−** / **+** | Select the previous / next track. |
-| **K1** | Pattern length: Free, 1, 2, 4 … 128 bars. **Free** is there for an empty pattern: the first take sets the length (see [Free length](#free-length)). **SHIFT**: any number of bars. Notes past a shorter length are kept and play again when the pattern is longer. |
+| **K1** | Pattern length: Free, 1, 2, 4 … 128 bars. **Free** is there for an empty pattern: the first take sets the length (see [Free length](#free-length)). **SHIFT**: the length in 16th notes, 1 to 64 (up to four bars of 4/4). The card shows a length that is not whole bars as 16ths: **7/16**. Notes past a shorter length are kept and play again when the pattern is longer. |
 | **K2** | Grid (Q): 1/4 to 1/64, with triplets. **SHIFT**: time signature. |
 | **K3** | Swing (50–75 %). **SHIFT**: metronome level. |
 | **SHIFT** + **B1** | **SEQUENCE**: the tempo and name of the sequence in hand. |
@@ -406,6 +406,13 @@ Motion shows the pattern's recorded knob movements as lanes. To record
 Motion, turn a knob while **SEQ RECORD** is on. To clear a lane, hold
 **ERASE** and turn its knob (asks first).
 
+On a kit, pad mutes are recorded too. With **SEQ RECORD** on, hold **MUTE**
+and press a pad: the mute goes into the pattern on the pad's **MUTE** lane,
+on or off, with no steps between. Each pass of the pattern starts with the
+mutes as you set them, and **STOP** puts them back. The lane shows on
+Motion when its pad was hit last (**A05 MUTE**); turn its knob to mute or
+unmute the pad there.
+
 ![Motion](../images/screens/motion.png)
 
 **B3** has three pages: **MOTION**, **MOD** and **MACRO**. Press **B3** again
@@ -460,6 +467,19 @@ dark, and the playhead goes round with the lane.
 - Time Correct and the pattern's feel keep the lane's notes inside the
   lane.
 - Notes past the lane's end are kept but not played.
+
+## Patterns of odd lengths
+
+Each track's pattern loops at its own length. A pattern of 7 16ths on one
+track against 16 on another goes round against it: a polymeter across
+tracks.
+
+1. On Patterns, select the track.
+2. Hold **SHIFT** and turn **K1** to set the length in 16ths, 1 to 64. The
+   card shows **7/16**.
+
+- The pattern starts on the bar it is launched on, then loops on its own.
+- For whole bars, turn **K1** without **SHIFT**.
 
 ## Time Correct
 

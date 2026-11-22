@@ -125,6 +125,7 @@ Binding filter_second(const PadSound& pad, bool other) {
 // The mod wheel's lane, as Motion shows it (parity phase 8), and a plug-in track's or a kit's pitch bend.
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
 const ParamInfo bend_info {"PITCH BEND", -64, 63, 0, Format::Number};
+const ParamInfo pad_mute_info {"MUTE", 0, 1, 0, Format::Switch}; // issue 32: a kit pad's mute lane
 
 // Roadmap P4: the mix's lanes as Motion shows them.
 const ParamInfo level_info {"LEVEL", 0, 127, 100, Format::Level};
@@ -153,6 +154,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
         if (!pi.label || s.kind == plugin_effect_kind) return {};
         return {&pi, s.params[q]};
     }
+    if (unsigned(param) == motion_pad_mute) return track.sampled() ? MotionParam {&pad_mute_info, int(track.pad_muted(lane_pad(lane)))} : MotionParam {};
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // a kit pad's own value
         auto p = PadParam(which);
         if (!track.sampled()) return {};
@@ -175,7 +177,7 @@ std::string lane_name(const Track& track, int lane, const Project* project) {
     auto m = motion_param(track, lane, project);
     if (!m.info) return "lane";
     if (is_master_lane(lane_param(lane)) && lane_param(lane) < motion_return_base) return std::string("MASTER ") + m.info->label; // roadmap P4
-    if (pad_param_of(lane_param(lane)) < 0) return m.info->label;
+    if (!is_pad_lane(lane_param(lane))) return m.info->label;
     char label[4];
     pad_label(lane_pad(lane), label);
     return std::string(label) + " " + m.info->label;
@@ -185,6 +187,8 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
+    if (unsigned(param) == motion_pad_mute) // issue 32: the pad's mute, as Mute + pad sets it
+        return track.sampled() ? Binding {Kind::PadMute, int32_t(lane_pad(lane) % sampler_pads), 0, 1, int(track.pad_muted(lane_pad(lane)))} : Binding {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};
@@ -308,7 +312,7 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
     bool kit = track.engine == EngineKind::Sampler;
     unsigned pad = track.last_pad % sampler_pads;
     for (const auto& m : pattern.motion) {
-        bool pad_lane = pad_param_of(m.param) >= 0;
+        bool pad_lane = is_pad_lane(m.param);
         if (pad_lane && m.pad != pad) continue; // another pad's lane: shown when that pad is the last hit
         add(motion_lane(m.param, pad_lane ? m.pad : 0));
     }
@@ -630,14 +634,18 @@ std::array<Binding, 3> trig_cards(const Event& e, bool step) {
             Binding {step ? Kind::StepCondition : Kind::EventCondition, 0, 0, int(trig_count) - 1, e.condition}};
 }
 // Patterns' cards, and Seq held's on any page (shell/seq_layer.h): the selected track's pattern,
-// K1 length by the bar, K2 Q, K3 swing; Shift: any bar count, the time signature, the metronome's level (as on the MPC).
+// K1 length by the bar, K2 Q, K3 swing; Shift: the length in sixteenths (issue 27), the time signature, the metronome's
+// level (as on the MPC).
 std::array<Binding, 3> pattern_cards(const Project& project, const UiState& ui, const Pattern& pattern) {
     return {length_card(project, ui, pattern),
             Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
             Binding {Kind::Swing, 0, 50, 75, project.swing}};
 }
 std::array<Binding, 3> pattern_shift_cards(const Project& project, const UiState& ui, const Pattern& pattern) {
-    return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
+    uint32_t length = free_shown(pattern, ui.column_ticks);
+    if (!length) length = pattern.length;
+    unsigned steps = std::clamp<unsigned>((length + sixteenth_ticks - 1) / sixteenth_ticks, 1, pattern_step_max);
+    return {Binding {Kind::PatternSteps, 0, 1, int(pattern_step_max), int(steps)},
             Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
             Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
 }

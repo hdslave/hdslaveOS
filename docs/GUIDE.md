@@ -70,6 +70,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [Record](guide/sequencing.md#record)
    - [The pattern editors](guide/sequencing.md#the-pattern-editors)
    - [Lanes of their own length](guide/sequencing.md#lanes-of-their-own-length)
+   - [Patterns of odd lengths](guide/sequencing.md#patterns-of-odd-lengths)
    - [Time Correct](guide/sequencing.md#time-correct)
    - [Half and double](guide/sequencing.md#half-and-double)
    - [Sequences and follow actions](guide/sequencing.md#sequences-and-follow-actions)

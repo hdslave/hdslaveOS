@@ -109,6 +109,7 @@ void Context::reset_settings() {
     input_changed(); // Input Config's source and monitor as they come
     send_click();
     send_repeat_velocity();
+    send_mute_kind();
     notice("Factory settings");
 }
 

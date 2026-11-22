@@ -39,6 +39,12 @@ const Track& selected(const PadScene& s) { return s.project.tracks[s.ui.track % 
 unsigned selected_index(const PadScene& s) { return s.ui.track % track_count; }
 // The pattern the pages edit (Context::pattern()).
 const Pattern& shown(const PadScene& s) { return s.patterns.at[selected_index(s)][selected(s).pattern % pattern_count]; }
+// The selected kit's pad `kit` muted as heard now: a mute lane playing may have moved it (issue 32).
+bool muted_now(const PadScene& s, unsigned kit) {
+    unsigned t = selected_index(s);
+    int position = s.host.playing() ? s.host.position_of(t) : -1;
+    return pad_muted_now(selected(s), s.patterns.at[t][s.host.pattern_of(t) % pattern_count], position, kit);
+}
 unsigned kit_of(const Track& t, unsigned pad) { return t.bank % sampler_banks * 16 + pad % 16; }
 bool held(const PadScene& s, unsigned pad) { return s.ui.held_pads & (1u << pad); }
 // Notes go into the pattern now: Seq Record, past its count-in.
@@ -165,7 +171,7 @@ Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     unsigned kit = kit_of(t, pad);
     bool used = t.pads[kit].used();
-    if (used && t.pad_muted(kit)) return red(faint); // a muted pad says so on every page
+    if (used && muted_now(s, kit)) return red(faint); // a muted pad says so on every page
     if (kit == t.last_pad) return kit_hue(s, kit, full); // the pad selected, empty too: what the pages edit and load into
     return used ? kit_hue(s, kit, dim) : Look {};
 }
@@ -303,7 +309,7 @@ Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
     unsigned kit = kit_of(t, pad), bus = s.ui.sends_bus % bus_count;
     const auto& p = t.pads[kit];
     Look base;
-    if (p.used() && t.pad_muted(kit)) base = red(faint);
+    if (p.used() && muted_now(s, kit)) base = red(faint);
     else if (kit == t.last_pad) base = white(full);
     else if (p.used() && p.sends[bus]) base = kit_hue(s, kit, between(faint, full, p.sends[bus] / 100.0f));
     return counting(s, playing(s, snd, base, pad));
@@ -518,7 +524,7 @@ Look time_correct_look(const PadScene& s, const std::array<bool, 192>& keys, uns
 std::array<bool, 192> pads_moving(const PadScene& s) {
     std::array<bool, 192> out {};
     for (const auto& m : shown(s).motion)
-        if (pad_param_of(m.param) >= 0) out[m.pad % 192] = true;
+        if (is_pad_lane(m.param)) out[m.pad % 192] = true;
     return out;
 }
 Look motion_look(const PadScene& s, const Heard& snd, const std::array<bool, 192>& moving, unsigned pad) {
@@ -792,7 +798,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             if (mute_on_kit(ui, s.facts.kit_pads)) {
                 unsigned kit = kit_of(t, pad);
                 if (!t.pads[kit].used()) break;
-                look = t.pad_muted(kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : kit_hue(s, kit, mid), snd.level[pad]);
+                look = muted_now(s, kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : kit_hue(s, kit, mid), snd.level[pad]);
                 break;
             }
             if (const auto& tr = s.project.tracks[pad]; tr.used()) {

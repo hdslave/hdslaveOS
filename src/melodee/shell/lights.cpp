@@ -305,7 +305,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         ProjectStore::View v;
         store_->view(v);
         if (v.settings_read) {
-            ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); context_.send_repeat_velocity();
+            ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); context_.send_repeat_velocity(); context_.send_mute_kind();
             if (ui_.settings.usage_log) context_.usage.start(now, (long long)std::time(nullptr), melodee_version(), ui_.settings.full_features);
         }
     }

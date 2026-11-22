@@ -16,7 +16,7 @@ struct Binding {
     enum class Kind : uint8_t {
         None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
         ModSource, ModDest, ModAmount, // id: the route
-        PatternBars, Division, Swing,  // Patterns: PatternBars any count (Shift + K1)
+        PatternSteps, Division, Swing, // Patterns: PatternSteps the length in sixteenths (Shift + K1, issue 27)
         PatternLength, TimeSignature,  // Patterns: K1 1, 2, 4 .. 128 bars; Shift + K2 the project's signature
         TcShift, TcSwing,              // Time Correct (Division is its Q)
         SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
@@ -125,6 +125,7 @@ struct Binding {
         RegionWarp, RegionBpm, RegionSemi, RegionFine,
         SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
         JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
+        PadMute, // issue 32, Motion's card of a kit pad's mute lane: pad id muted (1) or not, as Mute + pad
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -185,8 +186,10 @@ std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row);
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
-// Patterns' K1: lengths in bars, as on the MPC (Shift + K1 any bar count).
+// Patterns' K1: lengths in bars, as on the MPC; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against
+// a 16-step pattern on another track).
 constexpr unsigned pattern_lengths[] {1, 2, 4, 8, 16, 32, 64, 128};
+constexpr unsigned pattern_step_max = 64;
 constexpr unsigned pattern_length_count = sizeof(pattern_lengths) / sizeof(pattern_lengths[0]);
 // A pattern's length in whole bars of the project's signature, rounded up.
 inline unsigned pattern_bars(const Project& project, const Pattern& pattern) {
