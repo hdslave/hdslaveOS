@@ -267,6 +267,16 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 // ---- STEPS: the pads are the caret's bar (Steps' job)
+// Settings > SEQ > Note preview: step `st`'s notes (on a kit lane, the lane's) heard once; `settle`: once the wheel rests.
+void hear_step(Context& c, unsigned st, int lane, bool settle) {
+    const auto& p = c.pattern();
+    auto in = step_events(p, st);
+    std::vector<Event> notes;
+    for (unsigned n = 0; n < in.count; ++n)
+        if (lane < 0 || int(p.events[in.first + n].key) == lane) notes.push_back(p.events[in.first + n]);
+    c.preview_notes(notes, settle);
+}
+
 void clear_step(Context& c, unsigned st, int lane) {
     if (lane < 0) { c.set_step(c.ui.track, st, Step {}); return; }
     if (clear_lane(c.pattern(), st, lane)) c.sync_pattern(c.ui.track, c.track().pattern);
@@ -298,6 +308,7 @@ void steps_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
                 step.notes[0] = {c.track().step_note(), v};
                 c.set_step(ui.track, st, step);
             }
+            hear_step(c, st, lane, false); // the step set, heard
         }
         return;
     }
@@ -321,6 +332,7 @@ bool held_wheel(Context& c, int delta) {
             t.last_note = uint8_t(to);
             if (kit) t.last_pad = uint8_t(to - int(sampler_first_note));
             c.sync_pattern(ui.track, t.pattern);
+            hear_step(c, st, to, true); // on the pad it moved to, once the wheel rests
         }
         ui.held_edited = true;
         return true;
@@ -329,6 +341,7 @@ bool held_wheel(Context& c, int delta) {
     for (auto& n : step.notes) if (n.velocity) n.key = uint8_t(std::clamp(n.key + delta, 0, 127));
     if (const Note* n = step.first()) t.last_note = n->key;
     c.set_step(ui.track, st, step);
+    hear_step(c, st, -1, true); // at its new pitch, once the wheel rests
     ui.held_edited = true;
     return true;
 }

@@ -297,6 +297,18 @@ Step Edit and Roll move with the playhead while the pattern plays:
 While it follows, the encoder does not move the caret. Stop to move it. While
 you hold a step or a note, or a sheet is open, the view stays still.
 
+**Note preview**: with **Note preview** on in [Settings](settings.md)
+(**SEQ**, on at first), a note you write or move without playing it is heard
+once:
+
+- Step Edit in STEPS mode: a step you set with a pad, and a held step after
+  you turn the encoder (its new pitch, or on a kit the pad it moved to).
+- Roll: the marked notes after you move them up or down (**SHIFT** + encoder,
+  **−** / **+** an octave) or paste them (push the encoder).
+
+A move with the encoder is heard when the encoder stops. Pads and MIDI keys
+are heard as you play them, with the setting on or off.
+
 **Step Edit**
 
 Press **SHIFT** + **SEQ** to open **Step Edit**, the step editor. It shows the

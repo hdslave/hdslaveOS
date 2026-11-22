@@ -37,7 +37,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -85,6 +85,9 @@ struct Settings {
     // 1 Page, the caret goes to the same step of the bar that plays when a new bar starts; 2 Step, the caret on the
     // step that plays.
     uint8_t seq_follow = 0;
+    // Note preview (shell/note_preview.h): a note written or moved on Step Edit or Roll without a pad playing it is
+    // heard once (a step set in STEPS, a held step's or the marked notes' pitch, a paste).
+    bool note_preview = true;
     // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
@@ -147,7 +150,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level", "Autosave"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -188,6 +191,7 @@ struct Settings {
         case PadFade: return std::to_string(fade_ms()) + " ms";
         case TapLight: return tap_light ? "On" : "Off";
         case Autosave: return autosave ? "On" : "Off";
+        case NotePreview: return note_preview ? "On" : "Off";
         case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
         case RecQuantize: return rec_quantize ? "On" : "Off";
@@ -227,6 +231,7 @@ struct Settings {
         case PadFade: pad_fade = uint8_t(step_in(pad_fade % fades.size(), unsigned(fades.size()), way)); break;
         case TapLight: tap_light = !tap_light; break;
         case Autosave: autosave = !autosave; break;
+        case NotePreview: note_preview = !note_preview; break;
         case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
         case RecQuantize: rec_quantize = !rec_quantize; break;
@@ -289,6 +294,7 @@ struct Settings {
         case PadFade: return pad_fade % fades.size();
         case TapLight: return tap_light;
         case Autosave: return autosave;
+        case NotePreview: return note_preview;
         case RepeatVelocity: return repeat_pressure;
         case SeqFollow: return seq_follow % 3u;
         case RecQuantize: return rec_quantize;
@@ -328,6 +334,7 @@ struct Settings {
         case PadFade: pad_fade = uint8_t(n); break;
         case TapLight: tap_light = n; break;
         case Autosave: autosave = n; break;
+        case NotePreview: note_preview = n; break;
         case RepeatVelocity: repeat_pressure = n; break;
         case SeqFollow: seq_follow = uint8_t(n); break;
         case RecQuantize: rec_quantize = n; break;
@@ -376,7 +383,7 @@ struct Settings {
             << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
             << "\nzero_snap=" << int(zero_snap) << "\nslice_play=" << int(slice_play) << "\nslice_pattern=" << int(slice_pattern) << "\nchop_mode=" << int(chop_mode) << "\nstems_best=" << int(stems_best) << "\npreview=" << int(preview) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
-            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow)
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow) << "\nnote_preview=" << int(note_preview)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nmonitor_before_mic=" << int(input.before_mic) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
             << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
@@ -424,6 +431,7 @@ struct Settings {
             else if (key == "pressure") pressure = value != 0;
             else if (key == "repeat_pressure") repeat_pressure = value != 0;
             else if (key == "seq_follow") seq_follow = uint8_t(std::clamp(value, 0, 2));
+            else if (key == "note_preview") note_preview = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "palette") palette = uint8_t(std::clamp(value, 0, int(ui::palettes.size()) - 1));
             else if (key == "font") font = uint8_t(std::clamp(value, 0, int(ui::face_choices) - 1));

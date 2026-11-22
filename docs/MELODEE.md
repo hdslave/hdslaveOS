@@ -843,6 +843,17 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
+- **Note preview** (Settings > SEQ, On by first; `Settings::note_preview`,
+  shell/note_preview.h): a note written or moved on Step Edit or Roll
+  without a pad or key playing it is heard once on the track, as long as the
+  sequencer holds it (60 ms to 1 s at the tempo), with its accent, 16 Levels
+  pitch and cutoff: a step set on the pads in STEPS, a held step's pitch
+  (the wheel; a kit lane: the pad it moved to), and on Roll the marked notes
+  moved up or down (Shift + wheel, Minus / Plus an octave) or pasted (Push).
+  Of several notes, those in the cursor's step, else the earliest; muted
+  ones are left out. A move with the wheel is heard once the wheel rests
+  150 ms, so a fast turn plays one note. The last preview stops when the
+  next is asked for. Pads and MIDI keys sound as they play, either way.
 - **Motion** (B3): the lanes of recorded pot moves (Seq Record + a pot
   writes at the playing tick; a kit pad's level, tune, pan, envelopes,
   filter and more are lanes of that pad; Erase + pot asks, then clears the

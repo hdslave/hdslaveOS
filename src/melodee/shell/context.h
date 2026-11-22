@@ -14,6 +14,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/history.h"
+#include "melodee/shell/note_preview.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
@@ -666,6 +667,13 @@ public:
     std::string files_folder_seen;
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
+    // Settings > SEQ > Note preview (shell/note_preview.h): `events` of the selected track's pattern heard once, the
+    // earliest of them (a chord), each as long as the sequencer holds it; `settle`: once the wheel has rested. What
+    // still sounds of the last preview ends first. Nothing while the setting is off.
+    void preview_notes(const std::vector<Event>& events, bool settle = false);
+    void note_preview_tick(); // each UI tick: a preview waiting for the wheel plays, a sounding one ends on time
+    void note_preview_end();  // what a preview still sounds ends now
+    NotePreview note_preview;
     // land: 0 Extract (the next empty pad after `pad`), or Trim (`trim`); 1 onto `pad` itself (Recall,
     // Resample; one undo); 2 the take of Sample Record onto `pad`, with the pads cut from it (ui.rec_chop_*).
     struct PendingFile { int16_t slot = -1; uint8_t track = 0; int16_t pad = -1; bool trim = false; PadSound sound {}; uint8_t land = 0; };

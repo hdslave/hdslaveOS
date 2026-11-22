@@ -285,6 +285,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.follow_tick();   // roadmap P5: chains told to the audio thread, follow actions that came followed
     context_.capture_tick();  // roadmap P5: the transport's runs, for what Capture keeps
     seq_follow(context_);     // Settings > SEQ > Follow: Step Edit and Roll with the playhead
+    context_.note_preview_tick(); // Settings > SEQ > Note preview: a note written or moved heard, and ended on time
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {
         sounds_seen = store_->generation();

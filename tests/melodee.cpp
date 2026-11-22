@@ -114,6 +114,7 @@
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sequences.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/note_preview.h"
 #include "melodee/shell/pad_job.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/pad_gap.h"
@@ -1689,6 +1690,43 @@ void button_remap() {
         CHECK(old.autosave);
         off.reset_factory();
         CHECK(off.autosave);
+    }
+    // Settings > SEQ > Note preview (shell/note_preview.h): On unless the file says Off; how long a note sounds and
+    // which of a list are heard.
+    {
+        Settings fresh;
+        CHECK(fresh.note_preview && fresh.value_text(Settings::NotePreview) == "On" &&
+              std::string(Settings::row_name(Settings::NotePreview)) == "Note preview");
+        Settings off = fresh;
+        off.step(Settings::NotePreview, 1);
+        CHECK(!off.note_preview && off.value_text(Settings::NotePreview) == "Off" && off.choice(Settings::NotePreview) == 0);
+        Settings back; back.read(off.text());
+        CHECK(!back.note_preview);
+        Settings old; old.read("seq_follow=1\n"); // a file from before the row: On
+        CHECK(old.note_preview && old.seq_follow == 1);
+        off.reset_factory();
+        CHECK(off.note_preview);
+
+        Event e; // a 16th at 120 BPM: 24 ticks of 125 ms, held a tenth of a step short
+        e.length = 24;
+        CHECK(preview_ms(e, 24, 1200) == 112);
+        e.length = 96 * 16; CHECK(preview_ms(e, 24, 1200) == preview_longest_ms); // four bars: a second
+        e.length = 1; CHECK(preview_ms(e, 24, 1200) == preview_shortest_ms);
+        e.length = 96; e.ratchet = 4; CHECK(preview_ms(e, 24, 1200) == 112); // a ratchet: its first hit
+        e.ratchet = 1; e.length = 24; CHECK(preview_ms(e, 24, 600) == 225); // half the tempo: twice as long
+
+        std::array<Event, preview_notes_max> out {};
+        std::vector<Event> notes;
+        CHECK(preview_chord(notes, out) == 0);
+        auto at = [](uint32_t tick, uint8_t key, uint8_t flags = 0) { Event n; n.tick = tick; n.key = key; n.flags = flags; return n; };
+        notes = {at(48, 60), at(24, 64, step_mute), at(48, 67), at(96, 72), at(48, 71, step_mute)};
+        unsigned heard = preview_chord(notes, out); // the earliest not muted: the chord on 48, its muted note left out
+        CHECK(heard == 2 && out[0].key == 60 && out[1].key == 67);
+        notes.clear();
+        for (unsigned n = 0; n < 12; ++n) notes.push_back(at(0, uint8_t(48 + n)));
+        CHECK(preview_chord(notes, out) == preview_notes_max); // a chord past eight notes: its first eight
+        notes = {at(0, 60, step_mute)};
+        CHECK(preview_chord(notes, out) == 0); // only muted: nothing
     }
     // Tap Tempo held (shell/tap_hold.h): a turn of the encoder shows the Tempo page until it is let go; held alone,
     // the page opens to stay; held on the page, it closes.
