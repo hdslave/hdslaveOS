@@ -1,6 +1,6 @@
 # Plug-in screens: plan
 
-Status: steps 1-2 built 2026-11-22. All picks made (end of this file); mocks on
+Status: steps 1-3 built 2026-11-22. All picks made (end of this file); mocks on
 the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
@@ -109,6 +109,14 @@ lock, which the screen calls only try. The preview tool opens VST2 .so files.
 
 **3. The 32-bit bridge.** The second shared block and bridge thread. Checked
 with an armv7 build of the fixture on the MPC.
+
+Built: bridge::ScreenShared, a second memfd passed to vst2_bridge32 at start;
+the bridge serves it on a thread of normal priority, under a priority
+inheriting lock it shares with the plug-in's other non-audio calls (busy: the
+host tries again a tick later). The plug-in draws straight into the block; the
+host copies a new picture out. tests/vst2_host.cpp runs through the bridge when
+given its folder: passed on the MPC with an armv7 fixture, and in Melodee on an
+empty track (its page under EDIT, the wheel and K1).
 
 **4. Chain, pages, setting and skins.** Picks 2-5: effects in a chain,
 Melodee's pages one press away, Settings, skins drawn without doubles.

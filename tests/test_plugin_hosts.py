@@ -52,7 +52,8 @@ class PluginHostTests(unittest.TestCase):
             plugin = Path(temp) / "Test.so"
             subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
                             str(ROOT / "tests/vst2_fixture.cpp"), "-o", str(plugin)], check=True)
-            compile_and_run(self, temp, plugin, "tests/vst2_host.cpp", ["melodee/plugin/vst2_instance.o"], "vst2 ok")
+            compile_and_run(self, temp, plugin, "tests/vst2_host.cpp",
+                            ["melodee/plugin/vst2_instance.o", "melodee/plugin/vst2_bridge_instance.o"], "vst2 ok")
 
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:

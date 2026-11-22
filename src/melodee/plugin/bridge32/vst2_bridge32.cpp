@@ -2,11 +2,14 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // vst2_bridge32: runs one armv7 VST2 plug-in for a 64-bit host. Built for
 // armhf and started through the shipped armhf loader:
-//   ld-linux-armhf.so.3 --library-path RUNTIME vst2_bridge32 FD
-// FD is the host's memfd holding a bridge::Shared. No JUCE here: only the
-// plug-in, vst2_abi.h and libc, so the 32-bit side stays small.
+//   ld-linux-armhf.so.3 --library-path RUNTIME vst2_bridge32 FD [SCREENFD]
+// FD is the host's memfd holding a bridge::Shared; SCREENFD one holding a
+// bridge::ScreenShared, for a plug-in's own screen (answered on a second
+// thread). No JUCE here: only the plug-in, vst2_abi.h, the screen header and
+// libc, so the 32-bit side stays small.
 #include "melodee/plugin/vst2_abi.h"
 #include "melodee/plugin/vst2_bridge_protocol.h"
+#include <melodee_screen.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -21,6 +24,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <initializer_list>
+#include <pthread.h>
 #include <signal.h>
 
 namespace
@@ -34,6 +38,24 @@ vst2::MidiEvent midiEvents[bridge::maxEvents];
 vst2::Events<bridge::maxEvents> events {};
 float* inputs[bridge::maxChannels];
 float* outputs[bridge::maxChannels];
+// Its own screen: the second block, the plug-in's table, and the lock that keeps the screen thread's calls apart from
+// the command thread's other non-audio ones (priority inheriting: the command thread runs at the audio priority).
+bridge::ScreenShared* screen = nullptr;
+const melodee_screen* screenTable = nullptr;
+pthread_mutex_t mainLock;
+
+void initMainLock()
+{
+    pthread_mutexattr_t attributes;
+    pthread_mutexattr_init (&attributes);
+    pthread_mutexattr_setprotocol (&attributes, PTHREAD_PRIO_INHERIT);
+    if (pthread_mutex_init (&mainLock, &attributes) != 0)
+    {
+        pthread_mutexattr_setprotocol (&attributes, PTHREAD_PRIO_NONE);
+        pthread_mutex_init (&mainLock, &attributes);
+    }
+    pthread_mutexattr_destroy (&attributes);
+}
 
 void futexWait (uint32_t* word, uint32_t expected)
 {
@@ -59,7 +81,7 @@ void dispatchText (int32_t opcode, int32_t index, char* out, size_t size)
     std::snprintf (out, size, "%s", text);
 }
 
-intptr_t hostCallback (vst2::Effect* e, int32_t opcode, int32_t, intptr_t, void* ptr, float)
+intptr_t hostCallback (vst2::Effect* e, int32_t opcode, int32_t index, intptr_t value, void* ptr, float)
 {
     const auto copy = [ptr] (const char* text) { if (ptr != nullptr) std::strcpy ((char*) ptr, text); return (intptr_t) 1; };
     switch (opcode)
@@ -77,7 +99,16 @@ intptr_t hostCallback (vst2::Effect* e, int32_t opcode, int32_t, intptr_t, void*
             for (const char* yes : { "sendVstEvents", "sendVstMidiEvent", "sendVstTimeInfo", "receiveVstEvents", "receiveVstMidiEvent" })
                 if (ptr != nullptr && std::strcmp ((const char*) ptr, yes) == 0)
                     return 1;
+            if (ptr != nullptr && screen != nullptr && std::strcmp ((const char*) ptr, MELODEE_SCREEN_VST2_CANDO) == 0)
+                return 1;
             return 0;
+        case vst2::host::vendorSpecific: // its own screen: a draw asked for, and maybe a block (any thread)
+            if (index != MELODEE_SCREEN_VST2 || screen == nullptr)
+                return 0;
+            bridge::store (screen->redraw, 1);
+            if ((value & MELODEE_SCREEN_RUN) != 0)
+                bridge::store (screen->run, 1);
+            return 1;
         default: return 0;
     }
 }
@@ -127,7 +158,95 @@ bool open (const char* path)
         inputs[c] = shared->audioIn[c];
         outputs[c] = shared->audioOut[c];
     }
+    // Its own screen: asked for only from a plug-in that says it has one (effCanDo), so a vendor call's answer is
+    // never taken on trust.
+    if (screen != nullptr && dispatch (vst2::op::canDo, 0, 0, (void*) MELODEE_SCREEN_VST2_CANDO) == 1)
+    {
+        auto* table = reinterpret_cast<const melodee_screen*> (dispatch (vst2::op::vendorSpecific, MELODEE_SCREEN_VST2));
+        if (table != nullptr && table->draw != nullptr && table->input != nullptr && table->controls != nullptr)
+            screenTable = table;
+    }
+    if (screen != nullptr)
+        bridge::store (screen->hasScreen, screenTable != nullptr ? 1u : 0u);
     return true;
+}
+
+// One screen command, on the screen thread: -1 while the command thread is in the plug-in.
+int32_t runScreen (bridge::ScreenCommand command)
+{
+    if (screenTable == nullptr)
+        return 0;
+    if (pthread_mutex_trylock (&mainLock) != 0)
+        return -1;
+    if (effect == nullptr) // closed meanwhile
+    {
+        pthread_mutex_unlock (&mainLock);
+        return 0;
+    }
+    int32_t result = 0;
+    switch (command)
+    {
+        case bridge::ScreenCommand::draw:
+        {
+            melodee_screen_frame_t frame {};
+            frame.pixels = screen->pixels;
+            frame.width = bridge::screenWidth;
+            frame.height = screen->height <= bridge::screenRows ? screen->height : bridge::screenRows;
+            frame.stride = bridge::screenWidth;
+            frame.area = screen->area;
+            frame.redraw_all = screen->redrawAll;
+            frame.colour = screen->colour;
+            frame.time_ms = screen->timeMs;
+            frame.playing = (uint8_t) screen->playing;
+            frame.shift = (uint8_t) screen->shift;
+            for (int k = 0; k < 3; ++k)
+            {
+                frame.pots[k] = (int16_t) screen->pots[k];
+                frame.pots_live[k] = (uint8_t) screen->potsLive[k];
+            }
+            result = screenTable->draw (effect, &frame) ? 1 : 0;
+            break;
+        }
+        case bridge::ScreenCommand::input:
+        {
+            melodee_screen_input_t input { screen->inputKind, screen->inputValue, screen->inputShift };
+            result = screenTable->input (effect, &input) ? 1 : 0;
+            break;
+        }
+        case bridge::ScreenCommand::controls:
+        {
+            uint32_t ids[3] { MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL };
+            screenTable->controls (effect, ids);
+            for (int k = 0; k < 3; ++k)
+                screen->controls[k] = ids[k];
+            result = 1;
+            break;
+        }
+        default: break;
+    }
+    pthread_mutex_unlock (&mainLock);
+    return result;
+}
+
+// The screen thread: waits on the screen block's own request word, at normal priority (made before the command thread
+// takes the audio priority).
+void* screenThread (void*)
+{
+    uint32_t handled = bridge::load (screen->reply);
+    for (;;)
+    {
+        const uint32_t request = bridge::load (screen->request);
+        if (request == handled)
+        {
+            futexWait (&screen->request, handled);
+            continue;
+        }
+        screen->result = runScreen (screen->command);
+        handled = request;
+        bridge::store (screen->reply, request);
+        futexWake (&screen->reply);
+    }
+    return nullptr;
 }
 
 void process()
@@ -186,6 +305,12 @@ bool run (bridge::Command command)
     }
     if (effect == nullptr)
         return command != Command::close;
+
+    // The plug-in's non-audio calls run under the lock its screen's calls try (the audio block's need not).
+    const bool locked = command != Command::process && command != Command::getParameter && command != Command::setParameter;
+    if (locked)
+        pthread_mutex_lock (&mainLock);
+    struct Unlock { bool on; ~Unlock() { if (on) pthread_mutex_unlock (&mainLock); } } unlock { locked };
 
     switch (command)
     {
@@ -263,6 +388,22 @@ int main (int argc, char** argv)
         return 1;
     }
     close (fd);
+    initMainLock();
+    if (argc >= 3) // the screen's block: mapped, checked, and its thread started now, at normal priority
+    {
+        const int screenFd = std::atoi (argv[2]);
+        void* screenMapped = mmap (nullptr, sizeof (bridge::ScreenShared), PROT_READ | PROT_WRITE, MAP_SHARED, screenFd, 0);
+        close (screenFd);
+        if (screenMapped != MAP_FAILED && static_cast<bridge::ScreenShared*> (screenMapped)->layoutSize == sizeof (bridge::ScreenShared))
+        {
+            screen = static_cast<bridge::ScreenShared*> (screenMapped);
+            pthread_t thread;
+            if (pthread_create (&thread, nullptr, &screenThread, nullptr) == 0)
+                pthread_detach (thread);
+            else
+                screen = nullptr;
+        }
+    }
     shared = static_cast<bridge::Shared*> (mapped);
     if (shared->layoutSize != sizeof (bridge::Shared))
     {

@@ -86,7 +86,8 @@ build/obj/juce_audio_processors_headless.o build/obj/juce_audio_processors_headl
 	@mkdir -p build/obj
 	$(CXX) $(CPPFLAGS) $(LV2_INCLUDES) $(CXXFLAGS) -w -c $< -o $@
 build/plugin-support.pack: tools/plugin_support/build.py tools/plugin_support/make_stubs.py tools/plugin_support/Dockerfile \
-        src/melodee/plugin/bridge32/vst2_bridge32.cpp src/melodee/plugin/vst2_abi.h src/melodee/plugin/vst2_bridge_protocol.h
+        src/melodee/plugin/bridge32/vst2_bridge32.cpp src/melodee/plugin/vst2_abi.h src/melodee/plugin/vst2_bridge_protocol.h \
+        sdk/melodee-screen/melodee_screen.h
 	python3 tools/plugin_support/build.py build/plugin-support $@
 build/obj/plugin_support_pack.o: src/melodee/plugin/bridge32/support_pack.S build/plugin-support.pack
 	@mkdir -p build/obj
