@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/plugin/plugin_pages.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
@@ -739,7 +740,10 @@ void plugin_listing(Snapshot& s) {
     v.files.back().plugins = 214; // a bundle of many: a row that opens
 }
 
-void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* format, bool instrument, PluginStatus status) {
+// The rack's panel for a plug-in (plugin/plugin_panel.h). An instrument on Melodee Poly's pages (its skin's tabs, two
+// rows each): `page` 0 OSC (no picture), 1 FILTER (the filter curve), 2 AMP ENV (the envelope); its first row in hand.
+// An effect on one page with no name, its sound measured.
+void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* format, bool instrument, PluginStatus status, int page = 0) {
     auto& panel = s.ui.plugin_panel;
     panel = {};
     panel.entry = uint8_t(entry); panel.status = status; panel.instrument = instrument;
@@ -747,35 +751,55 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     std::snprintf(panel.format, sizeof(panel.format), "%s", format);
     if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
     if (status != PluginStatus::Ready) return;
-    panel.rows = 8; panel.row = 1; panel.load = 216; panel.programs = 12;
-    const char* names[] {"Cutoff", "Filter envelope amount", "Decay time"};
-    const char* texts[] {"5.0", "7.2", "3.5"};
-    const int16_t values[] {500, 720, 350};
-    for (unsigned k = 0; k < 3; ++k) {
-        auto& c = panel.params[k];
-        c.used = true; c.value = values[k];
-        std::snprintf(c.name, sizeof(c.name), "%s", names[k]);
-        std::snprintf(c.text, sizeof(c.text), "%s", texts[k]);
-    }
-    // The list's window: the row before (Waveform, Tuning, Volume), then the three in hand.
-    const char* before[] {"Waveform", "Tuning", "Volume"};
-    const char* before_texts[] {"0.42", "3.1", "0.8"};
-    panel.window_first = 0;
+    panel.load = 216; panel.programs = 12;
+    struct Param { const char* name; const char* text; int16_t value; uint16_t steps; };
+    static const Param osc[6] {{"Osc A Freq", "+7 st", 646, 0}, {"Osc A PW", "50 %", 500, 0}, {"Osc A Saw", "On", 1000, 2},
+                               {"Osc A Pulse", "Off", 0, 2}, {"Osc A Sync", "Off", 0, 2}, {"", "", 0, 0}};
+    static const Param filter[6] {{"Cutoff", "62 %", 620, 0}, {"Resonance", "28 %", 280, 0}, {"Filter Env Amount", "45 %", 450, 0},
+                                  {"Key Track", "Half", 500, 3}, {"Vel > Filter", "40 %", 400, 0}, {"", "", 0, 0}};
+    static const Param amp[6] {{"Amp Attack", "0", 0, 0}, {"Amp Decay", "50", 500, 0}, {"Amp Sustain", "80 %", 800, 0},
+                               {"Amp Release", "35", 350, 0}, {"Vel > Amp", "65 %", 650, 0}, {"", "", 0, 0}};
+    static const Param effect[6] {{"Size", "62 %", 620, 0}, {"Decay", "2.4 s", 480, 0}, {"Mix", "35 %", 350, 0},
+                                  {"Damping", "40 %", 400, 0}, {"Pre-delay", "12 ms", 120, 0}, {"Width", "100 %", 1000, 0}};
+    static const char* const tabs[6] {"OSC", "FILTER", "AMP ENV", "MOD", "PLAY", "MOD 1-4"};
+    const Param* rows = !instrument ? effect : page == 1 ? filter : page == 2 ? amp : osc;
+    unsigned at = instrument ? unsigned(std::clamp(page, 0, 2)) : 0;
+    panel.pages = instrument ? 6 : 1; panel.page = uint16_t(at);
+    panel.rows = uint16_t(panel.pages * 2); panel.row = uint16_t(at * 2);
+    panel.page_rows = 2; panel.page_row = 0;
+    panel.prev_page = uint16_t(at > 0 ? (at - 1) * 2 : 0); panel.next_page = uint16_t(at + 1 < panel.pages ? (at + 1) * 2 : at * 2);
+    if (instrument) std::snprintf(panel.page_name, sizeof(panel.page_name), "%s", tabs[at]);
+    panel.window_first = uint16_t(panel.row * 3); panel.window_rows = 2;
     for (unsigned k = 0; k < 6; ++k) {
         auto& c = panel.window[k];
-        c.used = true;
-        if (k < 3) { std::snprintf(c.name, sizeof(c.name), "%s", before[k]); std::snprintf(c.text, sizeof(c.text), "%s", before_texts[k]); }
-        else c = panel.params[k - 3];
+        if (!rows[k].name[0]) continue;
+        c.used = true; c.value = rows[k].value; c.steps = rows[k].steps;
+        std::snprintf(c.name, sizeof(c.name), "%s", rows[k].name);
+        std::snprintf(c.text, sizeof(c.text), "%s", rows[k].text);
+        if (k < 3) panel.params[k] = c;
     }
-    s.ui.plugin_row[entry] = 1;
+    if (instrument && (at == 1 || at == 2)) { // the page's picture, from slots in hand (and Release on the next row)
+        panel.picture = uint8_t(at == 1 ? PagePicture::Filter : PagePicture::Envelope);
+        unsigned count = at == 1 ? 2 : 4;
+        for (unsigned n = 0; n < count; ++n) { panel.picture_params[n] = panel.window[n]; panel.picture_slots[n] = int16_t(panel.window_first + n); }
+    }
+    if (!instrument) { // a few bars of a beat through it, newest on the right
+        panel.measured = true; panel.level_in = 520; panel.level_out = 610;
+        for (size_t n = 0; n < panel.scope.size(); ++n) {
+            float beat = std::pow(1.0f - float(n % 16) / 16.0f, 2.2f), a = 0.15f + 0.6f * beat, b = 0.12f + 0.55f * std::pow(1.0f - float((n + 2) % 16) / 16.0f, 2.2f);
+            auto byte = [](float v) { return uint32_t(uint8_t(int8_t(std::lround(v * 127)))); };
+            panel.scope[n] = byte(-a * 0.9f) | byte(a) << 8 | byte(-b * 0.9f) << 16 | byte(b) << 24;
+        }
+    }
+    s.ui.plugin_row[entry] = panel.row;
 }
 
-void plugin_track(Snapshot& s, PluginStatus status) {
+void plugin_track(Snapshot& s, PluginStatus status, int page = 0) {
     s.ui.page = PageId::Edit; s.ui.track = 2;
     auto& t = s.project.tracks[2];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Bass Synth");
-    plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status);
+    plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status, page);
 }
 
 // The same by the kind of page, wherever the track's Stage keeps it (shell/stage_map.h); a PLUGIN track's plug-in
@@ -1116,6 +1140,8 @@ const Preview previews[] {
     {"pluginedit", [](Shell&, Snapshot& s) { // Edit on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
          plugin_track(s, PluginStatus::Ready); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve
+    {"plugineditenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); }},    // a page with an envelope
     {"pluginopening", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Loading); }},
     {"pluginfailed", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Failed); }},
     {"rackplugin", [](Shell&, Snapshot& s) { // a plug-in effect on track 1's chain, after an echo

@@ -249,8 +249,8 @@ Melodee synths are free downloads; see [Plug-ins](guide/plug-ins.md).
    ![Stage PRESETS on a plug-in track](images/screens/stagepluginpresets.png)
 
 7. Press **B1** for **EDIT**, its next page: the plug-in's own parameters
-   come on **K1**–**K3**. Turn the encoder or press **−** / **+** to move
-   through the rows.
+   come on **K1**–**K3**, in rows of three. Turn the encoder to move through
+   the rows, and press **−** / **+** for the plug-in's page before or after.
 
    ![Stage EDIT: a plug-in's parameters](images/screens/stagepluginedit.png)
 

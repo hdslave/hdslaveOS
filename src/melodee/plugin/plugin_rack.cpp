@@ -217,6 +217,15 @@ std::vector<PluginPage> plugin_pages(juce::AudioPluginInstance& instance, ClapIn
     return pages_with_groups(std::move(own), shown, groups);
 }
 
+// The pages laid out in rows of three, with each page's picture found from the parameters' names (plugin_pages.h).
+PluginLayout layout_of(juce::AudioPluginInstance& instance, const std::vector<PluginPage>& pages) {
+    auto layout = lay_out(pages);
+    std::vector<std::string> names;
+    for (auto* p : instance.getParameters()) names.push_back(p->getName(64).trim().toStdString());
+    find_pictures(layout, names);
+    return layout;
+}
+
 // The programs PRESETS lists: those with a name. Plug-ins that keep a fixed
 // number of slots name the unused ones "(empty)" (TONE3000), or leave them blank.
 PluginProgramList named_programs(juce::AudioPluginInstance& instance) {
@@ -330,6 +339,11 @@ public:
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
             if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
+            if (watched.load(std::memory_order_relaxed)) {
+                static const std::array<float, EngineHost::block> quiet {};
+                measure(quiet.data(), quiet.data(), frames, true);
+                measure(quiet.data(), quiet.data(), frames, false);
+            }
             load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
             return;
         }
@@ -350,6 +364,8 @@ public:
             if (ins == 1) for (unsigned f = 0; f < frames; ++f) pointers[0][f] = 0.5f * (left[f] + right[f]);
             else if (ins >= 2) { std::copy(left, left + frames, pointers[0]); std::copy(right, right + frames, pointers[1]); }
         }
+        const bool watching = watched.load(std::memory_order_relaxed) && !warming;
+        if (watching && !instrument) measure(left, right, frames, true);
         midi_in.clear();
         for (unsigned n = 0; n < pending_count; ++n) {
             const auto& m = pending[n];
@@ -367,6 +383,7 @@ public:
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
         idle.heard(l, r, frames);
+        if (watching) measure(l, r, frames, false);
         auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
         if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
         else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
@@ -385,6 +402,29 @@ public:
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
+    // Its sound as the page in view shows it (plugin_panel.h `scope`): written by the audio thread only while
+    // `watched` (the panel's plug-in), a block's lowest and highest sample per entry, and peak levels in and out.
+    std::atomic<bool> watched {false};
+    std::array<std::atomic<uint32_t>, 64> scope {};
+    std::atomic<uint32_t> scope_head {0};
+    std::atomic<float> level_in {0}, level_out {0};
+    void measure(const float* l, const float* r, unsigned frames, bool input) {
+        float peak = 0, lo[2] {0, 0}, hi[2] {0, 0};
+        for (unsigned f = 0; f < frames; ++f) {
+            float a = std::isfinite(l[f]) ? l[f] : 0.0f, b = std::isfinite(r[f]) ? r[f] : 0.0f;
+            lo[0] = std::min(lo[0], a); hi[0] = std::max(hi[0], a);
+            lo[1] = std::min(lo[1], b); hi[1] = std::max(hi[1], b);
+        }
+        peak = std::max({-lo[0], hi[0], -lo[1], hi[1]});
+        auto& level = input ? level_in : level_out;
+        level.store(std::max(peak, level.load(std::memory_order_relaxed) * 0.9f), std::memory_order_relaxed);
+        if (input) return;
+        auto byte = [](float v) { return uint32_t(uint8_t(int8_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 127)))); };
+        uint32_t packed = byte(lo[0]) | byte(hi[0]) << 8 | byte(lo[1]) << 16 | byte(hi[1]) << 24;
+        uint32_t at = scope_head.load(std::memory_order_relaxed);
+        scope[at % scope.size()].store(packed, std::memory_order_relaxed);
+        scope_head.store(at + 1, std::memory_order_release);
+    }
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
     PluginProgramList programs;          // its named programs, as it listed them on opening (a CLAP one's: once found)
@@ -684,8 +724,16 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         out.page = uint16_t(layout.page_of(out.row));
         out.page_row = uint16_t(out.row - layout.first_rows[out.page]);
         out.page_rows = uint16_t(layout.rows_of(out.page));
+        out.prev_page = layout.first_rows[out.page > 0 ? out.page - 1u : out.page];
+        out.next_page = layout.first_rows[out.page + 1u < out.pages ? out.page + 1u : out.page];
         put(out.page_name, sizeof(out.page_name), layout.names[out.page]);
     }
+    for (const auto& other : handles) other->watched.store(other.get() == h, std::memory_order_relaxed);
+    out.measured = true;
+    uint32_t head = h->scope_head.load(std::memory_order_acquire);
+    for (size_t n = 0; n < out.scope.size(); ++n) out.scope[n] = h->scope[(head + n) % h->scope.size()].load(std::memory_order_relaxed);
+    out.level_in = uint16_t(std::clamp(h->level_in.load(std::memory_order_relaxed), 0.0f, 1.0f) * 1000);
+    out.level_out = uint16_t(std::clamp(h->level_out.load(std::memory_order_relaxed), 0.0f, 1.0f) * 1000);
     out.load = uint16_t(std::clamp(h->load.load(std::memory_order_relaxed) * 1000.0f, 0.0f, 9999.0f));
     out.programs = uint16_t(std::min<size_t>(h->programs.size(), 0xffff));
     const auto& params = h->instance->getParameters();
@@ -708,11 +756,23 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         if (at >= layout.slots.size()) break;
         read(at, out.params[k]);
     }
-    out.window_first = uint16_t((out.row > 0 ? out.row - 1u : 0u) * 3u);
-    for (unsigned k = 0; k < out.window.size(); ++k) {
+    // Two rows of the page in hand: its own and the next, or on the page's last row the one before.
+    unsigned first = out.row;
+    out.window_rows = uint8_t(out.page_rows >= 2 ? 2 : out.rows ? 1 : 0);
+    if (out.page_rows >= 2 && out.page_row + 1u >= out.page_rows) first = out.row - 1u;
+    out.window_first = uint16_t(first * 3u);
+    for (unsigned k = 0; k < out.window_rows * 3u; ++k) {
         size_t at = size_t(out.window_first) + k;
         if (at >= layout.slots.size()) break;
         read(at, out.window[k]);
+    }
+    if (auto picture = picture_for(layout, out.page, out.row); picture.kind != PagePicture::None) {
+        out.picture = uint8_t(picture.kind);
+        for (unsigned n = 0; n < 4; ++n) {
+            if (picture.slots[n] < 0) continue;
+            out.picture_slots[n] = int16_t(picture.slots[n]);
+            read(size_t(picture.slots[n]), out.picture_params[n]);
+        }
     }
 }
 
@@ -1114,7 +1174,7 @@ void PluginRack::load(const Job& job) {
         pages[0].params = std::move(ordered);
     }
     handle->nam = nam;
-    handle->layout = lay_out(pages);
+    handle->layout = layout_of(*handle->instance, pages);
     handle->warm_up(); // before the audio thread first runs it
 
     PluginHandle* raw = handle.get();
@@ -1271,7 +1331,7 @@ void PluginRack::idle_plugins() {
     for (auto* h : clap) {
         h->clap->idle();
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
-        auto layout = lay_out(plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown));
+        auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown));
         std::lock_guard<std::mutex> held(lock);
         h->layout = std::move(layout);
         moved = true;

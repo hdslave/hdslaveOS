@@ -98,13 +98,21 @@ on Stage (**EDIT**) to see the same parameters there.
 
 ![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
 
-- **K1**–**K3** set the three parameters shown, in their colours. Each card
-  shows the parameter's name.
-- Turn the encoder or press **−** / **+** to move to other parameters.
+- The page shows the plug-in's parameters in rows of three, each over its
+  pot: **K1**, **K2**, **K3**. The row the pots turn is raised, in their
+  colours. A pot that has not reached its parameter's value yet shows faint,
+  with a white dot where the pot is.
+- The plug-in's parameters come in pages, named at the top left; the dots
+  at the right show which page is open. The pages are the plug-in's own (an
+  Open MPC plug-in's skin tabs, a CLAP plug-in's pages), then its groups of
+  parameters.
+- Turn the encoder to move to the next row of three. Press **−** / **+** to
+  go to the page before or after.
+- A page with an envelope (attack, decay, sustain, release) or a filter
+  (cutoff and resonance) draws it above the row.
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
-- The header shows how much of each audio block the plug-in uses.
 - **B1** (**PLUG-INS**) opens the picker. **B2** (**PRESETS**) opens the
   plug-in's presets, when it has some. Picking another plug-in there asks
   "Replace Surge XT?" first. The old plug-in's sound and settings go;

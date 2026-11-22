@@ -287,6 +287,7 @@ void fx_in_hand(Paint& p, const Snapshot& s, const Chain& chain, unsigned cursor
     // A plug-in draws nothing of its own here: its state, and which row of its parameters the cards hold.
     const auto& panel = s.ui.plugin_panel;
     bool ours = panel.entry == unsigned(slot.params[0]);
+    if (ours && panel.status == PluginStatus::Ready && !slot.bypass) { draw_plugin_sound(p, s, x, dy, w, dh); return; } // its page, its sound
     icon(p, panel.status == PluginStatus::Failed || panel.status == PluginStatus::Crashed ? Icon::PlugBroken : Icon::Plug, x, dy + 4, 28, colour::dim, 1.4f);
     juce::String state = !ours || panel.status == PluginStatus::Loading || panel.status == PluginStatus::None ? "OPENING"
                        : panel.status == PluginStatus::Failed ? "WON'T OPEN" : panel.status == PluginStatus::Crashed ? "STOPPED" : "";

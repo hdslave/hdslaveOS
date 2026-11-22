@@ -7374,6 +7374,43 @@ void plugin_page_layout() {
     CHECK(rest_ungrouped.size() == 2 && rest_ungrouped[1].name == "MAIN" && (rest_ungrouped[1].params == std::vector<int> {3}));
     auto no_own = pages_with_groups({}, shown, groups);
     CHECK(no_own.size() == 4 && no_own[0].name == "MAIN");
+
+    // Pictures from names: an envelope of one prefix, a filter's cutoff with its resonance.
+    std::vector<std::string> names {"Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", "Filter Attack", "Cutoff",
+                                    "Resonance", "Drive", "A Filter 1 Cutoff", "A Filter 2 Resonance", "A Filter 1 Resonance"};
+    auto pictured = lay_out({{"AMP", {4, 0, 1, 2, 3}}, {"FILTER", {5, 7, 6}}, {"SURGE", {8, 9, 10}}, {"NONE", {7, 4}}});
+    find_pictures(pictured, names);
+    CHECK(pictured.pictures.size() == 4);
+    auto first = [&](unsigned page) { return pictured.pictures[page].empty() ? PagePictureSlots {} : pictured.pictures[page][0]; };
+    CHECK(pictured.pictures.size() == 4 && pictured.pictures[0].size() == 1 && first(0).kind == PagePicture::Envelope); // Filter Attack alone: no envelope
+    CHECK(pictured.pictures.size() == 4 && first(0).slots[0] == 1 && first(0).slots[1] == 2 && first(0).slots[2] == 3 && first(0).slots[3] == 4);
+    CHECK(pictured.pictures.size() == 4 && first(1).kind == PagePicture::Filter && first(1).slots[0] == 6 && first(1).slots[1] == 8);
+    CHECK(pictured.pictures.size() == 4 && first(2).kind == PagePicture::Filter && first(2).slots[0] == 9 && first(2).slots[1] == 11); // the same prefix's resonance
+    CHECK(pictured.pictures.size() == 4 && pictured.pictures[3].empty() && picture_for(pictured, 3, 7).kind == PagePicture::None);
+    // A page of both (Melodee Poly's FILTER tab): the one its row in hand turns.
+    std::vector<std::string> poly {"Cutoff", "Resonance", "Filter Env Amount", "Filter Attack", "Filter Decay", "Filter Sustain", "Filter Release"};
+    auto both_kinds = lay_out({{"FILTER", {0, 1, 2, 3, 4, 5, 6}}});
+    find_pictures(both_kinds, poly);
+    CHECK(both_kinds.pictures.size() == 1 && both_kinds.pictures[0].size() == 2);
+    CHECK(picture_for(both_kinds, 0, 0).kind == PagePicture::Filter);   // Cutoff, Resonance, Env Amount in hand
+    CHECK(picture_for(both_kinds, 0, 1).kind == PagePicture::Envelope); // Attack, Decay, Sustain in hand
+    CHECK(picture_for(both_kinds, 0, 2).kind == PagePicture::Envelope); // Release: still the envelope's
+    auto poly_tab = lay_out({{"FILTER", {0, 1, 2, 7, 8, 9, 3, 4, 5, 6}}}); // Key Track's row between: nothing on it, the filter nearest
+    std::vector<std::string> poly2 = poly;
+    poly2.insert(poly2.end(), {"Key Track", "Vel > Filter", "Vel > Amp"});
+    find_pictures(poly_tab, poly2);
+    CHECK(picture_for(poly_tab, 0, 1).kind == PagePicture::Filter);
+    CHECK(picture_for(poly_tab, 0, 2).kind == PagePicture::Envelope);
+
+    // Units from a value's text.
+    double v = 0;
+    CHECK(value_in("12.5 ms", false, v) && std::abs(v - 0.0125) < 1e-9);
+    CHECK(value_in("1.2 s", false, v) && std::abs(v - 1.2) < 1e-9);
+    CHECK(value_in("350ms", false, v) && std::abs(v - 0.35) < 1e-9);
+    CHECK(value_in(" 2,5 sec", false, v) && std::abs(v - 2.5) < 1e-9);
+    CHECK(value_in("2 kHz", true, v) && std::abs(v - 2000) < 1e-9);
+    CHECK(value_in("440 Hz", true, v) && std::abs(v - 440) < 1e-9);
+    CHECK(!value_in("45", false, v) && !value_in("62 %", true, v) && !value_in("Off", false, v) && !value_in("2 kHz", false, v));
 }
 
 void synths_as_plugins() {

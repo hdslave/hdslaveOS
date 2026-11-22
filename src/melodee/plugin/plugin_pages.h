@@ -3,8 +3,18 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
+
+// The picture a page draws above its row in hand (docs/PLUGIN_PAGES_PLAN.md, pick 4 a), found from its parameters'
+// names: an envelope (attack, decay, sustain, release of one prefix: "Amp Attack" ... "Amp Release") or a filter
+// (a cutoff with a resonance). `slots[n]`: where each of its parameters is in the layout (-1 none).
+enum class PagePicture : uint8_t { None, Envelope, Filter };
+struct PagePictureSlots {
+    PagePicture kind = PagePicture::None;
+    int slots[4] {-1, -1, -1, -1}; // envelope: attack, decay, sustain, release; filter: cutoff, resonance
+};
 
 // A plug-in's pages (docs/PLUGIN_PAGES_PLAN.md): named groups of its parameters, laid out for K1-K3 in rows of
 // three. The rack takes them from the first source that has them: the plug-in's CLAP remote-controls pages, an
@@ -23,6 +33,7 @@ struct PluginLayout {
     std::vector<int> slots;
     std::vector<std::string> names;   // each page's name
     std::vector<uint16_t> first_rows; // each page's first row
+    std::vector<std::vector<PagePictureSlots>> pictures; // each page's pictures (find_pictures()); empty: none found yet
     unsigned rows() const { return unsigned(slots.size() / 3); }
     unsigned pages() const { return unsigned(names.size()); }
     int at(size_t slot) const { return slot < slots.size() ? slots[slot] : -1; }
@@ -124,6 +135,128 @@ inline std::vector<PluginPage> pages_with_groups(std::vector<PluginPage> own, co
     if (more.size() == 1 && more[0].name.empty()) more[0].name = "MAIN"; // the rest all outside every group
     own.insert(own.end(), more.begin(), more.end());
     return own;
+}
+
+namespace plugin_pages_detail {
+inline std::string lower(std::string s) {
+    for (auto& c : s) c = char(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    return s;
+}
+// `name` with the first `word` taken out ("amp attack" less "attack": "amp "); `found` whether it held the word.
+inline std::string without(const std::string& name, const std::string& word, bool& found) {
+    auto at = name.find(word);
+    found = at != std::string::npos;
+    return found ? name.substr(0, at) + name.substr(at + word.size()) : name;
+}
+} // namespace plugin_pages_detail
+
+// The pictures each page of `layout` can draw, from `names` (the plug-in's parameter names, by parameter index): an
+// envelope for each attack whose page also holds decay, sustain and release of the same prefix, then a filter for
+// each cutoff whose page holds a resonance ("resonance", "reso", "emphasis"; the same prefix first). A page of
+// several (Melodee Poly's FILTER tab: its filter, both envelopes) draws the one its row in hand turns most of
+// (picture_for()).
+inline void find_pictures(PluginLayout& layout, const std::vector<std::string>& names) {
+    using namespace plugin_pages_detail;
+    layout.pictures.assign(layout.pages(), {});
+    for (unsigned page = 0; page < layout.pages(); ++page) {
+        size_t from = size_t(layout.first_rows[page]) * 3, to = from + size_t(layout.rows_of(page)) * 3;
+        auto name_at = [&](size_t slot) {
+            int p = layout.at(slot);
+            return p >= 0 && size_t(p) < names.size() ? lower(names[size_t(p)]) : std::string();
+        };
+        auto& found_here = layout.pictures[page];
+        for (size_t a = from; a < to; ++a) {
+            bool found = false;
+            std::string prefix = without(name_at(a), "attack", found);
+            if (!found) continue;
+            int slots[4] {int(a), -1, -1, -1};
+            const char* words[3] {"decay", "sustain", "release"};
+            for (int w = 0; w < 3; ++w)
+                for (size_t b = from; b < to && slots[w + 1] < 0; ++b) {
+                    bool has = false;
+                    if (without(name_at(b), words[w], has) == prefix && has) slots[w + 1] = int(b);
+                }
+            if (slots[1] >= 0 && slots[2] >= 0 && slots[3] >= 0) {
+                PagePictureSlots picture;
+                picture.kind = PagePicture::Envelope;
+                std::copy(slots, slots + 4, picture.slots);
+                found_here.push_back(picture);
+            }
+        }
+        for (size_t c = from; c < to; ++c) {
+            bool found = false;
+            std::string prefix = without(name_at(c), "cutoff", found);
+            if (!found) continue;
+            int same = -1, any = -1; // a resonance of the cutoff's prefix, else the first
+            for (size_t r = from; r < to; ++r)
+                for (const char* word : {"resonance", "reso", "emphasis"}) {
+                    bool has = false;
+                    std::string rest = without(name_at(r), word, has);
+                    if (!has) continue;
+                    if (rest == prefix && same < 0) same = int(r);
+                    if (any < 0) any = int(r);
+                    break;
+                }
+            int best = same >= 0 ? same : any;
+            if (best >= 0) {
+                PagePictureSlots picture;
+                picture.kind = PagePicture::Filter;
+                picture.slots[0] = int(c);
+                picture.slots[1] = best;
+                found_here.push_back(picture);
+            }
+        }
+        std::stable_partition(found_here.begin(), found_here.end(), [](const PagePictureSlots& p) { return p.kind == PagePicture::Filter; });
+    }
+}
+
+// The picture page `page` draws with row `row` in hand: of its pictures, the one with most parts on that row; of
+// those tied, the one with a part nearest it, then a filter before an envelope (Key Track's row on Melodee Poly's
+// FILTER tab: the filter); none when it has none.
+inline PagePictureSlots picture_for(const PluginLayout& layout, unsigned page, unsigned row) {
+    if (page >= layout.pictures.size() || layout.pictures[page].empty()) return {};
+    const auto& all = layout.pictures[page];
+    size_t best = 0;
+    int most = -1, nearest = 1 << 30;
+    for (size_t n = 0; n < all.size(); ++n) {
+        int on_row = 0, near = 1 << 30;
+        for (int slot : all[n].slots) {
+            if (slot < 0) continue;
+            int away = std::abs(int(unsigned(slot) / 3) - int(row));
+            on_row += away == 0;
+            near = std::min(near, away);
+        }
+        if (on_row > most || (on_row == most && near < nearest)) { most = on_row; nearest = near; best = n; }
+    }
+    return all[best];
+}
+
+// A value text as a plug-in writes it ("12.5 ms", "1.2 s", "350ms", "1.20 sec", "2 kHz", "440 Hz"): its number
+// in seconds or in hertz; false when the text names no such unit.
+inline bool value_in(const std::string& text, bool hertz, double& out) {
+    std::string t = plugin_pages_detail::lower(text);
+    size_t at = 0;
+    while (at < t.size() && t[at] == ' ') ++at;
+    size_t start = at;
+    if (at < t.size() && (t[at] == '-' || t[at] == '+')) ++at;
+    bool digits = false;
+    while (at < t.size() && ((t[at] >= '0' && t[at] <= '9') || t[at] == '.' || t[at] == ',')) { digits |= t[at] != '.' && t[at] != ','; ++at; }
+    if (!digits) return false;
+    std::string number = t.substr(start, at - start);
+    for (auto& c : number) if (c == ',') c = '.';
+    double v = std::atof(number.c_str());
+    while (at < t.size() && t[at] == ' ') ++at;
+    std::string unit = t.substr(at);
+    while (!unit.empty() && (unit.back() == ' ' || unit.back() == '.')) unit.pop_back();
+    if (hertz) {
+        if (unit == "hz") { out = v; return true; }
+        if (unit == "khz" || unit == "k") { out = v * 1000; return true; }
+        return false;
+    }
+    if (unit == "ms" || unit == "msec") { out = v / 1000; return true; }
+    if (unit == "s" || unit == "sec" || unit == "secs" || unit == "seconds") { out = v; return true; }
+    if (unit == "min") { out = v * 60; return true; }
+    return false;
 }
 
 } // namespace melodee

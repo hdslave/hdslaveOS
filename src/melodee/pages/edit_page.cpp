@@ -163,6 +163,7 @@ void draw(Paint& p, const Snapshot& s) {
         bool presets = ours && panel.programs > 0, chosen = s.track().plugin < max_plugins;
         SoftKeys keys {{"PLUG-INS", presets ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, c};
         if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[s.track().plugin].transport ? 4 : 0; }
+        if (plugin_page_shown(s, s.track().plugin)) { draw_plugin_page(p, s, s.track().plugin, keys); return; } // its page under B1-B3
         frame(p, s, keys, h);
         if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
             icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
@@ -240,6 +241,15 @@ void plugin_rows(Context& c, int delta) {
     c.plugin_panel_at = 0; // its cards again at once
 }
 
+// Minus / Plus on a plug-in's page: the first row of the page after, or of the page before.
+void plugin_page_step(Context& c, int way) {
+    unsigned entry = c.track().plugin;
+    const auto& panel = c.ui.plugin_panel;
+    if (entry >= max_plugins || panel.entry != entry || !panel.rows) return;
+    unsigned to = way > 0 ? panel.next_page : panel.prev_page;
+    plugin_rows(c, int(to) - int(panel.row));
+}
+
 namespace {
 
 void wheel(Context& c, int delta) {
@@ -276,9 +286,9 @@ void push(Context& c) {
     }
 }
 
-// Minus / Plus: the octave, or on a PLUGIN track its rows as the wheel.
+// Minus / Plus: the octave, or on a PLUGIN track its pages (the wheel walks its rows).
 void nudge(Context& c, int way) {
-    if (c.track().engine == EngineKind::Plugin) plugin_rows(c, way);
+    if (c.track().engine == EngineKind::Plugin) plugin_page_step(c, way);
     else octave(c, way);
 }
 } // namespace

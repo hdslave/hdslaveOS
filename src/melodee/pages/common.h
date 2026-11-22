@@ -90,9 +90,18 @@ void effect_drawing(ui::Paint& p, const EffectSlot& slot, float x, float y, floa
 
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
+void frame_keys(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys); // B1-B3 alone (Pad Bank's and 16 Levels' held keys as frame() draws them)
 // A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
 void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
+// A plug-in's page under B1-B3 (docs/PLUGIN_PAGES_PLAN.md, picks 3 c and 4 a): the page line, then its rows of three
+// as arcs over the pots, an envelope or filter on top where the page holds one; no header, no cards. Shown while the
+// plug-in is open and the pots are its own (not Knob FX's): plugin_page_shown().
+bool plugin_page_shown(const Snapshot& s, unsigned entry);
+void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui::SoftKeys& keys);
+void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
+// An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
+void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
 void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 

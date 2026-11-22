@@ -1,7 +1,8 @@
 # Plug-in pages: plan
 
 Status: all picks made 2026-11-22: 1 a, 2 (own pages, then groups), 3 c, 4 a (end
-of this file). Step 1 built 2026-11-22. Kerem then asked for the plug-in's own GUI
+of this file). Steps 1 and 2 built 2026-11-22 (step 2: a page shows several pictures'
+parts, so it keeps them all and draws the one its row in hand turns most of). Kerem then asked for the plug-in's own GUI
 window in a browser at melodee.local: a plan of its own.
 Mockups: https://claude.ai/artifact/TCsNHN1KRY76cWyhUEMyYR; files in
 build/plugin-pages-mock: sheet-s1.png (level 0), sheet-s6.png (skins),

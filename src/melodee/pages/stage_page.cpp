@@ -1199,6 +1199,10 @@ void draw(Paint& p, const Snapshot& s) {
         for (const auto& other : s.project.tracks) any |= other.used();
         keys = SoftKeys {{any ? (s.ui.new_sources ? "BACK" : "CANCEL") : "", "", ""}, -1, c, {any ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
     }
+    if (page.kind == StageKind::PluginEdit && t.used() && !frozen && plugin_page_shown(s, t.plugin)) { // its page under B1-B3
+        draw_plugin_page(p, s, t.plugin, keys);
+        return;
+    }
     frame(p, s, keys, h);
     if (!t.used()) { new_track_picture(p, s); return; }
     if (frozen) { frozen_picture(p, s); return; }
@@ -1313,7 +1317,7 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
-    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { plugin_rows(c, way); return; } // as Edit's (a plug-in track)
+    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { plugin_page_step(c, way); return; } // its pages, as Edit's
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);
     else octave(c, way);
 }

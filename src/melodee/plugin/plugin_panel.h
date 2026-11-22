@@ -38,14 +38,28 @@ struct PluginPanel {
     uint16_t row = 0, rows = 0;    // rows of three parameters, every page's in turn (plugin/plugin_pages.h)
     uint16_t page = 0, pages = 0;  // the page `row` is on, and how many there are
     uint16_t page_row = 0, page_rows = 0; // `row` within its page, and the page's rows
+    uint16_t prev_page = 0, next_page = 0; // the first rows of the pages before and after (Minus / Plus); `row`'s own page's at the ends
     char page_name[32] {};         // its name ("" the plug-in's one list)
+    // The page's picture (plugin/plugin_pages.h find_pictures()): its parameters (envelope: attack, decay, sustain,
+    // release; filter: cutoff, resonance), each with where it is in the rows (`picture_slots`, row * 3 + k).
+    uint8_t picture = 0;           // PagePicture
+    std::array<PluginPanelParam, 4> picture_params {};
+    std::array<int16_t, 4> picture_slots {-1, -1, -1, -1};
+    // An effect's sound as it plays, measured here for the plug-in in view (pages/fx_drawing.cpp): one block's lowest
+    // and highest sample per entry, oldest first (low byte left, then right; each a signed byte as min, max), and the
+    // levels in and out, 0..1000. `measured`: there is something to show.
+    bool measured = false;
+    std::array<uint32_t, 64> scope {};
+    uint16_t level_in = 0, level_out = 0;
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
     uint16_t programs = 0;         // its named programs (presets), for PRESETS
     std::array<PluginPanelParam, 3> params {};
-    // The six parameters around the row in hand, its own three among them (the row before, or at the top the row
-    // after), for the page's list; `window_first` the first one's place in the list of shown ones.
+    // Two rows of the row in hand's page, its own among them (the row after, or on the page's last row the one
+    // before; one row alone on a page of one), for the page's arcs and list; `window_first` the first one's slot
+    // (row * 3), `window_rows` how many rows it holds.
     std::array<PluginPanelParam, 6> window {};
     uint16_t window_first = 0;
+    uint8_t window_rows = 0;
 };
 
 // A plug-in's programs as PRESETS lists them: the named ones, each with its

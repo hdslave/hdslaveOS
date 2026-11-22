@@ -871,17 +871,7 @@ FaderShown fader_shown(const Snapshot& s) {
 }
 
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header) {
-    if (s.ui.pad_bank && !track_overlay_shown(s.ui)) { // Pad Bank held: its keys over the page's (shell/pad_bank.h)
-        ui::SoftKeys held {{"TRACKS", "MOVE", "COPY"}, -1, colour_of(s)};
-        held.glyphs[1] = ui::Icon::Swap; held.glyphs[2] = ui::Icon::Copy;
-        ui::soft_keys(p, held);
-    } else if (auto k = levels_keys(s.track()); levels_held_cards(s.project, s.ui) && k.key[0] != LevelsKey::None
-               && (s.ui.levels_used || s.now - s.ui.levels_down >= levels_hold_ms)) { // 16 Levels held: its keys, by the type (shell/levels_keys.h)
-        ui::SoftKeys held {{levels_key_name(k.key[0]), levels_key_name(k.key[1]), levels_key_name(k.key[2])}, k.lit, colour_of(s)};
-        ui::soft_keys(p, held);
-    } else {
-        ui::soft_keys(p, keys);
-    }
+    frame_keys(p, s, keys);
     auto cards = cards_of(s);
     bool knob_fx = std::any_of(cards.begin(), cards.end(), [](const ui::KnobCard& c) { return c.knob_fx; });
     if (knob_fx && s.ui.page != PageId::KnobFx) { // the pots are Knob FX's: the header names its effect first
@@ -893,6 +883,20 @@ void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::
         ui::header(p, header);
     }
     ui::knob_strip(p, cards);
+}
+
+void frame_keys(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys) {
+    if (s.ui.pad_bank && !track_overlay_shown(s.ui)) { // Pad Bank held: its keys over the page's (shell/pad_bank.h)
+        ui::SoftKeys held {{"TRACKS", "MOVE", "COPY"}, -1, colour_of(s)};
+        held.glyphs[1] = ui::Icon::Swap; held.glyphs[2] = ui::Icon::Copy;
+        ui::soft_keys(p, held);
+    } else if (auto k = levels_keys(s.track()); levels_held_cards(s.project, s.ui) && k.key[0] != LevelsKey::None
+               && (s.ui.levels_used || s.now - s.ui.levels_down >= levels_hold_ms)) { // 16 Levels held: its keys, by the type (shell/levels_keys.h)
+        ui::SoftKeys held {{levels_key_name(k.key[0]), levels_key_name(k.key[1]), levels_key_name(k.key[2])}, k.lit, colour_of(s)};
+        ui::soft_keys(p, held);
+    } else {
+        ui::soft_keys(p, keys);
+    }
 }
 
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.play_pad(pad, velocity, down); }
