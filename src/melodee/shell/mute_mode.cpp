@@ -49,8 +49,14 @@ void mute_pad(Context& c, unsigned pad, bool kit_pads) {
     ui.mute_used = true;
     pad %= 16;
     if (!mute_on_kit(ui, kit_pads)) { // the tracks
-        const auto& mix = c.project.tracks[pad].mix;
-        if (ui.shift) { ui.shift_used = true; c.set_solo(pad, !mix.solo); }
+        const auto& track = c.project.tracks[pad];
+        const auto& mix = track.mix;
+        if (ui.shift) {
+            ui.shift_used = true;
+            // An empty track is not soloed (the engine counts no solo on it); one an older project kept soloed goes off.
+            if (!track.used() && !mix.solo) { c.notice("Track " + std::to_string(pad + 1) + " is empty"); return; }
+            c.set_solo(pad, !mix.solo);
+        }
         else c.set_mute(pad, !mix.mute);
         return;
     }
