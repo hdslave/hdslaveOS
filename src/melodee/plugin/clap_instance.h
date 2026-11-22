@@ -88,6 +88,18 @@ public:
     std::vector<Preset> findPresets (const juce::File& cache) const;
     void setPresets (std::vector<Preset>);
     const std::string& clapId() const { return info.id; }
+    // Pages (plugin/plugin_pages.h). module(): the group of the parameter at `index` (its place in getParameters())
+    // as clap_param_info.module gives it, "/" between levels ("" none). remotePages(): the plug-in's own pages of
+    // up to eight controls (CLAP remote-controls), asked now, as parameter indices; empty with none.
+    // remotePagesChanged(): it said they changed since remotePages() was last called.
+    struct RemotePage
+    {
+        std::string section, name;
+        std::vector<int> params;
+    };
+    std::string module (int index) const;
+    std::vector<RemotePage> remotePages();
+    bool remotePagesChanged() const;
     int getNumPrograms() override;                      // its presets (1 with none, as JUCE has it)
     int getCurrentProgram() override;                   // the one loaded here last (0 none yet)
     void setCurrentProgram (int) override;              // loads that preset, again if it is the one loaded

@@ -35,7 +35,10 @@ struct PluginPanel {
     char name[32] {};
     char format[8] {};             // VST3, VST2, ARMV7
     char error[64] {};             // why it failed
-    uint16_t row = 0, rows = 0;    // rows of three parameters
+    uint16_t row = 0, rows = 0;    // rows of three parameters, every page's in turn (plugin/plugin_pages.h)
+    uint16_t page = 0, pages = 0;  // the page `row` is on, and how many there are
+    uint16_t page_row = 0, page_rows = 0; // `row` within its page, and the page's rows
+    char page_name[32] {};         // its name ("" the plug-in's one list)
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
     uint16_t programs = 0;         // its named programs (presets), for PRESETS
     std::array<PluginPanelParam, 3> params {};

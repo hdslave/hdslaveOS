@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cmath>
 #include <cctype>
 #include <cstdio>
@@ -106,6 +107,7 @@ struct ClapInstance::Host
     clap_host host {};
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
+    std::atomic<bool> remoteChanged { false }; // remote-controls changed(): its pages to be read again
     std::atomic<bool> process { false }; // request_process or request_flush: run the next block even if it sleeps
 
     Host()
@@ -169,7 +171,14 @@ struct ClapInstance::Host
         if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &state;
         if (std::strcmp (id, CLAP_EXT_AUDIO_PORTS) == 0) return &audioPorts;
         if (std::strcmp (id, CLAP_EXT_NOTE_PORTS) == 0) return &notePorts;
+        // Its pages of controls (plugin/plugin_pages.h): read again once it says they changed; a page it suggests
+        // (what its own GUI is on) means nothing here, with no GUI.
+        static const clap_host_remote_controls remote {
+            [] (const clap_host* h) { of (h).remoteChanged = true; },
+            [] (const clap_host*, clap_id) {},
+        };
         if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &presetLoad;
+        if (std::strcmp (id, CLAP_EXT_REMOTE_CONTROLS) == 0 || std::strcmp (id, CLAP_EXT_REMOTE_CONTROLS_COMPAT) == 0) return &remote;
         return nullptr;
     }
 };
@@ -194,7 +203,21 @@ public:
     Parameter (ClapInstance& owner, const clap_param_info& info, double current)
         : owner (owner), id (info.id), cookie (info.cookie), flags (info.flags),
           minimum (info.min_value), maximum (info.max_value), initial (normalise (info.default_value)),
-          label (text (info.name)), value ((float) normalise (current)) {}
+          label (text (info.name)), module (moduleOf (info.module)), value ((float) normalise (current)) {}
+
+    // clap_param_info.module as a path, "/" between levels, without empty levels ("" none).
+    static std::string moduleOf (const char* m)
+    {
+        std::string out, level;
+        auto end = [&] { if (! level.empty()) { if (! out.empty()) out += '/'; out += level; } level.clear(); };
+        for (size_t i = 0; m != nullptr && i < CLAP_PATH_SIZE && m[i] != 0; ++i)
+        {
+            if (m[i] == '/') end();
+            else level += m[i];
+        }
+        end();
+        return out;
+    }
 
     double normalise (double plain) const { return maximum > minimum ? std::clamp ((plain - minimum) / (maximum - minimum), 0.0, 1.0) : 0.0; }
     double plain (double normalised) const
@@ -251,6 +274,7 @@ public:
     const uint32_t flags;
     const double minimum, maximum, initial;
     const String label;
+    const std::string module;
     std::atomic<float> value;
     std::atomic<bool> pending { false };
 };
@@ -416,6 +440,40 @@ void ClapInstance::idle()
     if (host->rescan.exchange (false)) refreshValues();
     if (host->latencyChanged.exchange (false)) readLatency();
 }
+
+std::string ClapInstance::module (int index) const
+{
+    return index >= 0 && index < (int) parameters.size() ? parameters[(size_t) index]->module : std::string();
+}
+
+std::vector<ClapInstance::RemotePage> ClapInstance::remotePages()
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    host->remoteChanged = false;
+    auto* remote = static_cast<const clap_plugin_remote_controls*> (plugin->get_extension (plugin, CLAP_EXT_REMOTE_CONTROLS));
+    if (remote == nullptr)
+        remote = static_cast<const clap_plugin_remote_controls*> (plugin->get_extension (plugin, CLAP_EXT_REMOTE_CONTROLS_COMPAT));
+    std::vector<RemotePage> out;
+    if (remote == nullptr || remote->count == nullptr || remote->get == nullptr) return out;
+    for (uint32_t i = 0, n = std::min<uint32_t> (remote->count (plugin), 256); i < n; ++i)
+    {
+        clap_remote_controls_page page {};
+        if (! remote->get (plugin, i, &page)) continue;
+        RemotePage p;
+        p.section = text (page.section_name).toStdString();
+        p.name = text (page.page_name).toStdString();
+        for (clap_id id : page.param_ids)
+        {
+            if (id == CLAP_INVALID_ID) continue;
+            auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, INT_MIN));
+            if (it != byId.end() && it->first == id) p.params.push_back (it->second);
+        }
+        out.push_back (std::move (p));
+    }
+    return out;
+}
+
+bool ClapInstance::remotePagesChanged() const { return host->remoteChanged.load(); }
 
 bool ClapInstance::wantsProcess() const
 {

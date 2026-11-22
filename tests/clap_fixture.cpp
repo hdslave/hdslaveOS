@@ -51,14 +51,16 @@ const clap_plugin_descriptor sineDescriptor {CLAP_VERSION_INIT, "org.melodee.tes
 const clap_plugin_descriptor gainDescriptor {CLAP_VERSION_INIT, "org.melodee.test.gain", "Test Gain", "Melodee", "", "", "", "1",
                                             "", gainFeatures};
 
-// Parameters: Sine's Level (id 7) and Wave (id 9, stepped 0-2); Gain's Gain (id 3, 0-2).
+// Parameters: Sine's Level (id 7, module "Voice/Amp") and Wave (id 9, stepped 0-2, no module); Gain's Gain (id 3,
+// 0-2, module "Out"). Sine has one remote-controls page, Main: Wave, Level, the rest of its eight unused; its
+// on_main_thread says its pages changed.
 uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? 2 : 1; }
 bool paramInfo(const clap_plugin* p, uint32_t i, clap_param_info* info) {
     of(p).main();
     *info = {};
-    if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); info->max_value = 1; info->default_value = 0.5; }
+    if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); std::strcpy(info->module, "Voice/Amp/"); info->max_value = 1; info->default_value = 0.5; }
     else if (of(p).instrument && i == 1) { info->id = 9; std::strcpy(info->name, "Wave"); info->max_value = 2; info->flags = CLAP_PARAM_IS_STEPPED; }
-    else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); info->max_value = 2; info->default_value = 1; }
+    else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); std::strcpy(info->module, "Out"); info->max_value = 2; info->default_value = 1; }
     else return false;
     info->flags |= CLAP_PARAM_IS_AUTOMATABLE;
     return true;
@@ -255,13 +257,29 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     return CLAP_PROCESS_CONTINUE;
 }
 
-const void* extension(const clap_plugin*, const char* id) {
+uint32_t remoteCount(const clap_plugin* p) { of(p).main(); return 1; }
+bool remotePage(const clap_plugin* p, uint32_t i, clap_remote_controls_page* page) {
+    of(p).main();
+    if (i != 0) return false;
+    *page = {};
+    std::strcpy(page->section_name, "Sound");
+    std::strcpy(page->page_name, "Main");
+    page->page_id = 1;
+    for (auto& id : page->param_ids) id = CLAP_INVALID_ID;
+    page->param_ids[0] = 9;
+    page->param_ids[1] = 7;
+    return true;
+}
+const clap_plugin_remote_controls remoteControls {remoteCount, remotePage};
+
+const void* extension(const clap_plugin* p, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
     if (!std::strcmp(id, CLAP_EXT_STATE)) return &state;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;
     if (!std::strcmp(id, CLAP_EXT_PRESET_LOAD)) return &presetLoad;
+    if (!std::strcmp(id, CLAP_EXT_REMOTE_CONTROLS) && of(p).instrument) return &remoteControls;
     return nullptr;
 }
 
@@ -290,7 +308,14 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     p.process = process;
     p.get_extension = extension;
     // Then asks to be run, as a plug-in does when its main thread has something for its audio side.
-    p.on_main_thread = [](const clap_plugin* p) { of(p).main(); ++mainCallbacks; of(p).host->request_process(of(p).host); };
+    p.on_main_thread = [](const clap_plugin* p) {
+        auto& s = of(p);
+        s.main();
+        ++mainCallbacks;
+        s.host->request_process(s.host);
+        if (auto* remote = static_cast<const clap_host_remote_controls*>(s.host->get_extension(s.host, CLAP_EXT_REMOTE_CONTROLS)))
+            remote->changed(s.host);
+    };
     return &p;
 }
 

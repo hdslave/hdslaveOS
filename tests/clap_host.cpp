@@ -75,6 +75,12 @@ int main(int argc, char** argv) {
         auto* wave = param(*sine, "Wave");
         CHECK(level && wave && std::abs(level->getValue() - 0.5f) < 1e-6f && level->getText(0.5f, 32) == "50 %");
         CHECK(wave && wave->isDiscrete() && wave->getNumSteps() == 3);
+        // Pages (plugin/plugin_pages.h): its module paths, and its remote-controls page as parameter indices.
+        CHECK(sine->module(0) == "Voice/Amp" && sine->module(1).empty() && sine->module(2).empty());
+        auto remote = sine->remotePages();
+        CHECK(remote.size() == 1 && remote[0].section == "Sound" && remote[0].name == "Main");
+        CHECK(remote.size() == 1 && (remote[0].params == std::vector<int> {1, 0})); // Wave, Level; unused slots left out
+        CHECK(!sine->remotePagesChanged());
 
         CHECK(peak(run(*sine)) == 0.0f);
         run(*sine, {juce::MidiMessage::noteOn(1, 69, 1.0f)});
@@ -105,6 +111,8 @@ int main(int argc, char** argv) {
         sine->idle(); // its request_callback from init()
         counts(&wrong, &callbacks, &inits);
         CHECK(callbacks == 1 && inits == 1);
+        CHECK(sine->remotePagesChanged()); // its on_main_thread said its pages changed
+        CHECK(sine->remotePages().size() == 1 && !sine->remotePagesChanged());
         CHECK(sine->wantsProcess()); // the fixture's on_main_thread asked to be run
         run(*sine);
         CHECK(!sine->wantsProcess());
@@ -116,6 +124,7 @@ int main(int argc, char** argv) {
         CHECK(gain != nullptr);
         if (!gain) return 1;
         CHECK(gain->getName() == "Test Gain" && !gain->acceptsMidi() && gain->getTotalNumInputChannels() == 2);
+        CHECK(gain->module(0) == "Out" && gain->remotePages().empty()); // no remote-controls
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1

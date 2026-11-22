@@ -7307,6 +7307,73 @@ void qlink_pages() {
         {"Tab": 3, "SubTab": 1, "Q-Links": {"Q-Link 4": 11, "Q-Link 3": 10, "Q-Link 1": 0, "Q-Link 17": 12}}]}})";
     CHECK((qlink_order_in(skin) == std::vector<int> {0, 1, 2, 3, 4, 5, 6, 9, 8, 7, 10, 11}));
     CHECK(qlink_order_in("{\"Screen Mode Q-Links\": {\"map\": [").empty() && qlink_order_in("").empty()); // cut short
+    // Page by page, with the tab each is on; a parameter may be on two pages (0 on pages 1 and 3).
+    auto pages = qlink_pages_in(skin);
+    CHECK(pages.size() == 3);
+    CHECK(pages.size() == 3 && pages[0].tab == 1 && pages[1].tab == 2 && pages[2].tab == 3);
+    CHECK(pages.size() == 3 && (pages[0].params == std::vector<int> {0, 1, 2, 3, 4, 5, 6}));
+    CHECK(pages.size() == 3 && (pages[1].params == std::vector<int> {9, 8, 7}) && (pages[2].params == std::vector<int> {0, 10, 11}));
+    // Named after TUI.json's tabs (Melodee Poly's: OSC, FILTER, ...); a tab's second page " 2"; no name: Q-LINKS n.
+    const char* tui = R"({"pageData": {"version": 1, "componentDefinitions": {"tabName": "not this"},
+        "tabs": [{"tabName": "OSC", "components": [{"tabName": "nor this"}]}, {"tabName": "FILTER"}, {"other": 1}]}})";
+    auto tabs = skin_tab_names_in(tui);
+    CHECK((tabs == std::vector<std::string> {"OSC", "FILTER", ""}));
+    CHECK(skin_tab_names_in("{\"pageData\": {\"tabs\": [").empty() && skin_tab_names_in("").empty());
+    std::vector<QLinkPage> raw {{1, {0, 1}}, {2, {2}}, {1, {3}}, {3, {4}}, {0, {5}}};
+    auto named = named_qlink_pages(raw, tabs);
+    CHECK(named.size() == 5);
+    CHECK(named.size() == 5 && named[0].name == "OSC" && named[1].name == "FILTER" && named[2].name == "OSC 2"
+          && named[3].name == "Q-LINKS 4" && named[4].name == "Q-LINKS 5");
+    CHECK(named.size() == 5 && (named[2].params == std::vector<int> {3}));
+}
+
+// A plug-in's pages (plugin/plugin_pages.h): each page's parameters in rows of three on K1-K3, a page's last row
+// filled with -1, so no row holds two pages; groups make pages, with MAIN for the parameters outside any group.
+void plugin_page_layout() {
+    // Remote-controls-like pages: 8, then 2, then one left empty by keep_only, then 3 with a repeat.
+    std::vector<PluginPage> pages {{"OSC", {0, 1, 2, 3, 4, 5, 6, 7}}, {"AMP", {8, 9}}, {"HIDDEN", {20}}, {"FX", {10, 11, 10, 12}}};
+    keep_only(pages, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    CHECK(pages[2].params.empty());
+    auto layout = lay_out(pages);
+    CHECK(layout.pages() == 3 && (layout.names == std::vector<std::string> {"OSC", "AMP", "FX"}));
+    CHECK((layout.slots == std::vector<int> {0, 1, 2, 3, 4, 5, 6, 7, -1, 8, 9, -1, 10, 11, 12}));
+    CHECK(layout.rows() == 5 && (layout.first_rows == std::vector<uint16_t> {0, 3, 4}));
+    CHECK(layout.page_of(0) == 0 && layout.page_of(2) == 0 && layout.page_of(3) == 1 && layout.page_of(4) == 2 && layout.page_of(9) == 2);
+    CHECK(layout.rows_of(0) == 3 && layout.rows_of(1) == 1 && layout.rows_of(2) == 1 && layout.rows_of(3) == 0);
+    CHECK(layout.at(8) == -1 && layout.at(14) == 12 && layout.at(15) == -1);
+    CHECK(lay_out({}).rows() == 0 && lay_out({}).page_of(5) == 0);
+
+    // Groups: none named, one list; named, MAIN first for the rest, in the order the groups first appear.
+    auto flat = group_pages({3, 4, 5}, {"", "", ""});
+    CHECK(flat.size() == 1 && flat[0].name.empty() && (flat[0].params == std::vector<int> {3, 4, 5}));
+    auto grouped = group_pages({0, 1, 2, 3, 4, 5}, {"Osc 1", "", "Filter", "Osc 1", "Amp/Env", ""});
+    CHECK(grouped.size() == 4);
+    CHECK(grouped.size() == 4 && grouped[0].name == "MAIN" && (grouped[0].params == std::vector<int> {1, 5}));
+    CHECK(grouped.size() == 4 && grouped[1].name == "Osc 1" && (grouped[1].params == std::vector<int> {0, 3}));
+    CHECK(grouped.size() == 4 && grouped[2].name == "Filter" && grouped[3].name == "Env");
+    auto no_main = group_pages({0, 1}, {"A", "B"}); // every parameter in a group: no MAIN
+    CHECK(no_main.size() == 2 && no_main[0].name == "A");
+    auto same_leaf = group_pages({0, 1}, {"Osc 1/Env", "Filter/Env"}); // two groups ending alike: their whole paths
+    CHECK(same_leaf.size() == 2 && same_leaf[0].name == "Osc 1 Env" && same_leaf[1].name == "Filter Env");
+
+    // The plug-in's own pages first, then its groups for the rest (Surge XT: 5 remote pages hold 36 of 775).
+    std::vector<int> shown {0, 1, 2, 3, 4, 5};
+    std::vector<std::string> groups {"Osc", "Osc", "Filter", "", "Filter", "Env"};
+    auto both = pages_with_groups({{"Macros", {2, 0}}, {"Empty", {}}}, shown, groups);
+    CHECK(both.size() == 5); // Macros, then MAIN, Osc, Filter, Env for the five it leaves out
+    CHECK(both.size() == 5 && both[0].name == "Macros" && (both[0].params == std::vector<int> {2, 0}));
+    CHECK(both.size() == 5 && both[1].name == "MAIN" && (both[1].params == std::vector<int> {3}));
+    CHECK(both.size() == 5 && both[2].name == "Osc" && (both[2].params == std::vector<int> {1}));
+    CHECK(both.size() == 5 && both[3].name == "Filter" && (both[3].params == std::vector<int> {4}));
+    CHECK(both.size() == 5 && both[4].name == "Env" && (both[4].params == std::vector<int> {5}));
+    auto none = pages_with_groups({{"Q", {1, 2}}}, shown, std::vector<std::string>(6)); // no groups: only its own
+    CHECK(none.size() == 1 && none[0].name == "Q");
+    auto all_own = pages_with_groups({{"All", {0, 1, 2, 3, 4, 5}}}, shown, groups); // nothing left over
+    CHECK(all_own.size() == 1);
+    auto rest_ungrouped = pages_with_groups({{"A", {0, 1, 2, 4, 5}}}, shown, groups); // the rest outside every group
+    CHECK(rest_ungrouped.size() == 2 && rest_ungrouped[1].name == "MAIN" && (rest_ungrouped[1].params == std::vector<int> {3}));
+    auto no_own = pages_with_groups({}, shown, groups);
+    CHECK(no_own.size() == 4 && no_own[0].name == "MAIN");
 }
 
 void synths_as_plugins() {
@@ -11776,6 +11843,7 @@ int main() {
     nam_page();
     card_plugin_paths();
     qlink_pages();
+    plugin_page_layout();
     synths_as_plugins();
     voice_taps();
     voice_heads();

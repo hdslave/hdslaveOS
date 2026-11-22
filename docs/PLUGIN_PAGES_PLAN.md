@@ -1,7 +1,8 @@
 # Plug-in pages: plan
 
-Status: proposed 2026-11-22. Nothing built. All picks made 2026-11-22: 1 a, 2 b,
-3 c, 4 a (end of this file).
+Status: all picks made 2026-11-22: 1 a, 2 (own pages, then groups), 3 c, 4 a (end
+of this file). Step 1 built 2026-11-22. Kerem then asked for the plug-in's own GUI
+window in a browser at melodee.local: a plan of its own.
 Mockups: https://claude.ai/artifact/TCsNHN1KRY76cWyhUEMyYR; files in
 build/plugin-pages-mock: sheet-s1.png (level 0), sheet-s6.png (skins),
 sheet-s2.png, sheet-s3.png, sheet-s7.png, sheet-s8.png (picks 1-4), sheet-s9.png
@@ -50,11 +51,13 @@ Pages come from the first source that has them:
 6. Parameter groups: VST3 units, LV2 port groups, CLAP `module` paths.
 7. None: the plug-in's list in rows of three, as today, on one page.
 
-Parameters that no page lists are not shown (pick 2): a page file, the
-plug-in's remote-controls pages or its Q-Link pages decide what the MPC can
-turn. With groups (source 6) every group is a page and parameters outside any
-group make a first page MAIN, so nothing is left out there. Source 7 shows
-everything.
+Pick 2, as changed 2026-11-22: the plug-in's own pages (sources 4-5) first,
+then, where it has parameter groups, a page per group for the parameters its
+own pages leave out (MAIN for those outside every group). Surge XT's
+remote-controls pages hold 36 of its 775 parameters; with its groups after
+them all 775 are on 19 pages. A plug-in with own pages and no groups (an Open
+MPC VST2) shows only its own pages. With no own pages: group pages (MAIN
+first for parameters outside every group), else its list on one page.
 
 Melodee always keeps B1-B3, the MENU, notices, questions, the place bar and
 Shift. K1-K3 always go through the plug-in parameter path: takeover, Erase +
@@ -269,7 +272,9 @@ Made 2026-11-22:
 
 1. Page turning: **a**. Minus / Plus turn pages; the wheel moves rows and
    runs on into the next page at the ends.
-2. Parameters no page lists: **b**, hidden.
+2. Parameters no page lists: **b**, hidden; changed the same day, after
+   Surge XT's remote-controls pages turned out to hold 36 of 775: own pages
+   first, then the plug-in's groups for the rest (hidden only without groups).
 3. How much of the screen a skin may take: **c**, everything under B1-B3
    (320 x 218); no header or cards on a skinned page; the rings carry the
    cards' marks.

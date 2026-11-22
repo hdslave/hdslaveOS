@@ -313,10 +313,16 @@ std::vector<std::string> unzip_plugins(const std::string& folder) {
     return placed;
 }
 
-std::vector<int> qlink_order(const std::string& plugin_folder) {
-    juce::File skin(juce::String((fs::path(plugin_folder) / "Plugin Skins/Q-Links.json").string()));
-    if (!skin.existsAsFile()) return {};
-    return qlink_order_in(skin.loadFileAsString().toStdString());
+std::vector<PluginPage> qlink_pages(const std::string& plugin_folder) {
+    juce::File skins(juce::String((fs::path(plugin_folder) / "Plugin Skins").string()));
+    auto links = skins.getChildFile("Q-Links.json");
+    if (!links.existsAsFile()) return {};
+    auto pages = qlink_pages_in(links.loadFileAsString().toStdString());
+    if (pages.empty()) return {};
+    auto tui = skins.getChildFile("TUI.json");
+    std::vector<std::string> tabs;
+    if (tui.existsAsFile() && tui.getSize() < (16 << 20)) tabs = skin_tab_names_in(tui.loadFileAsString().toStdString());
+    return named_qlink_pages(pages, tabs);
 }
 
 } // namespace melodee
