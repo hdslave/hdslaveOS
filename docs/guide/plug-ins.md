@@ -114,6 +114,10 @@ on Stage (**EDIT**) to see the same parameters there.
   names and a picture. Put it in `Melodee/Plugin Pages/` on the card; some
   plug-ins bring their own, and Melodee has one for Neural Amp Modeler. The
   format is in [Plug-in page files](../PLUGIN_PAGES.md).
+- A page file can bring a skin: the maker's own art for the page, with its
+  knobs and sliders turning with the values. Melodee rings the controls
+  **K1**–**K3** turn. Settings > SCREEN > **Plug-in skins** turns skins off
+  for every plug-in.
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.

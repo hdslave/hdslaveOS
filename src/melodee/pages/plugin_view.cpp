@@ -11,6 +11,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/plugin/plugin_pages.h"
+#include "melodee/plugin/plugin_skin.h"
 #include "melodee/ui/knobs.h"
 #include "melodee/ui/widgets.h"
 #include <cmath>
@@ -180,7 +181,7 @@ double seconds_of(const PluginPanelParam& param) {
     return v * v * 4.0;
 }
 
-void envelope_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+void envelope_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h, juce::Colour own = {}) {
     const auto& panel = s.ui.plugin_panel;
     double a = seconds_of(panel.picture_params[0]), d = seconds_of(panel.picture_params[1]), r = seconds_of(panel.picture_params[3]);
     float sustain = std::clamp(panel.picture_params[2].value / float(plugin_param_max), 0.0f, 1.0f);
@@ -196,23 +197,24 @@ void envelope_picture(Paint& p, const Snapshot& s, float x, float y, float w, fl
     area.startNewSubPath(x_of(0), base);
     for (const auto& part : parts) area.lineTo(x_of(part.t1), y_of(part.l1));
     area.closeSubPath();
-    p.g.setColour(colour_of(s).withAlpha(0.1f));
+    p.g.setColour((own.isTransparent() ? colour_of(s) : own).withAlpha(0.1f));
     p.g.fillPath(area);
     for (const auto& part : parts) {
-        auto c = part_colour(s, part.slot);
+        auto c = own.isTransparent() ? part_colour(s, part.slot) : own;
         p.g.setColour(c);
         p.g.drawLine(x_of(part.t0), y_of(part.l0), x_of(part.t1), y_of(part.l1), 2);
         if (c != colour::mid) { p.circle(x_of(part.t1), y_of(part.l1), 3, c); p.circle(x_of(part.t1), y_of(part.l1), 1.6f, colour::bg); }
     }
 }
 
-void filter_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+void filter_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h, juce::Colour own = {}) {
     const auto& panel = s.ui.plugin_panel;
     double hz = 0;
     if (!value_in(panel.picture_params[0].text, true, hz))
         hz = 20.0 * std::pow(1000.0, panel.picture_params[0].value / double(plugin_param_max));
     float q = 0.7f + 5.0f * std::clamp(panel.picture_params[1].value / float(plugin_param_max), 0.0f, 1.0f);
-    draw_filter_curve(p, x, y, w, h, 0, 2, float(std::clamp(hz, 20.0, 20000.0)), q, colour_of(s), part_colour(s, panel.picture_slots[0]), true);
+    draw_filter_curve(p, x, y, w, h, 0, 2, float(std::clamp(hz, 20.0, 20000.0)), q, own.isTransparent() ? colour_of(s) : own,
+                      own.isTransparent() ? part_colour(s, panel.picture_slots[0]) : own, own.isTransparent());
 }
 // Up to three values large (a page file's "value" picture): each its name in its knob's colour while its row is in
 // hand, its value, a gauge.
@@ -240,7 +242,7 @@ void value_picture(Paint& p, const Snapshot& s, float x, float y, float w, float
 // An EQ (a page file's "eq" picture): its bands' response summed, each band a dot at its frequency and gain.
 // Frequency and gain from the values' text where it names Hz and dB, else from where they sit (20 Hz-20 kHz,
 // -18-+18 dB); Q from a plain number, else from where it sits (0.3-10). The scale follows the largest gain.
-void eq_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+void eq_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h, juce::Colour own = {}) {
     const auto& panel = s.ui.plugin_panel;
     struct Band { double hz, db, q; int slot; };
     std::vector<Band> bands;
@@ -276,8 +278,9 @@ void eq_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h)
         line.lineTo(px, py); area.lineTo(px, py);
     }
     area.lineTo(x + w, y + h / 2); area.closeSubPath();
-    p.g.setColour(colour_of(s).withAlpha(0.14f)); p.g.fillPath(area);
-    p.g.setColour(colour_of(s)); p.g.strokePath(line, juce::PathStrokeType(1.5f));
+    auto curve = own.isTransparent() ? colour_of(s) : own;
+    p.g.setColour(curve.withAlpha(0.14f)); p.g.fillPath(area);
+    p.g.setColour(curve); p.g.strokePath(line, juce::PathStrokeType(1.5f));
     for (const auto& b : bands) {
         auto c = part_colour(s, b.slot);
         p.circle(x_of(b.hz), y_of(b.db), 3.5f, c);
@@ -289,9 +292,9 @@ void eq_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h)
 }
 
 // The plug-in's sound as measured here, left over right, a block a bar, newest on the right.
-void scope_lanes(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+void scope_lanes(Paint& p, const Snapshot& s, float x, float y, float w, float h, juce::Colour own = {}) {
     const auto& panel = s.ui.plugin_panel;
-    auto c = colour_of(s);
+    auto c = own.isTransparent() ? colour_of(s) : own;
     float lane = (h - 4) / 2, step = w / float(panel.scope.size());
     for (int side = 0; side < 2; ++side) {
         float mid = y + side * (lane + 4) + lane / 2;
@@ -304,6 +307,134 @@ void scope_lanes(Paint& p, const Snapshot& s, float x, float y, float w, float h
                    c.withAlpha(0.35f + 0.65f * float(n) / float(panel.scope.size())), 0.8f);
         }
     }
+}
+// --- Skins (docs/PLUGIN_PAGES.md, Skins; plugin/plugin_skin.h) ---
+
+const PluginSkin::Page* skin_page_of(const Snapshot& s) {
+    const auto& panel = s.ui.plugin_panel;
+    const auto& skin = s.plugin_skin;
+    if (!skin) return nullptr;
+    if (panel.skin_page == -2) return skin->has_strip ? &skin->strip : nullptr;
+    if (panel.skin_page >= 0 && size_t(panel.skin_page) < skin->pages.size()) return &skin->pages[size_t(panel.skin_page)].second;
+    return nullptr;
+}
+
+// A label's or value's text in the skin's font (Melodee's where it has none), 11 px and up.
+void skin_text(Paint& p, const PluginSkin& skin, const juce::String& text, juce::Rectangle<float> box, int size, juce::Colour c, int align) {
+    auto just = align < 0 ? juce::Justification::centredLeft : align > 0 ? juce::Justification::centredRight : juce::Justification::centred;
+    float height = float(std::max(11, size));
+    if (!skin.font) { p.text(text, box.getX(), box.getY(), box.getWidth(), box.getHeight(), plain(c, height, Weight::SemiBold), just); return; }
+    p.g.setColour(c);
+    p.g.setFont(juce::Font(juce::FontOptions(skin.font).withHeight(height)));
+    p.g.drawText(text, box, just, false);
+}
+
+// A filmstrip's frame `frame` into `box`.
+void skin_frame(Paint& p, const juce::Image& strip, unsigned frames, unsigned frame, juce::Rectangle<float> box) {
+    int fh = strip.getHeight() / int(std::max(1u, frames));
+    if (fh <= 0) return;
+    p.g.drawImage(strip, int(box.getX()), int(box.getY()), int(box.getWidth()), int(box.getHeight()),
+                  0, int(std::min(frame, frames - 1)) * fh, strip.getWidth(), fh);
+}
+
+// Melodee's ring round a control K1-K3 turn (one a parameter: its knob, switch or slider, else its value), in the
+// knob's shade: brighter and thicker turning; faint with a white
+// dot where the pot sits until the pot meets the value (a knob's on its sweep, else along the bottom); the fader
+// glyph; the Shift mark. A knob's ring is round, the others' square.
+void skin_ring(Paint& p, const PluginSkin::Control& c, juce::Rectangle<float> box, juce::Colour shade, const ui::KnobCard* card) {
+    const bool pickup = card && card->state == ui::KnobCard::State::Pickup;
+    const bool turning = card && card->state == ui::KnobCard::State::Turning;
+    auto colour = pickup ? shade.withAlpha(0.45f) : shade;
+    float thick = turning ? 2.6f : 1.6f;
+    p.g.setColour(colour);
+    if (c.kind == SkinKind::Knob) {
+        float r = std::max(box.getWidth(), box.getHeight()) / 2 + 3;
+        p.g.drawEllipse(box.getCentreX() - r, box.getCentreY() - r, 2 * r, 2 * r, thick);
+        if (pickup && card->pot >= 0) {
+            float a = (-0.75f + 1.5f * std::clamp(card->pot, 0.0f, 1.0f)) * juce::MathConstants<float>::pi;
+            float dx = box.getCentreX() + r * std::sin(a), dy = box.getCentreY() - r * std::cos(a);
+            p.circle(dx, dy, 3.2f, colour::text);
+            p.circle(dx, dy, 1.9f, colour::bg);
+        }
+    } else {
+        auto ring = box.expanded(4);
+        p.g.drawRoundedRectangle(ring, 4, thick);
+        if (pickup && card->pot >= 0) {
+            float dx = ring.getX() + ring.getWidth() * std::clamp(card->pot, 0.0f, 1.0f);
+            p.circle(dx, ring.getBottom(), 3.2f, colour::text);
+            p.circle(dx, ring.getBottom(), 1.9f, colour::bg);
+        }
+    }
+    if (card && card->fader) {
+        float fx = box.getRight() + 1, fy = box.getY() - 8;
+        p.fill(fx - 6, fy - 1, 14, 14, colour::bg, 3);
+        icon(p, Icon::Fader, fx - 4, fy + 1, 10, pickup ? colour::mid : shade, 1.4f);
+    }
+    if (card && card->shift) shift_mark(p, box.getX() - 9, box.getY() - 6, card->shift == 2 ? shade : colour::mid, card->shift == 2);
+}
+
+// A skin page (or strip) at `ox`, `oy`: its background, each control, then Melodee's rings on those K1-K3 turn.
+void draw_skin_page(Paint& p, const Snapshot& s, const PluginSkin& skin, const PluginSkin::Page& page, float ox, float oy,
+                    const std::array<ui::KnobCard, 3>& cards) {
+    const auto& panel = s.ui.plugin_panel;
+    if (page.background.isValid()) p.g.drawImageAt(page.background, int(ox), int(oy));
+    size_t at = 0; // the next control's place in panel.skin_params
+    struct Ring { const PluginSkin::Control* control; juce::Rectangle<float> box; unsigned k; };
+    std::vector<Ring> rings;
+    std::vector<int> handled; // parameters with a knob, switch or slider here: their values get no ring
+    for (const auto& c : page.controls)
+        if (c.param >= 0 && (c.kind == SkinKind::Knob || c.kind == SkinKind::Switch || c.kind == SkinKind::Slider)) handled.push_back(c.param);
+    std::vector<int> ringed;
+    for (const auto& c : page.controls) {
+        auto box = c.box.toFloat().translated(ox, oy);
+        const PluginPanelParam* param = nullptr;
+        if (c.param >= 0) {
+            if (at >= panel.skin_params.size()) continue;
+            int slot = panel.skin_slots[at];
+            param = &panel.skin_params[at++];
+            bool value_only = c.kind == SkinKind::Value && std::find(handled.begin(), handled.end(), c.param) != handled.end();
+            bool once = std::find(ringed.begin(), ringed.end(), c.param) == ringed.end();
+            if (slot >= 0 && unsigned(slot) / 3 == panel.row && !value_only && once) {
+                rings.push_back({&c, box, unsigned(slot) % 3});
+                ringed.push_back(c.param);
+            }
+        }
+        float v = param ? std::clamp(param->value / float(plugin_param_max), 0.0f, 1.0f) : 0.0f;
+        juce::Colour ink = c.coloured ? c.colour : colour::text;
+        switch (c.kind) {
+        case SkinKind::Image: p.g.drawImage(c.image, box); break;
+        case SkinKind::Knob: case SkinKind::Switch:
+            skin_frame(p, c.image, c.frames, unsigned(std::lround(v * float(c.frames - 1))), box);
+            break;
+        case SkinKind::Meter: {
+            float level = (c.of == "in" ? panel.level_in : panel.level_out) / 1000.0f;
+            skin_frame(p, c.image, c.frames, unsigned(std::lround(std::clamp(level, 0.0f, 1.0f) * float(c.frames - 1))), box);
+            break;
+        }
+        case SkinKind::Slider: {
+            if (c.image.isValid()) p.g.drawImage(c.image, box);
+            if (!c.cap.isValid()) break;
+            float cw = float(c.cap.getWidth()), ch = float(c.cap.getHeight());
+            float cx = c.horizontal ? box.getX() + v * (box.getWidth() - cw) : box.getCentreX() - cw / 2;
+            float cy = c.horizontal ? box.getCentreY() - ch / 2 : box.getY() + (1 - v) * (box.getHeight() - ch);
+            p.g.drawImageAt(c.cap, int(std::lround(cx)), int(std::lround(cy)));
+            break;
+        }
+        case SkinKind::Value: if (param) skin_text(p, skin, juce::String::fromUTF8(param->text), box, c.text_size, ink, c.align); break;
+        case SkinKind::Label: skin_text(p, skin, c.text, box, c.text_size, ink, c.align); break;
+        case SkinKind::Curve: {
+            juce::Colour own = c.coloured ? c.colour : colour_of(s);
+            bool labels_fit = box.getHeight() > 40;
+            float h = labels_fit ? box.getHeight() - 15 : box.getHeight();
+            if (c.of == "envelope" && panel.picture == uint8_t(PagePicture::Envelope)) envelope_picture(p, s, box.getX(), box.getY(), box.getWidth(), box.getHeight(), own);
+            else if (c.of == "filter" && panel.picture == uint8_t(PagePicture::Filter)) filter_picture(p, s, box.getX(), box.getY(), box.getWidth(), h, own);
+            else if (c.of == "eq" && panel.picture == uint8_t(PagePicture::Eq)) eq_picture(p, s, box.getX(), box.getY(), box.getWidth(), h, own);
+            break;
+        }
+        case SkinKind::Scope: if (panel.measured) scope_lanes(p, s, box.getX(), box.getY(), box.getWidth(), box.getHeight(), c.coloured ? c.colour : juce::Colour()); break;
+        }
+    }
+    for (const auto& r : rings) skin_ring(p, *r.control, r.box, knob_shade(s.ui.track, r.k), &cards[r.k]);
 }
 } // namespace
 
@@ -322,6 +453,12 @@ void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKey
         seen->knobs_drawn = true;
         for (unsigned k = 0; k < 3; ++k) seen->knobs[k] = panel.params[k].used ? juce::String::fromUTF8(panel.params[k].name) : juce::String();
     }
+    if (s.ui.settings.plugin_skins && panel.skin_page >= 0) // the maker's skin, under B1-B3; Melodee's dots over it
+        if (const auto* page = skin_page_of(s)) {
+            draw_skin_page(p, s, *s.plugin_skin, *page, 0, float(zone::header_y), cards);
+            if (panel.pages > 1 && panel.pages <= 24) page_dots(p, zone::width - zone::pad, 33, int(panel.pages), int(panel.page), colour_of(s), true);
+            return;
+        }
     page_line(p, s, entry, 26);
     if (panel.picture == uint8_t(PagePicture::Envelope)) {
         envelope_picture(p, s, 14, 46, 292, 80);
@@ -341,6 +478,16 @@ void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKey
     } else {
         for (unsigned r = 0; r < panel.window_rows; ++r) arc_row(p, s, panel.window_first / 3u + r, 44 + 96 * float(r), cards);
     }
+}
+
+bool plugin_strip_shown(const Snapshot& s, unsigned entry) {
+    const auto& panel = s.ui.plugin_panel;
+    return s.ui.settings.plugin_skins && panel.entry == entry && panel.status == PluginStatus::Ready && panel.skin_page == -2
+        && skin_page_of(s) != nullptr;
+}
+
+void draw_plugin_strip(Paint& p, const Snapshot& s, float x, float y) {
+    if (const auto* strip = skin_page_of(s)) draw_skin_page(p, s, *s.plugin_skin, *strip, x, y, cards_of(s));
 }
 
 // An effect in a chain: its page line, then its output as it plays (left over right, a block a bar) and its levels in

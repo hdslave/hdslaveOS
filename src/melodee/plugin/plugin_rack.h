@@ -36,6 +36,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginHandle;
+struct PluginSkin;
 
 using PluginStates = std::array<std::vector<uint8_t>, max_plugins>;
 
@@ -83,6 +84,8 @@ public:
     // K1-K3; a parameter by its place among the shown ones, 0..plugin_param_max.
     void panel(unsigned entry, unsigned row, PluginPanel& out) const;
     void set_param(unsigned entry, unsigned shown, int value);
+    // Its skin (plugin/plugin_skin.h), null none; loaded with it and never changed after. Any thread.
+    std::shared_ptr<const PluginSkin> skin(unsigned entry) const;
     // PRESETS: the plug-in's named programs, and one of them picked (by its
     // number in the plug-in), switched to on the rack's thread. Picking the
     // one it is on loads it again (edits since are dropped). A CLAP plug-in's

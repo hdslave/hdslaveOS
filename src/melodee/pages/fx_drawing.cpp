@@ -272,6 +272,7 @@ void fx_in_hand(Paint& p, const Snapshot& s, const Chain& chain, unsigned cursor
     const auto& slot = chain.slots[cursor];
     const auto& info = effect_info(EffectKind(slot.kind));
     bool plugin = info.family == Family::Plugins;
+    if (plugin && !slot.bypass && plugin_strip_shown(s, unsigned(slot.params[0]))) { draw_plugin_strip(p, s, 0, y - 4); return; } // the maker's strip
     juce::String name = plugin ? plugin_name(s, unsigned(slot.params[0])) : juce::String(info.name);
     juce::String family = plugin ? juce::String("PLUG-IN") : juce::String(family_name(info.family)).toUpperCase();
     auto fam = caps_text(colour::mid);

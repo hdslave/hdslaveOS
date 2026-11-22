@@ -28,11 +28,44 @@ struct PageFilePage {
     PagePicture picture = PagePicture::None;
     std::vector<PageFileParam> parts; // the picture's parameters in the kind's order (plugin_pages.h PagePictureSlots)
 };
+// A skin (docs/PLUGIN_PAGES.md, Skins): the maker's art for its pages, drawn by Melodee from images and data, no
+// plug-in code. A page's controls in a box of the area (pixels, the area's top left 0, 0): a knob or switch is a
+// filmstrip (frames stacked top to bottom, the frame picked by the value), a slider a track image and a cap image, a
+// meter a filmstrip for a measured level ("of": "in" or "out"), a value its parameter's text, a label text, an image a
+// picture, a curve the page's picture ("of": "filter", "envelope", "eq") and a scope the plug-in's sound, in the
+// maker's colour. Images are PNG files, paths relative to the page file's folder.
+enum class SkinKind : uint8_t { Image, Knob, Switch, Slider, Meter, Value, Label, Curve, Scope };
+struct SkinControlSpec {
+    SkinKind kind = SkinKind::Image;
+    PageFileParam param;            // knob, switch, slider, value
+    std::string image, cap;         // the filmstrip or picture; a slider's cap
+    unsigned frames = 1;            // a filmstrip's frames
+    int x = 0, y = 0, w = 0, h = 0; // its box; 0: the image's (a filmstrip's frame's) size
+    std::string text, of;           // a label's text; what a meter, curve shows
+    uint32_t colour = 0;            // 0xRRGGBB; `coloured` false: Melodee's
+    bool coloured = false;
+    int text_size = 11;             // a label's or value's text, 11 px and up
+    int align = 0;                  // a label's or value's: -1 left, 0 centre, 1 right
+    bool horizontal = false;        // a slider across, not up
+};
+struct SkinPageSpec {
+    std::string background;         // a PNG the area's size
+    std::vector<SkinControlSpec> controls;
+};
+struct SkinSpec {
+    bool present = false;
+    std::string font;               // a TTF or OTF for its labels and values ("" Melodee's)
+    std::vector<std::pair<std::string, SkinPageSpec>> pages; // by page name, the area under B1-B3 (320 x 218)
+    bool has_strip = false;
+    SkinPageSpec strip;             // an effect's strip under the chain row (320 x 92)
+};
+
 struct PageFile {
     // Which plug-in: any of its CLAP id, VST2 unique ID (four letters, or a number), LV2 URI, or its name as Melodee
     // shows it (with its vendor, where given). VST3 plug-ins go by name.
     std::string clap, vst2, lv2, name, vendor;
     std::vector<PageFilePage> pages;
+    SkinSpec skin;
 };
 // What the rack knows of a loaded plug-in, to match a file against.
 struct PluginIdentity {
@@ -53,6 +86,22 @@ inline bool param(Reader& r, PageFileParam& out) {
         return r.skip();
     });
 }
+inline bool hex_colour(Reader& r, uint32_t& out) {
+    std::string text;
+    if (!r.peek('"') || !r.string(&text)) return false;
+    if (!text.empty() && text[0] == '#') text.erase(0, 1);
+    if (text.size() != 6) return false;
+    out = 0;
+    for (char c : text) {
+        int v = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+        if (v < 0) return false;
+        out = out << 4 | uint32_t(v);
+    }
+    return true;
+}
+template <class Each> bool array(Reader& r, Each each);
+// One skin page: {"background": "a.png", "controls": [...]}. A control's "label" object is a label of its own.
+inline bool skin_page(Reader& r, SkinPageSpec& page);
 template <class Each> bool array(Reader& r, Each each) {
     if (!r.peek('[')) return r.skip();
     if (++r.depth > 32) return false;
@@ -63,6 +112,88 @@ template <class Each> bool array(Reader& r, Each each) {
     }
     --r.depth;
     return true;
+}
+inline bool skin_control(Reader& r, std::vector<SkinControlSpec>& out) {
+    SkinControlSpec c;
+    std::vector<SkinControlSpec> labels;
+    std::string kind;
+    long n = 0;
+    bool sized = false;
+    long size = 0;
+    bool ok = r.object([&](const std::string& key) {
+        if (key == "kind" && r.peek('"')) return r.string(&kind);
+        if (key == "param") return param(r, c.param) || r.skip();
+        if ((key == "image" || key == "strip") && r.peek('"')) return r.string(&c.image);
+        if (key == "cap" && r.peek('"')) return r.string(&c.cap);
+        if ((key == "text" || key == "of") && r.peek('"')) return r.string(key == "text" ? &c.text : &c.of);
+        if (key == "colour" || key == "color") { if (hex_colour(r, c.colour)) { c.coloured = true; return true; } return r.skip(); }
+        if (key == "align" && r.peek('"')) {
+            std::string a;
+            if (!r.string(&a)) return false;
+            c.align = a == "left" ? -1 : a == "right" ? 1 : 0;
+            return true;
+        }
+        if (key == "orientation" && r.peek('"')) { std::string o; if (!r.string(&o)) return false; c.horizontal = o == "horizontal"; return true; }
+        if (key == "label" && r.peek('{')) {
+            SkinControlSpec label;
+            label.kind = SkinKind::Label;
+            long v = 0;
+            bool read = r.object([&](const std::string& k) {
+                if (k == "text" && r.peek('"')) return r.string(&label.text);
+                if ((k == "colour" || k == "color")) { if (hex_colour(r, label.colour)) { label.coloured = true; return true; } return r.skip(); }
+                if (k == "x" && r.number(&v)) { label.x = int(v); return true; }
+                if (k == "y" && r.number(&v)) { label.y = int(v); return true; }
+                if (k == "w" && r.number(&v)) { label.w = int(v); return true; }
+                if (k == "size" && r.number(&v)) { label.text_size = int(std::max(11L, v)); return true; }
+                if (k == "align" && r.peek('"')) { std::string a; if (!r.string(&a)) return false; label.align = a == "left" ? -1 : a == "right" ? 1 : 0; return true; }
+                return r.skip();
+            });
+            if (read) labels.push_back(label);
+            return read;
+        }
+        if (key == "frames" && r.number(&n)) { c.frames = unsigned(std::clamp(n, 1L, 512L)); return true; }
+        if (key == "size" && r.number(&size)) { sized = true; return true; }
+        if ((key == "x" || key == "y" || key == "w" || key == "h") && r.number(&n)) {
+            (key == "x" ? c.x : key == "y" ? c.y : key == "w" ? c.w : c.h) = int(std::clamp(n, -2000L, 2000L));
+            return true;
+        }
+        return r.skip();
+    });
+    if (!ok) return false;
+    static const std::pair<const char*, SkinKind> kinds[] {{"image", SkinKind::Image}, {"knob", SkinKind::Knob}, {"switch", SkinKind::Switch},
+        {"slider", SkinKind::Slider}, {"meter", SkinKind::Meter}, {"value", SkinKind::Value}, {"label", SkinKind::Label},
+        {"curve", SkinKind::Curve}, {"scope", SkinKind::Scope}};
+    bool known = false;
+    for (const auto& [name, k] : kinds) if (kind == name) { c.kind = k; known = true; }
+    if (sized) { // a knob's square; a label's or value's text
+        if (c.kind == SkinKind::Value || c.kind == SkinKind::Label) c.text_size = int(std::max(11L, size));
+        else c.w = c.h = int(std::clamp(size, 1L, 2000L));
+    }
+    if (known) out.push_back(c); // an unknown kind (a later version's, "canvas"): skipped
+    for (auto& label : labels) out.push_back(label);
+    return true;
+}
+inline bool skin_page(Reader& r, SkinPageSpec& page) {
+    return r.object([&](const std::string& key) {
+        if (key == "background" && r.peek('"')) return r.string(&page.background);
+        if (key == "controls") return array(r, [&] { return r.peek('{') ? skin_control(r, page.controls) : r.skip(); });
+        return r.skip();
+    });
+}
+inline bool skin(Reader& r, SkinSpec& out) {
+    out.present = true;
+    return r.object([&](const std::string& key) {
+        if (key == "font" && r.peek('"')) return r.string(&out.font);
+        if (key == "strip" && r.peek('{')) { out.has_strip = true; return skin_page(r, out.strip); }
+        if (key != "pages" || !r.peek('{')) return r.skip();
+        return r.object([&](const std::string& name) {
+            if (!r.peek('{')) return r.skip();
+            SkinPageSpec page;
+            if (!skin_page(r, page)) return false;
+            out.pages.push_back({name, std::move(page)});
+            return true;
+        });
+    });
 }
 } // namespace page_file_detail
 
@@ -82,6 +213,7 @@ inline bool read_page_file(std::string_view json, PageFile& out, std::string& wh
                 return field && r.peek('"') ? r.string(field) : r.skip();
             });
         }
+        if (key == "skin" && r.peek('{')) return skin(r, out.skin);
         if (key != "pages") return r.skip();
         return array(r, [&] {
             if (!r.peek('{')) return r.skip();
@@ -164,15 +296,19 @@ inline bool page_file_matches(const PageFile& file, const PluginIdentity& who) {
 // The file's pages as parameter indices (plugin_pages.h): `shown` the plug-in's parameters any page may show, `names`
 // and `ids` every parameter's name and ID by index. A parameter the plug-in does not have is left out and said in
 // `problems` (one line each); a page left empty is dropped by lay_out().
+// The parameter `p` names, among `shown` (by ID when it gives one, else by name): its index, -1 none.
+inline int find_param(const PageFileParam& p, const std::vector<int>& shown, const std::vector<std::string>& names,
+                      const std::vector<std::string>& ids) {
+    for (int s : shown) {
+        size_t n = size_t(s);
+        if (!p.id.empty() ? n < ids.size() && ids[n] == p.id : !p.name.empty() && n < names.size() && names[n] == p.name) return s;
+    }
+    return -1;
+}
+
 inline std::vector<PluginPage> resolve_page_file(const PageFile& file, const std::vector<int>& shown, const std::vector<std::string>& names,
                                                  const std::vector<std::string>& ids, std::vector<std::string>& problems) {
-    auto lookup = [&](const PageFileParam& p) { // its index among `shown`, -1 none
-        for (int s : shown) {
-            size_t n = size_t(s);
-            if (!p.id.empty() ? n < ids.size() && ids[n] == p.id : !p.name.empty() && n < names.size() && names[n] == p.name) return s;
-        }
-        return -1;
-    };
+    auto lookup = [&](const PageFileParam& p) { return find_param(p, shown, names, ids); };
     auto missing = [&](const PageFileParam& p) {
         if (p.id.empty() && p.name.empty()) return;
         std::string line = "no parameter " + (p.id.empty() ? "\"" + p.name + "\"" : "with id " + p.id);

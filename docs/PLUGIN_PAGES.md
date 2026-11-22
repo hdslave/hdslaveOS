@@ -106,3 +106,82 @@ the parameter sits in its range (times up to 4 s, 20 Hz–20 kHz, ±18 dB, Q
 Without a picture in the file, Melodee draws an envelope or a filter where a
 page holds parameters named that way (attack, decay, sustain and release of
 one prefix; a cutoff with a resonance).
+
+## Skins
+
+A page file may carry a `skin`: the maker's own art for its pages. Melodee
+draws it from images and data; nothing in the plug-in runs. A skinned page
+takes everything under **B1**–**B3** (320 × 218 pixels). Melodee keeps
+**B1**–**B3**, its MENU, notices and questions, draws the page dots at the top
+right, and draws a ring in the knob's colour round each control **K1**–**K3**
+turn. The ring is faint, with a white dot where the pot sits, until the pot
+reaches the value; it carries the fader and Shift marks too. A page with no
+skin page of its name keeps Melodee's own page. Settings > SCREEN >
+**Plug-in skins** turns every skin off.
+
+An example with its art is in
+[docs/examples/plugin-skin](examples/plugin-skin/): Melodee Poly's FILTER and
+AMP ENV pages.
+
+```json
+"skin": {
+  "font": "fonts/SpaceGrotesk.ttf",
+  "pages": {
+    "FILTER": {
+      "background": "art/filter.png",
+      "controls": [
+        { "kind": "curve", "of": "filter", "x": 18, "y": 46, "w": 96, "h": 92, "colour": "FFB347" },
+        { "param": "Cutoff", "kind": "knob", "strip": "art/knob-34.png", "frames": 64, "x": 139, "y": 51,
+          "label": { "text": "CUTOFF", "x": 126, "y": 92, "w": 60, "colour": "ECE3CF" } },
+        { "param": "Cutoff", "kind": "value", "x": 126, "y": 106, "w": 60, "colour": "FFB347" }
+      ]
+    }
+  },
+  "strip": { "background": "art/strip.png", "controls": [] }
+}
+```
+
+- `pages`: a skin page for each page of the file it draws, by the page's
+  name. Coordinates are pixels from the area's top left.
+- `background`: a PNG, 320 × 218.
+- `strip`: an effect's skin in a track's FX chain, the area under the chain's
+  row of slots, 320 × 92.
+- `font`: a TTF or OTF for labels and values; without one, Melodee's.
+- Paths are relative to the page file's folder and stay inside it. Images
+  are PNG; a skin's images come to 4 MB at most once decoded (RGBA), or
+  Melodee draws its own page.
+- Control kinds:
+
+  | `kind`   | Shows                                                      | Needs                         |
+  |----------|------------------------------------------------------------|-------------------------------|
+  | `knob`   | a filmstrip frame picked by the parameter's value          | `param`, `strip`, `frames`    |
+  | `switch` | the same, a frame a step                                   | `param`, `strip`, `frames`    |
+  | `slider` | a track image and its `cap` moved by the value             | `param`, `image`, `cap`       |
+  | `meter`  | a filmstrip frame picked by the sound's level              | `strip`, `frames`, `of`: `in` or `out` |
+  | `value`  | the parameter's value as the plug-in writes it             | `param`                       |
+  | `label`  | `text`                                                     | `text`                        |
+  | `image`  | a picture                                                  | `image`                       |
+  | `curve`  | the page's picture (`of`: `filter`, `envelope`, `eq`)      | a `picture` on the page       |
+  | `scope`  | the plug-in's sound as it plays                            |                               |
+
+- `x`, `y`: the control's top left. `w`, `h`: its size; without them a
+  filmstrip's frame size or the image's (a value or label: 100 wide).
+  `size`: a knob's square, or a label's or value's text height (11 px and up:
+  smaller is drawn at 11).
+- `colour`: six hex digits, for labels, values, curves and the scope.
+  `align`: `left`, `center` or `right`. A slider is upright unless
+  `"orientation": "horizontal"`.
+- A control's `label` object is a label of its own, placed beside it.
+- Kinds this Melodee does not know are skipped, so a skin can carry later
+  ones.
+
+### Making a filmstrip
+
+Draw the control once for each value from its lowest to its highest, every
+frame the same size, and stack the frames top to bottom in one PNG: a 34 ×
+34 knob of 64 frames is 34 × 2176. Melodee shows frame
+`round(value × (frames − 1))`. Filmstrips made for other hosts (KnobMan, the
+MPC desktop software's Open MPC skins) work as they are when they are
+stacked top to bottom; scale them to the size the page wants.
+
+The MPC's panel shows 16-bit colour: gradients look smoother dithered.

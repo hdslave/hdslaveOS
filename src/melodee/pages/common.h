@@ -102,6 +102,10 @@ void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui:
 void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
 // An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
 void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
+// An effect's skin strip (docs/PLUGIN_PAGES.md, Skins) under the chain row, at x, y (320 x 92), where it has one and
+// Settings > SCREEN > Plug-in skins is on.
+bool plugin_strip_shown(const Snapshot& s, unsigned entry);
+void draw_plugin_strip(ui::Paint& p, const Snapshot& s, float x, float y);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
 void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 

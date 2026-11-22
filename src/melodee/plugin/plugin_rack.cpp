@@ -7,6 +7,7 @@
 #include "melodee/plugin/idle_gate.h"
 #include "melodee/plugin/page_file.h"
 #include "melodee/plugin/page_library.h"
+#include "melodee/plugin/plugin_skin.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
@@ -204,11 +205,14 @@ std::string text_of(const fs::path& file, size_t most) {
 }
 
 // The pages of the first page file for this plug-in (plugin/page_file.h): the card's Melodee/Plugin Pages folder, its
-// own package, Melodee's library (plugin/page_library.h). Empty: none. `problems` gets, by file, what kept a file out
-// or what it names that the plug-in lacks (the library's files say nothing). Rack's thread.
+// own package, Melodee's library (plugin/page_library.h). Empty: none. Its skin, where it has one, into `skin`
+// (plugin/plugin_skin.h; images from the file's folder, so none from the library). `problems` gets, by file, what
+// kept a file out or what it names that the plug-in lacks (the library's files say nothing). Rack's thread.
 std::vector<PluginPage> file_pages(juce::AudioPluginInstance& instance, ClapInstance* clap, const PluginFile& file,
                                    const std::string& card_top, const std::vector<int>& shown,
-                                   std::map<std::string, std::vector<std::string>>& problems) {
+                                   std::map<std::string, std::vector<std::string>>& problems,
+                                   std::shared_ptr<const PluginSkin>& skin) {
+    skin = nullptr;
     juce::PluginDescription description;
     instance.fillInPluginDescription(description);
     PluginIdentity who;
@@ -223,13 +227,14 @@ std::vector<PluginPage> file_pages(juce::AudioPluginInstance& instance, ClapInst
         auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p);
         ids.push_back(hosted ? hosted->getParameterID().toStdString() : std::to_string(p->getParameterIndex()));
     }
-    auto use = [&](const std::string& text, const std::string& source, bool tell) -> std::vector<PluginPage> {
+    auto use = [&](const std::string& text, const std::string& source, bool tell, const fs::path& folder) -> std::vector<PluginPage> {
         PageFile page_file;
         std::string why;
         if (!read_page_file(text, page_file, why)) { if (tell) problems[source] = {why}; return {}; }
         if (!page_file_matches(page_file, who)) { if (tell) problems.erase(source); return {}; }
         std::vector<std::string> missing;
         auto pages = resolve_page_file(page_file, shown, names, ids, missing);
+        if (!pages.empty()) skin = load_skin(page_file.skin, folder, shown, names, ids, missing);
         if (tell) { if (missing.empty()) problems.erase(source); else problems[source] = missing; }
         return pages;
     };
@@ -240,12 +245,12 @@ std::vector<PluginPage> file_pages(juce::AudioPluginInstance& instance, ClapInst
             if (it->path().extension() == ".json" && it->path().filename().string().rfind("._", 0) != 0) found.push_back(it->path());
         std::sort(found.begin(), found.end());
         for (const auto& path : found)
-            if (auto pages = use(text_of(path, 64 << 10), path.filename().string(), true); !pages.empty()) return pages;
+            if (auto pages = use(text_of(path, 64 << 10), path.filename().string(), true, path.parent_path()); !pages.empty()) return pages;
     }
     if (auto own = package_page_file(file); !text_of(own, 64 << 10).empty())
-        if (auto pages = use(text_of(own, 64 << 10), own.string(), true); !pages.empty()) return pages;
+        if (auto pages = use(text_of(own, 64 << 10), own.string(), true, own.parent_path()); !pages.empty()) return pages;
     for (const char* json : page_library)
-        if (auto pages = use(json, "", false); !pages.empty()) return pages;
+        if (auto pages = use(json, "", false, {}); !pages.empty()) return pages;
     return {};
 }
 
@@ -465,6 +470,7 @@ public:
     PluginLayout layout;                 // its pages in rows of three (plugin/plugin_pages.h), under the rack's lock
     std::string folder;                  // where it was picked from (an Open MPC folder holds its skin)
     std::vector<PluginPage> file_pages;  // a page file's pages (plugin/page_file.h), kept for a CLAP page change
+    std::shared_ptr<const PluginSkin> skin; // its skin (plugin/plugin_skin.h), null none
     bool qlinks = false;
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
@@ -833,6 +839,24 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         if (at >= layout.slots.size()) break;
         read(at, out.window[k]);
     }
+    // The skin's page for this one (by its name), an effect's strip: its controls' parameters and where they are.
+    if (h->skin && out.pages) {
+        const PluginSkin::Page* page = nullptr;
+        if (!out.instrument && h->skin->has_strip) { page = &h->skin->strip; out.skin_page = -2; }
+        for (size_t n = 0; !page && n < h->skin->pages.size(); ++n)
+            if (h->skin->pages[n].first == layout.names[out.page]) { page = &h->skin->pages[n].second; out.skin_page = int16_t(n); }
+        if (page) {
+            auto from = layout.slots.begin() + long(layout.first_rows[out.page]) * 3, to = from + long(layout.rows_of(out.page)) * 3;
+            size_t at = 0;
+            for (const auto& c : page->controls) {
+                if (c.param < 0) continue;
+                if (at >= out.skin_params.size()) break;
+                read_param(c.param, {}, out.skin_params[at]);
+                auto it = std::find(from, to, c.param);
+                out.skin_slots[at++] = it != to ? int16_t(it - layout.slots.begin()) : int16_t(-1);
+            }
+        }
+    }
     if (auto picture = picture_for(layout, out.page, out.row); picture.kind != PagePicture::None) {
         out.picture = uint8_t(picture.kind);
         for (unsigned n = 0; n < PagePictureSlots::most; ++n) {
@@ -841,6 +865,13 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
             else read_param(picture.params[n], {}, out.picture_params[n]);                  // not on the page
         }
     }
+}
+
+std::shared_ptr<const PluginSkin> PluginRack::skin(unsigned entry) const {
+    if (entry >= max_plugins) return nullptr;
+    std::lock_guard<std::mutex> held(lock);
+    const auto& e = entries[entry];
+    return e.live && e.status == PluginStatus::Ready ? e.live->skin : nullptr;
 }
 
 void PluginRack::set_param(unsigned entry, unsigned shown_index, int value) {
@@ -1231,7 +1262,7 @@ void PluginRack::load(const Job& job) {
     handle->programs = named_programs(*handle->instance);
     handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
     handle->folder = file.path;
-    handle->file_pages = file_pages(*handle->instance, handle->clap, file, top, handle->shown, page_problems);
+    handle->file_pages = file_pages(*handle->instance, handle->clap, file, top, handle->shown, page_problems, handle->skin);
     write_page_problems(top);
     auto pages = plugin_pages(*handle->instance, handle->clap, file.format, file.path, handle->shown, handle->file_pages);
     handle->qlinks = handle->file_pages.empty() && (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32)

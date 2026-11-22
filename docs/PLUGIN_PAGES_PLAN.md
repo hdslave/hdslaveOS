@@ -1,7 +1,7 @@
 # Plug-in pages: plan
 
 Status: all picks made 2026-11-22: 1 a, 2 (own pages, then groups), 3 c, 4 a (end
-of this file). Steps 1-3 built 2026-11-22 (step 2: a page shows several pictures'
+of this file). Steps 1-4 built 2026-11-22 (step 4: skins, example in docs/examples/plugin-skin) (step 2: a page shows several pictures'
 parts, so it keeps them all and draws the one its row in hand turns most of; step 3: the
 format reference is docs/PLUGIN_PAGES.md). Kerem then asked for the plug-in's own GUI
 window in a browser at melodee.local: a plan of its own, parked on keep/plugin-windows.

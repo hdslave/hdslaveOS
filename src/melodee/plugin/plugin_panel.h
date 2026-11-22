@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // What the page in view shows of one plug-in: its state, the row of three
@@ -46,6 +47,13 @@ struct PluginPanel {
     uint8_t picture = 0;           // PagePicture
     std::array<PluginPanelParam, 12> picture_params {};
     std::array<int16_t, 12> picture_slots {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    // The skin page for this page (plugin/plugin_skin.h; the skin itself is the snapshot's `plugin_skin`, shell/
+    // snapshot.h): `skin_page` an index into its pages, -2 its strip (an effect in a chain), -1 none. The parameters
+    // its controls show, in the order of those controls that have one, each with where it is in the rows
+    // (`skin_slots`, -1 not on this page).
+    int16_t skin_page = -1;
+    std::array<PluginPanelParam, 24> skin_params {};
+    std::array<int16_t, 24> skin_slots {};
     // An effect's sound as it plays, measured here for the plug-in in view (pages/fx_drawing.cpp): one block's lowest
     // and highest sample per entry, oldest first (low byte left, then right; each a signed byte as min, max), and the
     // levels in and out, 0..1000. `measured`: there is something to show.
@@ -62,6 +70,10 @@ struct PluginPanel {
     uint16_t window_first = 0;
     uint8_t window_rows = 0;
 };
+
+// The panel lives in UiState, which the shell copies and compares byte for byte (shell/shell.cpp usage marks): plain
+// values only, no owning pointers.
+static_assert(std::is_trivially_copyable_v<PluginPanel>, "PluginPanel must stay plain values");
 
 // A plug-in's programs as PRESETS lists them: the named ones, each with its
 // number in the plug-in, and the one picked last (-1: none picked here yet).

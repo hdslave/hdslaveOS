@@ -7487,6 +7487,43 @@ void page_files() {
     CHECK(read_page_file(R"({"melodee-pages": 1, "plugin": {"vst2": 1234}, "pages": [{"name": "A", "picture": {"kind": "spiral"}}], "skin": {}})", bad, why)
           && bad.vst2 == "1234" && bad.pages[0].picture == PagePicture::None); // unknown keys and kinds: skipped
 
+    // A skin: the font, pages by name, each control's kind, box and part; a nested label is a control of its own;
+    // a kind it does not know (a later version's) is skipped; the strip for an effect.
+    const char* skinned = R"({"melodee-pages": 1, "plugin": {"name": "Melodee Poly"}, "pages": [{"name": "FILTER", "params": ["Cutoff"]}],
+      "skin": {"font": "fonts/panel.ttf",
+        "pages": {"FILTER": {"background": "art/filter.png", "controls": [
+          {"param": "Cutoff", "kind": "knob", "strip": "art/knob.png", "frames": 128, "x": 136, "y": 22, "size": 28,
+           "label": {"text": "CUTOFF", "x": 150, "y": 76, "colour": "#ECE3CF", "size": 9, "align": "left"}},
+          {"param": {"id": "17"}, "kind": "switch", "image": "art/slide3.png", "frames": 3, "x": 148, "y": 101},
+          {"param": "Amp Attack", "kind": "slider", "image": "art/track.png", "cap": "art/cap.png", "x": 170, "y": 20, "w": 16, "h": 84},
+          {"param": "Cutoff", "kind": "value", "x": 120, "y": 60, "w": 60, "size": 13, "colour": "FFB347", "align": "right"},
+          {"kind": "curve", "of": "filter", "x": 8, "y": 22, "w": 104, "h": 108, "colour": "FFB347"},
+          {"kind": "canvas", "x": 0, "y": 0, "w": 10, "h": 10},
+          {"kind": "scope", "x": 124, "y": 21, "w": 186, "h": 16}]}},
+        "strip": {"background": "art/strip.png", "controls": [{"kind": "meter", "of": "out", "image": "art/vu.png", "frames": 32, "x": 4, "y": 4}]}}})";
+    PageFile skin_file;
+    CHECK(read_page_file(skinned, skin_file, why));
+    const auto& sk = skin_file.skin;
+    CHECK(sk.present && sk.font == "fonts/panel.ttf" && sk.pages.size() == 1 && sk.pages[0].first == "FILTER" && sk.has_strip);
+    const auto& ctl = sk.pages.empty() ? SkinPageSpec {} : sk.pages[0].second;
+    CHECK(ctl.background == "art/filter.png" && ctl.controls.size() == 7); // knob, its label, switch, slider, value, curve, scope
+    if (ctl.controls.size() == 7) {
+        const auto& knob = ctl.controls[0];
+        CHECK(knob.kind == SkinKind::Knob && knob.param.name == "Cutoff" && knob.image == "art/knob.png" && knob.frames == 128
+              && knob.x == 136 && knob.y == 22 && knob.w == 28 && knob.h == 28);
+        const auto& label = ctl.controls[1];
+        CHECK(label.kind == SkinKind::Label && label.text == "CUTOFF" && label.coloured && label.colour == 0xECE3CF && label.text_size == 11
+              && label.align == -1 && label.x == 150); // 9 px is drawn at 11
+        CHECK(ctl.controls[2].kind == SkinKind::Switch && ctl.controls[2].param.id == "17" && ctl.controls[2].frames == 3);
+        CHECK(ctl.controls[3].kind == SkinKind::Slider && ctl.controls[3].cap == "art/cap.png" && ctl.controls[3].h == 84 && !ctl.controls[3].horizontal);
+        CHECK(ctl.controls[4].kind == SkinKind::Value && ctl.controls[4].text_size == 13 && ctl.controls[4].w == 60 && ctl.controls[4].align == 1);
+        CHECK(ctl.controls[5].kind == SkinKind::Curve && ctl.controls[5].of == "filter" && ctl.controls[5].colour == 0xFFB347);
+        CHECK(ctl.controls[6].kind == SkinKind::Scope && !ctl.controls[6].coloured);
+    }
+    CHECK(sk.strip.background == "art/strip.png" && sk.strip.controls.size() == 1 && sk.strip.controls[0].kind == SkinKind::Meter
+          && sk.strip.controls[0].of == "out" && sk.strip.controls[0].frames == 32);
+    CHECK(!file.skin.present); // NAM's file above has none
+
     double db = 0;
     CHECK(decibels_in("-3.5 dB", db) && std::abs(db + 3.5) < 1e-9 && decibels_in("+6dB", db) && std::abs(db - 6) < 1e-9 && !decibels_in("6", db));
 }

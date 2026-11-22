@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/plugin/plugin_pages.h"
+#include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
@@ -799,6 +800,33 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     s.ui.plugin_row[entry] = panel.row;
 }
 
+// The example skin (docs/examples/plugin-skin, Melodee Poly) on the panel's page, bound as the rack binds it: each
+// control's parameter is the window's parameter of that name. The preview runs from the repository's top.
+void skin_panel(Snapshot& s) {
+    auto& panel = s.ui.plugin_panel;
+    std::ifstream in("docs/examples/plugin-skin/melodee-pages.json");
+    std::string text((std::istreambuf_iterator<char>(in)), {});
+    PageFile file;
+    std::string why;
+    if (!read_page_file(text, file, why)) return;
+    std::vector<std::string> names, ids;
+    std::vector<int> shown;
+    for (unsigned k = 0; k < panel.window.size(); ++k) { names.push_back(panel.window[k].name); ids.push_back(std::to_string(k)); if (panel.window[k].used) shown.push_back(int(k)); }
+    std::vector<std::string> problems;
+    s.plugin_skin = load_skin(file.skin, "docs/examples/plugin-skin", shown, names, ids, problems);
+    if (!s.plugin_skin) return;
+    for (size_t n = 0; n < s.plugin_skin->pages.size(); ++n) {
+        if (s.plugin_skin->pages[n].first != panel.page_name) continue;
+        panel.skin_page = int16_t(n);
+        size_t at = 0;
+        for (const auto& c : s.plugin_skin->pages[n].second.controls) {
+            if (c.param < 0 || at >= panel.skin_params.size()) continue;
+            panel.skin_params[at] = panel.window[size_t(c.param)];
+            panel.skin_slots[at++] = int16_t(panel.window_first + c.param);
+        }
+    }
+}
+
 void plugin_track(Snapshot& s, PluginStatus status, int page = 0) {
     s.ui.page = PageId::Edit; s.ui.track = 2;
     auto& t = s.project.tracks[2];
@@ -1148,6 +1176,10 @@ const Preview previews[] {
     {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve
     {"plugineditenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); }},    // a page with an envelope
     {"plugineditvalue", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 3); }},  // a page file's large values
+    {"pluginskin", [](Shell&, Snapshot& s) { // the example skin's FILTER page (docs/examples/plugin-skin), K1 turning
+         plugin_track(s, PluginStatus::Ready, 1); skin_panel(s); s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"pluginskinenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); skin_panel(s); }}, // its AMP ENV page
     {"plugineditq", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 4); }},      // a page file's EQ
     {"pluginopening", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Loading); }},
     {"pluginfailed", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Failed); }},
