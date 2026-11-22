@@ -97,12 +97,14 @@ void Context::set_punch_target(unsigned target) {
     if (project.punch_target == target) return;
     punch_release(true); // a new signal: everything lets go
     project.punch_target = uint8_t(target);
+    dirty = true; // kept in the project's file; a punch's own commands no longer mark it
     notice(target ? "Pad FX: the track" : "Pad FX: the master");
 }
 
 void Context::step_punch_bank(int way) {
     punch_release();
     project.punch_bank = uint8_t((int(project.punch_bank) + int(punch_banks) + way) % int(punch_banks));
+    dirty = true; // as set_punch_target()
     static const char* const names[] {"Melodee 1", "Melodee 2", "MPC"};
     notice(std::string("Pad FX bank: ") + names[project.punch_bank % punch_banks]);
 }

@@ -289,7 +289,8 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     p.reset = [](const clap_plugin* p) { of(p).phases.clear(); };
     p.process = process;
     p.get_extension = extension;
-    p.on_main_thread = [](const clap_plugin* p) { of(p).main(); ++mainCallbacks; };
+    // Then asks to be run, as a plug-in does when its main thread has something for its audio side.
+    p.on_main_thread = [](const clap_plugin* p) { of(p).main(); ++mainCallbacks; of(p).host->request_process(of(p).host); };
     return &p;
 }
 

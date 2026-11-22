@@ -82,7 +82,9 @@ int main(int argc, char** argv) {
 
         level->setValue(1.0f); // the next block hears it
         CHECK(level->getValue() == 1.0f);
+        CHECK(sine->wantsProcess()); // a value waits for it: the rack runs it even asleep
         CHECK(std::abs(peak(run(*sine)) - 1.0f) < 0.01f);
+        CHECK(!sine->wantsProcess());
 
         run(*sine, {juce::MidiMessage::controllerEvent(1, 1, 64)}); // MIDI: the plug-in sets Level and says so
         CHECK(std::abs(level->getValue() - 64.0f / 127.0f) < 1e-4f);
@@ -103,6 +105,9 @@ int main(int argc, char** argv) {
         sine->idle(); // its request_callback from init()
         counts(&wrong, &callbacks, &inits);
         CHECK(callbacks == 1 && inits == 1);
+        CHECK(sine->wantsProcess()); // the fixture's on_main_thread asked to be run
+        run(*sine);
+        CHECK(!sine->wantsProcess());
         sine->releaseResources();
     }
 

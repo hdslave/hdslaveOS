@@ -649,7 +649,10 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
         hand_sum = hand_max = hand_made_sum = hand_woke_sum = 0; hand_count = 0;
     }
     pending.drop_front(sent);
-    if (pending.size()) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
+    // While SysEx goes out nothing waiting is sent, so a message already due would wake this thread again at once,
+    // and again, for as long as the SysEx takes. The SysEx's own wake (its next piece) comes back here, and the
+    // pass that sends its last piece sends what waits behind it.
+    if (pending.size() && !sysex.active) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
 }
 
 std::string MidiIo::summary(const EngineHost& host) const {

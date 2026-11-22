@@ -60,6 +60,14 @@ void Context::send(const Command& command) {
     case Type::Control: case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
     case Type::Click: case Type::MuteMode: break;
+    // Nor what only tells the engine how things stand or passes a gesture on: the input's route and level (Input
+    // Config is a setting), a MIDI track's audio input (sent again every second), a keygroup's found root, MIDI
+    // clock and MTC in, a Note Repeat or arp key, a Pad FX pressed or let go. A project left alone is not saved
+    // again for them. PunchDepth still counts: K1's depth is the project's. The Pad FX bank and target mark the
+    // project themselves (shell/pad_fx.cpp).
+    case Type::MidiAudio: case Type::Monitor: case Type::LoopMonitor: case Type::InputTaken: case Type::RecordGain:
+    case Type::RecordSource: case Type::KeyedRoot: case Type::ExtSync: case Type::MtcIn: case Type::RepeatKey: case Type::ArpKey:
+    case Type::PunchOn: case Type::PunchOff: break;
     default: dirty = true;
     }
     // A note played by hand or by MIDI in plays at the frame it came in, a block late, not at the next block's start.

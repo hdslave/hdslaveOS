@@ -56,6 +56,10 @@ public:
     // The rack's thread, a few times a second: what the plug-in asked of the main thread (request_callback, a
     // parameter rescan, a new latency) done now.
     void idle();
+    // Any thread: whether its next block should run although the rack let it sleep (plugin/idle_gate.h). It asked to
+    // be run (request_process, or its parameters' request_flush), or a value set here waits for it (a pot turned).
+    // The next processBlock() takes both.
+    bool wantsProcess() const;
 
     const juce::String getName() const override { return name; }
     void fillInPluginDescription (juce::PluginDescription&) const override;

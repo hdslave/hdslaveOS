@@ -243,6 +243,7 @@ public:
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
         idle.reset(is_instrument, this->plugin_rate);
+        clap = dynamic_cast<ClapInstance*>(instance.get());
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -286,7 +287,10 @@ public:
         auto t0 = std::chrono::steady_clock::now();
         follow_clock(frames);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
-        bool sleeping = !warming && idle.asleep(pending_count > 0, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
+        // MIDI for it wakes it, and so does a CLAP plug-in's own request to be run or a value waiting for it (a pot
+        // turned): else neither reaches it until a note does.
+        const bool waiting = pending_count > 0 || (clap && clap->wantsProcess());
+        bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
             if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
@@ -333,6 +337,7 @@ public:
     }
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
+    ClapInstance* clap = nullptr;        // the instance, when it is a CLAP plug-in
     const bool instrument;
     const double sample_rate;
     const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)

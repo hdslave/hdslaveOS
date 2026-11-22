@@ -140,9 +140,11 @@ void rows_draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     const auto& set = s.ui.settings;
     float x = zone::pad, w = zone::width - 2 * zone::pad;
-    // Everything stays above K1's card: SCREEN gives its sixth row to Screen Mirror's line while that shows.
+    // Everything stays above K1's card: SCREEN gives its sixth row to Screen Mirror's line while that shows, and
+    // AUDIO keeps a row for its DSP line under the list, and one more for PDC's while that shows; the rest scroll.
     bool mirror = s.ui.settings_door % doors.size() == screen_door && (MirrorState(s.mirror_state) != MirrorState::Off || s.mirror_held);
-    unsigned visible = list_rows - (mirror ? 1u : 0u);
+    unsigned below = audio ? 1u + (s.machine.pdc_frames ? 1u : 0u) : 0u;
+    unsigned visible = list_rows - (mirror ? 1u : 0u) - below;
     unsigned count = door_rows(d), first = first_row(place_of(s.ui), count, visible), shown = std::min(count - first, visible);
     for (unsigned k = 0; k < shown; ++k) {
         unsigned row = unsigned(d.rows[first + k]);
@@ -181,7 +183,8 @@ void rows_draw(Paint& p, const Snapshot& s) {
     }
     if (s.ui.settings_door % doors.size() != audio_door) return;
     // AUDIO (roadmap P2): what the blocks take of their time, beside the dropouts (a check while there are none).
-    float y = zone::picture_y + 1 + shown * (list_row_h + list_row_gap) + 6, cy = y + list_row_h / 2, right = x + w - 9;
+    // A short list leaves a gap above the lines; four rows or more close it up, so PDC's still ends above K1's card.
+    float y = zone::picture_y + 1 + shown * (list_row_h + list_row_gap) + (shown > 3 ? 0 : 6), cy = y + list_row_h / 2, right = x + w - 9;
     float load = s.machine.render_load;
     icon(p, Icon::Chip, x + 10, cy - 7, 14, colour::sec, 1.4f);
     p.text("DSP", x + 30, y, 40, list_row_h, caps_text(colour::mid));

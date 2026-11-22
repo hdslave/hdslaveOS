@@ -106,6 +106,7 @@ struct ClapInstance::Host
     clap_host host {};
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
+    std::atomic<bool> process { false }; // request_process or request_flush: run the next block even if it sleeps
 
     Host()
     {
@@ -117,7 +118,8 @@ struct ClapInstance::Host
         host.version = "1";
         host.get_extension = &extension;
         host.request_restart = [] (const clap_host*) {}; // not while it plays: a reload (picked again) restarts it
-        host.request_process = [] (const clap_host*) {}; // it is processed every block
+        // The rack does not run a silent plug-in (plugin/idle_gate.h): asked, it runs the next block anyway.
+        host.request_process = [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); };
         host.request_callback = [] (const clap_host* h) { of (h).callback = true; };
     }
     static Host& of (const clap_host* h) { return *static_cast<Host*> (h->host_data); }
@@ -138,7 +140,8 @@ struct ClapInstance::Host
                     of (h).rescan = true;
             },
             [] (const clap_host*, clap_id, clap_param_clear_flags) {},
-            [] (const clap_host*) {}, // request_flush: its next block takes the changes
+            // request_flush: its next block takes the changes, run even if it sleeps (as request_process)
+            [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); },
         };
         static const clap_host_latency latency { [] (const clap_host* h) { of (h).latencyChanged = true; } };
         static const clap_host_tail tail { [] (const clap_host*) {} };
@@ -414,6 +417,11 @@ void ClapInstance::idle()
     if (host->latencyChanged.exchange (false)) readLatency();
 }
 
+bool ClapInstance::wantsProcess() const
+{
+    return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
+}
+
 AudioProcessorParameter* ClapInstance::getBypassParameter() const { return bypass; }
 
 void ClapInstance::fillInPluginDescription (PluginDescription& d) const
@@ -486,6 +494,8 @@ bool ClapInstance::pushOut (const clap_output_events* list, const clap_event_hea
 void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
     const int frames = std::min (buffer.getNumSamples(), block);
+    // This block answers any request to be run so far; one made from here on wants the next.
+    host->process.store (false, std::memory_order_release);
     if (! active || frames <= 0) { buffer.clear(); return; }
     AudioScope audioThread;
     if (! processing) processing = plugin->start_processing (plugin);

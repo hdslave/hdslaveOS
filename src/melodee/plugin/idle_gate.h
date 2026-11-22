@@ -12,8 +12,11 @@
 // for half a second, and does not hear the song playing (a plug-in with a
 // sequencer of its own plays from Play alone; TRANSPORT off, it never hears
 // it). An effect sleeps once its input and output have been as quiet for as
-// long; the song playing does not matter. Any MIDI for it, or sound in an
-// effect's input, wakes it for that block. Audio thread only; no allocation.
+// long; the song playing does not matter. Any MIDI for it, sound in an
+// effect's input, or anything else waiting for it (a CLAP plug-in's
+// request_process or request_flush, a parameter value set for it) wakes it
+// for that block and counts it quiet again from there, as a note does. Audio
+// thread only; no allocation.
 namespace melodee {
 
 class IdleGate {
@@ -54,10 +57,11 @@ public:
         if (loud(left, right, frames)) quiet = 0;
         else quiet = std::min<uint32_t>(quiet + frames, quiet_needed);
     }
-    // Before a render: whether to skip it. `midi_waiting`: messages for it since its last render; `playing`: the song
-    // as it hears it; `input`: an effect's, for this render (device frames).
-    bool asleep(bool midi_waiting, bool playing, const float* left, const float* right, unsigned frames) {
-        if (midi_waiting) { quiet = 0; return false; }
+    // Before a render: whether to skip it. `waiting`: messages for it since its last render, or anything else it must
+    // be run for (its own request to be, a parameter value set); `playing`: the song as it hears it; `input`: an
+    // effect's, for this render (device frames).
+    bool asleep(bool waiting, bool playing, const float* left, const float* right, unsigned frames) {
+        if (waiting) { quiet = 0; return false; }
         if (instrument) {
             if (held_count || sustain || playing) return false;
         } else if (left && right && loud(left, right, frames)) {
