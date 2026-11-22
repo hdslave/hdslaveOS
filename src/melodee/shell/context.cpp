@@ -6,6 +6,7 @@
 #include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/follow_tempo.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/input_choices.h"
@@ -1922,13 +1923,10 @@ void Context::follow_tempos() {
         if (!frames) continue;
         uint32_t end = pad.end ? pad.end : frames, length = end > pad.start ? end - pad.start : 0;
         if (length < 4410) continue; // a hit, not a loop: it keeps its speed
-        // The number of bars that puts it nearest the project's tempo, between 70 and 180 BPM.
-        double best = 0, target = project.tempo / 10.0;
-        for (double bars : {0.25, 0.5, 1.0, 2.0, 4.0, 8.0}) {
-            double bpm = bars * 4 * 60 * 44100.0 / length;
-            if (bpm >= 70 && bpm <= 180 && (best == 0 || std::fabs(bpm - target) < std::fabs(best - target))) best = bpm;
-        }
-        pad.own_tempo = uint16_t(best * 10);
+        // The sample's found tempo, in the octave nearest the project's and exact at whole bars of the region; else
+        // the number of bars that puts it nearest the project's tempo (shell/follow_tempo.h).
+        const auto beats = library ? library->slot(pad.sample % sample_slots).beats : BeatGrid {};
+        pad.own_tempo = follow_tempo(length, beats.found() ? beats.tempo : 0, project.tempo);
         send_pad(ui.track, n);
     }
 }

@@ -1703,9 +1703,15 @@ the file holds, to the bit.
   slice of its own), or from where its steady beat starts when that is later
   (a free intro before it, and a free ending after its last beat, one slice
   each): its tempo, beats and where they fall are found when it
-  loads (the flux's autocorrelation, a beat tracker, the phase where the flux
-  is highest beat after beat; a loop's tempo exact from its length, and a
-  loop cut to bars that starts with an attack starts on a beat), the tempo
+  loads (the tempo from the flux's autocorrelation peaks, each twice and half
+  as fast, and the tempos its length is whole bars at, scored on the
+  autocorrelation, nearness to 135 BPM and how high the flux stands on their
+  beats, eighths and sixteenths, fitted on 1739 Apple Loops; a beat tracker,
+  the phase where the flux is highest beat after beat; a loop's tempo exact
+  from its length, and a loop cut to bars that starts with an attack starts
+  on a beat; Follow and Seq warp without # Beats take that tempo in the octave
+  nearest the project's, exact at whole bars of the region,
+  `shell/follow_tempo.h`), the tempo
   shown at the picture's top right; each cut takes the tracked beat within an
   eighth of a beat (so a take that drifts is followed), else the hit within
   30 ms. Which beat is a bar's 1 is the region's start: kicks and snares alone
