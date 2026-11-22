@@ -35,10 +35,13 @@ void follow(Context& c, uint32_t tick, int key) {
 
 bool key_is_pad(const Track& t, int key) {
     if (t.engine == EngineKind::Sampler) return key >= int(sampler_first_note) && key <= int(sampler_last_key);
+    if (midi_multi(t)) return key >= int(drum_first_key) && key < int(drum_first_key + 16);
     return drum_pads(t) && drum_pad_of(key) >= 0;
 }
 
 std::string key_label(const Track& t, int key) {
+    if (midi_multi(t) && key >= int(drum_first_key) && key < int(drum_first_key + 16))
+        return "CH " + std::to_string(key - int(drum_first_key) + 1);
     if (t.engine == EngineKind::Sampler && key >= int(sampler_first_note) && key <= int(sampler_last_key)) {
         char label[4];
         pad_label(unsigned(key) - sampler_first_note, label);

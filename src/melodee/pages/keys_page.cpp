@@ -142,8 +142,11 @@ void draw(Paint& p, const Snapshot& s) {
     if (prog_pads(track)) { draw_prog(p, s); return; }
     auto c = colour_of(s);
     Header h = header_of(s);
-    bool drums = drum_pads(track);
-    if (drums) {
+    bool drums = drum_pads(track), multi = midi_multi(track);
+    if (multi) {
+        h.left.push_back(chip("MULTI", c));
+        h.left.push_back(pill(juce::String::fromUTF8("CH 1\xe2\x80\x93" "16")));
+    } else if (drums) {
         h.left.push_back(chip("DRUMS", c));
         h.left.push_back(pill(juce::String("BANK ") + juce::String::charToString(juce::juce_wchar('A' + drum_bank(track)))));
     } else { // the key the pads play in: the root and the scale (or Chromatic, or 16 Levels' note)
@@ -172,11 +175,11 @@ void draw(Paint& p, const Snapshot& s) {
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool held = s.ui.held_pads & (1u << pad);
         auto note = pad_note(s.project, track, pad);
-        if (drums) { // the voice there by name, else its note; no voice at all: dark
-            const char* voice = s.ui.drum_voices.at(note.key);
-            bool last = note.key == int(track.last_note), silent = !voice && s.ui.drum_voices.any();
+        if (drums) { // the voice there by name, else its note (or channel in Multi mode); no voice at all: dark
+            const char* voice = multi ? nullptr : s.ui.drum_voices.at(note.key);
+            bool last = note.key == int(track.last_note), silent = !multi && !voice && s.ui.drum_voices.any();
             p.fill(x, y, w, ch, held ? colour::text : last ? c : silent ? colour::quiet : colour::surf, 3);
-            juce::String label = voice ? juce::String(voice) : juce::String(note_name(note.key));
+            juce::String label = multi ? "CH " + juce::String(pad + 1) : voice ? juce::String(voice) : juce::String(note_name(note.key));
             auto style = plain(held || last ? colour::bg : silent ? colour::dim : colour::text, type::body, Weight::SemiBold);
             p.text(label, x + 7, y, w - 14, ch, p.fit(label, style, w - 14, type::floor));
             continue;

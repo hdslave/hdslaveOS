@@ -13,6 +13,7 @@ namespace melodee {
 namespace {
 void say_bank(Context& c) {
     const auto& t = c.track();
+    if (midi_multi(t)) { c.notice("Channels 1\xe2\x80\x93" "16"); return; }
     unsigned bank = prog_pads(t) ? prog_bank(t) : t.bank % sampler_banks;
     c.notice(std::string("Bank ") + char('A' + bank));
 }
@@ -53,6 +54,7 @@ void step_octave(Context& c, int way) {
 
 void step_bank(Context& c, int way) {
     auto& t = c.track();
+    if (midi_multi(t)) { t.bank = 0; return; }
     int banks = drum_pads(t) ? int(drum_banks) : prog_pads(t) ? int(prog_banks) : int(sampler_banks); // Drums pads: A-D, MIDI's notes 36-99; Prog: A-C
     t.bank = uint8_t((int(t.bank % banks) + way % banks + banks) % banks);
 }

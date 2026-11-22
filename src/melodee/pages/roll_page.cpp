@@ -105,7 +105,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (kit) { // the pads' numbers in their bank, every other lane so each has room, the cursor's always
         for (unsigned r = 0; r < rows; ++r) {
             int key = top_key - int(r), pad = key - int(sampler_first_note);
-            if (pad < 0 || (key - int(ui.roll_key)) % 2) continue;
+            if (pad < 0 || (midi_multi(track) && pad >= 16) || (key - int(ui.roll_key)) % 2) continue;
             p.text(juce::String(pad % 16 + 1), 0, top + r * row_h - 2, gutter - 4, row_h + 3,
                    plain(key == int(ui.roll_key) ? c : colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
         }

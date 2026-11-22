@@ -861,6 +861,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         const auto& row = page.rows[ui.edit_row[ui.track] % std::max(page.row_count(), 1u)];
         if (track.engine == EngineKind::Midi) { // roadmap P4 (docs/MIDI_TRACKS.md M3): this pattern's program; the pads
             if (std::string(page.key) == "PADS") {
+                if (midi_multi(track)) return {};
                 Binding note {};
                 if (drum_pads(track)) { unsigned pad = track.last_pad % sampler_pads; note = {Kind::MidiDrumNote, int32_t(pad), 0, 127, track.midi.drum_note[pad]}; }
                 return {Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)}, note, Binding {}};

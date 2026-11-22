@@ -78,14 +78,15 @@ void drum_map_picture(Paint& p, const Snapshot& s) {
         unsigned col = pad % 4, row = 3 - pad / 4; // pad 1 bottom left
         float x = px + col * (cw + 4), y = py + row * (ch + 4);
         int key = pad_note(s.project, t, pad).key;
+        bool multi = midi_multi(t);
         bool last = drum_pads(t) && t.last_pad % sampler_pads == 16 * drum_bank(t) + pad;
         p.fill(x, y, cw, ch, last ? c.withAlpha(0.25f) : colour::surf, 3);
         if (last) p.ring(x, y, cw, ch, c, 3, 1.2f);
-        const char* gm = drum_pads(t) ? gm_drum_name(unsigned(key)) : nullptr;
-        juce::String name = gm ? juce::String(gm) : juce::String(note_name(key));
+        const char* gm = !multi && drum_pads(t) ? gm_drum_name(unsigned(key)) : nullptr;
+        juce::String name = multi ? "CH " + juce::String(pad + 1) : gm ? juce::String(gm) : juce::String(note_name(key));
         auto style = plain(last ? colour::text : colour::sec, type::small, Weight::Medium);
         p.text(name, x + 3, y + 2, cw - 6, ch / 2, p.fit(name, style, cw - 6, type::floor));
-        p.text(juce::String(key), x + 3, y + ch / 2, cw - 6, ch / 2 - 2, plain(colour::mid, type::small));
+        p.text(multi ? juce::String(note_name(midi_track::multi_note)) : juce::String(key), x + 3, y + ch / 2, cw - 6, ch / 2 - 2, plain(colour::mid, type::small));
     }
 }
 

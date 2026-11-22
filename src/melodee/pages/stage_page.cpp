@@ -930,7 +930,9 @@ void input_picture(Paint& p, const Snapshot& s) {
 
 void new_track_picture(Paint& p, const Snapshot& s) {
     p.fill(0, zone::picture_y, zone::width, zone::height - zone::picture_y, colour::bg); // the knob strip too: no pots here
-    juce::String channel = juce::String::fromUTF8("MIDI \xc2\xb7 CH ") + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16));
+    juce::String channel = midi_track::is_multi(s.ui.new_channel)
+        ? juce::String::fromUTF8("MIDI \xc2\xb7 MULTI")
+        : juce::String::fromUTF8("MIDI \xc2\xb7 CH ") + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16));
     std::vector<CarouselCard> cards;
     if (!s.ui.new_sources) {
         cards = {{Icon::Pads, "", "Drum", "PADS"}, {Icon::Keyboard, "", "Keygroup", "INSTRUMENT"}, {Icon::Plug, "", "Plugin", "VST CLAP LV2"},

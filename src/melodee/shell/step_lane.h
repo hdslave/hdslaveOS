@@ -18,6 +18,7 @@ namespace melodee {
 inline int steps_lane(const Track& t) {
     if (t.levels) return -1;
     if (t.engine == EngineKind::Sampler) return int(t.step_note());
+    if (midi_multi(t)) return t.last_note >= drum_first_key && t.last_note < drum_first_key + 16 ? int(t.last_note) : int(drum_first_key);
     if (drum_pads(t)) return drum_pad_of(t.last_note) >= 0 ? int(t.last_note) : drum_key(t, 0);
     return -1;
 }

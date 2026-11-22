@@ -123,7 +123,7 @@ void make_new_track(Context& c, NewChoice choice) {
     auto midi = [&](unsigned port) {
         c.load_sound(t, EngineKind::Midi, 0);
         c.set_param(t, midi_track::Port, int(port));
-        c.set_param(t, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, 16));
+        c.set_param(t, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, midi_track::channel_multi));
         stage_go(ui, 0, 0); // DEVICE
     };
     auto audio = [&] { // freeze plan F3: records into its patterns; Stage on INPUT, what it records from

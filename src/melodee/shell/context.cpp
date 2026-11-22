@@ -465,15 +465,16 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         key(pad_keys[pad][0], level.velocity ? level.velocity : velocity, true);
         return;
     }
-    int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;
+    bool layout_levels = !midi_multi(t) && t.layout == PadLayout::Levels;
+    int v = layout_levels ? level_velocity(pad) : velocity;
     if (ui.page == PageId::Sounds) v = ui.audition_velocity;
     std::array<int, notes_per_step> keys {};
     unsigned count = 1;
     keys[0] = pad_note(project, t, pad).key;
     if (drum_pads(t) && t.engine == EngineKind::Midi) t.last_pad = uint8_t(16 * drum_bank(t) + pad % 16); // the drum PADS' K2 maps (roadmap P4)
-    if ((t.chord || t.layout == PadLayout::Prog) && t.layout != PadLayout::Levels) count = chord_notes(project, t, pad, keys); // Prog: the pad's chord
+    if ((t.chord || t.layout == PadLayout::Prog) && !layout_levels) count = chord_notes(project, t, pad, keys); // Prog: the pad's chord
     if (!count) return; // a Prog pad with no chord on it
-    if (t.layout != PadLayout::Levels) t.last_note = uint8_t(std::clamp(keys[0], 0, 127));
+    if (!layout_levels) t.last_note = uint8_t(std::clamp(keys[0], 0, 127));
     for (unsigned n = 0; n < count; ++n) {
         pad_keys[pad][n] = int16_t(std::clamp(keys[n], 0, 127));
         key(pad_keys[pad][n], v, true);

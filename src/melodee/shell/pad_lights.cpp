@@ -189,7 +189,7 @@ Look keys_base(const PadScene& s, unsigned pad) {
     if (!t.used()) return {};
     int key = pad_note(s.project, t, pad).key;
     if (drum_pads(t)) { // Drums pads: lit as a kit's, the drum hit last Full; a pad the plug-in has no voice on, dark
-        if (s.ui.drum_voices.any() && !s.ui.drum_voices.at(key)) return {};
+        if (!midi_multi(t) && s.ui.drum_voices.any() && !s.ui.drum_voices.at(key)) return {};
         return track(selected_index(s), key == int(t.last_note) ? full : dim);
     }
     if (prog_pads(t)) { // Prog: a pad with a chord white, the file's Root chord in the track's colour, a pad with none dark

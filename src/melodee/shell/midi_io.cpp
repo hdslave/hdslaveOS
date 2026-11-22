@@ -146,7 +146,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
             const auto& tr = c.project.tracks[t];
             if (!((tracks >> t) & 1) || tr.engine != EngineKind::Midi) continue;
             bool back = dest_is(midi_track::dest_of(tr.params[midi_track::Port]), config.port, port.driver, port.surface) &&
-                        m.getChannel() == tr.params[midi_track::Channel];
+                        (midi_track::is_multi(tr.params[midi_track::Channel]) || m.getChannel() == tr.params[midi_track::Channel]);
             if (!back) echo = uint16_t(echo | 1u << t); else echo_guarded.fetch_add(1, std::memory_order_relaxed);
         }
     }
@@ -503,18 +503,21 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
     case K::NoteOn:
         if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest, e.track < track_count ? int(e.track) : -1) && e.track < track_count) {
             c.ui.track_out_at[e.track] = c.now;
+            uint8_t shown_key = midi_multi(c.project.tracks[e.track]) ? uint8_t(35 + std::clamp<int>(e.channel, 1, 16)) : e.a;
             auto& sent = c.ui.sent_notes[c.ui.sent_next++ % c.ui.sent_notes.size()]; // midi-track A: kept for the picture
-            sent = {e.track, e.a, e.b, c.now ? c.now : 1, 0};
+            sent = {e.track, shown_key, e.b, c.now ? c.now : 1, 0};
             c.ui.sent_next %= uint8_t(c.ui.sent_notes.size());
         }
         break;
     case K::NoteOff:
         send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest, e.track < track_count ? int(e.track) : -1);
-        if (e.track < track_count) // the newest of its notes still held lets go
+        if (e.track < track_count) { // the newest of its notes still held lets go
+            uint8_t shown_key = midi_multi(c.project.tracks[e.track]) ? uint8_t(35 + std::clamp<int>(e.channel, 1, 16)) : e.a;
             for (unsigned n = 1; n <= c.ui.sent_notes.size(); ++n) {
                 auto& sent = c.ui.sent_notes[(c.ui.sent_next + c.ui.sent_notes.size() - n) % c.ui.sent_notes.size()];
-                if (sent.track == e.track && sent.key == e.a && !sent.until) { sent.until = c.now ? c.now : 1; break; }
+                if (sent.track == e.track && sent.key == shown_key && !sent.until) { sent.until = c.now ? c.now : 1; break; }
             }
+        }
         break;
     case K::Control: // a MIDI track's CC or bank select (Stage)
         track_send(juce::MidiMessage::controllerEvent(e.channel, e.a, e.b));

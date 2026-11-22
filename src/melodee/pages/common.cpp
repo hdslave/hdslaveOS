@@ -780,7 +780,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     case Kind::NewSource: { static const char* sources[] {"Card", "Input"}; c.label = "SOURCE"; c.value = sources[unsigned(b.value) % new_sources]; break; }
     case Kind::NewPort: { static const char* ports[] {"External", "USB-C", "All USB"}; c.label = "PORT"; c.value = ports[unsigned(b.value) % 3]; break; }
-    case Kind::NewChannel: c.label = "CHANNEL"; c.value = juce::String(b.value); break;
+    case Kind::NewChannel: c.label = "CHANNEL"; c.value = midi_track::is_multi(b.value) ? juce::String("Multi") : juce::String(b.value); break;
     case Kind::TrackPick:
         std::snprintf(text, sizeof(text), "%02d", b.value + 1);
         c.label = "TRACK"; c.value = text;
@@ -895,6 +895,7 @@ void soft_row(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys) {
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.play_pad(pad, velocity, down); }
 void octave(Context& c, int way) {
     auto& t = c.track();
+    if (midi_multi(t)) { c.notice("Channels 1\xe2\x80\x93" "16"); return; }
     if (drum_pads(t)) { // Drums pads: − / + the bank, A-D
         t.bank = uint8_t(std::clamp(int(drum_bank(t)) + way, 0, int(drum_banks) - 1));
         c.notice(std::string("Bank ") + char('A' + drum_bank(t)));

@@ -81,7 +81,7 @@ void Context::stage_new() {
     case StageKind::NewMidi:
         load_sound(ui.track, EngineKind::Midi, 0);
         set_param(ui.track, midi_track::Port, ui.new_port % midi_track::PortCount);
-        set_param(ui.track, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, 16));
+        set_param(ui.track, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, midi_track::channel_multi));
         stage_go(ui, 0, 0); // DEVICE
         break;
     default: return;
