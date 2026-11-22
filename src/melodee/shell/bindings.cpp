@@ -580,7 +580,8 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     case SK::PluginSound: // the three performance knobs, the same on every plug-in (engine/macros.h)
         if (shift_row) return {};
         return {param(track, plugin_track::Macro1), param(track, plugin_track::Macro2), param(track, plugin_track::Macro3)};
-    case SK::PluginEdit: // the plug-in's own row of three
+    case SK::PluginEdit:   // the plug-in's own row of three
+    case SK::PluginScreen: // or the three its own screen names
         if (shift_row) return {};
         return plugin_cards(ui, track.plugin);
     case SK::NewSynth: case SK::NewKit: case SK::NewMidi: return {}; // an empty track: the wheel and Push (shell/new_track.h)

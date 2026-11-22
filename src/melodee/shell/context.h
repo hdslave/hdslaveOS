@@ -363,8 +363,7 @@ public:
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
-    int plugin_screen_entry() const; // the entry whose own screen the page in view shows (plugin/plugin_screen.h), -1 none
-    bool plugin_screen_input(ScreenKey key, int value); // an input handed to that screen; false: none in view
+    bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

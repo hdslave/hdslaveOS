@@ -102,13 +102,13 @@ void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui:
 // A plug-in's own picture (plugin/plugin_screen.h) at x, y: its page, or an effect's strip.
 // plugin_screen_shown(): the page in view is a plug-in's own screen (Edit on its track, Stage's EDIT), which Melodee
 // draws nothing over but its MENU, notices and questions.
-bool plugin_screen_shown(const Snapshot& s);
+bool plugin_screen_shown(const Snapshot& s, uint8_t area = 0); // area 1: an effect's strip under its chain's slots
 void draw_screen_picture(ui::Paint& p, const ScreenPicture& picture, float x, float y);
 void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
 // An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
 void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 // An effect's skin strip (docs/PLUGIN_PAGES.md, Skins) under the chain row, at x, y (320 x 92), where it has one and
-// Settings > SCREEN > Plug-in skins is on.
+// Settings > SCREEN > Plug-in screens is on.
 bool plugin_strip_shown(const Snapshot& s, unsigned entry);
 void draw_plugin_strip(ui::Paint& p, const Snapshot& s, float x, float y);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's

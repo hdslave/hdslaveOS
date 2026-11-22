@@ -312,6 +312,7 @@ void Context::open(PageId page) {
     ui.layer_load = -1; // Layers' LOAD sets it after opening Samples
     ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
     ui.picker_open = false;
+    ui.fx_panel = false; // an effect's full page closes with the page
     ui.song_export = false;
     if (ui.jam_sheet) open_jams(false); // JAMS closes (what it plays stops)
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
@@ -337,8 +338,8 @@ void Context::open(PageId page) {
 }
 
 void Context::back() {
-    if (ui.sheet_open || ui.map_open || ui.picker_open || ui.move_open) { // a sheet, map or picker first
-        ui.sheet_open = ui.map_open = ui.picker_open = ui.move_open = false;
+    if (ui.sheet_open || ui.map_open || ui.picker_open || ui.move_open || ui.fx_panel) { // a sheet, map, picker or an effect's page first
+        ui.sheet_open = ui.map_open = ui.picker_open = ui.move_open = ui.fx_panel = false;
         return;
     }
     open(back_target(ui)); // open() finds it on the stack and drops it and what came after

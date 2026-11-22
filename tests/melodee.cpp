@@ -122,6 +122,7 @@
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/zone_shapes.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/roll.h"
@@ -5492,15 +5493,28 @@ void stage() {
     const Pattern& pattern = bank->at[0][0];
     UiState ui;
     ui.page = PageId::Stage;
-    auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track], stage_instrument(*project, project->tracks[ui.track])).key); };
+    auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track], stage_skip(*project, ui, project->tracks[ui.track])).key); };
     auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
 
     // Every track gives B1-B3 the same jobs (hubs plan, S-B): B1 the source, B2 how it plays, B3 where it goes.
     // A synth (a PLUGIN track): B1 PRESETS -> EDIT, B2 ARP -> CHORD, B3 MIX -> SENDS -> FX; another button jumps to
     // its own first page; each track keeps its own.
     CHECK(key() == "PRESETS");
-    stage_press(ui, project->tracks[0], 0, false); CHECK(key() == "EDIT");
-    stage_press(ui, project->tracks[0], 0, false); CHECK(key() == "PRESETS");
+    stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+    stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PRESETS -> PANEL -> EDIT; Plug-in screens off, no PANEL.
+        ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
+        CHECK(plugin_screen_place(*project, ui).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui).area == 0);
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+        CHECK(plugin_screen_place(*project, ui).entry < 0); // EDIT: Melodee's pages
+        ui.settings.plugin_skins = false;
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        ui.settings.plugin_skins = true;
+        ui.plugin_panel = {};
+    }
     stage_press(ui, project->tracks[0], 1, false); CHECK(key() == "ARP");
     stage_press(ui, project->tracks[0], 1, false); CHECK(key() == "CHORD");
     ui.track = 1; CHECK(key() == "TRIM");

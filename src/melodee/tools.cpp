@@ -871,6 +871,59 @@ void keygroup_scene(Snapshot& s, StageKind kind, bool wav = false) {
     s.playing = true;
 }
 // Stage B1 on track 1 (Melodee Poly, plug-in entry 0): its presets, `programs` of them (0: its face instead).
+// A stand-in plug-in's own picture for the previews (plugin/plugin_screen.h), drawn here with JUCE as a plug-in would
+// draw its own: its name, a wave and three knobs in its own colours, so the pages around it can be seen.
+ScreenPicturePtr preview_screen(unsigned entry, uint8_t area) {
+    const int w = int(picture_width), h = int(area ? picture_strip_rows : picture_page_rows);
+    juce::Image image(juce::Image::ARGB, w, h, true);
+    {
+        juce::Graphics g(image);
+        g.fillAll(juce::Colour(0xff0b1418));
+        g.setColour(juce::Colour(0xff12303a));
+        for (int x = 8; x < w; x += 16) g.fillRect(x, 0, 1, h);
+        for (int y = 8; y < h; y += 16) g.fillRect(0, y, w, 1);
+        g.setColour(juce::Colour(0xffddeff2));
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        g.drawText("SCREEN EXAMPLE", 10, 2, 200, 18, juce::Justification::centredLeft);
+        juce::Path wave;
+        const float top = 26, wave_h = float(h) - 92;
+        for (int x = 0; x <= 280; ++x) {
+            float t = x / 280.0f, v = std::sin(t * 6.2832f * 2) * (0.6f + 0.4f * std::sin(t * 3.1416f));
+            float px = 20.0f + x, py = top + wave_h / 2 - v * wave_h * 0.4f;
+            if (x == 0) wave.startNewSubPath(px, py); else wave.lineTo(px, py);
+        }
+        g.setColour(juce::Colour(0xffc6f432));
+        g.strokePath(wave, juce::PathStrokeType(2.0f));
+        const float ky = float(h) - 40;
+        const float values[3] {0.42f, 0.66f, 0.75f};
+        for (int k = 0; k < 3; ++k) {
+            const float cx = 58.0f + 102.0f * k;
+            g.setColour(juce::Colour(0xff10242b));
+            g.fillEllipse(cx - 16, ky - 16, 32, 32);
+            juce::Path arc;
+            arc.addCentredArc(cx, ky, 13, 13, 0, -2.356f, -2.356f + 4.712f * values[k], true);
+            g.setColour(juce::Colour(0xffc6f432));
+            g.strokePath(arc, juce::PathStrokeType(3.0f));
+        }
+    }
+    auto picture = std::make_shared<ScreenPicture>();
+    picture->entry = uint8_t(entry);
+    picture->area = area;
+    picture->serial = 1;
+    picture->width = uint16_t(w);
+    picture->height = uint16_t(h);
+    picture->pixels.resize(size_t(w) * size_t(h));
+    juce::Image::BitmapData bits(image, juce::Image::BitmapData::readOnly);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) picture->pixels[size_t(y) * size_t(w) + size_t(x)] = bits.getPixelColour(x, y).getARGB() | 0xff000000u;
+    return picture;
+}
+void own_screen(Snapshot& s, unsigned entry, uint8_t area) { // the panel and picture of a plug-in drawing its own screen
+    auto& panel = s.ui.plugin_panel;
+    panel.has_screen = panel.screen = true;
+    s.plugin_picture = preview_screen(entry, area);
+}
+
 void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
     on_stage(s, 0, kind); s.playing = true;
     plugin_panel(s, 0, "Melodee Poly", "VST3", true, PluginStatus::Ready);
@@ -1195,6 +1248,27 @@ const Preview previews[] {
          std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Plate Reverb.vst3");
          s.ui.fx_cursor[0] = 1;
          plugin_panel(s, 4, "Plate Reverb", "VST3", false, PluginStatus::Ready);
+     }},
+    {"stagepluginpanel", [](Shell&, Snapshot& s) { // B1 again on a plug-in that draws its own screen: PANEL, its page
+         stage_plugin(s, StageKind::PluginSound, true); own_screen(s, 0, 0); stage_go(s.ui, EngineKind::Plugin, StageKind::PluginScreen);
+     }},
+    {"rackpluginscreen", [](Shell&, Snapshot& s) { // an effect that draws its own strip under the slots
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Screen Example.clap");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "Screen Example", "CLAP", false, PluginStatus::Ready);
+         own_screen(s, 4, 1);
+     }},
+    {"rackpluginpanel", [](Shell&, Snapshot& s) { // Push on it: its full page under the hub's keys
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Screen Example.clap");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "Screen Example", "CLAP", false, PluginStatus::Ready);
+         own_screen(s, 4, 0); s.ui.fx_panel = true;
      }},
     {"rackpluginsheet", [](Shell&, Snapshot& s) { // Push on that plug-in: its sheet, with Presets
          s.ui.page = PageId::Rack; s.ui.track = 0;

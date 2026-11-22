@@ -21,6 +21,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/ui/tokens.h"
@@ -42,7 +43,6 @@ int free_entry(const Project& project) {
     return -1;
 }
 
-bool chain_page(PageId page) { return page == PageId::Rack || page == PageId::Bus || page == PageId::Master; }
 } // namespace
 
 // One instance plays one place: a track copy (or a copied chain) leaves two users on an entry, and the second and
@@ -279,23 +279,11 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
-// A plug-in's own screen (plugin/plugin_screen.h): the entry whose screen the page in view shows (Edit on its PLUGIN
-// track, Stage's EDIT), -1 none.
-int Context::plugin_screen_entry() const {
-    const auto& panel = ui.plugin_panel;
-    if (!panel.has_screen || panel.status != PluginStatus::Ready) return -1;
-    const auto& t = project.tracks[ui.track % track_count];
-    if (t.engine != EngineKind::Plugin || t.plugin != panel.entry) return -1;
-    if (ui.page == PageId::Edit) return t.plugin;
-    if (ui.page == PageId::Stage && stage_page_now(ui, t, false).kind == StageKind::PluginEdit) return t.plugin;
-    return -1;
-}
-
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
 bool Context::plugin_screen_input(ScreenKey key, int value) {
-    int entry = plugin_screen_entry();
-    if (entry < 0 || !plugins || !ui.plugin_panel.screen) return false;
-    plugins->screen_input(unsigned(entry), {key, int32_t(value), ui.shift});
+    const auto at = plugin_screen_place(project, ui);
+    if (at.entry < 0 || !plugins || !ui.plugin_panel.screen) return false;
+    plugins->screen_input(unsigned(at.entry), {key, int32_t(value), ui.shift});
     return true;
 }
 
@@ -304,7 +292,7 @@ int Context::plugin_in_focus() const {
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
     if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
     if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
-    if (chain_page(ui.page) && !ui.picker_open) {
+    if (fx_chain_page(ui.page) && !ui.picker_open) {
         unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
         const auto& chain = project.chain(n);
         if (k < chain.count() && chain.slots[k].kind == plugin_effect_kind && unsigned(chain.slots[k].params[0]) < max_plugins)
@@ -328,8 +316,9 @@ void Context::plugins_tick(uint32_t at) {
     }
     { // A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once.
         ScreenView view;
-        if (int on = plugin_screen_entry(); on >= 0) {
-            view.entry = uint8_t(on);
+        if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {
+            view.entry = uint8_t(at.entry);
+            view.area = at.area;
             view.shift = ui.shift;
             view.playing = host.playing();
             view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;

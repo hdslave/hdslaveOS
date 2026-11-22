@@ -13,6 +13,9 @@
 // after, so the screen draws it from the panel's shared pointer (plugin/plugin_panel.h) with no lock.
 namespace melodee {
 
+// An effect's skin strip in a track's FX chain: everything under the chain's slots, 320 pixels wide.
+constexpr int skin_strip_rows = 144;
+
 struct PluginSkin {
     struct Control {
         SkinKind kind = SkinKind::Image;
@@ -34,7 +37,7 @@ struct PluginSkin {
     juce::Typeface::Ptr font;           // null: Melodee's
     std::vector<std::pair<std::string, Page>> pages; // by page name: the area under B1-B3
     bool has_strip = false;
-    Page strip;                         // an effect's strip under the chain row
+    Page strip;                         // an effect's strip under the chain row, to the bottom (skin_strip_rows)
     size_t bytes = 0;                   // its images, decoded
 
     const Page* page(const std::string& name) const {

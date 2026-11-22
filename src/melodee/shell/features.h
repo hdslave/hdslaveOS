@@ -46,8 +46,17 @@ constexpr uint64_t stage_bit(StageKind kind) { return uint64_t(1) << unsigned(ki
 constexpr uint64_t basic_stage_skips = stage_bit(StageKind::Sends) | stage_bit(StageKind::Layers) | stage_bit(StageKind::Colour)
                                        | stage_bit(StageKind::Follow) | stage_bit(StageKind::Cloud) | stage_bit(StageKind::KitFilter);
 // What Stage passes over for a track now: LAYERS on an instrument pad, and in Basic the pages above.
+// PANEL (a plug-in's own screen, shell/screen_view.h) is passed over unless the track's plug-in draws one, as its
+// panel says, and Settings > SCREEN > Plug-in screens is on.
+inline bool plugin_screen_staged(const UiState& ui, const Track& track) {
+    const auto& panel = ui.plugin_panel;
+    return ui.settings.plugin_skins && track.engine == EngineKind::Plugin && panel.entry == track.plugin && panel.has_screen
+        && panel.status == PluginStatus::Ready;
+}
 inline StageSkip stage_skip(const Project& project, const UiState& ui, const Track& track) {
-    return StageSkip {stage_instrument(project, track), full_features(ui) ? 0 : basic_stage_skips};
+    uint64_t kinds = full_features(ui) ? 0 : basic_stage_skips;
+    if (!plugin_screen_staged(ui, track)) kinds |= stage_bit(StageKind::PluginScreen);
+    return StageSkip {stage_instrument(project, track), kinds};
 }
 
 } // namespace melodee

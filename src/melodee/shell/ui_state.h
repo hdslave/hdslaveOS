@@ -295,6 +295,10 @@ struct UiState {
     PageId plugin_from = PageId::Stage;          // the page it opened over: B1 at the top while the track is not PLUGIN yet
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
+    // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it), and
+    // Edit showing Melodee's pages of a plug-in that has a screen (Shift + B3 swaps them).
+    bool fx_panel = false;
+    bool plugin_own_pages = false;
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
     // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.
     uint8_t presets_entry = no_plugin;

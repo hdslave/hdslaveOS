@@ -5,6 +5,7 @@
 // rates, the Shift + K cards while Shift is held, and the Exit sheet after a
 // short press of Power; and over all of them the place bar.
 #include "melodee/pages/pages.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/sample_mode.h"
@@ -131,7 +132,8 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The Shift jobs are printed on the MPC: the page stays as it is, and
     // the knob strip shows the cards Shift turns (Shift + K), or dims when
     // there are none.
-    if (plugin_screen_shown(s)) return; // a plug-in's own screen: it draws Shift itself (the frame's `shift`)
+    if (plugin_screen_shown(s) || plugin_screen_shown(s, 1) || (fx_chain_page(s.ui.page) && plugin_strip_shown(s, s.ui.plugin_panel.entry)))
+        return; // a plug-in's own screen or strip, or a skin's strip down to the bottom: nothing over it
     auto cards = cards_of(s);
     bool any = false;
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }

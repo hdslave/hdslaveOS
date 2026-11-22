@@ -12,6 +12,7 @@
 #include "melodee/pages/sampler_common.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/ui/knobs.h"
 #include "melodee/ui/widgets.h"
@@ -338,40 +339,34 @@ void skin_frame(Paint& p, const juce::Image& strip, unsigned frames, unsigned fr
                   0, int(std::min(frame, frames - 1)) * fh, strip.getWidth(), fh);
 }
 
-// Melodee's ring round a control K1-K3 turn (one a parameter: its knob, switch or slider, else its value), in the
-// knob's shade: brighter and thicker turning; faint with a white
-// dot where the pot sits until the pot meets the value (a knob's on its sweep, else along the bottom); the fader
-// glyph; the Shift mark. A knob's ring is round, the others' square.
+// Melodee's marks on a control K1-K3 turn (one a parameter: its knob, switch or slider, else its value). The maker
+// draws each control once, so Melodee adds only what the art cannot know: a white dot where the pot sits while it has
+// not reached the value (on a knob's sweep, else along the control's bottom), the fader glyph while the fader drives
+// it, the Shift mark while Shift reaches its second parameter.
 void skin_ring(Paint& p, const PluginSkin::Control& c, juce::Rectangle<float> box, juce::Colour shade, const ui::KnobCard* card) {
-    const bool pickup = card && card->state == ui::KnobCard::State::Pickup;
-    const bool turning = card && card->state == ui::KnobCard::State::Turning;
-    auto colour = pickup ? shade.withAlpha(0.45f) : shade;
-    float thick = turning ? 2.6f : 1.6f;
-    p.g.setColour(colour);
-    if (c.kind == SkinKind::Knob) {
-        float r = std::max(box.getWidth(), box.getHeight()) / 2 + 3;
-        p.g.drawEllipse(box.getCentreX() - r, box.getCentreY() - r, 2 * r, 2 * r, thick);
-        if (pickup && card->pot >= 0) {
+    if (!card) return;
+    const bool pickup = card->state == ui::KnobCard::State::Pickup;
+    if (pickup && card->pot >= 0) {
+        float dx = 0, dy = 0;
+        if (c.kind == SkinKind::Knob) {
+            float r = std::max(box.getWidth(), box.getHeight()) / 2 + 3;
             float a = (-0.75f + 1.5f * std::clamp(card->pot, 0.0f, 1.0f)) * juce::MathConstants<float>::pi;
-            float dx = box.getCentreX() + r * std::sin(a), dy = box.getCentreY() - r * std::cos(a);
-            p.circle(dx, dy, 3.2f, colour::text);
-            p.circle(dx, dy, 1.9f, colour::bg);
+            dx = box.getCentreX() + r * std::sin(a);
+            dy = box.getCentreY() - r * std::cos(a);
+        } else {
+            auto under = box.expanded(4);
+            dx = under.getX() + under.getWidth() * std::clamp(card->pot, 0.0f, 1.0f);
+            dy = under.getBottom();
         }
-    } else {
-        auto ring = box.expanded(4);
-        p.g.drawRoundedRectangle(ring, 4, thick);
-        if (pickup && card->pot >= 0) {
-            float dx = ring.getX() + ring.getWidth() * std::clamp(card->pot, 0.0f, 1.0f);
-            p.circle(dx, ring.getBottom(), 3.2f, colour::text);
-            p.circle(dx, ring.getBottom(), 1.9f, colour::bg);
-        }
+        p.circle(dx, dy, 3.2f, colour::text);
+        p.circle(dx, dy, 1.9f, colour::bg);
     }
-    if (card && card->fader) {
+    if (card->fader) {
         float fx = box.getRight() + 1, fy = box.getY() - 8;
         p.fill(fx - 6, fy - 1, 14, 14, colour::bg, 3);
         icon(p, Icon::Fader, fx - 4, fy + 1, 10, pickup ? colour::mid : shade, 1.4f);
     }
-    if (card && card->shift) shift_mark(p, box.getX() - 9, box.getY() - 6, card->shift == 2 ? shade : colour::mid, card->shift == 2);
+    if (card->shift == 2) shift_mark(p, box.getX() - 9, box.getY() - 6, shade, true);
 }
 
 // A skin page (or strip) at `ox`, `oy`: its background, each control, then Melodee's rings on those K1-K3 turn.
@@ -464,13 +459,11 @@ void draw_screen_picture(Paint& p, const ScreenPicture& picture, float x, float 
     p.g.drawImageAt(image, int(x), int(y));
 }
 
-bool plugin_screen_shown(const Snapshot& s) {
-    const auto& panel = s.ui.plugin_panel;
-    if (!panel.screen || !s.plugin_picture || s.plugin_picture->entry != panel.entry) return false;
-    const auto& t = s.project.tracks[s.ui.track % track_count];
-    if (t.engine != EngineKind::Plugin || t.plugin != panel.entry) return false;
-    if (s.ui.page == PageId::Edit) return true;
-    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, false).kind == StageKind::PluginEdit;
+bool plugin_screen_shown(const Snapshot& s, uint8_t area) {
+    const auto at = plugin_screen_place(s.project, s.ui);
+    const auto& picture = s.plugin_picture;
+    return at.entry >= 0 && at.area == area && s.ui.plugin_panel.screen && picture && picture->entry == unsigned(at.entry)
+        && picture->area == area;
 }
 
 bool plugin_page_shown(const Snapshot& s, unsigned entry) {
@@ -488,7 +481,7 @@ void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKey
         seen->knobs_drawn = true;
         for (unsigned k = 0; k < 3; ++k) seen->knobs[k] = panel.params[k].used ? juce::String::fromUTF8(panel.params[k].name) : juce::String();
     }
-    if (panel.screen && s.plugin_picture && s.plugin_picture->entry == entry && s.plugin_picture->area == 0) {
+    if (plugin_screen_shown(s) && s.plugin_picture->entry == entry) {
         draw_screen_picture(p, *s.plugin_picture, 0, float(zone::header_y)); // its own page under B1-B3, all of it
         return;
     }

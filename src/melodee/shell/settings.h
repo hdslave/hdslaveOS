@@ -85,8 +85,8 @@ struct Settings {
     // 1 Page, the caret goes to the same step of the bar that plays when a new bar starts; 2 Step, the caret on the
     // step that plays.
     uint8_t seq_follow = 0;
-    // Plug-in skins (docs/PLUGIN_PAGES.md, Skins): a plug-in's page drawn with its page file's art, else Melodee's own
-    // page for every plug-in.
+    // Plug-in screens: a plug-in's own screen (shell/screen_view.h) and page files' skins (docs/PLUGIN_PAGES.md, Skins);
+    // off, Melodee's own pages for every plug-in. Kept as plugin_skins, its first name.
     bool plugin_skins = true;
     // Note preview (shell/note_preview.h): a note written or moved on Step Edit or Roll without a pad playing it is
     // heard once (a step set in STEPS, a held step's or the marked notes' pitch, a paste).
@@ -156,7 +156,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in skins"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {

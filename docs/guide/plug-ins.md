@@ -94,7 +94,11 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 [Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
 
 **Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
-on Stage (**EDIT**) to see the same parameters there.
+on Stage (**EDIT**) to see the same parameters there. A plug-in that draws its
+own screen shows it on Edit, and on Stage under **B1** between **PRESETS** and
+**EDIT** (**PANEL**); there the encoder, its push and **−** / **+** are the
+plug-in's, and **K1**–**K3** turn the three it names. **SHIFT** + **B3** on
+Edit swaps its screen and Melodee's pages of it.
 
 ![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
 
@@ -115,9 +119,10 @@ on Stage (**EDIT**) to see the same parameters there.
   plug-ins bring their own, and Melodee has one for Neural Amp Modeler. The
   format is in [Plug-in page files](../PLUGIN_PAGES.md).
 - A page file can bring a skin: the maker's own art for the page, with its
-  knobs and sliders turning with the values. Melodee rings the controls
-  **K1**–**K3** turn. Settings > SCREEN > **Plug-in skins** turns skins off
-  for every plug-in.
+  knobs and sliders turning with the values. On the controls **K1**–**K3**
+  turn, a white dot shows where a pot sits until it reaches the value.
+  Settings > SCREEN > **Plug-in screens** turns skins and plug-ins' own
+  screens off for every plug-in.
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
@@ -177,6 +182,11 @@ Push the encoder on a plug-in effect's slot to open its sheet.
 **PRESETS** opens its presets, when it has some. **TRANSPORT** works as on a
 plug-in track's Edit page. A kit pad's own chain and Knob FX take no
 plug-ins.
+
+A plug-in effect that draws its own screen draws everything under the slots,
+and **K1**–**K3** turn the three it names. Push opens its full page (the
+encoder, its push and **−** / **+** are the plug-in's; **B3** or **SHIFT** +
+push goes back), and **SHIFT** + **B3** opens its sheet.
 
 ![A plug-in effect's sheet](../images/screens/rackpluginsheet.png)
 

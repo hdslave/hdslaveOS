@@ -112,12 +112,13 @@ one prefix; a cutoff with a resonance).
 A page file may carry a `skin`: the maker's own art for its pages. Melodee
 draws it from images and data; nothing in the plug-in runs. A skinned page
 takes everything under **B1**–**B3** (320 × 218 pixels). Melodee keeps
-**B1**–**B3**, its MENU, notices and questions, draws the page dots at the top
-right, and draws a ring in the knob's colour round each control **K1**–**K3**
-turn. The ring is faint, with a white dot where the pot sits, until the pot
-reaches the value; it carries the fader and Shift marks too. A page with no
-skin page of its name keeps Melodee's own page. Settings > SCREEN >
-**Plug-in skins** turns every skin off.
+**B1**–**B3**, its MENU, notices and questions and draws the page dots at the
+top right. Each control is drawn once, by the skin: on the controls
+**K1**–**K3** turn Melodee adds only a white dot where the pot sits until it
+reaches the value, the fader mark while the fader drives one, and the Shift
+mark while Shift reaches its second parameter. A page with no skin page of its
+name keeps Melodee's own page. Settings > SCREEN > **Plug-in screens** turns
+every skin off.
 
 An example with its art is in
 [docs/examples/plugin-skin](examples/plugin-skin/): Melodee Poly's FILTER and
@@ -144,8 +145,8 @@ AMP ENV pages.
 - `pages`: a skin page for each page of the file it draws, by the page's
   name. Coordinates are pixels from the area's top left.
 - `background`: a PNG, 320 × 218.
-- `strip`: an effect's skin in a track's FX chain, the area under the chain's
-  row of slots, 320 × 92.
+- `strip`: an effect's skin in a track's FX chain, everything under the
+  chain's row of slots, 320 × 144 (no **K1**–**K3** cards under it).
 - `font`: a TTF or OTF for labels and values; without one, Melodee's.
 - Paths are relative to the page file's folder and stay inside it. Images
   are PNG; a skin's images come to 4 MB at most once decoded (RGBA), or

@@ -10,7 +10,10 @@
 // the three pots hold three of its parameters and Minus / Plus the other row
 // (two dots by its name). Push on a device opens its sheet: change, presets,
 // bypass, move, remove as cards, Bypass lit; the wheel moves, Push does it,
-// B1 back. Push on the plus opens the
+// B1 back. A plug-in that draws its own screen (shell/screen_view.h) draws
+// everything under the slots instead, K1-K3 its three; Push opens its full
+// page (the wheel, Push and Minus / Plus its own, a B key or Shift + Push
+// back), and Shift + B3 opens its sheet (on any device). Push on the plus opens the
 // picker: 41 effects in six families, each with its glyph; Push enters a
 // family, B3 adds, B1 backs out. A bus or the master has no track, so it is
 // drawn in neutral.
@@ -18,6 +21,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 
@@ -139,6 +143,11 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(pill("SLOT " + juce::String(cursor + 1), c));
         keys.glyphs = {}; keys.after = {};
     }
+    if (s.ui.fx_panel && plugin_screen_shown(s)) { // the plug-in's full page under the hub's keys
+        frame_keys(p, s, keys);
+        draw_screen_picture(p, *s.plugin_picture, 0, float(zone::header_y));
+        return;
+    }
     frame(p, s, keys, h);
     if (s.ui.picker_open) { picker(p, s, c); return; }
     fx_strip(p, chain, cursor, c, zone::picture_y + 6);
@@ -198,6 +207,7 @@ void add_from_picker(Context& c) {
 
 void wheel(Context& c, int delta) {
     auto& ui = c.ui;
+    if (ui.fx_panel) { c.plugin_screen_input(ScreenKey::Wheel, delta); return; } // its full page's
     if (ui.picker_open) {
         if (!ui.picker_items) { ui.picker_family = uint8_t(std::clamp<int>(ui.picker_family + delta, 0, int(families(ui.page)) - 1)); return; }
         if (Family(ui.picker_family) == Family::Plugins) return; // one entry
@@ -225,6 +235,8 @@ void push(Context& c) {
     auto& ui = c.ui;
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return;
+    if (ui.fx_panel) { c.plugin_screen_input(ScreenKey::Push, 1); return; } // its full page's
+    if (!ui.picker_open && !ui.sheet_open && plugin_screen_place(c.project, ui).area == 1) { ui.fx_panel = true; return; } // its full page
     const auto& chain = c.project.chain(n);
     unsigned cursor = std::min<unsigned>(ui.fx_cursor[at], chain.count());
     if (ui.picker_open) {
@@ -268,12 +280,29 @@ void soft(Context& c, int key) {
         if (key == 0) ui.sheet_open = false;
         return;
     }
+    if (key == 2 && ui.shift && ui.page != PageId::PadFx) { // Shift + B3: the device's cards, Bypass lit (a plug-in's own page: Push opens that)
+        unsigned n = chain_here(c), cursor = ui.fx_cursor[UiState::cursor_of(n)];
+        const auto& chain = c.project.chain(n);
+        if (cursor < chain.count()) {
+            Actions actions {};
+            unsigned rows = device_actions(ui, chain.slots[cursor], actions);
+            ui.fx_panel = false;
+            ui.sheet_open = true; ui.sheet_row = 0;
+            for (unsigned r = 0; r < rows; ++r) if (actions[r] == Action::Bypass) ui.sheet_row = uint8_t(r);
+        }
+        return;
+    }
+    if (ui.fx_panel) { // its full page: the lit key back to the chain, the others where they go
+        ui.fx_panel = false;
+        if (key == 2) return;
+    }
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain
     mix_soft(c, key); // the MIX hub's row
 }
 
 // Minus / Plus: the device's other row of parameters; a plug-in's rows, one at a time.
 void nudge(Context& c, int way) {
+    if (c.ui.fx_panel) { c.plugin_screen_input(ScreenKey::Step, way); return; } // its full page's
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     const auto& chain = c.project.chain(n);
     unsigned cursor = c.ui.fx_cursor[at];
@@ -305,6 +334,7 @@ bool chain_erase(Context& c) {
     c.set_effect(n, cursor, EffectKind::None);
     if (cursor && cursor >= chain.count()) ui.fx_cursor[at] = uint8_t(cursor - 1); // the last one gone: onto the one before
     ui.sheet_open = false;
+    ui.fx_panel = false;
     ui.fx_row[at] = 0;
     c.notice(name + " removed");
     return true;

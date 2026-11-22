@@ -155,7 +155,18 @@ int main(int argc, char** argv) {
         if (!gain) return 1;
         CHECK(gain->getName() == "Test Gain" && !gain->acceptsMidi() && gain->getTotalNumInputChannels() == 2);
         CHECK(gain->module(0) == "Out" && gain->remotePages().empty()); // no remote-controls
-        CHECK(!gain->hasScreen());
+        CHECK(gain->hasScreen()); // its strip: a frame of the strip's height, its bar half Gain's width
+        std::vector<uint32_t> strip(320 * 144, 0u);
+        melodee_screen_frame_t frame {};
+        frame.pixels = strip.data();
+        frame.width = 320; frame.height = 144; frame.stride = 320;
+        frame.area = MELODEE_SCREEN_STRIP;
+        frame.redraw_all = 1;
+        frame.colour = 0x00ff00u;
+        bool drew = false;
+        CHECK(gain->screenDraw(frame, drew) && drew && strip[150] == 0x00ff00u && strip[170] == 0x101010u && strip[320 * 143] == 0x101010u);
+        std::array<int, 3> knobs {};
+        CHECK(gain->screenControls(knobs) && knobs[0] == 0 && knobs[1] == -1 && knobs[2] == -1);
         gain->prepareToPlay(rate, block);
         CHECK(gain->getLatencySamples() == 32);
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.25f) < 1e-6f); // Gain 1

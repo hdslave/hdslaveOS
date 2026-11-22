@@ -1,6 +1,6 @@
 # Plug-in screens: plan
 
-Status: steps 1-3 built 2026-11-22. All picks made (end of this file); mocks on
+Status: steps 1-4 built 2026-11-22. All picks made (end of this file); mocks on
 the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
@@ -120,6 +120,18 @@ empty track (its page under EDIT, the wheel and K1).
 
 **4. Chain, pages, setting and skins.** Picks 2-5: effects in a chain,
 Melodee's pages one press away, Settings, skins drawn without doubles.
+
+Built: shell/screen_view.h decides which screen is in view, for the shell and
+the pages alike. Stage's B1 has PANEL (core StageKind::PluginScreen) between
+PRESETS and EDIT, passed over for plug-ins without a screen; Edit's
+Shift + B3 swaps the screen and Melodee's pages. An effect with a screen draws
+320 x 144 under the chain's slots with no cards; Push opens its full page
+under the hub's keys (B3 or Shift + Push back) and Shift + B3 opens a slot's
+cards on any effect (Kerem's pick: the cards had been on Push). Settings >
+SCREEN > Plug-in screens covers screens and skins. Skins: no rings, a pickup
+dot and the fader and Shift marks only while they apply, the strip 320 x 144
+with no cards. Checked on the MPC with the CLAP fixture: PANEL, EDIT, the
+strip, the full page with the wheel, B3 back, Shift + B3 cards.
 
 **5. Example and docs.** `sdk/melodee-screen/example`: a small MIT plug-in,
 one source built as CLAP and as VST2 (aarch64, and armv7 for the bridge),

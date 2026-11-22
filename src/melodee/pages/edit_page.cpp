@@ -212,6 +212,13 @@ unsigned page_count(Context& c) { return std::max(edit_page_count(engine_info(c.
 
 void soft(Context& c, int key) {
     if (c.track().engine == EngineKind::Plugin) {
+        if (key == 2 && c.ui.shift) { // Shift + B3: a plug-in's own screen, or Melodee's pages of it, in turn
+            if (c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.has_screen) {
+                c.ui.plugin_own_pages = !c.ui.plugin_own_pages;
+                c.plugin_panel_at = 0; // its cards again at once
+            }
+            return;
+        }
         if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument);
         if (key == 1 && c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(c.track().plugin);
         if (key == 2) c.toggle_plugin_transport(c.track().plugin);
