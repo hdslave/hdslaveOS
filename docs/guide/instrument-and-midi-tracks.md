@@ -6,7 +6,7 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Audio tra
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **PRESETS** (or **PLUG-IN**), **EDIT** |
+| **B1** | **PRESETS** (or **PLUG-IN**), **PANEL** (a plug-in that draws its own screen), **EDIT** |
 | **B2** | **ARP**, **CHORD** |
 | **B3** | **MIX**, **SENDS**, **FX** |
 
@@ -29,6 +29,9 @@ back. The knobs are saved with the track and record as Motion. **ERASE** +
 knob sets one back to off.
 
 ![PRESETS](../images/screens/stagepluginpresets.png)
+
+**PANEL**: the plug-in's own page, when it draws one (see
+[A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)).
 
 **EDIT**: all of the plug-in's parameters, as on the Edit page. Turn the
 encoder or press **−** / **+** to move through them.

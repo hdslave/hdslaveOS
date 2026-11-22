@@ -46,6 +46,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [Plug-in instruments](guide/plug-ins.md#plug-in-instruments)
    - [Drum machine plug-ins](guide/plug-ins.md#drum-machine-plug-ins)
    - [Plug-in effects](guide/plug-ins.md#plug-in-effects)
+   - [A plug-in's own screen](guide/plug-ins.md#a-plug-ins-own-screen)
    - [Neural Amp Modeler](guide/plug-ins.md#neural-amp-modeler)
    - [Plugin Data](guide/plug-ins.md#plugin-data)
    - [Latency and sample rate](guide/plug-ins.md#latency-and-sample-rate)

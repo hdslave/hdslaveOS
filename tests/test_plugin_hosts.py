@@ -55,6 +55,31 @@ class PluginHostTests(unittest.TestCase):
             compile_and_run(self, temp, plugin, "tests/vst2_host.cpp",
                             ["melodee/plugin/vst2_instance.o", "melodee/plugin/vst2_bridge_instance.o"], "vst2 ok")
 
+    def test_screen_example(self):
+        """sdk/melodee-screen/example builds with both entry points, and Melodee draws its page as Edit shows it."""
+        example = ROOT / "sdk/melodee-screen/example"
+        melodee = ROOT / "build/melodee"
+        with tempfile.TemporaryDirectory() as temp:
+            library = Path(temp) / "screen-example.so"
+            subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-O2", "-fPIC", "-shared", "-fvisibility=hidden",
+                            "-Wall", "-Wextra", "-Werror", "-I" + str(example.parent), "-I" + str(ROOT / "build/deps/clap/include"),
+                            str(example / "screen_example.cpp"), "-o", str(library)], check=True)
+            symbols = subprocess.run(["nm", "-D", "--defined-only", str(library)], capture_output=True, text=True, check=True).stdout
+            self.assertIn("clap_entry", symbols)
+            self.assertIn("VSTPluginMain", symbols)
+            if not melodee.is_file():
+                return
+            clap = Path(temp) / "screen-example.clap"
+            shutil.copy(library, clap)
+            for plugin in (clap, library):
+                out = Path(temp) / ("png-" + plugin.suffix[1:])
+                result = subprocess.run([str(melodee), "--melodee-plugin-screen", str(plugin), str(out),
+                                         "wheel:20", "plus", "wheel:-10", "push", "k3:40"],
+                                        capture_output=True, text=True, timeout=60, env={**os.environ, "HOME": temp})
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("written=6", result.stdout)
+                self.assertEqual(len(list(out.glob("*.png"))), 6)
+
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"

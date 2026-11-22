@@ -95,10 +95,8 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 
 **Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
 on Stage (**EDIT**) to see the same parameters there. A plug-in that draws its
-own screen shows it on Edit, and on Stage under **B1** between **PRESETS** and
-**EDIT** (**PANEL**); there the encoder, its push and **−** / **+** are the
-plug-in's, and **K1**–**K3** turn the three it names. **SHIFT** + **B3** on
-Edit swaps its screen and Melodee's pages of it.
+own screen shows that instead (see
+[A plug-in's own screen](#a-plug-ins-own-screen)).
 
 ![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
 
@@ -183,12 +181,36 @@ Push the encoder on a plug-in effect's slot to open its sheet.
 plug-in track's Edit page. A kit pad's own chain and Knob FX take no
 plug-ins.
 
-A plug-in effect that draws its own screen draws everything under the slots,
-and **K1**–**K3** turn the three it names. Push opens its full page (the
-encoder, its push and **−** / **+** are the plug-in's; **B3** or **SHIFT** +
-push goes back), and **SHIFT** + **B3** opens its sheet.
+A plug-in effect that draws its own screen draws under the slots instead (see
+[A plug-in's own screen](#a-plug-ins-own-screen)).
 
 ![A plug-in effect's sheet](../images/screens/rackpluginsheet.png)
+
+## A plug-in's own screen
+
+Some plug-ins draw their own page on the MPC Sample. Melodee keeps **B1**–**B3**
+and draws nothing over the plug-in's knobs: the plug-in shows where a pot sits
+until it reaches its value. **K1**–**K3** turn the three parameters it names.
+
+- **On a plug-in track**: Edit shows the plug-in's page. On Stage, **B1** goes
+  **PRESETS**, **PANEL** (its page), **EDIT** (Melodee's pages of its
+  parameters). On its page the encoder, its push and **−** / **+** are the
+  plug-in's. **SHIFT** + **B3** on Edit swaps its page and Melodee's.
+
+![PANEL: a plug-in's own page](../images/screens/stagepluginpanel.png)
+
+- **As an effect**: on a chain the plug-in draws everything under the slots,
+  with no cards. Push opens its full page; **B3** or **SHIFT** + push goes
+  back. **SHIFT** + **B3** opens the slot's sheet (on any effect).
+
+![A plug-in effect's own strip](../images/screens/rackpluginscreen.png)
+
+![Push: its full page](../images/screens/rackpluginpanel.png)
+
+- Settings > SCREEN > **Plug-in screens** off: Melodee's own pages for every
+  plug-in.
+
+Plug-in makers: [Plug-in screens](../PLUGIN_SCREENS.md).
 
 ## Neural Amp Modeler
 

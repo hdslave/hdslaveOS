@@ -1,6 +1,6 @@
 # Plug-in screens: plan
 
-Status: steps 1-4 built 2026-11-22. All picks made (end of this file); mocks on
+Status: built 2026-11-22/23, steps 1-5. All picks made (end of this file); mocks on
 the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
@@ -137,6 +137,16 @@ strip, the full page with the wheel, B3 back, Shift + B3 cards.
 one source built as CLAP and as VST2 (aarch64, and armv7 for the bridge),
 drawing its own page and strip. docs/PLUGIN_SCREENS.md (MIT): the format
 reference. A guide chapter. Checked on the MPC.
+
+Built: Screen Example, a drive effect (Drive, Tone, Mix) in one C++ file, one
+library with both entry points (named .clap or .so) and an armv7 build; MIT,
+with the header, a LICENSE and a README in sdk/melodee-screen.
+docs/PLUGIN_SCREENS.md opens with what a maker needs: no special build, the
+extension in the plug-in is enough. The guide's Plug-ins chapter has "A
+plug-in's own screen". tests/test_plugin_hosts.py builds the example and
+draws it through --melodee-plugin-screen as CLAP and VST2. On the MPC: its
+strip's meters moving with Melodee Poly's sound on a spare track, its full
+page, and the armv7 build through the bridge in the next slot.
 
 **Later.** VST3: an interface of Melodee's own on the edit controller (JUCE's
 host hands out only the component: a small JUCE change). LV2:
