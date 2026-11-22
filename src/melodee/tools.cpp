@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/vst2_instance.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
@@ -3383,15 +3384,20 @@ static int project_export(bool live, const char* path, const char* folder, const
 }
 
 namespace {
-// A plug-in's own screen (sdk/melodee-screen/melodee_screen.h) for its maker, without an MPC: opens the first plug-in
-// of the CLAP library at `path` as Edit on its PLUGIN track shows it and writes the screen into `folder` as PNGs, 0.png
-// and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
+// A plug-in's own screen (sdk/melodee-screen/melodee_screen.h) for its maker, without an MPC: opens the plug-in at
+// `path` (a CLAP library's first, or a VST2 .so) as Edit on its PLUGIN track shows it and writes the screen into
+// `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
 // k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
 int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps) {
     juce::String error;
-    auto plugin = ClapInstance::load(juce::File(juce::String(path)), 0, 48000.0, 256, error);
+    const juce::File file {juce::String(path)};
+    const bool clap = file.hasFileExtension("clap");
+    std::unique_ptr<juce::AudioPluginInstance> plugin;
+    if (clap) plugin = ClapInstance::load(file, 0, 48000.0, 256, error);
+    else plugin = Vst2Instance::load(file, 48000.0, 256, error);
     if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
-    if (!plugin->hasScreen()) { std::printf("error=no screen (%s)\n", MELODEE_SCREEN_CLAP); return 1; }
+    auto* screen = dynamic_cast<ScreenSource*>(plugin.get());
+    if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
     plugin->prepareToPlay(48000.0, 256);
     std::error_code made;
     std::filesystem::create_directories(folder, made);
@@ -3405,7 +3411,7 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
     plugin_track(*s, PluginStatus::Ready);
     auto& panel = s->ui.plugin_panel;
     std::snprintf(panel.name, sizeof(panel.name), "%s", plugin->getName().toRawUTF8());
-    std::snprintf(panel.format, sizeof(panel.format), "CLAP");
+    std::snprintf(panel.format, sizeof(panel.format), "%s", clap ? "CLAP" : "VST2");
     panel.has_screen = panel.screen = true;
     std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
     melodee_screen_frame_t frame {};
@@ -3426,12 +3432,12 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         buffer.clear();
         juce::MidiBuffer midi;
         plugin->processBlock(buffer, midi);
-        plugin->idle();
+        if (auto* c = dynamic_cast<ClapInstance*>(plugin.get())) c->idle(); // its values read again
     };
     auto shoot = [&] {
         frame.time_ms = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
         bool changed = false;
-        plugin->screenDraw(frame, changed);
+        screen->screenDraw(frame, changed);
         frame.redraw_all = 0;
         auto picture = std::make_shared<ScreenPicture>();
         picture->entry = 0;
@@ -3439,7 +3445,7 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         picture->pixels.resize(canvas.size());
         for (size_t n = 0; n < canvas.size(); ++n) picture->pixels[n] = canvas[n] | 0xff000000u;
         s->plugin_picture = picture;
-        plugin->screenControls(controls);
+        screen->screenControls(controls);
         for (unsigned k = 0; k < 3; ++k) {
             auto& card = panel.params[k];
             card = {};
@@ -3466,7 +3472,7 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         auto send = [&](uint32_t kind, int32_t v) {
             melodee_screen_input_t in {kind, v, frame.shift};
             bool used = false;
-            plugin->screenInput(in, used);
+            screen->screenInput(in, used);
         };
         if (word == "wheel") send(MELODEE_SCREEN_WHEEL, value);
         else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
@@ -3523,7 +3529,7 @@ std::optional<int> run_tool(int argc, char** argv) {
         return error.empty() ? 0 : 1;
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
-    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) // PLUGIN.clap DIR [STEP...]
+    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) // PLUGIN (.clap or VST2 .so) DIR [STEP...]
         return plugin_screen(argv[2], argv[3], std::vector<std::string>(argv + 4, argv + argc));
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-print-spike")) return print_spike(argc, argv);

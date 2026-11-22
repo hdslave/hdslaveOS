@@ -362,7 +362,8 @@ public:
         instance->setPlayHead(&clock);
         idle.reset(is_instrument, this->plugin_rate);
         clap = dynamic_cast<ClapInstance*>(instance.get());
-        has_screen = clap && clap->hasScreen();
+        screen_source = dynamic_cast<ScreenSource*>(instance.get());
+        has_screen = screen_source && screen_source->hasScreen();
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -406,9 +407,9 @@ public:
         auto t0 = std::chrono::steady_clock::now();
         follow_clock(frames);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
-        // MIDI for it wakes it, and so does a CLAP plug-in's own request to be run or a value waiting for it (a pot
-        // turned): else neither reaches it until a note does.
-        const bool waiting = pending_count > 0 || (clap && clap->wantsProcess());
+        // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
+        // its audio side takes) or a value waiting for it (a pot turned): else neither reaches it until a note does.
+        const bool waiting = pending_count > 0 || (screen_source && screen_source->wantsProcess());
         bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
@@ -465,6 +466,7 @@ public:
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
     ClapInstance* clap = nullptr;        // the instance, when it is a CLAP plug-in
+    ScreenSource* screen_source = nullptr; // the instance, when it is one that may draw its own screen (CLAP, VST2)
     const bool instrument;
     const double sample_rate;
     const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)
@@ -1560,17 +1562,18 @@ void PluginRack::screen_run() {
             const auto& e = entries[view.entry];
             if (e.live && e.status == PluginStatus::Ready && e.live->has_screen) h = e.live;
         }
-        if (!h || !h->clap) { wait = missing; continue; }
+        if (!h || !h->screen_source) { wait = missing; continue; }
+        auto* source = h->screen_source;
         if (h != drawn || view.entry != drawn_entry || view.area != drawn_area) {
             drawn = h; drawn_entry = view.entry; drawn_area = view.area;
             whole = owed = ask_controls = true;
         }
-        if (h->clap->takeRedraw()) owed = true;
+        if (source->takeRedraw()) owed = true;
         while (!inputs.empty()) {
             const auto& in = inputs.front().second;
             melodee_screen_input_t raw {uint32_t(in.key), in.value, in.shift ? 1u : 0u};
             bool used = false;
-            if (!h->clap->screenInput(raw, used)) break; // busy: the next tick
+            if (!source->screenInput(raw, used)) break; // busy: the next tick
             inputs.pop_front();
             owed = ask_controls = true;
         }
@@ -1593,7 +1596,7 @@ void PluginRack::screen_run() {
             frame.shift = view.shift ? 1 : 0;
             for (unsigned k = 0; k < 3; ++k) { frame.pots[k] = view.pots[k]; frame.pots_live[k] = view.live[k]; }
             bool changed = false;
-            if (h->clap->screenDraw(frame, changed)) {
+            if (source->screenDraw(frame, changed)) {
                 last = now;
                 owed = false;
                 ask_controls = true;
@@ -1622,7 +1625,7 @@ void PluginRack::screen_run() {
         }
         if (ask_controls) {
             std::array<int, 3> controls {-1, -1, -1};
-            if (h->clap->screenControls(controls)) {
+            if (source->screenControls(controls)) {
                 ask_controls = false;
                 std::lock_guard<std::mutex> held(lock);
                 h->screen_controls = controls;

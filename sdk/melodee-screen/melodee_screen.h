@@ -23,10 +23,11 @@
  * clap_plugin_t*. The host's get_extension(MELODEE_SCREEN_CLAP_HOST) returns a melodee_screen_host_t, `host` being
  * the clap_host_t* the plug-in was given.
  *
- * VST2: the host calls dispatcher(effect, effVendorSpecific = 50, MELODEE_SCREEN_VST2, 0, NULL, 0); the plug-in
- * returns its melodee_screen_t as an intptr_t (0: none), `plugin` being its AEffect*. It finds Melodee by
- * audioMaster(effect, audioMasterCanDo = 37, 0, 0, MELODEE_SCREEN_VST2_CANDO, 0) returning 1, and asks for a
- * redraw with audioMaster(effect, audioMasterVendorSpecific = 35, MELODEE_SCREEN_VST2, flags, NULL, 0).
+ * VST2: the host first calls dispatcher(effect, effCanDo = 51, 0, 0, MELODEE_SCREEN_VST2_CANDO, 0); a plug-in with a
+ * screen answers 1. Only then does it call dispatcher(effect, effVendorSpecific = 50, MELODEE_SCREEN_VST2, 0, NULL, 0),
+ * and the plug-in returns its melodee_screen_t as an intptr_t (0: none), `plugin` being its AEffect*. The plug-in
+ * finds Melodee by audioMaster(effect, audioMasterCanDo = 37, 0, 0, MELODEE_SCREEN_VST2_CANDO, 0) returning 1, and
+ * asks for a draw with audioMaster(effect, audioMasterVendorSpecific = 35, MELODEE_SCREEN_VST2, flags, NULL, 0).
  */
 #ifndef MELODEE_SCREEN_H
 #define MELODEE_SCREEN_H

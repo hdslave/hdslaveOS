@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Melodee's plug-in hosts against fixture plug-ins, linked with the objects
-make built: the CLAP host (tests/clap_host.cpp) and JUCE's LV2 host as the
-rack uses it (tests/lv2_host.cpp). Runs where those objects are: aarch64
+make built: the CLAP host (tests/clap_host.cpp), the VST2 host
+(tests/vst2_host.cpp) and JUCE's LV2 host as the rack uses it
+(tests/lv2_host.cpp). Runs where those objects are: aarch64
 Linux (./build.sh)."""
 import os
 from pathlib import Path
@@ -45,6 +46,13 @@ class PluginHostTests(unittest.TestCase):
             subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
+
+    def test_vst2_host_against_fixture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "Test.so"
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/vst2_fixture.cpp"), "-o", str(plugin)], check=True)
+            compile_and_run(self, temp, plugin, "tests/vst2_host.cpp", ["melodee/plugin/vst2_instance.o"], "vst2 ok")
 
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:

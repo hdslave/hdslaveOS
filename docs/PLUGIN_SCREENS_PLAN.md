@@ -1,6 +1,6 @@
 # Plug-in screens: plan
 
-Status: step 1 built 2026-11-22. All picks made (end of this file); mocks on
+Status: steps 1-2 built 2026-11-22. All picks made (end of this file); mocks on
 the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
@@ -100,6 +100,12 @@ leaving and coming back; then the track undone and the file removed.
 
 **2. VST2.** Vst2Instance: the vendor call, canDo and `redraw`. A VST2 test
 fixture (there is none today) built from vst2_abi.h; tests.
+
+Built: CLAP and VST2 instances share one interface the rack's screen thread
+calls (plugin/screen_source.h). Melodee asks a VST2 plug-in for its table only
+after it answers effCanDo("melodeeScreen") with 1, so one that answers every
+vendor call is never trusted. Its non-audio dispatcher calls now share one
+lock, which the screen calls only try. The preview tool opens VST2 .so files.
 
 **3. The 32-bit bridge.** The second shared block and bridge thread. Checked
 with an armv7 build of the fixture on the MPC.
