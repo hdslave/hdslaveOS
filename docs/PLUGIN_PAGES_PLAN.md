@@ -14,9 +14,9 @@ mocks.html and skins.js draw them; not in Git.
 Scope: level 0 (Melodee's own page, built from what the plug-in already
 reports) and level 1 (a page file a plug-in maker, Melodee or a user writes),
 including a maker's **skin**: its own art, knobs, sliders and font, from data
-files, no plug-in code. Level 2 (the plug-in draws with its own code, for
-animation) gets its own plan later; the skin keeps a `canvas` control kind
-reserved for it.
+files, no plug-in code. Level 2 (the plug-in draws with its own code) has
+its own plan, docs/PLUGIN_SCREENS_PLAN.md; the skin keeps a `canvas` control
+kind reserved for it.
 
 ## Today
 
@@ -265,7 +265,7 @@ Each step builds, passes the host tests and runs on the MPC before the next.
 
 **Later.** The web page's Plug-ins tab lists each loaded plug-in's page source
 and problems, and takes a page file upload into `Melodee/Plugin Pages/`.
-Level 2 canvas plan.
+Level 2: docs/PLUGIN_SCREENS_PLAN.md.
 
 ## PR 34
 
