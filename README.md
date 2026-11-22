@@ -4,7 +4,7 @@
 
 ![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
 
-> **hdslaveOS** (first called melodee-hdslave) is hdslave's fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 and kept up with Melodee since (now v0.6.4), to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners, and a new card starts in HDSLAVE. A CLAP plug-in can draw its own page on the screen (the `com.hdslave.melodee.screen/1` extension, [docs/MELODEE.md](docs/MELODEE.md)), and a sleeping CLAP plug-in wakes when one of its knobs is turned. The master compressor's Sidechain can be keyed by a CLAP plug-in's second output (Foundry's SC Key: its kick alone). Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
+> **hdslaveOS** (first called melodee-hdslave) is hdslave's fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 and kept up with Melodee since (now v0.6.4), to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners, and HDSLAVE is the default on new cards and cards with the legacy NIGHT setting. A CLAP plug-in can draw its own page on the screen (the `com.hdslave.melodee.screen/1` extension, [docs/MELODEE.md](docs/MELODEE.md)), and a sleeping CLAP plug-in wakes when one of its knobs is turned. The master compressor's Sidechain can be keyed by a CLAP plug-in's second output (Foundry's SC Key: its kick alone). Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a
@@ -162,10 +162,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.6.4-hdslave.1 ./build.sh
+MELODEE_VERSION=v0.6.4-hdslave.2 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.6.4-hdslave.1
+python3 tools/package_unsigned.py v0.6.4-hdslave.2
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.

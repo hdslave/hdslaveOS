@@ -107,7 +107,9 @@ Press **Push** or **B3 KEEP** to keep it, or **B1 BACK** to go back to the
 one you had.
 
 Palettes: NIGHT, DAY, CONTRAST, SUNSET, OCEAN, NEON, CANDY, LO-FI, LCD,
-MONO and HDSLAVE (the default on a new card). LCD looks like an old sampler's backlit LCD: dark letters on a
+MONO and HDSLAVE. hdslaveOS starts in HDSLAVE on a new card or when an older
+settings file contains the previous NIGHT default. Choose NIGHT here to keep
+using it. Other saved palettes carry over. LCD looks like an old sampler's backlit LCD: dark letters on a
 grey-green screen, no colour, always in the Melodee Pixel font. MONO is a
 black-and-white dark mode: white and grey on black, no colour, square corners
 and no shadows, in the font you chose. On LCD and MONO every track is drawn in

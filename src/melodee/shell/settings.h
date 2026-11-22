@@ -417,7 +417,8 @@ struct Settings {
         out << "features=" << int(full_features) << "\nlessons=" << int(lessons_done) << "\nusage_log=" << int(usage_log) << "\npad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light) << "\nautosave=" << int(autosave)
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
-            << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
+            << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nhdslave_palette=" << int(palette)
+            << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
             << "\nzero_snap=" << int(zero_snap) << "\nslice_play=" << int(slice_play) << "\nslice_pattern=" << int(slice_pattern) << "\nchop_mode=" << int(chop_mode) << "\nstems_best=" << int(stems_best) << "\npreview=" << int(preview) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow)
@@ -447,6 +448,7 @@ struct Settings {
         std::istringstream in(text);
         std::string line;
         int pickup = -1;          // the old row, read only when the file has none of the new ones
+        int hdslave_palette = -1; // an explicit fork preference takes precedence over the shared Melodee value
         bool takeovers = false;
         bool features = false; // FEATURES: no row, Full
         auto takeover = [&](int value) { takeovers = true; return Takeover(std::clamp(value, 0, int(Takeover::Count) - 1)); };
@@ -471,7 +473,9 @@ struct Settings {
             else if (key == "repeat_pressure") repeat_pressure = value != 0;
             else if (key == "seq_follow") seq_follow = uint8_t(std::clamp(value, 0, 2));
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
-            else if (key == "palette") palette = uint8_t(std::clamp(value, 0, int(ui::palettes.size()) - 1));
+            else if (key == "palette") { // older files also wrote NIGHT (0) when the user had never picked a theme
+                palette = value == 0 ? uint8_t(ui::default_palette) : uint8_t(std::clamp(value, 0, int(ui::palettes.size()) - 1));
+            } else if (key == "hdslave_palette") hdslave_palette = std::clamp(value, 0, int(ui::palettes.size()) - 1);
             else if (key == "font") font = uint8_t(std::clamp(value, 0, int(ui::face_choices) - 1));
             else if (key == "place_bar") place_bottom = value != 0;
             else if (key == "count_in") count_in = value != 0;
@@ -528,6 +532,7 @@ struct Settings {
                     if (!item.empty()) { int s = std::atoi(item.c_str()); if (s >= 0 && unsigned(s) < sounds) favourites[e].set(unsigned(s)); }
             }
         }
+        if (hdslave_palette >= 0) palette = uint8_t(hdslave_palette);
         if (!features) full_features = true; // no row: Full (a first install, or a file with only the project to open)
         if (!takeovers && pickup == 0) knob_takeover = knob_fx_takeover = fader_takeover = Takeover::Instant; // "Knob pickup Off"
     }

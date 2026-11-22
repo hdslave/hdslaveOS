@@ -1095,7 +1095,19 @@ void settings() {
     CHECK(c.palette == ui::default_palette && ui::default_palette == ui::palette_named("HDSLAVE") && ui::default_palette + 1u == ui::palettes.size());
     c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "HDSLAVE");
     { Settings fresh; fresh.read("screen=80\n"); CHECK(fresh.palette == ui::default_palette); } // a settings file without palette=
-    { Settings night; night.read("palette=0\n"); CHECK(night.palette == 0 && night.value_text(Settings::Palette) == "NIGHT"); }
+    { // The shared file on an existing card can carry Melodee's automatic NIGHT along with the user's settings.
+        Settings imported;
+        imported.read("screen=60\npalette=0\n");
+        CHECK(imported.value_text(Settings::Palette) == "HDSLAVE" && imported.screen == 60);
+        imported.read("palette=4\n");
+        CHECK(imported.value_text(Settings::Palette) == "OCEAN");
+        imported.set_choice(Settings::Palette, 0);
+        Settings back;
+        back.read(imported.text());
+        CHECK(back.value_text(Settings::Palette) == "NIGHT");
+        back.read("hdslave_palette=0\npalette=4\n");
+        CHECK(back.value_text(Settings::Palette) == "NIGHT");
+    }
     c.palette = 0;
     c.step(Settings::Palette, -1); CHECK(c.palette == 0 && c.value_text(Settings::Palette) == "NIGHT");
     c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "DAY");
