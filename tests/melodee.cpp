@@ -5,6 +5,7 @@
 #include "melodee/engine/effects.h"
 #include "melodee/model/slice_banks.h"
 #include "melodee/model/slice_hits.h"
+#include "melodee/model/song_steps.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
 #include <fstream>
@@ -11468,6 +11469,71 @@ void sequence_links() {
     }
 }
 
+// An MPC song as Song (model/song_steps.h): the steps end to end, a clip a step on each track with notes in its
+// sequence's pattern, a marker a step, and the tempo lane where the sequences' tempos change.
+void song_steps_mpc() {
+    auto setup = [](Project& p, PatternBank& bank) {
+        synth(p.tracks[0], 0); synth(p.tracks[1], 0); synth(p.tracks[2], 0); // track 3 has no notes anywhere
+        put(bank.at[0][0], 0, 60, 100); put(bank.at[0][1], 0, 60, 100);
+        put(bank.at[1][1], 0, 60, 100); put(bank.at[1][2], 0, 60, 100);
+        p.scenes[1].set_name("Verse");
+        p.tempo = 900;
+        p.pattern_tempo[0] = 900; p.pattern_tempo[1] = 900; p.pattern_tempo[2] = 960;
+        keep_columns(p, bank);
+    };
+    const std::vector<SongStep> steps {{0, 1, 4}, {1, 1, 8}, {2, 2, 8}, {1, 1, 8}};
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.markers[0].bar = 99; p->song.marker_count = 1; // whatever Song held goes
+        CHECK(song_from_steps(*p, *bank, steps, true) == 0);
+        const auto& song = p->song;
+        CHECK(song.count == 6 && song.length() == 36 && !song.looping());
+        CHECK(song.clip_at(0, 0) >= 0 && song.clip_at(1, 0) < 0 && song.clip_at(2, 0) < 0);   // SEQ 1: track 1 alone
+        const auto& verse = song.clips[size_t(song.clip_at(1, 4))];
+        CHECK(verse.pattern == 1 && verse.bar == 4 && verse.bars == 8 && song.clip_at(0, 4) >= 0);
+        const auto& twice = song.clips[size_t(song.clip_at(1, 12))]; // two repeats: one clip of 16 bars
+        CHECK(twice.pattern == 2 && twice.bar == 12 && twice.bars == 16 && song.clip_at(0, 12) < 0 && song.clip_at(1, 27) >= 0);
+        CHECK(song.clip_at(0, 28) >= 0 && song.clip_at(1, 35) >= 0 && song.clip_at(1, 36) < 0);
+        CHECK(song.marker_count == 4 && !std::strcmp(song.markers[0].name, "SEQ 1") && song.markers[1].bar == 4);
+        CHECK(!std::strcmp(song.markers[1].name, "Verse") && !std::strcmp(song.markers[2].name, "SEQ 3") && song.markers[3].bar == 28);
+        CHECK(song.tempo.count == 3 && song.tempo.points[0].bar == 0 && song.tempo.points[0].tempo == 900);
+        CHECK(song.tempo.points[1].bar == 12 && song.tempo.points[1].tempo == 960 && !song.tempo.points[1].ramp);
+        CHECK(song.tempo.points[2].bar == 28 && song.tempo.points[2].tempo == 900);
+        CHECK(int(song.tempo.at(14.0, p->tempo)) == 960);
+    }
+    {   // GBL tempo or Ignore Tempo: no lane. Every sequence at the project's tempo: none either.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        song_from_steps(*p, *bank, steps, false);
+        CHECK(p->song.tempo.empty() && p->song.count == 6);
+        p->pattern_tempo[2] = 900;
+        song_from_steps(*p, *bank, steps, true);
+        CHECK(p->song.tempo.empty());
+    }
+    {   // A track the sequence keeps off gets no clip; one it keeps another pattern for plays that.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->tracks[0].in_scene[1] = scene_off;
+        p->tracks[1].in_scene[0] = 3; // P3 (pattern 2)
+        song_from_steps(*p, *bank, steps, false);
+        CHECK(p->song.clip_at(0, 4) < 0 && p->song.clip_at(1, 0) >= 0 && p->song.clips[size_t(p->song.clip_at(1, 0))].pattern == 2);
+    }
+    {   // Song's room: past 999 bars, or 256 clips, the rest is left out; markers stop at 16.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        CHECK(song_from_steps(*p, *bank, {{1, 1, 128}, {1, 7, 128}, {0, 1, 4}}, false) == 2 && p->song.length() == 128);
+        std::vector<SongStep> many(200, SongStep {1, 1, 1});
+        CHECK(song_from_steps(*p, *bank, many, false) == 72);
+        CHECK(p->song.count == song_clips && p->song.length() == 128 && p->song.marker_count == song_markers);
+        CHECK(song_from_steps(*p, *bank, {}, true) == 0 && !p->song.count && !p->song.marker_count);
+    }
+}
+
 int main() {
     audio_monitor_choice();
     pad_value_erase();
@@ -11488,6 +11554,7 @@ int main() {
     tempo_lane_p5();
     scenes_p5();
     sequence_links();
+    song_steps_mpc();
     banks_f1();
     deep_freeze_f2d();
     midi_tracks_p4();

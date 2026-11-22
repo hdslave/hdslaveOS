@@ -3078,6 +3078,16 @@ static int mpc_import(const char* path) {
     std::printf("name=%s tracks=%u sequences=%u pads=%u notes=%u over_limit=%u missing=%u tempo=%u seq_tempo=%d signature=%u/%u ms=%lld\n", project->name, report.tracks,
                 report.sequences, report.pads, report.notes, report.over_limit, report.missing, project->tempo, project->seq_tempo,
                 project->time_signature().beats, project->time_signature().unit, (long long)ms);
+    for (unsigned n = 0; n < pattern_count; ++n)
+        if (project->scenes[n].name[0]) std::printf("scene %u name=%s\n", n, project->scenes[n].name);
+    const auto& song = project->song; // the MPC song (model/song_steps.h)
+    std::printf("song steps=%u steps_left_out=%u songs_left_out=%u clips=%u markers=%u tempo_points=%u bars=%u\n", report.song_steps,
+                report.steps_left_out, report.songs_left_out, song.count, song.marker_count, song.tempo.count, song.length());
+    for (unsigned n = 0; n < song.count; ++n)
+        std::printf("clip track=%u pattern=%u bar=%u bars=%u\n", song.clips[n].track, song.clips[n].pattern, song.clips[n].bar, song.clips[n].bars);
+    for (unsigned n = 0; n < song.marker_count; ++n) std::printf("marker bar=%u name=%s\n", song.markers[n].bar, song.markers[n].name);
+    for (unsigned n = 0; n < song.tempo.count; ++n)
+        std::printf("tempo bar=%u tempo=%u ramp=%d\n", song.tempo.points[n].bar, song.tempo.points[n].tempo, int(song.tempo.points[n].ramp));
     for (unsigned n = 0; n < sample_slots; ++n) { // each file's chop, from its WAV
         const auto& c = project->chops[n];
         if (!c.used()) continue;

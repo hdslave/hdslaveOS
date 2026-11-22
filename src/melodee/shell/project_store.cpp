@@ -375,7 +375,7 @@ void import_mpc(LoadedProject& l, const std::string& root) {
     l.imported = true;
     l.note = "Opened a copy of " + fs::path(l.path).stem().string();
     if (report.missing) l.note = std::to_string(report.missing) + " samples missing";
-    else if (report.over_limit || report.regions_left_out) l.note += ", some left out";
+    else if (report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out) l.note += ", some left out";
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
     for (const char* tail : project_folders) {

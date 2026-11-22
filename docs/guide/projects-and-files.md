@@ -110,13 +110,27 @@ not changed. **SAVE AS** on the Project page makes a Melodee project
 (`.mldp`) that plays the samples from where they are.
 
 - Each Drum track becomes a kit track. Each sequence becomes that numbered
-  pattern, with its tempo.
+  pattern, with its tempo. A sequence's name becomes its name on
+  **Sequences** (a default name, such as *Sequence 01*, stays blank).
+- The song becomes **Song** (see [Song](song.md)):
+  - Each step becomes a clip on each track that has notes in its sequence.
+    A track with no notes in that sequence gets no clip there.
+  - A clip is as long as the sequence times its repeats. The steps follow
+    one another from bar 1.
+  - Each step has a marker with its sequence's name, or **SEQ** and its
+    number.
+  - When the sequences have their own tempos, the tempo lane changes the
+    tempo where a step's tempo differs from the step before. With one
+    global tempo, or **Ignore Tempo** on, the song has no tempo lane.
+  - Melodee has one song. When the project has more than one song with
+    steps, the first opens. The message after loading says when something
+    was left out.
 - MPC 3 projects open the same way. Their Keygroup tracks become keygroup
   tracks, and their Audio tracks become audio tracks (see
   [Audio tracks](audio-tracks.md)).
 - Carried over: pad regions, tune, volume, pan, play type, mono, mute
   group, envelope, loop, Warp, filter, and pads with several layers.
-- Not carried over: Pad FX, insert effects, sends and songs.
+- Not carried over: Pad FX, insert effects and sends.
 
 ## SD card access
 
