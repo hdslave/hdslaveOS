@@ -3590,8 +3590,7 @@ void performance_effects() {
         SampleData tone;
         tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
         for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.05) * 0.8);
-        auto hit = [&](bool keyed, bool a01, bool a02) {
-            EngineHost host;
+        auto setup = [&](EngineHost& host, bool keyed) {
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3600,6 +3599,10 @@ void performance_effects() {
             host.send({Command::Type::Compressor, 0, 0, 8, 0});
             host.send({Command::Type::Compressor, 0, 0, 6, 1});
             host.send({Command::Type::Compressor, 0, 0, 0, int16_t(keyed)});
+        };
+        auto hit = [&](bool keyed, bool a01, bool a02) {
+            EngineHost host;
+            setup(host, keyed);
             if (a01) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 0), 110});
             if (a02) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 1), 110});
             std::vector<int32_t> out(256);
@@ -3615,6 +3618,35 @@ void performance_effects() {
         CHECK(a_dry.first > 0 && a_keyed.second > 3 && std::fabs(a_keyed.first - a_dry.first) < a_dry.first * 0.01); // the key pad untouched
         CHECK(b_keyed.second == 0 && std::fabs(b_keyed.first - b_dry.first) < b_dry.first * 0.01);                   // no key, no change
         CHECK(both_keyed.first < both_dry.first - b_dry.first * 0.5);                                                // A02 ducks
+
+        // A01 is a sustained kick. Mute its track mid-hit, hit it again while muted, then unmute
+        // while the sample is still playing. A tone on another track keeps the master audible.
+        auto mute_cycle = [&](bool keyed) {
+            EngineHost host;
+            setup(host, keyed);
+            host.send({Command::Type::NoteOn, 0, 0, 69, 110});
+            const Command kick {Command::Type::NoteOn, 1, 0, sampler_first_note, 110};
+            std::array<int32_t, 256> out {};
+            auto render = [&](unsigned blocks) {
+                for (unsigned n = 0; n < blocks; ++n) host.render(out.data(), 128, 1);
+            };
+            host.send(kick);
+            render(24);
+            if (keyed) CHECK(host.compression() > 3);
+            host.send({Command::Type::Mute, 1, 0, 0, 1});
+            render(100); // let the compressor release
+            host.send(kick);
+            render(24);
+            CHECK(host.compression() == 0);
+            double muted_energy = 0;
+            for (auto v : out) muted_energy += double(v) * v;
+            host.send({Command::Type::Mute, 1, 0, 0, 0});
+            render(24);
+            if (keyed) CHECK(host.compression() > 3);
+            return muted_energy;
+        };
+        double muted_dry = mute_cycle(false), muted_keyed = mute_cycle(true);
+        CHECK(muted_dry > 0 && std::fabs(muted_keyed - muted_dry) < muted_dry * 0.0001);
     }
     // The page's picture: the compressor hands over its peaks, the trail keeps a column every 33 ms whatever the frame rate.
     {

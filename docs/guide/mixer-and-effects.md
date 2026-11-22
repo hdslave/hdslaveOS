@@ -242,7 +242,8 @@ Press **SHIFT** + **Pad 5** for the master compressor.
 - **B1** Sidechain, **B2** Color, **B3** Bypass.
 - With Sidechain on, the pads select the track that triggers the
   compressor. On a kit, push the encoder to select a single pad (for example
-  the kick).
+  the kick). Muting the kit track also mutes that pad’s sidechain send. The
+  compressor releases normally. Unmute the track to hear the kick trigger it again.
 - A plug-in track whose plug-in has a second output, a side-chain key (a
   drum machine's **SC Key**: its kick alone), triggers the compressor from
   that output instead of the whole track. The header shows **SC** beside the

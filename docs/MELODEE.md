@@ -1994,9 +1994,10 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   main output (delay compensation as for a key pad, less the plug-in's own
   latency), never heard itself, while the track stays aside whole, as a key
   track does; the header's tag reads "6 SC Foundry". Not through a rate
-  converter, nor while the track sleeps frozen (its print keys). The key's
-  sound after its chain, muted or not, drives the detector,
-  and the rest of the mix (other tracks, the Looper, the bus returns, Knob
+  converter, nor while the track sleeps frozen (its print keys). A selected
+  kit pad follows its track mute into the detector. Whole-track keys and
+  plug-in key ports can drive the detector while their track is muted.
+  The rest of the mix (other tracks, the Looper, the bus returns, Knob
   FX) ducks under it before the master chain, with no makeup; the key
   passes untouched, In Boost drives the detector alone, and Color stays on
   the master. The picture is one bar of the song, beats numbered under it:
