@@ -1,10 +1,57 @@
 <h1 align="center">hdslaveOS</h1>
 
-<p align="center">A 16-track groovebox for the Akai MPC Sample: hdslave's fork of Melodee by Kerem Kiliç (Ellic Studio)</p>
+<p align="center"><strong>A performance-tuned 16-track groovebox OS for the Akai MPC Sample</strong><br>
+hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.6.4.</p>
 
-![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
+<p align="center">
+  <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE dark purple flare theme across Palette, Tracks, Step Edit, and Audio settings" width="760">
+</p>
 
-> **hdslaveOS** (first called melodee-hdslave) is hdslave's fork of [Melodee](https://github.com/keremimo/melodee-sample) by Kerem Kiliç (Ellic Studio), made from v0.5.1 and kept up with Melodee since (now v0.6.4), to give the MPC Sample's processor less to do, so more of it is left for the sound and the battery lasts longer. It removes wasted work and adds four settings (CPU speed, Refresh, Dim after, Pad brightness). The processor runs at its full speed unless you pick a lower **CPU speed** yourself, and Melodee plays the same, to the bit. Settings › SCREEN › Palette adds **MONO**, a black-and-white dark mode, and **HDSLAVE**, a static purple flare on black. Both use square corners, and HDSLAVE is the default on new cards and cards with the legacy NIGHT setting. A CLAP plug-in can draw its own page on the screen (the `com.hdslave.melodee.screen/1` extension, [docs/MELODEE.md](docs/MELODEE.md)), and a sleeping CLAP plug-in wakes when one of its knobs is turned. The master compressor's Sidechain can be keyed by a CLAP plug-in's second output (Foundry's SC Key: its kick alone). Two things work differently for the hands: on Step Edit, **SHIFT** + encoder moves the caret a bar at a time, and a kit pad given one of the 16 colours lights more strongly coloured than before. [optimization.md](optimization.md) lists what was found and what was changed, and what has not been tested on a device.
+## What hdslaveOS adds over stock Melodee
+
+**hdslaveOS** (originally `melodee-hdslave`) cuts wasted CPU and display work on the Akai MPC Sample so more headroom goes to your synths and effects and the battery lasts longer — while playing back bit-identical audio to stock Melodee.
+
+- **Performance & power controls**: Removes idle/redundant work across the engine and UI, and adds four hardware settings — **CPU speed** (runs at full speed unless you step it down yourself), **Refresh**, **Dim after**, and **Pad brightness**. See [optimization.md](optimization.md) for the full breakdown.
+- **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
+- **Custom CLAP plug-in screens (`com.hdslave.melodee.screen/1`)**: CLAP instruments and effects can draw their own animated, interactive pages directly on the MPC Sample's display (documented in [docs/MELODEE.md](docs/MELODEE.md)), and sleeping CLAP plug-ins wake automatically as soon as you turn a knob.
+- **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
+- **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time; kit pads assigned any of the 16 colours light more vividly; and a custom **hdslave intro** boot film replaces the default splash.
+
+### Palettes & Custom Plug-in Screens
+
+<p align="center">
+  <img src="docs/images/hdslave-mono-theme.png" alt="hdslaveOS MONO black-and-white dark palette across 16 screens" width="760">
+  <br><sub><b>MONO</b> — high-contrast black-and-white dark palette across 16 pages.</sub>
+</p>
+
+All eleven plug-ins in the [hdslave MPC Sample Synths & Drum Machines](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines) collection use the `hdslaveOS` screen extension to render bespoke hardware-inspired interfaces right on the MPC Sample:
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine"><img src="docs/images/plugins/foundry.gif" alt="Foundry drum machine interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine">Foundry</a></b> — 16-voice 808/909/606 drum machine
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Cortex-Filter"><img src="docs/images/plugins/cortex-filter.gif" alt="Cortex Filter 3D morphing filter interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Cortex-Filter">Cortex Filter</a></b> — 3D Z-plane morphing filter cube
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — chord-progression &amp; Motion pad synth
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Necronomicon-Synth"><img src="docs/images/plugins/necronomicon.gif" alt="Necronomicon polyrhythmic subharmonic synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Necronomicon-Synth">Necronomicon</a></b> — polyrhythmic subharmonic synth
+    </td>
+  </tr>
+</table>
+
+<p align="center">See all 11 animated plug-in interfaces in the <a href="https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines"><b>hdslave MPC Sample Synths &amp; Drum Machines</b></a> hub.</p>
+
+## About Melodee
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a
