@@ -1364,8 +1364,8 @@ void button_remap() {
         j.menu = menu_closed; j.copying = UiState::Copying::Tracks; CHECK(job().empty()); // a move's prompt has the header
     }
     // Sequences first (shell/sequences.h): Seq held's pads are the track's patterns, the sequences with Shift held;
-    // a launch takes every used track; an empty pattern takes the sequence's length; a track on another number has
-    // a pattern of its own.
+    // a launch takes every used track; an empty kept pattern takes the sequence's length; a track off what the
+    // sequence in hand keeps for it is marked.
     {
         UiState q; q.track = 0; q.page = PageId::Stage;
         CHECK(!sequences_on_pads(q));
@@ -1381,12 +1381,20 @@ void button_remap() {
         Track used = project->tracks[0]; // a track with a sound
         CHECK(used.used() && sequence_takes(used) && !sequence_takes(Track {}));
         p->tracks[0] = used; p->tracks[1] = used; p->tracks[2] = used;
+        p->scene = 3;
+        for (unsigned t = 0; t < 3; ++t) p->tracks[t].in_scene[3] = 4; // SEQ 4 keeps P4 on each
         p->tracks[0].pattern = 3; p->tracks[1].pattern = 3; p->tracks[2].pattern = 5;
         CHECK(sequence_in_view(*p, q) == 3 && !own_pattern(*p, q, 0) && !own_pattern(*p, q, 1) && own_pattern(*p, q, 2) && !own_pattern(*p, q, 7));
         int first = -1;
         CHECK(own_patterns(*p, q, first) == 1 && first == 2);
         p->tracks[2].pattern = 3; CHECK(own_patterns(*p, q, first) == 0 && first == -1);
-        // The length: the selected track's pattern there, else the longest with notes in the column, else the fallback.
+        p->tracks[1].pattern = 9; p->tracks[1].in_scene[3] = 0; CHECK(!own_pattern(*p, q, 1)); // it keeps nothing: plays on
+        p->tracks[0].off = true; CHECK(own_pattern(*p, q, 0));                                   // off where it keeps P4
+        p->tracks[0].in_scene[3] = scene_off; CHECK(!own_pattern(*p, q, 0));                      // kept off
+        p->tracks[0].off = false; CHECK(own_pattern(*p, q, 0));                                   // playing where it keeps off
+        p->tracks[0].in_scene[3] = 4; p->tracks[1].in_scene[3] = 4; p->tracks[1].pattern = 3;
+        // The length: the selected track's kept pattern, else the longest kept with notes, else the fallback.
+        for (unsigned t = 0; t < 3; ++t) p->tracks[t].in_scene[4] = 5; // SEQ 5 keeps P5 on each
         CHECK(sequence_length(*p, *b, 0, 4, 1920) == 1920);
         b->at[1][4].length = 960; b->at[1][4].add({0, 60, 100, 120});
         b->at[2][4].length = 3840; b->at[2][4].add({0, 62, 100, 120});
@@ -7546,9 +7554,9 @@ void pad_lights() {
     ui.page = PageId::Song; project->song.clips[0].track = 0; project->song.clips[0].bars = 2; project->song.count = 1; light({});
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 3) && is(5, Hue::Track, 1));
 
-    // Seq held: the sequences, white (shell/sequences.h): the one every track with notes there plays Full, one with
-    // notes on a track Faint, empty dark. On Patterns the selected track's patterns: the one in play Full, with
-    // notes Dim; + Erase red; + Shift a column; a copy.
+    // Seq held: the sequences, white (shell/sequences.h): the one in hand Full, one keeping notes on a track Faint,
+    // one keeping nothing dark. On Patterns the selected track's patterns: the one in play Full, with notes Dim;
+    // + Erase red; + Shift the sequences; a copy.
     auto& p = bank->at[1][0];
     put(p, 0, uint8_t(sampler_first_note + 1), 127);
     put(p, 2, uint8_t(sampler_first_note), 100);
@@ -7560,8 +7568,9 @@ void pad_lights() {
     ui.page = PageId::Stage;
     ui.erase = true; light(plays);
     CHECK(is(0, Hue::Red, 3) && is(2, Hue::Red, 2) && is(5, Hue::None, 0));
+    project->tracks[1].in_scene[0] = 1; project->tracks[1].in_scene[2] = 3; // SEQ 1 (in hand) keeps P1, SEQ 3 P3
     ui.erase = false; ui.shift = true; light(plays);
-    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 1));
+    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 1) && is(1, Hue::None, 0));
     ui.shift = false; ui.copying = UiState::Copying::Patterns; ui.copy_from = 0; ui.copy_track = 1; light(plays);
     CHECK(is(0, Hue::White, 4) && is(2, Hue::Red, 1) && is(3, Hue::Track, 1));
     ui.copying = UiState::Copying::Off; ui.copy_from = -1; ui.seq_held = false;
@@ -10077,9 +10086,9 @@ void scenes_p5() {
               cards[1].value == 66 && cards[2].kind == Binding::Kind::FollowChance && cards[2].value == 75);
         auto shifted = shift_bindings(*project, ui, p);
         CHECK(shifted[0].kind == Binding::Kind::FollowOther && shifted[0].value == int(FA::Previous) && !shifted[1].bound());
-        // SCENE (Shift + B1): K1 the tempo of the scene in view, the selected track's pattern's column; the pattern's cards
-        // again on PATTERNS.
-        ui.patterns_cards = 1; project->tracks[1].pattern = 19; project->scenes[19].tempo = 1284;
+        // SEQUENCE (Shift + B1): K1 the tempo of the sequence in hand, whatever pattern the track is on; the pattern's
+        // cards again on PATTERNS.
+        ui.patterns_cards = 1; project->tracks[1].pattern = 4; project->scene = 19; project->scenes[19].tempo = 1284;
         auto scene = base_bindings(*project, ui, p);
         CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128);
         CHECK(scene[1].kind == Binding::Kind::SceneColour && scene[1].id == 19 && scene[1].value == 0 && scene[1].max == 16 && !scene[2].bound());
@@ -10636,20 +10645,26 @@ void free_length() {
         CHECK(p.events[0].tick == 0 && p.events[1].tick == 10 && p.events[1].key == 64 && p.events[2].tick == 2 * bar);
         CHECK(p.motion.size() == 2 && p.motion[0].tick == 12 && p.motion[1].tick == bar);
     }
-    {   // The sequence: the longest pattern with notes on another used track, and that track.
+    {   // What plays with it: the longest pattern with notes another used track is on (not off), and that track.
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         synth(project->tracks[0], 0); synth(project->tracks[1], 0); synth(project->tracks[2], 0);
-        CHECK(column_fit(*project, *bank, 0, 3).length == 0 && column_fit(*project, *bank, 0, 3).track == -1);
+        for (unsigned t = 0; t < track_count; ++t) project->tracks[t].pattern = 3;
+        CHECK(column_fit(*project, *bank, 0).length == 0 && column_fit(*project, *bank, 0).track == -1);
         bank->at[0][3].add(note(0, 60)); // its own notes do not count
-        CHECK(column_fit(*project, *bank, 0, 3).length == 0);
+        CHECK(column_fit(*project, *bank, 0).length == 0);
         bank->at[1][3].length = 2 * bar; bank->at[1][3].add(note(0, 60));
         bank->at[2][3].length = 4 * bar; bank->at[2][3].add(note(0, 60));
-        auto fit = column_fit(*project, *bank, 0, 3);
+        auto fit = column_fit(*project, *bank, 0);
         CHECK(fit.length == 4 * bar && fit.track == 2);
         bank->at[5][3].length = 8 * bar; bank->at[5][3].add(note(0, 60)); // an unused track's pattern does not count
-        CHECK(column_fit(*project, *bank, 0, 3).length == 4 * bar);
-        CHECK(column_fit(*project, *bank, 0, 4).length == 0);
+        CHECK(column_fit(*project, *bank, 0).length == 4 * bar);
+        project->tracks[2].off = true; CHECK(column_fit(*project, *bank, 0).length == 2 * bar); // an off track does not count
+        project->tracks[2].off = false;
+        project->tracks[2].pattern = 7; bank->at[2][7].length = 6 * bar; bank->at[2][7].add(note(0, 60)); // another number counts
+        CHECK(column_fit(*project, *bank, 0).length == 6 * bar && column_fit(*project, *bank, 0).track == 2);
+        project->tracks[1].pattern = 4; project->tracks[2].pattern = 4;
+        CHECK(column_fit(*project, *bank, 0).length == 0);
         // K1: Free below 1 bar on an empty pattern of an empty sequence; a Free pattern shows the sequence's length.
         UiState ui;
         Pattern empty;
@@ -11310,6 +11325,149 @@ void mpc_chop_hits() {
     CHECK(mpc_slice_hit(true, -0.1, false) == 0 && mpc_slice_hit(true, std::nan(""), false) == 0);
 }
 
+// Sequence links (model/scene_links.h): a pick kept in the sequence in hand fills what the others are on; a sequence
+// keeping nothing plays on; off; the file keeps them, a file from before them plays its columns; prints do not see
+// them; the engine's off waits for the bar and holds through Play.
+void sequence_links() {
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0); synth(p->tracks[2], 0); // track 4 unused
+        CHECK(!scene_kept(*p, 0) && scene_target(p->tracks[0], 0) == scene_plays_on);
+        // The first pick in SEQ 1: every used track keeps what it is on (P1), the picked one P3.
+        CHECK(keep_pick(*p, 0, 1, 2, 0));
+        CHECK(scene_kept(*p, 0) && p->tracks[0].in_scene[0] == 1 && p->tracks[1].in_scene[0] == 3 && p->tracks[2].in_scene[0] == 1);
+        CHECK(p->tracks[3].in_scene[0] == 0 && scene_target(p->tracks[1], 0) == 2);
+        // A second pick changes that track alone.
+        p->tracks[0].pattern = 7;
+        CHECK(!keep_pick(*p, 0, 2, 4, 0));
+        CHECK(p->tracks[0].in_scene[0] == 1 && p->tracks[2].in_scene[0] == 5);
+        // SEQ 2: a track off and one a follow action stopped are kept off.
+        p->tracks[0].off = true;
+        CHECK(keep_pick(*p, 1, 1, 6, 1u << 2));
+        CHECK(p->tracks[0].in_scene[1] == scene_off && p->tracks[2].in_scene[1] == scene_off && p->tracks[1].in_scene[1] == 7);
+        CHECK(scene_target(p->tracks[0], 1) == scene_stops && scene_now(*p, 0, 0) == scene_stops && scene_now(*p, 1, 0) == 0);
+        // Off picked: kept off.
+        p->tracks[0].off = false;
+        keep_pick(*p, 0, 0, scene_stops, 0);
+        CHECK(scene_target(p->tracks[0], 0) == scene_stops);
+        // Exports: the kept pattern, nothing where off, pattern n where nothing is kept.
+        CHECK(export_pattern(*p, 1, 0) == 2 && export_pattern(*p, 0, 0) == -1 && export_pattern(*p, 0, 5) == 5);
+        // Which sequences keep a pattern.
+        unsigned out[2] {};
+        CHECK(scenes_keeping(p->tracks[1], 2, out, 2) == 1 && out[0] == 0);
+        p->tracks[1].in_scene[9] = 3; p->tracks[1].in_scene[20] = 3;
+        CHECK(scenes_keeping(p->tracks[1], 2, out, 2) == 3 && out[0] == 0 && out[1] == 9);
+        // How many play notes there.
+        put(bank->at[1][2], 0, 60, 100);
+        CHECK(scene_with(*p, *bank, 0) == 1 && scene_with(*p, *bank, 3) == 0);
+        // CAPTURE keeps what every used track is on; ERASE keeps nothing.
+        p->tracks[2].pattern = 11;
+        CHECK(keep_all(*p, 6, 0) == 3 && p->tracks[0].in_scene[6] == 8 && p->tracks[2].in_scene[6] == 12 && p->tracks[3].in_scene[6] == 0);
+        forget_scene(*p, 6);
+        CHECK(!scene_kept(*p, 6));
+    }
+    {   // Before links (and from the MPC): a scene with notes on a used track's pattern n, or a name, tempo or colour,
+        // keeps pattern n on every used track; the rest keep nothing.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0);
+        put(bank->at[0][2], 0, 60, 100);
+        p->scenes[4].set_name("BREAK");
+        put(bank->at[5][7], 0, 60, 100); // an unused track's notes do not count
+        keep_columns(*p, *bank);
+        CHECK(p->tracks[0].in_scene[2] == 3 && p->tracks[1].in_scene[2] == 3 && p->tracks[5].in_scene[2] == 0);
+        CHECK(p->tracks[0].in_scene[4] == 5 && p->tracks[1].in_scene[4] == 5);
+        CHECK(!scene_kept(*p, 3) && !scene_kept(*p, 7));
+    }
+    {   // The file: kept patterns, off and the sequence in hand come back; a file without SEQL loads its columns.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0);
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[1][3], 0, 60, 100);
+        p->tracks[0].in_scene[2] = 1; p->tracks[1].in_scene[2] = 4; p->tracks[1].in_scene[5] = scene_off;
+        p->tracks[1].off = true; p->scene = 5;
+        auto bytes = save_project(*p, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty());
+        CHECK(back->scene == 5 && back->tracks[1].off && !back->tracks[0].off);
+        CHECK(back->tracks[0].in_scene == p->tracks[0].in_scene && back->tracks[1].in_scene == p->tracks[1].in_scene);
+        CHECK(!scene_kept(*back, 0) && !scene_kept(*back, 3)); // new sequences stay new: no columns
+        // Without SEQL (an older file): its columns, scene 1 (notes on track 1) and 4 (notes on track 2).
+        std::vector<uint8_t> old(bytes.begin(), bytes.begin() + 8);
+        for (size_t at = 8; at + 8 <= bytes.size();) {
+            size_t size = size_t(bytes[at + 4]) | size_t(bytes[at + 5]) << 8 | size_t(bytes[at + 6]) << 16 | size_t(bytes[at + 7]) << 24;
+            if (std::memcmp(bytes.data() + at, "SEQL", 4) != 0) old.insert(old.end(), bytes.begin() + long(at), bytes.begin() + long(at + 8 + size));
+            at += 8 + size;
+        }
+        CHECK(old.size() < bytes.size());
+        CHECK(load_project(old, *back, *back_bank).empty());
+        CHECK(back->scene == 0 && !back->tracks[1].off);
+        CHECK(back->tracks[0].in_scene[0] == 1 && back->tracks[1].in_scene[0] == 1 && back->tracks[0].in_scene[3] == 4);
+        CHECK(!scene_kept(*back, 2) && !scene_kept(*back, 5));
+        // A print's hash does not see them (prints made before links stay good).
+        std::array<std::vector<uint8_t>, max_plugins> states;
+        const uint64_t with = print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000);
+        for (auto& t : p->tracks) { t.in_scene = {}; t.off = false; }
+        p->scene = 0;
+        CHECK(print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000) == with);
+    }
+    {   // The engine: off stops the track on the next bar, holds through Stop and Play, and a launch ends it.
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 8, 60, 100); // two notes a bar
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        host->set_audio_format(44100, 384);
+        std::vector<int32_t> buffer(256);
+        auto play = [&](unsigned blocks) { // the notes on in these blocks
+            unsigned ons = 0;
+            for (unsigned b = 0; b < blocks; ++b) {
+                host->render(buffer.data(), 128, 1);
+                MidiOutEvent e;
+                while (host->take_midi(e)) ons += e.kind == MidiOutEvent::Kind::NoteOn;
+            }
+            return ons;
+        };
+        const unsigned bar = 690; // blocks of 128 frames in a bar at 120 BPM (88200 frames)
+        host->send({Command::Type::Play});
+        CHECK(play(bar / 4) == 1);
+        host->send({Command::Type::Pattern, 0, 0, 0, -1}); // off: the rest of this bar still plays
+        CHECK(play(bar / 2) == 1 && !(host->stopped_tracks() & 1));
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1) && host->position_of(0) < 0);
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1)); // still off after Play (a follow action's STOP is not)
+        host->send({Command::Type::Pattern, 0, 0, 0, 0}); // a launch: back on the next bar
+        CHECK(play(2 * bar) >= 2 && !(host->stopped_tracks() & 1));
+        // Off while stopped, and off as the project has it: silent from Play.
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Pattern, 0, 0, 0, -1});
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0);
+        host->send({Command::Type::Stop});
+        play(10);
+        project->tracks[0].off = true;
+        host->load(*project, *bank);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1));
+        // A launch waiting for its bar when the transport stops ends off too.
+        host->send({Command::Type::Pattern, 0, 0, 0, 0});
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 1 && !(host->stopped_tracks() & 1));
+    }
+}
+
 int main() {
     audio_monitor_choice();
     pad_value_erase();
@@ -11329,6 +11487,7 @@ int main() {
     pad_colours();
     tempo_lane_p5();
     scenes_p5();
+    sequence_links();
     banks_f1();
     deep_freeze_f2d();
     midi_tracks_p4();

@@ -163,20 +163,22 @@ To chop a sample into slices, press **CHOP**. See [Chop](guide/kits-and-sampling
 
 1. Press **SEQ** to open **Sequences**. If Patterns, Roll or Motion opens
    instead, press **B1** (**SEQUENCES**). The bank's 16 sequences are laid out as
-   the pads: pad 1 bottom left. A sequence is one number on every track:
-   sequence 1 is pattern 1 of each track.
+   the pads: pad 1 bottom left. A sequence keeps one pattern for each
+   track.
 2. Hold **SEQ** and use **K1** to set the pattern length in bars and **K2**
    the grid (Q) of the selected track's pattern. **K3** sets the swing of
    the project.
 3. To change to another sequence, press its pad. Pad 1 is sequence 1. Every
-   track goes to that number, and a track with no notes there is silent. On
-   other pages, hold **SEQ** and press **SHIFT** + a pad.
+   track goes to the pattern that sequence keeps. A new sequence keeps
+   nothing: the tracks play on until you launch a pattern. On other pages,
+   hold **SEQ** and press **SHIFT** + a pad.
 
    ![Sequences](images/screens/scenes.png)
 
-   To put one track on a pattern of its own, press **B1** again for
+   To put one track on another pattern, press **B1** again for
    **Patterns**. Its pads are the selected track's patterns. On any page,
-   hold **SEQ** and press a pad for the same.
+   hold **SEQ** and press a pad for the same. The sequence you are on keeps
+   the pattern you launch.
 
 4. Press **SEQ RECORD**. The button flashes and the screen shows that
    recording is armed.

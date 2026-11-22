@@ -141,6 +141,14 @@ struct PluginSwap {
     std::vector<uint8_t> state_before, state_after;
 };
 
+// A sequence: its name, tempo and colour, and what it keeps for each track (model/scene_links.h): CAPTURE and ERASE
+// on Sequences.
+struct SceneState {
+    uint8_t index = 0;
+    Scene scene;
+    std::array<uint8_t, track_count> kept {};
+};
+
 struct Edit {
     std::string what;             // shown on undo and redo: "Delete A01"
     uint32_t at = 0;              // when it was kept (History::clock, ms): the undo list's "2 min"
@@ -173,6 +181,7 @@ struct Edit {
     std::unique_ptr<ChopState> chop_before, chop_after;
     std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo
     std::unique_ptr<PluginSwap> plugin; // a plug-in replaced (its track's name and pads in track_before / after)
+    std::unique_ptr<SceneState> scene_before, scene_after; // a sequence kept or cleared
 };
 
 class History {

@@ -67,7 +67,7 @@ inline HistoryKind history_kind(const Edit& e) {
     if (e.chop_before) return HistoryKind::Chop;
     if (e.song_before) return HistoryKind::Song;
     if (e.tempo_before) return HistoryKind::Tempo;
-    if (e.pattern >= 0 || e.column >= 0 || !e.patterns_before.empty()) return HistoryKind::Pattern;
+    if (e.pattern >= 0 || e.column >= 0 || !e.patterns_before.empty() || e.scene_before) return HistoryKind::Pattern;
     if (e.pad >= 0 || !e.pads_before.empty()) return HistoryKind::Pad;
     if (e.chain >= 0 || e.master_before) return HistoryKind::Effects;
     if (e.mix_before) return HistoryKind::Mix;

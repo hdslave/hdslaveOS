@@ -329,26 +329,29 @@ Look tracks_look(const PadScene& s, unsigned pad) {
     float m = meter(s, pad);
     return t.mix.solo ? white(between(dim, mid, m)) : track(pad, between(dim, mid, m));
 }
-// ---- SCENES (roadmap P5): a pad a scene, the column of patterns it launches. The one playing (every track with notes
-// there playing it) bright, one waiting for its bar blinking, the rest as many tracks as hold notes there; Erase held:
-// the scenes with a name, tempo or colour to clear. A scene with a colour (issue 19) lights in it, else white.
+// ---- SCENES (roadmap P5): a pad a sequence (model/scene_links.h). The one in hand bright, blinking while its launch
+// waits for the bar; the rest as many tracks as play notes there, a sequence keeping only silence faint, one keeping
+// nothing dark (unless it has a name, tempo or colour); Erase held: the sequences there are to clear. A sequence with a
+// colour (issue 19) lights in it, else white.
 Look scenes_look(const PadScene& s, unsigned pad) {
-    unsigned n = s.ui.pad_pattern(pad), with = 0, on = 0, waiting = 0; // the bank in view's
+    unsigned n = s.ui.pad_pattern(pad), with = 0, waiting = 0; // the bank in view's
     const unsigned hue = s.project.scenes[n].colour;
     auto lit = [hue](float level) { return hue ? track(hue - 1, level) : white(level); };
-    bool rolling = s.host.playing();
+    const bool rolling = s.host.playing(), hand = n == s.project.scene % pattern_count;
+    bool kept = false;
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = s.project.tracks[t];
-        if (!tr.used() || s.patterns.at[t][n].empty()) continue;
-        ++with;
-        bool live = rolling ? s.host.pattern_of(t) == n && !(s.host.stopped_tracks() >> t & 1) : tr.pattern == n;
-        on += live;
-        waiting += rolling && !live && tr.pattern == n;
+        const int target = tr.used() ? scene_target(tr, n) : scene_plays_on;
+        kept |= target != scene_plays_on;
+        if (target < 0) continue;
+        with += !s.patterns.at[t][unsigned(target)].empty();
+        waiting += hand && rolling && !tr.off && tr.pattern == unsigned(target) && int(s.host.pattern_of(t)) != target;
     }
-    if (s.ui.erase) return s.project.scenes[n].plain() ? Look {} : red(dim);
-    if (with && on == with) return lit(full);
-    if (waiting) return (s.now / 150) % 2 ? lit(mid) : lit(faint);
-    if (!with) return s.project.scenes[n].plain() ? Look {} : lit(faint);
+    if (s.ui.erase) return s.project.scenes[n].plain() && !kept ? Look {} : red(dim);
+    if (hand && waiting) return (s.now / 150) % 2 ? lit(mid) : lit(faint);
+    if (hand && kept) return lit(full);
+    if (!kept) return s.project.scenes[n].plain() ? Look {} : lit(faint);
+    if (!with) return lit(faint);
     return with == 1 ? lit(faint) : with < 4 ? lit(dim) : lit(mid);
 }
 
@@ -408,20 +411,15 @@ Look seq_look(const PadScene& s, unsigned pad) {
     unsigned at = selected_index(s), n = ui.pad_pattern(pad); // the pattern under the pad, in the bank in view
     const auto& t = s.project.tracks[at];
     bool notes = !s.patterns.at[at][n].empty();
-    bool rolling = s.host.playing(), live = s.host.pattern_of(at) == n;
-    bool on = rolling ? live : t.pattern == n;
+    bool rolling = s.host.playing(), live = s.host.pattern_of(at) == n && !(s.host.stopped_tracks() >> at & 1);
+    bool on = !t.off && (rolling ? live : t.pattern == n);
     if (ui.copying == UiState::Copying::Patterns) {
         if (ui.copy_from < 0) return notes ? track(at, dim) : Look {}; // the pattern to copy
         if (ui.copy_track == at && ui.copy_from == int(n)) return white(full);
         return notes ? red(faint) : track(at, faint);                // where: replaced, or landing clean
     }
     if (ui.erase) return !notes ? Look {} : on ? red(mid) : red(dim);   // clears, asked first
-    if (ui.shift) {                                                     // a column: the tracks holding notes there
-        if (on) return white(full);
-        unsigned with = 0;
-        for (unsigned k = 0; k < track_count; ++k) with += s.project.tracks[k].used() && !s.patterns.at[k][n].empty();
-        return with == 0 ? Look {} : with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
-    }
+    if (ui.shift) return scenes_look(s, pad);                           // Shift: the pads are sequences
     if (ui.seq_print) // freeze plan F2c, Seq held + Sample Record: frozen ones white, the rest as they are
         return !notes ? Look {} : ui.seq_frozen_at(n) ? white(on ? full : mid) : track(at, on ? full : dim);
     if (ui.pattern_held == int(n)) return white(full); // tap another to copy it there

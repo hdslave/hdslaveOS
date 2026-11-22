@@ -65,8 +65,8 @@ bool erase_tap(Context& c) {
         erase_event(c);
         return true;
     case PageId::Patterns: {
-        if (ui.patterns_cards == 1) { // SCENE: the scene in view's name and tempo (the selected track's pattern's column)
-            c.clear_scene(c.track().pattern % pattern_count);
+        if (ui.patterns_cards == 1) { // SEQUENCE: the sequence in hand (one undo)
+            c.clear_scene(c.project.scene % pattern_count);
             return true;
         }
         unsigned n = c.track().pattern % pattern_count;
@@ -74,7 +74,7 @@ bool erase_tap(Context& c) {
         else ask(c, UiState::Ask::ClearPattern, int(n));
         return true;
     }
-    case PageId::Scenes: c.clear_scene(ui.scene % pattern_count); return true; // the scene in hand's name and tempo
+    case PageId::Scenes: c.clear_scene(c.project.scene % pattern_count); return true; // the sequence in hand (one undo)
     case PageId::Tracks:
         if (ui.recording) c.notice("Clear track: not in a take");
         else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");

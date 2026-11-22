@@ -1012,7 +1012,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::NewPort: ui.new_port = uint8_t(value); break;
     case Kind::NewChannel: ui.new_channel = uint8_t(value); break;
     case Kind::TrackPick: select_track(unsigned(value)); break;
-    case Kind::TrackPattern: launch(ui.track, unsigned(value)); break;
+    case Kind::TrackPattern: pick(ui.track, unsigned(value)); break;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp).
     case Kind::LoopPick: ui.loop = uint8_t(value % loop_tracks); break;
     case Kind::LoopLength: looper_do(*this, looper::Do::Length, ui.loop, looper::lengths[size_t(value) % looper::lengths.size()]); break;
@@ -1338,6 +1338,7 @@ void Context::launch(unsigned t, unsigned p) {
         if (chain_lead == int(t % track_count)) chain_lead = -1;
     }
     tr.pattern = uint8_t(p % pattern_count);
+    tr.off = false; // a launch ends off (sequence links)
     ui.lead_pattern = tr.pattern; // BPM per pattern: the one launched last leads
     send({Type::Pattern, uint8_t(t), 0, 0, int16_t(tr.pattern)});
     if (ui.recording && host.song_playing()) record_launch(t % track_count, tr.pattern);
@@ -1390,12 +1391,13 @@ void Context::song_tick() {
     sync_song();
 }
 
-// Seq Record off or the song stopped: each clip ends with the bar that was playing.
-void Context::finish_launches() {
+// Seq Record off or the song stopped: each clip ends with the bar that was playing (`tracks`: a bit each; a track
+// going off, its own).
+void Context::finish_launches(uint16_t tracks) {
     auto& song = project.song;
     unsigned bar = seen_song_bar == ~0u ? 0 : seen_song_bar;
     for (unsigned t = 0; t < track_count; ++t) {
-        if (!(recording_tracks & (1u << t))) continue;
+        if (!(recording_tracks & tracks & (1u << t))) continue;
         for (unsigned n = 0; n < song.count; ++n) {
             auto& c = song.clips[n];
             if (c.track != t || c.bar != recording_from[t]) continue;
@@ -1404,7 +1406,7 @@ void Context::finish_launches() {
             break;
         }
     }
-    recording_tracks = 0;
+    recording_tracks = uint16_t(recording_tracks & ~tracks);
     sync_song();
 }
 
@@ -1628,10 +1630,11 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.name_after : e.name_before) { auto& tr = project.tracks[e.track % track_count]; tr.set_name(m->text); tr.named = m->named; }
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
-    if (e.pattern_was >= 0 && e.pattern >= 0) { // the pattern it played before, or the one the edit made it play
-        auto& tr = project.tracks[e.track % track_count];
-        tr.pattern = uint8_t(unsigned(after ? e.pattern : e.pattern_was) % pattern_count);
-        send({Type::Pattern, uint8_t(e.track % track_count), 0, 0, int16_t(tr.pattern)});
+    if (e.pattern_was >= 0 && e.pattern >= 0) // the pattern it played before, or the one the edit made it play, kept
+        pick(e.track % track_count, unsigned(after ? e.pattern : e.pattern_was) % pattern_count);
+    if (const auto& m = after ? e.scene_after : e.scene_before) { // a sequence kept or cleared
+        project.scenes[m->index % pattern_count] = m->scene;
+        for (unsigned t = 0; t < track_count; ++t) project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
     }
     if (const auto& m = after ? e.tempo_after : e.tempo_before) {
         for (unsigned n = 0; n < pattern_count; ++n)
@@ -1695,7 +1698,7 @@ void Context::set_length(uint32_t ticks) {
 void Context::set_free() {
     auto& p = pattern();
     unsigned bar = std::max(project.bar_ticks(), 1u);
-    if (!free_offered(p, column_fit(project, patterns, ui.track, track().pattern).length)) return;
+    if (!free_offered(p, column_fit(project, patterns, ui.track).length)) return;
     if (p.free && p.length == bar) return;
     p.free = true;
     p.length = bar;
@@ -1714,7 +1717,7 @@ void Context::start_free(unsigned t, unsigned p, bool song) {
     t %= track_count; p %= pattern_count;
     auto& pat = patterns.at[t][p];
     if (!pat.is_free() || song) return;
-    ColumnFit fit = column_fit(project, patterns, t, p);
+    ColumnFit fit = column_fit(project, patterns, t);
     pat.free = false;
     if (fit.length) {
         pat.length = fit.length;
@@ -1763,7 +1766,7 @@ void Context::end_free() {
 // what the selected pattern's sequence holds.
 void Context::free_tick() {
     unsigned selected = ui.track % track_count, shown = track().pattern % pattern_count;
-    ui.column_ticks = column_fit(project, patterns, selected, shown).length;
+    ui.column_ticks = column_fit(project, patterns, selected).length;
     ui.free_growing = free_take.track == int(selected) && free_take.pattern == int(shown);
     if (free_take.track < 0 || free_take.full) return;
     unsigned t = unsigned(free_take.track) % track_count, p = unsigned(free_take.pattern) % pattern_count;
@@ -1988,7 +1991,7 @@ void Context::chop_to_pads(SlicePlay play, bool with_pattern) {
             slots[target].free = false;
             edit.pattern_after = std::make_unique<Pattern>(slots[target]);
             sync_pattern(ui.track, target);
-            if (target != t.pattern % pattern_count) { edit.pattern_was = int16_t(t.pattern % pattern_count); launch(ui.track, target); }
+            if (target != t.pattern % pattern_count) { edit.pattern_was = int16_t(t.pattern % pattern_count); pick(ui.track, target); }
             const unsigned bars = made.length / std::max(1u, project.bar_ticks());
             said += (said.empty() ? "" : "; ") + std::string("P") + std::to_string(target + 1) + ": " + std::to_string(made.events.size()) +
                     (made.events.size() == 1 ? " note, " : " notes, ") + std::to_string(bars) + (bars == 1 ? " bar" : " bars");
@@ -2297,6 +2300,13 @@ void Context::set_recording(bool on) {
 void Context::seq_record() {
     if (ui.recording) { set_recording(false); return; }
     if (frozen_edit(ui.track)) return; // freeze plan F2c: "Unfreeze track N?" first
+    if (track().used() && track().off && !host.song_playing()) { // off in its sequence: a new take in its first empty pattern, kept
+        int empty = -1;
+        for (unsigned n = 0; n < pattern_count && empty < 0; ++n) if (patterns.at[ui.track % track_count][n].empty()) empty = int(n);
+        if (empty < 0) { notice("No empty pattern left"); return; }
+        pick(ui.track, unsigned(empty));
+        notice("New take: P" + std::to_string(empty + 1));
+    }
     if (host.playing()) { set_recording(true); return; }
     ui.rec_armed = !ui.rec_armed;
 }

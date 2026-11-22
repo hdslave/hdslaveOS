@@ -60,7 +60,7 @@ public:
     int recording_punch = -1;                          // the punch being written, -1 none
     SongPunch punch_take {};
     void record_launch(unsigned track, unsigned pattern);
-    void finish_launches();
+    void finish_launches(uint16_t tracks = 0xffff);
     void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
     void end_punch();
     unsigned song_sixteenth() const;                   // where the song is, in sixteenths
@@ -275,6 +275,14 @@ public:
     }
     // Patterns (their cards: length, Q, swing; Shift: any bars, time signature, click)
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing (a chain ends: one tapped)
+    // Sequence links (model/scene_links.h, shell/scene_jobs.cpp): a pattern picked by hand, launched and kept in the
+    // sequence in hand (not while the song plays); true when that sequence kept nothing before. pick_off(): the track
+    // off (on the next bar while playing), kept so; track_off(): off without keeping (a sequence launch).
+    bool pick(unsigned track, unsigned pattern);
+    bool pick_off(unsigned track);
+    void track_off(unsigned track);
+    bool keep(unsigned track, int target); // target: a pattern or scene_stops
+    uint32_t stopped_now() const;          // tracks a follow action's STOP stopped, while patterns play
     // seq-sheet2 B (round 2, shell/chain_jobs.cpp): the pattern chain. chain_start() makes the selected track's chain
     // that one pattern, chain_add() puts another after the last (Seq held, a pad tapped after the first); chain_tick(),
     // each frame, queues a chained track's next pattern in the last bar of the one playing, so it begins as that ends.
@@ -283,19 +291,23 @@ public:
     void chain_sequence(unsigned pattern, bool first); // a chain of sequences: the selected track's chain, every track following it
     int8_t chain_lead = -1;                            // the track whose chain launches sequences (-1: chains are one track's)
     void chain_tick();
+    void sequence_chain_tick(unsigned t, uint32_t bar);
     std::array<bool, track_count> chain_queued {}; // the next of the chain is queued for the bar line
+    // A chain of sequences: the tick the lead's sequence in the chain began (or begins, queued; UINT32_MAX: at Play).
+    std::array<uint32_t, track_count> chain_from {};
     bool chaining = false;                         // chain_tick() launching: the chain stays
-    // Roadmap P5 (shell/scene_jobs.cpp): scenes, a column of patterns with a name and tempo of its own (Seq held +
-    // Shift + pad, or a pad on SCENES), and patterns' follow actions (model/follow.h; the audio thread brings them).
-    void launch_scene(unsigned scene, bool quiet = false); // pattern `scene` on every used track: a sequence (shell/sequences.h); quiet: no notice (the chain)
+    // Roadmap P5 (shell/scene_jobs.cpp): scenes, a pattern or off kept for each track with a name and tempo of its own
+    // (Seq held + Shift + pad, or a pad on SEQUENCES), and patterns' follow actions (model/follow.h; the audio thread
+    // brings them).
+    void launch_scene(unsigned scene, bool quiet = false); // each track on its kept pattern: a sequence (shell/sequences.h); quiet: no notice (the chain)
     void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
     void set_scene_colour(unsigned scene, int colour); // 0 none, 1-16 a track colour (issue 19)
     void name_scene(unsigned scene);                  // the Name sheet
     void name_track(unsigned t);                      // the Name sheet: a name of its own, kept when its sound changes
-    void clear_scene(unsigned scene);
+    void clear_scene(unsigned scene);                 // its kept patterns, name, tempo and colour; one undo
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
-    void follow_to_column();                          // and onto every track's pattern in its column, one undo
-    void capture_scene(unsigned column, bool asked = false); // CAPTURE: each track's playing pattern into the column, one undo
+    void follow_to_column();                          // and onto the pattern every other track is on, one undo
+    void capture_scene(unsigned scene);               // CAPTURE: what every track is on kept in the sequence, one undo
     void follow_tick();                               // MIDI thread, often: chains told, what came followed
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};

@@ -688,15 +688,19 @@ hold to steer, Shift + Seq to zoom in**.
   down (not on a kit); the wheel picks, K1 the amount of the first three,
   B3 DO IT or Push makes it into the next empty pattern, which plays from
   the next bar (one undo); B1 BACK.
-- **Sequences** (on Patterns; roadmap P5): a sequence is a column, pattern n of
-  every track, with a name and a tempo of its own. Push on Patterns
-  launches the sequence of the selected track's pattern: pattern n on every track holding notes
-  there (and on the selected track) at the next bar (stopped, at once),
-  tracks with nothing there playing on; its tempo takes over on that bar,
-  or with its patterns when Stop comes first
-  (with BPM per pattern on, a pattern's own still leads). Shift + B1 SEQUENCE:
-  K1 sets the sequence's tempo (below 30 BPM: None), Push names it
-  (the ready names are the markers'). Files keep sequences in SCNE.
+- **Sequences** (roadmap P5, sequence links): a sequence keeps a pattern, or off, for each track
+  (Track::in_scene, model/scene_links.h), with a name and a tempo of its own. A pattern launched by
+  hand (Patterns, Seq held, Recall, VARY, TO PADS, a Remote pattern CC) is kept in the sequence in
+  hand (Project::scene, the one launched last); on the first pick in a sequence that keeps nothing,
+  every used track keeps what it is on (off when stopped). Launching a sequence queues each track's
+  kept pattern for the next bar (stopped, at once), stops a track kept off, and leaves a track it
+  keeps nothing for playing; follow actions, chains, Song and Program Change keep nothing. Seq +
+  Stop keeps the selected track off. Push on Patterns launches the sequence in hand again; its
+  tempo takes over on that bar, or with its patterns when Stop comes first (with BPM per pattern
+  on, a pattern's own still leads). Shift + B1 SEQUENCE: K1 sets the sequence's tempo (below 30
+  BPM: None), Push names it (the ready names are the markers'). Files keep sequences in SCNE and
+  the links, the tracks off and the sequence in hand in SEQL; a file without SEQL keeps pattern n
+  on every used track in each sequence with notes, a name, tempo or colour.
 - **Follow actions** (Patterns' Shift + B2 FOLLOW cards): what the selected track's pattern
   does once it has played a while, as melodee-ios's clips. K1 FOLLOW Next,
   Previous (round the track's patterns with notes), Any (another at

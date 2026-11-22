@@ -219,8 +219,8 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (!config_port || !config.program_change || (config.in_channel && config.in_channel != channel)) return;
         int pattern = m.getProgramChangeNumber();
         if (pattern >= int(pattern_count)) return;
-        for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, unsigned(pattern));
-        c.notice("Program change: P" + std::to_string(pattern + 1));
+        c.launch_scene(unsigned(pattern), true); // sequence n, as a pad on Sequences
+        c.notice("Program change: SEQ " + std::to_string(pattern + 1));
         return;
     }
     uint16_t tracks = note_tracks(config, own, heard, c.ui.track, unsigned(channel), config_port);
@@ -299,7 +299,7 @@ void MidiIo::do_remote(Context& c, const RemoteJob& job) {
         c.notice("Track " + std::to_string(job.index + 1));
         break;
     case K::Pattern:
-        c.launch(c.ui.track % track_count, job.index);
+        c.pick(c.ui.track % track_count, job.index);
         c.notice("Pattern " + print_pattern_name(job.index));
         break;
     case K::Scene:

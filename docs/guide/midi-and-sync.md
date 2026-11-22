@@ -22,7 +22,7 @@ as MIDI passes.
 | Pad MIDI out | Never, Always or Empty (only pads and tracks with no sound of their own send notes) |
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
-| Receive program change | Off or Sequence: a program change launches that pattern on every track |
+| Receive program change | Off or Sequence: a program change launches that sequence, as a pad on Sequences does |
 | Remote channel | Off or 1–16: the channel of the Remote CCs |
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
@@ -170,7 +170,7 @@ screen. Option names can differ between versions of MIDI Control Center.
 
 Use a channel for Remote that no track plays on. Remote CCs do not reach the
 tracks. With **Receive program change** on, a pad set to send Program Change
-launches that pattern on every track.
+launches that sequence.
 
 ---
 

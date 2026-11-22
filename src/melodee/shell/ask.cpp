@@ -68,7 +68,6 @@ bool ask_button(Context& c, SurfaceButton button) {
     } else if (kind == UiState::Ask::ErasePunches) c.erase_punches(); // Erase + KEEP on Pad FX (pad-fx C)
     else if (kind == UiState::Ask::ClearTrack) clear_track(c, unsigned(ui.ask_target)); // Pad Bank held + Erase + pad
     else if (kind == UiState::Ask::DeleteFile) delete_asked(c);    // shell/delete_jobs.h: Erase in a browser
-    else if (kind == UiState::Ask::CaptureScene) c.capture_scene(unsigned(ui.ask_target), true); // Scenes' CAPTURE
     else if (kind == UiState::Ask::ReplacePlugin && c.plugins) { // the picker's row asked about, picked again
         auto view = c.plugins->view();
         if (unsigned(ui.ask_target) < view.files.size()) { ui.plugin_replace = true; c.choose_plugin(view.files[size_t(ui.ask_target)]); }
@@ -107,7 +106,6 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::Unfreeze: return "Unfreeze track " + std::to_string(ui.ask_target % track_count + 1) + "?";
     case UiState::Ask::DeleteFile: return std::string("Delete ") + ui.ask_name.data() + "?";
     case UiState::Ask::ReplacePlugin: return std::string("Replace ") + ui.ask_name.data() + "?";
-    case UiState::Ask::CaptureScene: return "Capture into SEQ " + std::to_string(ui.ask_target % pattern_count + 1) + "?";
     case UiState::Ask::Rechop: return std::string("Rechop ") + (ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].name : "") + "?";
     default: return {};
     }

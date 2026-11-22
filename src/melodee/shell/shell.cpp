@@ -342,7 +342,7 @@ void Shell::press(Button b, bool pressed) {
     // and does its own job.
     if (pressed && ui.history && !ui.exit_open && history_button(context_, b)) return;
     if (b == Button::Seq && (!ui.exit_open || !pressed)) { seq_press(context_, pressed); return; } // tap, hold or Shift (shell/seq_layer.cpp)
-    if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
+    if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Stop, Seq Record, Push
     if (pressed && !ui.exit_open && (b == Button::TopLeft || b == Button::TopMiddle || b == Button::TopRight) &&
         sample_key(context_, b == Button::TopLeft ? 0 : b == Button::TopMiddle ? 1 : 2)) return; // Sample held: Stage's sections
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp

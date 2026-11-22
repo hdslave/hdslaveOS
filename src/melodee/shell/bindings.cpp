@@ -883,10 +883,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned t = ui.track % track_count;
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
-    case PageId::Patterns: { // the pattern's cards; SCENE: the scene in view's tempo and colour; FOLLOW: the pattern's follow action
+    case PageId::Patterns: { // the pattern's cards; SEQUENCE: the sequence in hand's tempo and colour; FOLLOW: the pattern's follow action
         if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet
         if (ui.patterns_cards == 1) {
-            unsigned scene = track.pattern % pattern_count; // the selected track's pattern's column
+            unsigned scene = project.scene % pattern_count; // the sequence in hand
             unsigned tempo = project.scenes[scene].tempo;
             return {Binding {Kind::SceneTempo, int32_t(scene), 29, 300, tempo ? int((tempo + 5) / 10) : 29},
                     Binding {Kind::SceneColour, int32_t(scene), 0, 16, project.scenes[scene].colour}, Binding {}};

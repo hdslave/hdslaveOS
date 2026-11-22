@@ -81,16 +81,14 @@ void run(Context& c, MenuJob job) {
     using J = MenuJob;
     auto& ui = c.ui;
     ui.menu = menu_closed;
-    const unsigned column = c.track().pattern % pattern_count; // the sequence in view: the selected track's pattern's column
+    const unsigned column = c.track().pattern % pattern_count; // the selected track's pattern
+    const unsigned scene = c.project.scene % pattern_count;    // the sequence in hand
     switch (job) {
     case J::SequenceCapture: ui.scene_capture = true; break; // the next pad picks the sequence
-    case J::SequenceName: c.name_scene(ui.page == PageId::Scenes ? ui.scene : column); break;
+    case J::SequenceName: c.name_scene(scene); break;
     case J::SequenceFollowAll: c.follow_to_column(); break;
-    case J::SequenceLaunch:
-        if (ui.page != PageId::Scenes) ui.scene = uint8_t(column);
-        c.launch_scene(ui.scene);
-        break;
-    case J::SequenceClear: c.clear_scene(ui.scene); break;
+    case J::SequenceLaunch: c.launch_scene(scene); break; // every track back on what the sequence keeps
+    case J::SequenceClear: c.clear_scene(scene); break;
     case J::PatternDouble: c.double_length(); break;
     case J::PatternHalf: c.half_length(); break;
     case J::PatternClear: ask(c, UiState::Ask::ClearPattern, int(column)); break; // asked first, as Seq + Erase + pad

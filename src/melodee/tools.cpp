@@ -26,6 +26,7 @@
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
+#include "melodee/model/scene_links.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
@@ -383,6 +384,19 @@ void preview_projects(Snapshot& s) {
     s.project_path = v.root + "/Project 1.mldp";
     s.dirty = true;
     s.ui.project_rows = uint16_t(project_rows(v.entries.size())); // as the shell copies it in
+}
+
+// Sequence links for the sequence pages (model/scene_links.h): SEQ 1 keeps P1 on every used track, SEQ 2 the same
+// with track 3 on P2, SEQ 3 P3; SEQ 6 keeps every track off (a break); the rest keep nothing.
+void preview_links(Snapshot& s) {
+    for (unsigned t = 0; t < track_count; ++t) {
+        auto& track = s.project.tracks[t];
+        if (!track.used()) continue;
+        track.in_scene[0] = 1;
+        track.in_scene[1] = t == 2 ? 2 : 1;
+        track.in_scene[2] = 3;
+        track.in_scene[5] = scene_off;
+    }
 }
 
 // Step Edit on the kit (track 4), step entry: the caret on step 5 of pattern 1, which holds a kick, a hat and
@@ -898,7 +912,7 @@ const Preview previews[] {
          s.ui.key_list_key = 2; s.ui.key_list_at = s.now;
      }},
     {"menuhere", [](Shell&, Snapshot& s) { // the encoder held on Sequences: HERE, the page's jobs as cards
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.ui.menu = menu_here_view; s.ui.menu_row = 0;
      }},
     {"menugo", [](Shell&, Snapshot& s) { // B3 GO: the sixteen places as the pads sit, the wheel on MIXER
@@ -1075,6 +1089,8 @@ const Preview previews[] {
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
+         preview_links(s); s.project.scene = 1;
+         s.project.tracks[3].in_scene[1] = 3; // track 4 on P3 in SEQ 2; track 1 moved off it (≠)
      }},
     {"plugins", [](Shell&, Snapshot& s) { // the picker for track 3's instrument: folders, plug-ins, one for Windows only
          s.ui.page = PageId::Plugins; s.ui.track = 2; s.ui.plugin_target = UiState::PluginTarget::Instrument;
@@ -2751,7 +2767,7 @@ const Preview previews[] {
      }},
     // Roadmap P5: scenes on Patterns. Shift + B1 SCENE: the cursor's scene, its tempo on K1 (Push names it).
     {"patternsscene", [](Shell& shell, Snapshot& s) {
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 1;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true; s.ui.patterns_cards = 1;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
          s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAKDOWN");
          s.project.tracks[2].pattern = 1;
@@ -2761,20 +2777,20 @@ const Preview previews[] {
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patternsfollow", [](Shell& shell, Snapshot& s) { // Shift + B2 FOLLOW: the pattern in hand's follow action on K1-K3
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 2;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true; s.ui.patterns_cards = 2;
          s.project.tracks[2].pattern = 1;
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"patternsshift", [](Shell& shell, Snapshot& s) { // Shift held on Patterns: SCENE, FOLLOW, VARY; FOLLOW's Shift + K1 the second action
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.ui.shift = true; s.ui.patterns_cards = 2; s.project.tracks[2].pattern = 1;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.ui.shift = true; s.ui.patterns_cards = 2; s.project.tracks[2].pattern = 1;
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Again); f.other = uint8_t(FollowAction::Stop); f.chance = 50; f.count = 2; f.plays = true;
      }},
     // Roadmap P5: SCENES (B1 again on Patterns), the bank's scenes and the selected track's pattern's follow action.
     {"scenes", [](Shell& shell, Snapshot& s) {
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
          s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAK");
          s.project.tracks[2].pattern = 1;
@@ -2783,16 +2799,10 @@ const Preview previews[] {
          f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
      }},
     {"scenescapture", [](Shell&, Snapshot& s) { // Scenes, Shift + B2 CAPTURE: a pad picks the scene what plays goes to
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[2].set_name("DROP");
          for (unsigned t = 0; t < track_count; ++t) s.playing_patterns[t] = uint8_t(t % 3);
          s.ui.scene_capture = true;
-     }},
-    {"askcapture", [](Shell&, Snapshot& s) { // CAPTURE onto S5, where tracks 1 and 3 have notes
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
-         for (unsigned t = 0; t < track_count; ++t) s.playing_patterns[t] = uint8_t(t % 3);
-         s.sketches[0][4].notes = true; s.sketches[2][4].notes = true;
-         s.ui.ask = UiState::Ask::CaptureScene; s.ui.ask_target = 4;
      }},
     {"stepeditshift", [](Shell& shell, Snapshot& s) { // Shift held on Step Edit: PADS, TIE, INSERT; the pattern's length, Q, time signature
          step_edit_kit(shell, s);
