@@ -658,7 +658,7 @@ void PluginRack::drum_voices(unsigned entry, DrumVoices& out) const {
     }
 }
 
-void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
+void PluginRack::panel(unsigned entry, unsigned row, bool use_screen, PluginPanel& out) const {
     out = {};
     out.entry = uint8_t(entry);
     if (entry >= max_plugins) return;
@@ -694,7 +694,8 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         int steps = p->getNumSteps();
         card.steps = uint16_t(steps > 1 && steps < plugin_param_max ? steps : 0);
     };
-    out.screen = h->screen && h->screen_painted;
+    out.has_screen = h->screen;
+    out.screen = use_screen && h->screen && h->screen_painted;
     for (unsigned k = 0; k < 3; ++k) {
         int at = out.screen ? h->screen_knobs[k] : int(out.row) * 3 + int(k);
         if (at < 0 || size_t(at) >= h->shown.size()) continue;

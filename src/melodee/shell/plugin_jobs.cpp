@@ -302,6 +302,7 @@ int Context::plugin_in_focus() const {
 }
 
 int Context::plugin_screen_in_view() const {
+    if (ui.fx_panel_entry != no_plugin && chain_page(ui.page) && plugin_in_focus() == ui.fx_panel_entry) return ui.fx_panel_entry;
     const auto& t = project.tracks[ui.track % track_count];
     if (t.engine != EngineKind::Plugin || t.plugin >= max_plugins) return -1;
     if (ui.page == PageId::Edit) return t.plugin;
@@ -340,14 +341,16 @@ void Context::plugins_tick(uint32_t at) {
         plugin_panel_at = at - 50; // enable PRESETS immediately, including a synth's very first patch
         dirty = true;
     }
+    const int entry = plugin_in_focus();
+    if (ui.fx_panel_entry != no_plugin && entry != ui.fx_panel_entry) ui.fx_panel_entry = no_plugin;
+    const int screen = plugin_screen_in_view();
     { // the plug-in screen in view, and what it is told: each tick, so a pot's move reaches its picture at once
-        int entry = plugin_screen_in_view();
         PluginScreenContext told;
         for (unsigned k = 0; k < 3; ++k) { told.pots[k] = ui.pots[k].position; told.engaged[k] = ui.pots[k].engaged; }
         told.shift = ui.shift;
         told.playing = host.playing();
         told.accent = 0xff000000u | ui::palettes[ui.settings.palette % ui::palettes.size()].tracks[ui.track % 16][0];
-        plugins->screen_focus(entry >= 0 ? unsigned(entry) : no_plugin, told);
+        plugins->screen_focus(screen >= 0 ? unsigned(screen) : no_plugin, told);
     }
     delete_tick(*this); // the picker listed again once a plug-in is deleted (shell/delete_jobs.h)
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
@@ -364,9 +367,9 @@ void Context::plugins_tick(uint32_t at) {
         if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
         else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
     }
-    int entry = plugin_in_focus();
     if (entry < 0) { ui.plugin_panel = PluginPanel {}; return; }
-    plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], ui.plugin_panel);
+    plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], screen == entry, ui.plugin_panel);
+    if (ui.fx_panel_entry != no_plugin && !ui.plugin_panel.has_screen) ui.fx_panel_entry = no_plugin;
     ui.plugin_row[size_t(entry)] = ui.plugin_panel.row; // clamped to its rows
 }
 

@@ -83,7 +83,7 @@ public:
 
     // MIDI thread: the panel for `entry` with row `row` of its parameters on
     // K1-K3; a parameter by its place among the shown ones, 0..plugin_param_max.
-    void panel(unsigned entry, unsigned row, PluginPanel& out) const;
+    void panel(unsigned entry, unsigned row, bool use_screen, PluginPanel& out) const;
     void set_param(unsigned entry, unsigned shown, int value);
     // PRESETS: the plug-in's named programs, and one of them picked (by its
     // number in the plug-in), switched to on the rack's thread. Picking the

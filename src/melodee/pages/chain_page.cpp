@@ -26,13 +26,16 @@ namespace {
 using namespace ui;
 // A device's sheet: Presets only on a plug-in that has some (its programs, PRESETS); Transport on a plug-in, after
 // Bypass (whether it hears Play and Stop).
-enum class Action : uint8_t { Change, Presets, Bypass, Transport, Left, Right, Remove };
-using Actions = std::array<Action, 7>;
+enum class Action : uint8_t { Change, Presets, Panel, Bypass, Transport, Left, Right, Remove };
+using Actions = std::array<Action, 8>;
 unsigned device_actions(const UiState& ui, const EffectSlot& slot, Actions& out) {
     unsigned n = 0;
     bool plugin = slot.kind == plugin_effect_kind;
     out[n++] = Action::Change;
-    if (plugin && ui.plugin_panel.entry == unsigned(slot.params[0]) && ui.plugin_panel.programs > 0) out[n++] = Action::Presets;
+    if (plugin && ui.plugin_panel.entry == unsigned(slot.params[0])) {
+        if (ui.plugin_panel.programs) out[n++] = Action::Presets;
+        if (ui.plugin_panel.has_screen) out[n++] = Action::Panel;
+    }
     out[n++] = Action::Bypass;
     if (plugin) out[n++] = Action::Transport;
     for (Action a : {Action::Left, Action::Right, Action::Remove}) out[n++] = a;
@@ -92,6 +95,11 @@ void draw(Paint& p, const Snapshot& s) {
     bool pad = s.ui.page == PageId::PadFx, track = s.ui.page == PageId::Rack || pad, kit = s.track().engine == EngineKind::Sampler;
     auto c = track ? colour_of(s) : colour::text;
     unsigned count = chain.count(), cursor = std::min<unsigned>(s.ui.fx_cursor[UiState::cursor_of(n)], count);
+    if (s.ui.fx_panel_entry != no_plugin && cursor < count && plugin_slot(chain.slots[cursor])
+        && unsigned(chain.slots[cursor].params[0]) == s.ui.fx_panel_entry) {
+        draw_plugin_screen(p, s, s.ui.fx_panel_entry, {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}});
+        return;
+    }
     Header h = header_of(s);
     SoftKeys keys {{"", "TRACK", "SENDS"}, 1, c};
     // B1 and B3 the chains before and after, a chevron pointing the way.
@@ -161,6 +169,7 @@ void draw(Paint& p, const Snapshot& s) {
             switch (actions[r]) {
             case Action::Change: m.items[r] = card_item(Icon::Swap, "CHANGE", ""); break;
             case Action::Presets: m.items[r] = card_item(Icon::Star, "PRESETS", juce::String(int(s.ui.plugin_panel.programs))); break;
+            case Action::Panel: m.items[r] = card_item(Icon::Screen, "PANEL", ""); break;
             case Action::Bypass: m.items[r] = card_item(Icon::Power, "BYPASS", slot.bypass ? "ON" : "OFF", bool(slot.bypass)); break;
             case Action::Transport: {
                 bool on = unsigned(slot.params[0]) < max_plugins && s.project.plugins[unsigned(slot.params[0])].transport;
@@ -197,6 +206,7 @@ void add_from_picker(Context& c) {
 }
 
 void wheel(Context& c, int delta) {
+    if (c.ui.fx_panel_entry != no_plugin) { c.plugin_screen_input(PluginScreenKey::Wheel, delta); return; }
     auto& ui = c.ui;
     if (ui.picker_open) {
         if (!ui.picker_items) { ui.picker_family = uint8_t(std::clamp<int>(ui.picker_family + delta, 0, int(families(ui.page)) - 1)); return; }
@@ -222,6 +232,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
+    if (c.ui.fx_panel_entry != no_plugin) { c.plugin_screen_input(PluginScreenKey::Push, 1); return; }
     auto& ui = c.ui;
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return;
@@ -238,6 +249,10 @@ void push(Context& c) {
         switch (actions[ui.sheet_row % rows]) {
         case Action::Change: ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = true; break;
         case Action::Presets: ui.sheet_open = false; c.open_plugin_presets(unsigned(chain.slots[cursor].params[0])); return;
+        case Action::Panel:
+            ui.fx_panel_entry = uint8_t(chain.slots[cursor].params[0]);
+            c.plugin_panel_at = c.now - 50;
+            break;
         case Action::Bypass: c.toggle_bypass(n, cursor); return; // stays open to see it change
         case Action::Transport: c.toggle_plugin_transport(unsigned(chain.slots[cursor].params[0])); return; // and this
         case Action::Left: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[at] = uint8_t(cursor - 1); break;
@@ -258,6 +273,7 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
+    if (c.ui.fx_panel_entry != no_plugin) { if (key == 0) c.back(); return; }
     auto& ui = c.ui;
     if (ui.picker_open) {
         if (key == 0) { if (ui.picker_items) ui.picker_items = false; else ui.picker_open = false; }
@@ -274,6 +290,7 @@ void soft(Context& c, int key) {
 
 // Minus / Plus: the device's other row of parameters; a plug-in's rows, one at a time.
 void nudge(Context& c, int way) {
+    if (c.ui.fx_panel_entry != no_plugin) { c.plugin_screen_input(PluginScreenKey::Nudge, way); return; }
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     const auto& chain = c.project.chain(n);
     unsigned cursor = c.ui.fx_cursor[at];
@@ -296,6 +313,7 @@ void nudge(Context& c, int way) {
 // with the picker open.
 bool chain_erase(Context& c) {
     auto& ui = c.ui;
+    if (ui.fx_panel_entry != no_plugin) return true;
     if (ui.picker_open) return false;
     if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return false;
     unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = ui.fx_cursor[at];
@@ -314,6 +332,7 @@ bool chain_erase(Context& c) {
 // rest move along one); the cursor goes onto the copy. Not a plug-in, and not into a full chain.
 bool chain_copy(Context& c) {
     auto& ui = c.ui;
+    if (ui.fx_panel_entry != no_plugin) return true;
     if (ui.picker_open) return false;
     if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return false;
     unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = ui.fx_cursor[at];

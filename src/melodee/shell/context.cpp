@@ -302,6 +302,7 @@ void Context::open(PageId page) {
     ui.map_open = false;
     ui.loop_sheet = false;
     ui.layer_load = -1; // Layers' LOAD sets it after opening Samples
+    ui.fx_panel_entry = no_plugin;
     ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
     ui.picker_open = false;
     ui.song_export = false;
@@ -328,6 +329,7 @@ void Context::open(PageId page) {
 }
 
 void Context::back() {
+    if (ui.fx_panel_entry != no_plugin) { ui.fx_panel_entry = no_plugin; plugin_panel_at = now - 50; return; }
     if (ui.sheet_open || ui.map_open || ui.picker_open || ui.move_open) { // a sheet, map or picker first
         ui.sheet_open = ui.map_open = ui.picker_open = ui.move_open = false;
         return;

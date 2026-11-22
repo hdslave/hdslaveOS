@@ -34,6 +34,7 @@ bool plugin_screen_shown(const Snapshot& s, unsigned entry) {
 }
 
 bool plugin_screen_in_view(const Snapshot& s) {
+    if (s.ui.fx_panel_entry != no_plugin) return plugin_screen_shown(s, s.ui.fx_panel_entry);
     const auto& t = s.track();
     if (t.engine != EngineKind::Plugin || !plugin_screen_shown(s, t.plugin)) return false;
     if (s.ui.page == PageId::Edit) return true;

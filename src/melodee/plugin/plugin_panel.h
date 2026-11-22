@@ -41,7 +41,8 @@ struct PluginPanel {
     // Which shown parameter is on each of K1-K3 (-1: none): the row in hand's three (row * 3 + k), or for a plug-in
     // with its own screen (plugin/melodee_screen.h) the three it names.
     std::array<int16_t, 3> knob {-1, -1, -1};
-    bool screen = false;           // it draws its own page (plugin/melodee_screen.h)
+    bool has_screen = false;       // offers a custom page, even before its first paint
+    bool screen = false;           // the custom page is in use and has supplied its controls
     std::array<PluginPanelParam, 3> params {};
     // The six parameters around the row in hand, its own three among them (the row before, or at the top the row
     // after), for the page's list; `window_first` the first one's place in the list of shown ones.

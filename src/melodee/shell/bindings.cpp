@@ -1005,7 +1005,11 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
-        if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
+        if (c.slots[slot].kind == plugin_effect_kind) {
+            // While opening or closing a panel, wait for the matching knob map from the rack.
+            if ((ui.fx_panel_entry != no_plugin) != ui.plugin_panel.screen) return {};
+            return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
+        }
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)]); // a keyed kind's KEY last (roadmap P4)
     }
     case PageId::Sends: { // one bus at a time: K1 the track's send into it (a kit's pads: the last pad's), K2 which bus, K3 its return

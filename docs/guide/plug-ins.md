@@ -172,6 +172,9 @@ loop chains take plug-ins.
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 
 Push the encoder on a plug-in effect's slot to open its sheet.
+For effects with a custom screen, such as **hdslave Cortex Filter**, turn the
+encoder to **PANEL** and push it. The wheel, encoder push, **− / +** and
+**K1–K3** control the panel. **B1** (**BACK**) returns to the same slot.
 **PRESETS** opens its presets, when it has some. **TRANSPORT** works as on a
 plug-in track's Edit page. A kit pad's own chain and Knob FX take no
 plug-ins.

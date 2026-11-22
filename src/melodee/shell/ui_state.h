@@ -284,6 +284,7 @@ struct UiState {
     PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
     PageId plugin_from = PageId::Stage;          // the page it opened over: B1 at the top while the track is not PLUGIN yet
     PluginPanel plugin_panel;
+    uint8_t fx_panel_entry = no_plugin; // the FX slot opened with Panel
     std::array<uint16_t, max_plugins> plugin_row {};
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
     // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.

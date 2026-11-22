@@ -150,7 +150,8 @@ for the bus, the master and, on a kit, the pad's chain, as **B3** does.
   then an effect.
 - Push the encoder on an effect to open its sheet: change, presets, bypass,
   move and remove as cards, with bypass picked. Turn the encoder to pick one
-  and push it. **B1** closes it. A plug-in effect's sheet also has
+  and push it. **B1** closes it. For an effect with its own screen, choose
+  **PANEL**. **B1** (**BACK**) returns to the slot. A plug-in effect's sheet also has
   **TRANSPORT**: whether the plug-in hears **PLAY** and **STOP** (see
   [Plug-in effects](plug-ins.md#plug-in-effects)).
 - **ERASE** pressed alone removes the selected effect. **SHIFT** +
