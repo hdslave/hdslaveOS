@@ -9,6 +9,7 @@
 #include "melodee/model/project.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
+#include "melodee/model/jam_log.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/capture_ring.h"
@@ -159,6 +160,15 @@ public:
     // Seq Record while the song plays: pattern launches become clips from the
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar
+    // Jam capture (model/jam_log.h, shell/jam_jobs.cpp): the last run outside Song, a bar at a time; TAKE JAM (Song's
+    // Shift + B1) lays it after the song's end.
+    JamLog jam;
+    JamBar jam_now;          // the bar playing, logged when the next begins or the transport stops
+    bool jam_running = false;
+    uint32_t jam_bar_seen = 0;
+    int jam_scene = -1;      // a sequence launched: the bar it takes over on gets its marker
+    void jam_tick();
+    void take_jam();
     // Shift's second jobs.
     void double_length();     // Shift + Pad 3 (Double Seq): the pattern twice as long, played twice
     void half_length();       // Shift + Pad 2 (Half Seq): the first half only

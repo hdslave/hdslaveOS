@@ -8,7 +8,8 @@
 // The wheel moves the cursor by the bar, pads pick the lane. Every clip job
 // is on a button of its own, no menu: B3 places the pattern on K2 for the
 // length on K3 (on a clip, duplicates it after itself), B2 mutes the clip,
-// Shift + B2 its motion, Shift + B3 gives it its own pattern, Push opens its
+// Shift + B2 its motion, Shift + B3 gives it its own pattern (Shift + B1 lays the jam after the song's end:
+// shell/jam_jobs.cpp; JAM at the foot counts its bars), Push opens its
 // notes (on empty time, places as B3 does), Chop splits it at the cursor,
 // Erase deletes it, Note Repeat repeats it to the next marker, Loop loops
 // its bars. K1 zoom. Minus / Plus jump between markers (or clip edges while
@@ -100,7 +101,7 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
 
 // B1-B3 follow what is under the cursor; with Shift, the clip's second jobs.
 SoftKeys keys_of(const Snapshot& s, const Clip* clip, juce::Colour c) {
-    if (s.ui.shift) return {{"", clip ? "MOTION" : "", clip ? "OWN PATTERN" : ""}, -1, c};
+    if (s.ui.shift) return {{s.ui.jam_bars ? "TAKE JAM" : "", clip ? "MOTION" : "", clip ? "OWN PATTERN" : ""}, -1, c};
     if (clip) return {{"EXPORT", clip->muted ? "UNMUTE" : "MUTE", "DUPLICATE"}, -1, c};
     return {{"EXPORT", "", s.project.tracks[s.ui.track].used() ? "PLACE" : ""}, -1, c};
 }
@@ -274,6 +275,14 @@ void draw(Paint& p, const Snapshot& s) {
     auto length_style = caps_text(colour::dim);
     float oy = bottom + (song.punch_count ? 13 : 6), lw = p.width(length, length_style) + 1, sx = zone::pad + lw + 6, ow = x1 - sx;
     p.text(length, zone::pad, oy - 5.5f, lw, 11, length_style);
+    // Jam capture: the bars logged outside Song for TAKE JAM (Shift + B1), a red dot while it logs.
+    if (s.ui.jam_bars || s.ui.jam_logging) {
+        juce::String jam = "JAM " + juce::String(s.ui.jam_bars) + (s.ui.jam_bars == 1 ? " BAR" : " BARS");
+        float jw = p.width(jam, length_style) + 1, jx = x1 - jw;
+        p.text(jam, jx, oy - 5.5f, jw, 11, caps_text(colour::sec));
+        if (s.ui.jam_logging) { jx -= 8; p.circle(jx + 2.5f, oy + 1, 2.5f, colour::rec); }
+        ow = jx - 8 - sx;
+    }
     p.fill(sx, oy, ow, 2, colour::line, 1);
     p.fill(sx + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
 }
@@ -345,6 +354,7 @@ void soft(Context& c, int key) {
     if (c.ui.song_export) { c.song_export_soft(key); return; } // B1 Cancel, B2 Audio mixdown, B3 New pattern
     int index = clip_index(c);
     if (c.ui.shift) {
+        if (key == 0) { c.take_jam(); return; } // jam capture: the jam after the song's end
         if (index < 0) return;
         if (key == 1) open_clip(c, index, true);
         if (key == 2) own_pattern(c, index);

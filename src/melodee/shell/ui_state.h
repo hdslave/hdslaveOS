@@ -261,6 +261,9 @@ struct UiState {
     uint8_t song_zoom = 2;      // index into song_zooms
     uint8_t song_pattern = 0;   // what Push places on empty time
     uint8_t song_length = 4;    // bars
+    // Jam capture (model/jam_log.h): bars logged since PLAY outside Song, and whether it logs now (Song's JAM row).
+    uint16_t jam_bars = 0;
+    bool jam_logging = false;
     // Freeze plan F3: an audio track's take armed or recording (its track, -1 none), and whether it runs now.
     int8_t audio_rec_track = -1;
     bool audio_rec_running = false;

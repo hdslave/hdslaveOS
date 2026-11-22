@@ -54,6 +54,7 @@ bool Context::pick_off(unsigned t) {
 
 void Context::launch_scene(unsigned scene, bool quiet) {
     scene %= pattern_count;
+    jam_scene = int(scene); // jam capture: a marker on the bar it takes over on
     unsigned count = 0, selected = ui.track % track_count;
     unsigned playing = host.playing() ? unsigned(host.pattern_of(selected)) % pattern_count : track().pattern % pattern_count;
     const auto& fallback = patterns.at[selected][playing];

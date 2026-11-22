@@ -20,6 +20,7 @@ cursor's bar and time, and the loop.
 | **B2** | Mute or unmute the clip. |
 | **SHIFT** + **B2** (**MOTION**) | Open the clip's pattern on the Motion page. |
 | **SHIFT** + **B3** (**OWN PATTERN**) | Make the clip's pattern its own copy. |
+| **SHIFT** + **B1** (**TAKE JAM**) | Put the jam after the end of the song (see [Jam capture](#jam-capture)). |
 | Encoder push | Open the clip's notes: Roll, or Step Edit on a kit. On empty time, place a clip. |
 | **CHOP** | Split the clip at the cursor. |
 | **ERASE** | Delete the clip. |
@@ -60,6 +61,34 @@ becomes a clip.
 
 Pad FX punches you play while recording are written into the song too.
 They end where the song ends.
+
+## Jam capture
+
+Melodee keeps a log of each jam. From **PLAY** to **STOP** outside Song,
+it notes for every bar the pattern each track plays, the tracks that are
+muted, the tempo and the sequences you launch. You do not have to arm
+anything. Song shows the log at the bottom right as **JAM** and its bars,
+with a red dot while it is being written.
+
+1. Play your patterns: launch patterns and sequences, mute and unmute
+   tracks, change the tempo.
+2. Press **STOP**.
+3. Open Song (**SHIFT** + **Pad 12**) and press **SHIFT** + **B1**
+   (**TAKE JAM**).
+
+The jam goes after the end of the song, or at bar 1 when the song is empty:
+
+- Each run of the same pattern on a track becomes one clip. A track that
+  played nothing, or an empty pattern, gets no clip there.
+- Bars where a track was muted (or another track was soloed) become muted
+  clips. **B2** (**UNMUTE**) brings one back.
+- Each launched sequence gets a marker with its name, or **SEQ** and its
+  number.
+- Tempo changes become steps in the tempo lane.
+
+**TAKE JAM** is one undo step. Taken again, the same jam goes after the song
+again. The next **PLAY** outside Song starts a new log. A jam fills Song up
+to 999 bars and 256 clips; the message says when some was left out.
 
 ## Export
 

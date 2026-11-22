@@ -273,6 +273,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.reload_tick(); // a project parked for: built once the audio thread is still; the Loading sheet till it is in
     if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
+    context_.jam_tick();      // jam capture: the bar playing outside Song (shell/jam_jobs.cpp)
     context_.free_tick();     // Free length: a take on a Free pattern grows it (shell/free_length.h)
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.print_tick();      // prints made (freeze plan F2a) into the project's records
@@ -508,6 +509,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                            | uint32_t(ui_.map_open) << 10 | uint32_t(bool(context_.gesture.edit)) << 12
                            | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
                            std::memory_order_relaxed);
+        jam_bits.store(uint32_t(ui_.jam_bars) | uint32_t(ui_.jam_logging) << 16 | uint32_t(project_->song.marker_count) << 17
+                       | uint32_t(project_->song.tempo.count) << 22, std::memory_order_relaxed);
         if (context_.gesture.edit && now - context_.gesture.last >= gesture_quiet_ms) context_.close_gesture(); // a pot left still
     }
     const auto& project = *project_;

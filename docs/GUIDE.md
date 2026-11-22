@@ -76,6 +76,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [Tempo](guide/sequencing.md#tempo)
 10. [Song](guide/song.md)
    - [Record into the song](guide/song.md#record-into-the-song)
+   - [Jam capture](guide/song.md#jam-capture)
    - [Export](guide/song.md#export)
 11. [Looper](guide/looper.md)
 12. [Mixer and effects](guide/mixer-and-effects.md)

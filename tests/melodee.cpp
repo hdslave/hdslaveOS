@@ -6,6 +6,7 @@
 #include "melodee/model/slice_banks.h"
 #include "melodee/model/slice_hits.h"
 #include "melodee/model/song_steps.h"
+#include "melodee/model/jam_log.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
 #include <fstream>
@@ -11534,6 +11535,69 @@ void song_steps_mpc() {
     }
 }
 
+// Jam capture (model/jam_log.h): the bars logged outside Song laid after the song's end, a clip a run of the same
+// pattern (muted where not heard), a marker where a sequence took over, the tempo lane where the tempo changed.
+void jam_capture() {
+    auto setup = [](Project& p, PatternBank& bank) {
+        synth(p.tracks[0], 0); synth(p.tracks[1], 0); synth(p.tracks[2], 0);
+        put(bank.at[0][0], 0, 60, 100); put(bank.at[0][1], 0, 60, 100); put(bank.at[1][0], 0, 60, 100);
+        p.scenes[1].set_name("Drop");
+        p.tempo = 1200;
+    };
+    auto bar = [](std::initializer_list<int> patterns, uint16_t muted = 0, uint16_t tempo = 1200, int16_t scene = -1) {
+        JamBar b;
+        unsigned t = 0;
+        for (int v : patterns) b.pattern[t++] = v < 0 ? jam_silent : uint8_t(v);
+        b.muted = muted; b.tempo = tempo; b.scene = scene;
+        return b;
+    };
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.place({0, 0, 0, 4, false}); // the song so far: four bars
+        JamLog log;
+        // T1 P1 two bars, then P2 three (muted in the last), T2 P1 silent in bar 3, T3 on an empty pattern throughout
+        log.bars = {bar({0, 0, 2}, 0, 1200, 0), bar({0, 0, 2}), bar({1, -1, 2}, 0, 1400, 1), bar({1, 0, 2}, 0, 1400),
+                    bar({1, 0, 2}, 1, 1400)};
+        const auto took = jam_to_song(*p, *bank, log);
+        const auto& song = p->song;
+        CHECK(took.at == 4 && took.bars == 5 && took.left_out == 0 && took.clips == 5 && song.count == 6 && song.length() == 9);
+        const auto& first = song.clips[size_t(song.clip_at(0, 4))];
+        CHECK(first.pattern == 0 && first.bars == 2 && !first.muted);
+        const auto& second = song.clips[size_t(song.clip_at(0, 6))];
+        CHECK(second.pattern == 1 && second.bar == 6 && second.bars == 2 && !second.muted);
+        CHECK(song.clips[size_t(song.clip_at(0, 8))].muted && song.clips[size_t(song.clip_at(0, 8))].bars == 1);
+        CHECK(song.clip_at(1, 4) >= 0 && song.clip_at(1, 6) < 0 && song.clips[size_t(song.clip_at(1, 7))].bars == 2);
+        CHECK(song.clip_at(2, 4) < 0 && song.clip_at(2, 8) < 0); // an empty pattern: no clip
+        CHECK(song.marker_count == 2 && song.markers[0].bar == 4 && !std::strcmp(song.markers[0].name, "SEQ 1"));
+        CHECK(song.markers[1].bar == 6 && !std::strcmp(song.markers[1].name, "Drop"));
+        CHECK(song.tempo.count == 1 && song.tempo.points[0].bar == 6 && song.tempo.points[0].tempo == 1400);
+        // Taken again: after it, the tempo stepping back first.
+        const auto again = jam_to_song(*p, *bank, log);
+        CHECK(again.at == 9 && again.bars == 5 && p->song.length() == 14);
+        CHECK(p->song.tempo.count == 3 && p->song.tempo.points[1].bar == 9 && p->song.tempo.points[1].tempo == 1200);
+        CHECK(p->song.tempo.points[2].bar == 11 && p->song.tempo.points[2].tempo == 1400);
+    }
+    {   // Song's room: past 999 bars, or 256 clips, the rest is left out.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.place({2, 0, 0, 995, false});
+        JamLog log;
+        log.bars.assign(10, bar({0, 0, -1}));
+        auto took = jam_to_song(*p, *bank, log);
+        CHECK(took.at == 995 && took.bars == 4 && took.left_out == 6 && p->song.length() == 999);
+        CHECK(jam_to_song(*p, *bank, log).bars == 0);
+        p->song = Song {};
+        log.bars.clear();
+        for (unsigned n = 0; n < 200; ++n) log.bars.push_back(bar({int(n % 2), 0, -1}, uint16_t(n % 2 ? 2 : 0))); // a clip a bar on two lanes
+        took = jam_to_song(*p, *bank, log);
+        CHECK(took.clips == song_clips && took.bars == 128 && took.left_out == 72 && p->song.length() == 128);
+        CHECK(jam_to_song(*p, *bank, log).bars == 0 && JamLog {}.bars.empty());
+    }
+}
+
 int main() {
     audio_monitor_choice();
     pad_value_erase();
@@ -11555,6 +11619,7 @@ int main() {
     scenes_p5();
     sequence_links();
     song_steps_mpc();
+    jam_capture();
     banks_f1();
     deep_freeze_f2d();
     midi_tracks_p4();

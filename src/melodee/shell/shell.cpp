@@ -1040,7 +1040,14 @@ std::string Shell::phase10_summary() const {
            " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_held=" + std::to_string((b >> 9) & 1) +
            " melodee_map=" + std::to_string((b >> 10) & 1) +
            " melodee_gesture=" + std::to_string((b >> 12) & 1) + " melodee_song_clips=" + std::to_string((b >> 16) & 0xfff) +
-           " melodee_engine=" + std::to_string(b >> 28);
+           " melodee_engine=" + std::to_string(b >> 28) + jam_summary();
+}
+
+// Jam capture: the bars logged, whether it logs now, and the song's markers and tempo points (what TAKE JAM adds).
+std::string Shell::jam_summary() const {
+    uint32_t j = jam_bits.load(std::memory_order_relaxed);
+    return " melodee_jam=" + std::to_string(j & 0xffff) + "," + std::to_string((j >> 16) & 1) + " melodee_song_markers=" +
+           std::to_string((j >> 17) & 0x1f) + " melodee_song_tempo_points=" + std::to_string(j >> 22);
 }
 
 // Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).
