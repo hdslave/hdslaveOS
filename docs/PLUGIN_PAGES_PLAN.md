@@ -1,9 +1,10 @@
 # Plug-in pages: plan
 
 Status: all picks made 2026-11-22: 1 a, 2 (own pages, then groups), 3 c, 4 a (end
-of this file). Steps 1 and 2 built 2026-11-22 (step 2: a page shows several pictures'
-parts, so it keeps them all and draws the one its row in hand turns most of). Kerem then asked for the plug-in's own GUI
-window in a browser at melodee.local: a plan of its own.
+of this file). Steps 1-3 built 2026-11-22 (step 2: a page shows several pictures'
+parts, so it keeps them all and draws the one its row in hand turns most of; step 3: the
+format reference is docs/PLUGIN_PAGES.md). Kerem then asked for the plug-in's own GUI
+window in a browser at melodee.local: a plan of its own, parked on keep/plugin-windows.
 Mockups: https://claude.ai/artifact/TCsNHN1KRY76cWyhUEMyYR; files in
 build/plugin-pages-mock: sheet-s1.png (level 0), sheet-s6.png (skins),
 sheet-s2.png, sheet-s3.png, sheet-s7.png, sheet-s8.png (picks 1-4), sheet-s9.png
@@ -124,9 +125,11 @@ pages. Example:
 }
 ```
 
-- `plugin`: the IDs it matches, any of `clap` (plug-in id), `vst3` (class ID,
-  32 hex digits), `vst2` (four-character unique ID; Open MPC plug-ins too),
-  `lv2` (URI). One file covers every build of a plug-in.
+- `plugin`: the IDs it matches, any of `clap` (plug-in id), `vst2`
+  (four-character unique ID; Open MPC plug-ins too), `lv2` (URI), or `name`
+  (with `vendor`, where given). VST3 goes by name: JUCE gives a VST3 class ID
+  only hashed, and DPF's and NAM's bundles carry no moduleinfo.json (built:
+  page_file.h).
 - A parameter is its name as the plug-in gives it (trimmed, exact), or
   `{ "id": … }` with the format's own ID (CLAP param id, VST3 ParamID, VST2
   index, LV2 symbol; JUCE's HostedParameter::getParameterID()). Names make one
@@ -241,8 +244,11 @@ Each step builds, passes the host tests and runs on the MPC before the next.
 **3. Page files.**
 - Parser, sources 1-3, ID matching, name and ID references, `label`,
   `value` and `eq` pictures, problems.txt.
-- Library: NAM's file (nam.cpp order and names move into it), Second Spin's
-  (from PR 34's descriptor), Surge XT's, the Melodee Poly/PD/Chip plug-ins'.
+- Library: NAM's file (nam.cpp order and names move into it). Built with
+  NAM only: Second Spin's needs its name or VST2 ID as Melodee reads them, and
+  Surge XT and Melodee Poly already get good pages from their own data.
+- Also built: `"rest": true` (every parameter no page names), the `scope`
+  picture, the EQ's scale following its largest gain.
 - docs/PLUGIN_PAGES.md (format reference) and a section in
   docs/guide/plug-ins.md.
 

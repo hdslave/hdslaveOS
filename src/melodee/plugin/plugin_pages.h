@@ -5,15 +5,20 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 
-// The picture a page draws above its row in hand (docs/PLUGIN_PAGES_PLAN.md, pick 4 a), found from its parameters'
-// names: an envelope (attack, decay, sustain, release of one prefix: "Amp Attack" ... "Amp Release") or a filter
-// (a cutoff with a resonance). `slots[n]`: where each of its parameters is in the layout (-1 none).
-enum class PagePicture : uint8_t { None, Envelope, Filter };
+// The picture a page draws above its row in hand (docs/PLUGIN_PAGES_PLAN.md, pick 4 a): found from its parameters'
+// names, an envelope (attack, decay, sustain, release of one prefix: "Amp Attack" ... "Amp Release") or a filter
+// (a cutoff with a resonance); or named by a page file (plugin/page_file.h), those two and large values (up to
+// three), an EQ (bands of frequency, gain, Q) or the plug-in's sound (scope). Its parts in the kind's order:
+// `params[n]` the parameter (-1 none), `slots[n]` where it is in the layout's rows (-1 not on the page).
+enum class PagePicture : uint8_t { None, Envelope, Filter, Value, Eq, Scope };
 struct PagePictureSlots {
+    static constexpr unsigned most = 12; // an EQ's four bands of three
     PagePicture kind = PagePicture::None;
-    int slots[4] {-1, -1, -1, -1}; // envelope: attack, decay, sustain, release; filter: cutoff, resonance
+    int slots[most] {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    int params[most] {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 };
 
 // A plug-in's pages (docs/PLUGIN_PAGES_PLAN.md): named groups of its parameters, laid out for K1-K3 in rows of
@@ -23,8 +28,13 @@ struct PagePictureSlots {
 namespace melodee {
 
 struct PluginPage {
+    PluginPage() = default;
+    PluginPage(std::string page, std::vector<int> list) : name(std::move(page)), params(std::move(list)) {}
     std::string name;      // "" none: the plug-in's one list
     std::vector<int> params; // parameter indices, in order
+    std::vector<std::string> labels; // a page file's names for their cards, by `params` ("" or missing: the plug-in's)
+    PagePicture picture = PagePicture::None; // a page file's picture; None: found from the names
+    std::vector<int> picture_params; // its parts' parameters, in the kind's order (-1 none)
 };
 
 // Pages as the cards take them: each page's parameters in rows of three, its last row filled with -1 (no
@@ -33,7 +43,9 @@ struct PluginLayout {
     std::vector<int> slots;
     std::vector<std::string> names;   // each page's name
     std::vector<uint16_t> first_rows; // each page's first row
-    std::vector<std::vector<PagePictureSlots>> pictures; // each page's pictures (find_pictures()); empty: none found yet
+    std::vector<std::string> labels;  // by slot: a page file's name for its card ("" the plug-in's)
+    std::vector<std::vector<PagePictureSlots>> pictures; // each page's pictures (a page file's, else find_pictures())
+    std::vector<bool> named;          // by page: its picture is a page file's, not looked for
     unsigned rows() const { return unsigned(slots.size() / 3); }
     unsigned pages() const { return unsigned(names.size()); }
     int at(size_t slot) const { return slot < slots.size() ? slots[slot] : -1; }
@@ -57,23 +69,49 @@ inline PluginLayout lay_out(const std::vector<PluginPage>& pages) {
     PluginLayout out;
     for (const auto& page : pages) {
         std::vector<int> own;
-        for (int p : page.params)
-            if (p >= 0 && std::find(own.begin(), own.end(), p) == own.end()) own.push_back(p);
+        std::vector<std::string> labels;
+        for (size_t n = 0; n < page.params.size(); ++n) {
+            int p = page.params[n];
+            if (p < 0 || std::find(own.begin(), own.end(), p) != own.end()) continue;
+            own.push_back(p);
+            labels.push_back(n < page.labels.size() ? page.labels[n] : std::string());
+        }
         if (own.empty()) continue;
+        size_t first = out.slots.size();
         out.names.push_back(page.name);
         out.first_rows.push_back(uint16_t(out.rows()));
         out.slots.insert(out.slots.end(), own.begin(), own.end());
-        while (out.slots.size() % 3) out.slots.push_back(-1);
+        out.labels.insert(out.labels.end(), labels.begin(), labels.end());
+        while (out.slots.size() % 3) { out.slots.push_back(-1); out.labels.emplace_back(); }
+        out.pictures.emplace_back();
+        out.named.push_back(page.picture != PagePicture::None);
+        if (page.picture == PagePicture::None) continue;
+        PagePictureSlots picture;
+        picture.kind = page.picture;
+        for (size_t n = 0; n < page.picture_params.size() && n < PagePictureSlots::most; ++n) {
+            int p = page.picture_params[n];
+            picture.params[n] = p;
+            auto at = std::find(out.slots.begin() + long(first), out.slots.end(), p);
+            picture.slots[n] = p >= 0 && at != out.slots.end() ? int(at - out.slots.begin()) : -1;
+        }
+        out.pictures.back().push_back(picture);
     }
     return out;
 }
 
 // Each page keeps only the parameters in `allowed` (the ones shown at all: not hidden, not the bypass).
 inline void keep_only(std::vector<PluginPage>& pages, const std::vector<int>& allowed) {
-    for (auto& page : pages)
-        page.params.erase(std::remove_if(page.params.begin(), page.params.end(), [&](int p) {
-            return std::find(allowed.begin(), allowed.end(), p) == allowed.end();
-        }), page.params.end());
+    for (auto& page : pages) {
+        std::vector<int> params;
+        std::vector<std::string> labels;
+        for (size_t n = 0; n < page.params.size(); ++n) {
+            if (std::find(allowed.begin(), allowed.end(), page.params[n]) == allowed.end()) continue;
+            params.push_back(page.params[n]);
+            labels.push_back(n < page.labels.size() ? page.labels[n] : std::string());
+        }
+        page.params = std::move(params);
+        page.labels = std::move(labels);
+    }
 }
 
 // Pages from parameter groups (VST3 units, LV2 port groups, CLAP modules): `groups[i]` is the group of `params[i]`
@@ -157,8 +195,11 @@ inline std::string without(const std::string& name, const std::string& word, boo
 // (picture_for()).
 inline void find_pictures(PluginLayout& layout, const std::vector<std::string>& names) {
     using namespace plugin_pages_detail;
-    layout.pictures.assign(layout.pages(), {});
+    layout.pictures.resize(layout.pages());
+    layout.named.resize(layout.pages(), false);
     for (unsigned page = 0; page < layout.pages(); ++page) {
+        if (layout.named[page]) continue; // a page file's own picture
+        layout.pictures[page].clear();
         size_t from = size_t(layout.first_rows[page]) * 3, to = from + size_t(layout.rows_of(page)) * 3;
         auto name_at = [&](size_t slot) {
             int p = layout.at(slot);
@@ -180,6 +221,7 @@ inline void find_pictures(PluginLayout& layout, const std::vector<std::string>& 
                 PagePictureSlots picture;
                 picture.kind = PagePicture::Envelope;
                 std::copy(slots, slots + 4, picture.slots);
+                for (int n = 0; n < 4; ++n) picture.params[n] = layout.at(size_t(slots[n]));
                 found_here.push_back(picture);
             }
         }
@@ -203,6 +245,8 @@ inline void find_pictures(PluginLayout& layout, const std::vector<std::string>& 
                 picture.kind = PagePicture::Filter;
                 picture.slots[0] = int(c);
                 picture.slots[1] = best;
+                picture.params[0] = layout.at(c);
+                picture.params[1] = layout.at(size_t(best));
                 found_here.push_back(picture);
             }
         }
@@ -257,6 +301,19 @@ inline bool value_in(const std::string& text, bool hertz, double& out) {
     if (unit == "s" || unit == "sec" || unit == "secs" || unit == "seconds") { out = v; return true; }
     if (unit == "min") { out = v * 60; return true; }
     return false;
+}
+
+// A gain as a plug-in writes it ("-3.5 dB", "+6dB"): its number of decibels; false without the unit.
+inline bool decibels_in(const std::string& text, double& out) {
+    std::string t = plugin_pages_detail::lower(text);
+    auto at = t.find("db");
+    if (at == std::string::npos) return false;
+    std::string number = t.substr(0, at);
+    for (auto& c : number) if (c == ',') c = '.';
+    size_t start = number.find_first_of("+-.0123456789");
+    if (start == std::string::npos || number.find_first_of("0123456789", start) == std::string::npos) return false;
+    out = std::atof(number.c_str() + start);
+    return true;
 }
 
 } // namespace melodee

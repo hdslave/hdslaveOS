@@ -9,6 +9,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -142,6 +143,7 @@ private:
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
+    void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)
     void destroy(PluginHandle* handle);
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);
@@ -164,6 +166,9 @@ private:
     struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; };
     std::vector<Known> known;
     Known probe(const PluginFile& file);            // opens it just long enough to ask
+    // Page files that could not be used, by file, and what was last written of them (rack's thread only).
+    std::map<std::string, std::vector<std::string>> page_problems;
+    std::string page_problems_written;
     std::string stage_tag;
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0};

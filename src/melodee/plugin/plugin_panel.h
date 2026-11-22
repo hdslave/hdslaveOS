@@ -40,11 +40,12 @@ struct PluginPanel {
     uint16_t page_row = 0, page_rows = 0; // `row` within its page, and the page's rows
     uint16_t prev_page = 0, next_page = 0; // the first rows of the pages before and after (Minus / Plus); `row`'s own page's at the ends
     char page_name[32] {};         // its name ("" the plug-in's one list)
-    // The page's picture (plugin/plugin_pages.h find_pictures()): its parameters (envelope: attack, decay, sustain,
-    // release; filter: cutoff, resonance), each with where it is in the rows (`picture_slots`, row * 3 + k).
+    // The page's picture (plugin/plugin_pages.h PagePictureSlots): its parts' parameters in the kind's order
+    // (envelope: attack, decay, sustain, release; filter: cutoff, resonance; values: up to three; EQ: bands of
+    // frequency, gain, Q), each with where it is in the rows (`picture_slots`, row * 3 + k; -1 not on the page).
     uint8_t picture = 0;           // PagePicture
-    std::array<PluginPanelParam, 4> picture_params {};
-    std::array<int16_t, 4> picture_slots {-1, -1, -1, -1};
+    std::array<PluginPanelParam, 12> picture_params {};
+    std::array<int16_t, 12> picture_slots {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     // An effect's sound as it plays, measured here for the plug-in in view (pages/fx_drawing.cpp): one block's lowest
     // and highest sample per entry, oldest first (low byte left, then right; each a signed byte as min, max), and the
     // levels in and out, 0..1000. `measured`: there is something to show.

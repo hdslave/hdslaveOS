@@ -214,6 +214,97 @@ void filter_picture(Paint& p, const Snapshot& s, float x, float y, float w, floa
     float q = 0.7f + 5.0f * std::clamp(panel.picture_params[1].value / float(plugin_param_max), 0.0f, 1.0f);
     draw_filter_curve(p, x, y, w, h, 0, 2, float(std::clamp(hz, 20.0, 20000.0)), q, colour_of(s), part_colour(s, panel.picture_slots[0]), true);
 }
+// Up to three values large (a page file's "value" picture): each its name in its knob's colour while its row is in
+// hand, its value, a gauge.
+void value_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+    const auto& panel = s.ui.plugin_panel;
+    unsigned count = 0;
+    while (count < 3 && panel.picture_params[count].used) ++count;
+    if (!count) return;
+    float cw = w / float(count);
+    for (unsigned n = 0; n < count; ++n) {
+        const auto& param = panel.picture_params[n];
+        auto c = part_colour(s, panel.picture_slots[n]);
+        float cx = x + n * cw;
+        juce::String name = juce::String::fromUTF8(param.name), value = juce::String::fromUTF8(param.text);
+        auto name_style = plain(c == colour::mid ? colour::sec : c, type::small, Weight::SemiBold);
+        p.text(name, cx, y + 4, cw, 14, p.fit(name, name_style, cw - 8, type::floor), juce::Justification::centred);
+        auto value_style = plain(colour::text, 30, Weight::Medium);
+        p.text(value, cx, y + 20, cw, 36, p.fit(value, value_style, cw - 8, type::value), juce::Justification::centred);
+        float gw = std::min(cw - 24, 80.0f), gx = cx + (cw - gw) / 2, gy = y + h - 14;
+        p.fill(gx, gy, gw, 2, colour::line, 1);
+        p.fill(gx, gy, gw * std::clamp(param.value / float(plugin_param_max), 0.0f, 1.0f), 2, c == colour::mid ? colour::sec : c, 1);
+    }
+}
+
+// An EQ (a page file's "eq" picture): its bands' response summed, each band a dot at its frequency and gain.
+// Frequency and gain from the values' text where it names Hz and dB, else from where they sit (20 Hz-20 kHz,
+// -18-+18 dB); Q from a plain number, else from where it sits (0.3-10). The scale follows the largest gain.
+void eq_picture(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+    const auto& panel = s.ui.plugin_panel;
+    struct Band { double hz, db, q; int slot; };
+    std::vector<Band> bands;
+    for (unsigned b = 0; b + 2 < PagePictureSlots::most; b += 3) {
+        const auto& f = panel.picture_params[b], &g = panel.picture_params[b + 1], &q = panel.picture_params[b + 2];
+        if (!f.used && !g.used) continue;
+        Band band {1000, 0, 0.7, panel.picture_slots[b] >= 0 ? panel.picture_slots[b] : panel.picture_slots[b + 1]};
+        if (f.used && !value_in(f.text, true, band.hz)) band.hz = 20.0 * std::pow(1000.0, f.value / double(plugin_param_max));
+        if (g.used && !decibels_in(g.text, band.db)) band.db = (g.value / double(plugin_param_max) * 2 - 1) * 18;
+        if (q.used) {
+            double plain_q = std::atof(q.text);
+            band.q = plain_q > 0.05 && plain_q < 40 ? plain_q : 0.3 * std::pow(33.0, q.value / double(plugin_param_max));
+        }
+        band.hz = std::clamp(band.hz, 20.0, 20000.0);
+        bands.push_back(band);
+    }
+    double most = 0; // the scale: the largest band gain, up to the next 6, 12, 18 or 24 dB
+    for (const auto& b : bands) most = std::max(most, std::abs(b.db));
+    const double range = std::clamp(std::ceil(most / 6.0) * 6.0, 6.0, 24.0);
+    auto x_of = [&](double hz) { return x + float(std::log(hz / 20.0) / std::log(1000.0)) * w; };
+    auto y_of = [&](double db) { return y + h / 2 - float(std::clamp(db, -range, range) / range) * (h / 2 - 2); };
+    p.fill(x, y + h / 2 - 0.5f, w, 1, colour::line);
+    juce::Path line, area;
+    for (int n = 0; n <= 120; ++n) {
+        double hz = 20.0 * std::pow(1000.0, n / 120.0), db = 0;
+        for (const auto& b : bands) { // a peaking band's gain at hz (its analogue prototype)
+            double r = hz / b.hz, a = std::pow(10.0, b.db / 40.0), one = (1 - r * r) * (1 - r * r);
+            double num = one + std::pow(r * a / b.q, 2), den = one + std::pow(r / (a * b.q), 2);
+            db += 10 * std::log10(std::max(num / den, 1e-9));
+        }
+        float px = x_of(hz), py = y_of(db);
+        if (n == 0) { line.startNewSubPath(px, py); area.startNewSubPath(px, y + h / 2); }
+        line.lineTo(px, py); area.lineTo(px, py);
+    }
+    area.lineTo(x + w, y + h / 2); area.closeSubPath();
+    p.g.setColour(colour_of(s).withAlpha(0.14f)); p.g.fillPath(area);
+    p.g.setColour(colour_of(s)); p.g.strokePath(line, juce::PathStrokeType(1.5f));
+    for (const auto& b : bands) {
+        auto c = part_colour(s, b.slot);
+        p.circle(x_of(b.hz), y_of(b.db), 3.5f, c);
+        p.circle(x_of(b.hz), y_of(b.db), 1.8f, colour::bg);
+    }
+    auto axis = plain(colour::dim, type::small, Weight::SemiBold);
+    p.text("20 Hz", x, y + h + 3, 44, 12, axis); p.text("200 Hz", x + w / 3 - 18, y + h + 3, 50, 12, axis);
+    p.text("2 kHz", x + 2 * w / 3 - 16, y + h + 3, 50, 12, axis); p.text("20 kHz", x + w - 50, y + h + 3, 50, 12, axis, juce::Justification::centredRight);
+}
+
+// The plug-in's sound as measured here, left over right, a block a bar, newest on the right.
+void scope_lanes(Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+    const auto& panel = s.ui.plugin_panel;
+    auto c = colour_of(s);
+    float lane = (h - 4) / 2, step = w / float(panel.scope.size());
+    for (int side = 0; side < 2; ++side) {
+        float mid = y + side * (lane + 4) + lane / 2;
+        p.fill(x, mid - 0.5f, w, 1, colour::line);
+        for (size_t n = 0; n < panel.scope.size(); ++n) {
+            uint32_t v = panel.scope[n] >> (side * 16);
+            float lo = int8_t(v & 0xff) / 127.0f, hi = int8_t((v >> 8) & 0xff) / 127.0f;
+            if (hi - lo < 0.01f) continue;
+            p.fill(x + n * step + 0.4f, mid - hi * lane / 2, std::max(1.2f, step - 1.2f), (hi - lo) * lane / 2,
+                   c.withAlpha(0.35f + 0.65f * float(n) / float(panel.scope.size())), 0.8f);
+        }
+    }
+}
 } // namespace
 
 bool plugin_page_shown(const Snapshot& s, unsigned entry) {
@@ -238,6 +329,15 @@ void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKey
     } else if (panel.picture == uint8_t(PagePicture::Filter)) {
         filter_picture(p, s, 14, 46, 292, 62);
         arc_row(p, s, panel.row, 132, cards);
+    } else if (panel.picture == uint8_t(PagePicture::Value)) {
+        value_picture(p, s, 14, 46, 292, 80);
+        arc_row(p, s, panel.row, 132, cards);
+    } else if (panel.picture == uint8_t(PagePicture::Eq)) {
+        eq_picture(p, s, 14, 46, 292, 62);
+        arc_row(p, s, panel.row, 132, cards);
+    } else if (panel.picture == uint8_t(PagePicture::Scope) && panel.measured) {
+        scope_lanes(p, s, 14, 52, 292, 70);
+        arc_row(p, s, panel.row, 132, cards);
     } else {
         for (unsigned r = 0; r < panel.window_rows; ++r) arc_row(p, s, panel.window_first / 3u + r, 44 + 96 * float(r), cards);
     }
@@ -251,20 +351,9 @@ void draw_plugin_sound(Paint& p, const Snapshot& s, float x, float y, float w, f
     juce::String name = panel.page_name[0] ? juce::String::fromUTF8(panel.page_name).toUpperCase() : juce::String();
     if (name.isNotEmpty()) p.text(name, x, y, w - 90, 14, p.fit(name, caps_text(c), w - 90, type::floor));
     if (panel.pages > 1 && panel.pages <= 24) page_dots(p, x + w, y + 7, int(panel.pages), int(panel.page), c, true);
-    float sy = y + 18, lane = std::max(6.0f, (h - 18 - 4) / 2), sw = w - 96;
+    float sy = y + 18, sw = w - 96;
     if (h < 30 || !panel.measured) return;
-    for (int side = 0; side < 2; ++side) {
-        float mid = sy + side * (lane + 4) + lane / 2;
-        p.fill(x, mid - 0.5f, sw, 1, colour::line);
-        float step = sw / float(panel.scope.size());
-        for (size_t n = 0; n < panel.scope.size(); ++n) {
-            uint32_t v = panel.scope[n] >> (side * 16);
-            float lo = int8_t(v & 0xff) / 127.0f, hi = int8_t((v >> 8) & 0xff) / 127.0f;
-            if (hi - lo < 0.01f) continue;
-            p.fill(x + n * step + 0.4f, mid - hi * lane / 2, std::max(1.2f, step - 1.2f), (hi - lo) * lane / 2,
-                   c.withAlpha(0.35f + 0.65f * float(n) / float(panel.scope.size())), 0.8f);
-        }
-    }
+    scope_lanes(p, s, x, sy, sw, std::max(16.0f, h - 18));
     float mx = x + sw + 14, mw = w - sw - 14;
     for (int n = 0; n < 2; ++n) {
         float my = sy + n * 20;

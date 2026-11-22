@@ -761,9 +761,13 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
                                {"Amp Release", "35", 350, 0}, {"Vel > Amp", "65 %", 650, 0}, {"", "", 0, 0}};
     static const Param effect[6] {{"Size", "62 %", 620, 0}, {"Decay", "2.4 s", 480, 0}, {"Mix", "35 %", 350, 0},
                                   {"Damping", "40 %", 400, 0}, {"Pre-delay", "12 ms", 120, 0}, {"Width", "100 %", 1000, 0}};
-    static const char* const tabs[6] {"OSC", "FILTER", "AMP ENV", "MOD", "PLAY", "MOD 1-4"};
-    const Param* rows = !instrument ? effect : page == 1 ? filter : page == 2 ? amp : osc;
-    unsigned at = instrument ? unsigned(std::clamp(page, 0, 2)) : 0;
+    static const Param output[6] {{"Volume", "-3.0 dB", 700, 0}, {"Pan", "C", 500, 0}, {"Glide", "120 ms", 240, 0},
+                                  {"Voices", "8", 1000, 8}, {"Bend Range", "2", 160, 0}, {"", "", 0, 0}};
+    static const Param eq[6] {{"Low Freq", "120 Hz", 320, 0}, {"Low Gain", "+3.0 dB", 580, 0}, {"Low Q", "0.70", 300, 0},
+                              {"High Freq", "4.2 kHz", 740, 0}, {"High Gain", "-4.5 dB", 380, 0}, {"High Q", "1.40", 420, 0}};
+    static const char* const tabs[6] {"OSC", "FILTER", "AMP ENV", "OUTPUT", "EQ", "MOD 1-4"};
+    const Param* rows = !instrument ? effect : page == 1 ? filter : page == 2 ? amp : page == 3 ? output : page == 4 ? eq : osc;
+    unsigned at = instrument ? unsigned(std::clamp(page, 0, 4)) : 0;
     panel.pages = instrument ? 6 : 1; panel.page = uint16_t(at);
     panel.rows = uint16_t(panel.pages * 2); panel.row = uint16_t(at * 2);
     panel.page_rows = 2; panel.page_row = 0;
@@ -778,10 +782,11 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
         std::snprintf(c.text, sizeof(c.text), "%s", rows[k].text);
         if (k < 3) panel.params[k] = c;
     }
-    if (instrument && (at == 1 || at == 2)) { // the page's picture, from slots in hand (and Release on the next row)
-        panel.picture = uint8_t(at == 1 ? PagePicture::Filter : PagePicture::Envelope);
-        unsigned count = at == 1 ? 2 : 4;
-        for (unsigned n = 0; n < count; ++n) { panel.picture_params[n] = panel.window[n]; panel.picture_slots[n] = int16_t(panel.window_first + n); }
+    if (instrument && at >= 1) { // the page's picture, from slots in hand (and the next row's)
+        static const PagePicture kinds[5] {PagePicture::None, PagePicture::Filter, PagePicture::Envelope, PagePicture::Value, PagePicture::Eq};
+        static const unsigned counts[5] {0, 2, 4, 3, 6};
+        panel.picture = uint8_t(kinds[at]);
+        for (unsigned n = 0; n < counts[at]; ++n) { panel.picture_params[n] = panel.window[n]; panel.picture_slots[n] = int16_t(panel.window_first + n); }
     }
     if (!instrument) { // a few bars of a beat through it, newest on the right
         panel.measured = true; panel.level_in = 520; panel.level_out = 610;
@@ -1142,6 +1147,8 @@ const Preview previews[] {
      }},
     {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve
     {"plugineditenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); }},    // a page with an envelope
+    {"plugineditvalue", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 3); }},  // a page file's large values
+    {"plugineditq", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 4); }},      // a page file's EQ
     {"pluginopening", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Loading); }},
     {"pluginfailed", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Failed); }},
     {"rackplugin", [](Shell&, Snapshot& s) { // a plug-in effect on track 1's chain, after an echo

@@ -144,6 +144,8 @@
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
 #include "melodee/plugin/plugin_files.h"
+#include "melodee/plugin/page_file.h"
+#include "melodee/plugin/page_library.h"
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/preset_rows.h"
 #include <algorithm>
@@ -7250,18 +7252,29 @@ void preset_folders() {
     CHECK(none.empty() && preset_rows(none, "", -1).empty() && none.begin() == none.end());
 }
 
-// Neural Amp Modeler (plugin/nam.h): its page Model, Cab and Output first, the tone stack next, the rest in its own
-// order, Slim among them; long names shorter on the cards; its two folders made under the home.
+// Neural Amp Modeler (plugin/nam.h): its pages from Melodee's library, Model, Cab and Output first, the tone stack
+// next, the rest in its own order, Slim among them; long names shorter on the cards; its two folders made under the home.
 void nam_page() {
     namespace fs = std::filesystem;
     const std::vector<std::string> names {"Input", "Threshold", "Bass", "Middle", "Treble", "Output", "NoiseGateActive",
                                           "ToneStack", "IRToggle", "CalibrateInput", "InputCalibrationLevel", "OutputMode",
                                           "Slim", "Model", "Cab"};
-    CHECK((nam_page_order(names) == std::vector<size_t> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10, 12}));
-    CHECK((nam_page_order({"Slim", "Drive", "Model"}) == std::vector<size_t> {2, 0, 1})); // parameters it does not know: after, in its order
-    CHECK(nam_page_order({}).empty());
-    CHECK(nam_card_name("NoiseGateActive") == "Gate" && nam_card_name("InputCalibrationLevel") == "Cal level");
-    CHECK(nam_card_name("Model") == "Model" && is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));
+    // Its pages: Melodee's library page file (plugin/page_library.h), the order and short names the cards had before.
+    PageFile file;
+    std::string why;
+    CHECK(read_page_file(page_library[0], file, why));
+    PluginIdentity who; who.name = "NeuralAmpModeler";
+    CHECK(page_file_matches(file, who));
+    std::vector<int> shown;
+    std::vector<std::string> ids;
+    for (size_t i = 0; i < names.size(); ++i) { shown.push_back(int(i)); ids.push_back(std::to_string(i)); }
+    std::vector<std::string> problems;
+    auto layout = lay_out(resolve_page_file(file, shown, names, ids, problems));
+    CHECK(problems.empty());
+    CHECK((layout.slots == std::vector<int> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10, 12})); // Slim last, with the rest
+    CHECK((layout.names == std::vector<std::string> {"AMP", "TONE", "INPUT", "SWITCHES", "MORE"}));
+    CHECK(layout.labels[8] == "Gate" && layout.labels[13] == "Cal level" && layout.labels[0].empty());
+    CHECK(is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));
     auto home = fs::temp_directory_path() / ("melodee-nam-" + std::to_string(getpid()));
     nam_folders(home);
     CHECK(fs::is_directory(home / "Neural Amp Modeler" / "Models") && fs::is_directory(home / "Neural Amp Modeler" / "IRs"));
@@ -7411,6 +7424,71 @@ void plugin_page_layout() {
     CHECK(value_in("2 kHz", true, v) && std::abs(v - 2000) < 1e-9);
     CHECK(value_in("440 Hz", true, v) && std::abs(v - 440) < 1e-9);
     CHECK(!value_in("45", false, v) && !value_in("62 %", true, v) && !value_in("Off", false, v) && !value_in("2 kHz", false, v));
+}
+
+// Page files (plugin/page_file.h): which plug-in, its pages by names or IDs, labels, a last page of the rest,
+// pictures; files that cannot be used say why.
+void page_files() {
+    const char* nam = R"({"melodee-pages": 1, "plugin": {"name": "NeuralAmpModeler"},
+        "pages": [
+          {"name": "AMP", "params": ["Model", "Cab", "Output"]},
+          {"name": "INPUT", "params": ["Input", {"name": "NoiseGateActive", "label": "Gate"}, {"id": "7"}],
+           "picture": {"kind": "value", "params": ["Input", "Output", "Bass", "Middle"]}},
+          {"name": "EQ", "params": ["Bass"], "picture": {"kind": "eq", "bands": [{"freq": "Low Freq", "gain": "Bass", "q": "Gone"}]}},
+          {"name": "MORE", "rest": true}]})";
+    PageFile file;
+    std::string why;
+    CHECK(read_page_file(nam, file, why));
+    CHECK(file.name == "NeuralAmpModeler" && file.pages.size() == 4 && file.pages[3].rest && !file.pages[0].rest);
+    CHECK(file.pages.size() == 4 && file.pages[1].params.size() == 3 && file.pages[1].params[1].label == "Gate" && file.pages[1].params[2].id == "7");
+    CHECK(file.pages.size() == 4 && file.pages[1].picture == PagePicture::Value && file.pages[1].parts.size() == 3); // values: three at most
+    CHECK(file.pages.size() == 4 && file.pages[2].picture == PagePicture::Eq && file.pages[2].parts.size() == 3);
+
+    PluginIdentity who; who.name = "NeuralAmpModeler"; who.vendor = "Steven Atkinson";
+    CHECK(page_file_matches(file, who));
+    who.name = "Other";
+    CHECK(!page_file_matches(file, who));
+    PageFile by_id; by_id.clap = "org.surge-synth-team.surge-xt"; by_id.vst2 = "NAMp";
+    PluginIdentity surge; surge.clap = "org.surge-synth-team.surge-xt";
+    PluginIdentity coded; coded.vst2 = int32_t('N' << 24 | 'A' << 16 | 'M' << 8 | 'p');
+    CHECK(page_file_matches(by_id, surge) && page_file_matches(by_id, coded) && vst2_code(coded.vst2) == "NAMp" && vst2_code(5) == "5");
+    PageFile vendored; vendored.name = "Reverb"; vendored.vendor = "Acme";
+    PluginIdentity reverb; reverb.name = "Reverb"; reverb.vendor = "Other";
+    CHECK(!page_file_matches(vendored, reverb));
+
+    // Resolved against the plug-in: names by index, IDs by index; 9 is hidden (not shown).
+    std::vector<std::string> names {"Model", "Cab", "Output", "Bass", "Middle", "Treble", "Input", "Threshold", "NoiseGateActive", "Slim"};
+    std::vector<std::string> ids {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    std::vector<int> shown {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    std::vector<std::string> problems;
+    auto pages = resolve_page_file(file, shown, names, ids, problems);
+    CHECK(pages.size() == 4);
+    CHECK(pages.size() == 4 && (pages[1].params == std::vector<int> {6, 8, 7}) && pages[1].labels.size() == 3 && pages[1].labels[1] == "Gate");
+    CHECK(pages.size() == 4 && (pages[3].params == std::vector<int> {4, 5})); // the rest: Middle, Treble (Slim is hidden)
+    CHECK(pages.size() == 4 && (pages[1].picture_params == std::vector<int> {6, 2, 3}));
+    CHECK(pages.size() == 4 && (pages[2].picture_params == std::vector<int> {-1, 3, -1}));
+    CHECK((problems == std::vector<std::string> {"no parameter \"Low Freq\"", "no parameter \"Gone\""}));
+    auto layout = lay_out(pages);
+    CHECK(layout.labels.size() == layout.slots.size() && layout.labels[4] == "Gate"); // INPUT's second slot
+    CHECK(layout.named.size() == 4 && !layout.named[0] && layout.named[1] && layout.named[2] && !layout.named[3]);
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1].size() == 1 && layout.pictures[1][0].kind == PagePicture::Value);
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1][0].slots[0] == 3 && layout.pictures[1][0].slots[1] == -1); // Output: not on INPUT
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1][0].params[1] == 2);
+    find_pictures(layout, names); // the file's pictures stay
+    CHECK(layout.pictures[1].size() == 1 && layout.pictures[1][0].kind == PagePicture::Value && picture_for(layout, 1, 1).kind == PagePicture::Value);
+
+    // Files that cannot be used.
+    PageFile bad;
+    CHECK(!read_page_file("{\"pages\": [", bad, why) && why == "not JSON Melodee can read");
+    CHECK(!read_page_file(R"({"plugin": {"name": "X"}, "pages": [{"name": "A"}]})", bad, why) && why == "no \"melodee-pages\": 1");
+    CHECK(!read_page_file(R"({"melodee-pages": 2, "plugin": {"name": "X"}, "pages": [{}]})", bad, why) && why == "version 2 is newer than this Melodee");
+    CHECK(!read_page_file(R"({"melodee-pages": 1, "pages": [{}]})", bad, why) && why == "names no plug-in");
+    CHECK(!read_page_file(R"({"melodee-pages": 1, "plugin": {"lv2": "urn:x"}, "pages": []})", bad, why) && why == "has no pages");
+    CHECK(read_page_file(R"({"melodee-pages": 1, "plugin": {"vst2": 1234}, "pages": [{"name": "A", "picture": {"kind": "spiral"}}], "skin": {}})", bad, why)
+          && bad.vst2 == "1234" && bad.pages[0].picture == PagePicture::None); // unknown keys and kinds: skipped
+
+    double db = 0;
+    CHECK(decibels_in("-3.5 dB", db) && std::abs(db + 3.5) < 1e-9 && decibels_in("+6dB", db) && std::abs(db - 6) < 1e-9 && !decibels_in("6", db));
 }
 
 void synths_as_plugins() {
@@ -11881,6 +11959,7 @@ int main() {
     card_plugin_paths();
     qlink_pages();
     plugin_page_layout();
+    page_files();
     synths_as_plugins();
     voice_taps();
     voice_heads();

@@ -5,6 +5,8 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/idle_gate.h"
+#include "melodee/plugin/page_file.h"
+#include "melodee/plugin/page_library.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
@@ -22,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <system_error>
 #include <unistd.h>
@@ -183,14 +186,78 @@ bool hidden(const juce::AudioProcessorParameter& p) {
     return !p.isAutomatable() || name.startsWith("MIDI Ch.") || name.startsWith("MIDI CC");
 }
 
-// A plug-in's pages (plugin/plugin_pages.h, docs/PLUGIN_PAGES_PLAN.md): its own pages (CLAP remote-controls, else
-// an Open MPC skin's Q-Link pages), then its parameter groups (VST3 units, LV2 port groups, CLAP modules) for the
-// parameters those leave out (pages_with_groups()); with neither, its list on one page. Rack's thread: a CLAP
-// plug-in is asked for its pages now.
+// Where a plug-in's own page file is (docs/PLUGIN_PAGES.md): in its VST3 bundle's Resources, its LV2 bundle or Open
+// MPC folder, else beside its .clap or .so as <name>.melodee-pages.json.
+fs::path package_page_file(const PluginFile& file) {
+    fs::path at(file.path);
+    std::error_code e;
+    if (file.format == PluginFormat::Vst3) return at / "Contents" / "Resources" / "melodee-pages.json";
+    if (fs::is_directory(at, e)) return at / "melodee-pages.json";
+    return at.parent_path() / (at.stem().string() + ".melodee-pages.json");
+}
+
+std::string text_of(const fs::path& file, size_t most) {
+    std::error_code e;
+    if (!fs::is_regular_file(file, e) || fs::file_size(file, e) > most) return {};
+    std::ifstream in(file, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), {});
+}
+
+// The pages of the first page file for this plug-in (plugin/page_file.h): the card's Melodee/Plugin Pages folder, its
+// own package, Melodee's library (plugin/page_library.h). Empty: none. `problems` gets, by file, what kept a file out
+// or what it names that the plug-in lacks (the library's files say nothing). Rack's thread.
+std::vector<PluginPage> file_pages(juce::AudioPluginInstance& instance, ClapInstance* clap, const PluginFile& file,
+                                   const std::string& card_top, const std::vector<int>& shown,
+                                   std::map<std::string, std::vector<std::string>>& problems) {
+    juce::PluginDescription description;
+    instance.fillInPluginDescription(description);
+    PluginIdentity who;
+    who.name = description.name.toStdString();
+    who.vendor = description.manufacturerName.toStdString();
+    if (clap) who.clap = clap->clapId();
+    if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) who.vst2 = description.uniqueId;
+    if (file.format == PluginFormat::Lv2) who.lv2 = description.fileOrIdentifier.toStdString();
+    std::vector<std::string> names, ids;
+    for (auto* p : instance.getParameters()) {
+        names.push_back(p->getName(64).trim().toStdString());
+        auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*>(p);
+        ids.push_back(hosted ? hosted->getParameterID().toStdString() : std::to_string(p->getParameterIndex()));
+    }
+    auto use = [&](const std::string& text, const std::string& source, bool tell) -> std::vector<PluginPage> {
+        PageFile page_file;
+        std::string why;
+        if (!read_page_file(text, page_file, why)) { if (tell) problems[source] = {why}; return {}; }
+        if (!page_file_matches(page_file, who)) { if (tell) problems.erase(source); return {}; }
+        std::vector<std::string> missing;
+        auto pages = resolve_page_file(page_file, shown, names, ids, missing);
+        if (tell) { if (missing.empty()) problems.erase(source); else problems[source] = missing; }
+        return pages;
+    };
+    if (!card_top.empty()) {
+        std::error_code e;
+        std::vector<fs::path> found;
+        for (fs::directory_iterator it(fs::path(card_top) / "Melodee" / "Plugin Pages", e), end; !e && it != end; it.increment(e))
+            if (it->path().extension() == ".json" && it->path().filename().string().rfind("._", 0) != 0) found.push_back(it->path());
+        std::sort(found.begin(), found.end());
+        for (const auto& path : found)
+            if (auto pages = use(text_of(path, 64 << 10), path.filename().string(), true); !pages.empty()) return pages;
+    }
+    if (auto own = package_page_file(file); !text_of(own, 64 << 10).empty())
+        if (auto pages = use(text_of(own, 64 << 10), own.string(), true); !pages.empty()) return pages;
+    for (const char* json : page_library)
+        if (auto pages = use(json, "", false); !pages.empty()) return pages;
+    return {};
+}
+
+// A plug-in's pages (plugin/plugin_pages.h, docs/PLUGIN_PAGES_PLAN.md): a page file's (`from_file`), else its own
+// pages (CLAP remote-controls, else an Open MPC skin's Q-Link pages); then its parameter groups (VST3 units, LV2 port
+// groups, CLAP modules) for the parameters those leave out (pages_with_groups()); with none, its list on one page.
+// Rack's thread: a CLAP plug-in is asked for its pages now.
 std::vector<PluginPage> plugin_pages(juce::AudioPluginInstance& instance, ClapInstance* clap, PluginFormat format,
-                                     const std::string& folder, const std::vector<int>& shown) {
-    std::vector<PluginPage> own;
-    if (clap)
+                                     const std::string& folder, const std::vector<int>& shown,
+                                     const std::vector<PluginPage>& from_file) {
+    std::vector<PluginPage> own = from_file;
+    if (own.empty() && clap)
         for (auto& r : clap->remotePages()) own.push_back({r.name.empty() ? r.section : r.name, std::move(r.params)});
     if (own.empty() && (format == PluginFormat::Vst2 || format == PluginFormat::Vst2Arm32)) own = qlink_pages(folder);
     keep_only(own, shown);
@@ -397,8 +464,8 @@ public:
     std::vector<int> shown;              // parameter indices any page may show: not hidden, not the bypass
     PluginLayout layout;                 // its pages in rows of three (plugin/plugin_pages.h), under the rack's lock
     std::string folder;                  // where it was picked from (an Open MPC folder holds its skin)
+    std::vector<PluginPage> file_pages;  // a page file's pages (plugin/page_file.h), kept for a CLAP page change
     bool qlinks = false;
-    bool nam = false;                    // Neural Amp Modeler: shorter card names (plugin/nam.h)
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
@@ -737,13 +804,12 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     out.load = uint16_t(std::clamp(h->load.load(std::memory_order_relaxed) * 1000.0f, 0.0f, 9999.0f));
     out.programs = uint16_t(std::min<size_t>(h->programs.size(), 0xffff));
     const auto& params = h->instance->getParameters();
-    auto read = [&](size_t at, PluginPanelParam& card) {
-        int index = layout.at(at);
+    auto read_param = [&](int index, const std::string& label, PluginPanelParam& card) {
         if (index < 0 || index >= params.size()) return; // a page's last row, not full
         auto* p = params[index];
         card.used = true;
-        std::string name = p->getName(int(sizeof(card.name) - 1)).trim().toStdString();
-        put(card.name, sizeof(card.name), h->nam ? nam_card_name(name) : name);
+        std::string name = label.empty() ? p->getName(int(sizeof(card.name) - 1)).trim().toStdString() : label;
+        put(card.name, sizeof(card.name), name);
         float v = p->getValue();
         put(card.text, sizeof(card.text), tidy(p->getText(v, 64).trim().toStdString()));
         card.value = int16_t(std::lround(std::clamp(v, 0.0f, 1.0f) * plugin_param_max));
@@ -751,6 +817,7 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         int steps = p->getNumSteps();
         card.steps = uint16_t(steps > 1 && steps < plugin_param_max ? steps : 0);
     };
+    auto read = [&](size_t at, PluginPanelParam& card) { read_param(layout.at(at), at < layout.labels.size() ? layout.labels[at] : std::string(), card); };
     for (unsigned k = 0; k < 3; ++k) {
         size_t at = size_t(out.row) * 3 + k;
         if (at >= layout.slots.size()) break;
@@ -768,10 +835,10 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     }
     if (auto picture = picture_for(layout, out.page, out.row); picture.kind != PagePicture::None) {
         out.picture = uint8_t(picture.kind);
-        for (unsigned n = 0; n < 4; ++n) {
-            if (picture.slots[n] < 0) continue;
+        for (unsigned n = 0; n < PagePictureSlots::most; ++n) {
             out.picture_slots[n] = int16_t(picture.slots[n]);
-            read(size_t(picture.slots[n]), out.picture_params[n]);
+            if (picture.slots[n] >= 0) read(size_t(picture.slots[n]), out.picture_params[n]); // its card's label
+            else read_param(picture.params[n], {}, out.picture_params[n]);                  // not on the page
         }
     }
 }
@@ -1118,7 +1185,7 @@ void PluginRack::load(const Job& job) {
     double device_rate = job.rate > 0 ? job.rate : 44100.0;
     double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
-    bool nam = false;      // Neural Amp Modeler: its folders made, its page ordered (plugin/nam.h)
+    bool nam = false;      // Neural Amp Modeler: its folders made (plugin/nam.h); its pages are the library's (page_library.h)
     if (juce_hosted(file.format)) {
         juce::OwnedArray<juce::PluginDescription> types;
         auto host = juce_types(file.format, staged_path(file, stage), types);
@@ -1164,16 +1231,11 @@ void PluginRack::load(const Job& job) {
     handle->programs = named_programs(*handle->instance);
     handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
     handle->folder = file.path;
-    auto pages = plugin_pages(*handle->instance, handle->clap, file.format, file.path, handle->shown);
-    handle->qlinks = (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) && !pages.empty() && !pages[0].name.empty();
-    if (nam && pages.size() == 1 && pages[0].name.empty()) { // its own order and short names (plugin/nam.h)
-        std::vector<std::string> names;
-        for (int i : pages[0].params) names.push_back(handle->instance->getParameters()[i]->getName(64).toStdString());
-        std::vector<int> ordered;
-        for (size_t at : nam_page_order(names)) ordered.push_back(pages[0].params[at]);
-        pages[0].params = std::move(ordered);
-    }
-    handle->nam = nam;
+    handle->file_pages = file_pages(*handle->instance, handle->clap, file, top, handle->shown, page_problems);
+    write_page_problems(top);
+    auto pages = plugin_pages(*handle->instance, handle->clap, file.format, file.path, handle->shown, handle->file_pages);
+    handle->qlinks = handle->file_pages.empty() && (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32)
+                     && !pages.empty() && !pages[0].name.empty();
     handle->layout = layout_of(*handle->instance, pages);
     handle->warm_up(); // before the audio thread first runs it
 
@@ -1320,6 +1382,22 @@ void PluginRack::destroy(PluginHandle* handle) {
 
 // What CLAP plug-ins asked of their main thread (plugin/clap_instance.h), done on this one. Handles are freed only on
 // this thread, so they outlive the calls.
+// The page files' problems (plugin/page_file.h) in the card's Melodee/Plugin Pages/problems.txt, a line each, when
+// that folder is there; rewritten only when they changed, removed when there are none. Rack's thread.
+void PluginRack::write_page_problems(const std::string& top) {
+    if (top.empty()) return;
+    std::string text;
+    for (const auto& [source, lines] : page_problems)
+        for (const auto& line : lines) text += source + ": " + line + "\n";
+    if (text == page_problems_written) return;
+    std::error_code e;
+    fs::path folder = fs::path(top) / "Melodee" / "Plugin Pages";
+    if (!fs::is_directory(folder, e)) return;
+    if (text.empty()) fs::remove(folder / "problems.txt", e);
+    else std::ofstream(folder / "problems.txt", std::ios::binary | std::ios::trunc) << text;
+    page_problems_written = text;
+}
+
 void PluginRack::idle_plugins() {
     std::vector<PluginHandle*> clap; // freed only on this thread, so still there after the lock
     {
@@ -1331,7 +1409,7 @@ void PluginRack::idle_plugins() {
     for (auto* h : clap) {
         h->clap->idle();
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
-        auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown));
+        auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown, h->file_pages));
         std::lock_guard<std::mutex> held(lock);
         h->layout = std::move(layout);
         moved = true;

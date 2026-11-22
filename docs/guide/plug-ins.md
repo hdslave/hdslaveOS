@@ -110,6 +110,10 @@ on Stage (**EDIT**) to see the same parameters there.
   go to the page before or after.
 - A page with an envelope (attack, decay, sustain, release) or a filter
   (cutoff and resonance) draws it above the row.
+- A page file sets the pages by hand: which parameters, their order, shorter
+  names and a picture. Put it in `Melodee/Plugin Pages/` on the card; some
+  plug-ins bring their own, and Melodee has one for Neural Amp Modeler. The
+  format is in [Plug-in page files](../PLUGIN_PAGES.md).
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
