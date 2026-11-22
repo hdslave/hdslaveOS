@@ -1,7 +1,7 @@
 # Plug-in screens: plan
 
-Status: proposed 2026-11-22. Nothing built. Five picks open (end of this file); mocks on the
-plug-in pages artifact.
+Status: proposed 2026-11-22. Nothing built. Pick 1 made (a); four open (end of
+this file); mocks on the plug-in pages artifact.
 Level 2 of docs/PLUGIN_PAGES_PLAN.md: a plug-in draws its own page on the MPC
 with its own code. Its maker ships the plug-in; Melodee needs no change for it.
 CLAP and VST2 first; VST3 and LV2 later.
@@ -25,7 +25,7 @@ other host: the call is never made there.
 | Field          | What                                                         |
 |----------------|--------------------------------------------------------------|
 | `pixels`       | 32-bit pixels, 0x00RRGGBB, row after row                      |
-| `width`, `height`, `stride` | 320 × 218 (the page) or 320 × 92 (a strip, pick 2) |
+| `width`, `height`, `stride` | 320 × 218 (the page) or 320 × 144 (a strip, pick 2) |
 | `area`         | page or strip                                                 |
 | `redraw_all`   | the frame does not hold this plug-in's last picture: draw all |
 | `time_ms`      | Melodee's clock, for animation                                |
@@ -41,9 +41,8 @@ calls; each should take under 2 ms:
   whether anything changed.
 - `input(kind, value, shift)`: the wheel (detents), Push (a tap; held is
   Melodee's MENU), Minus / Plus (−1, +1). Returns whether it used it.
-- `controls(ids[3], boxes[3])`: the parameters K1-K3 turn now, in the
-  format's own IDs (CLAP param id, VST2 index), none allowed; and where each
-  one's control sits on the picture (pick 1). Asked after each input and draw.
+- `controls(ids[3])`: the parameters K1-K3 turn now, in the format's own IDs
+  (CLAP param id, VST2 index), none allowed. Asked after each input and draw.
 
 **Call the plug-in makes**: `redraw`, from any thread: its picture changed (a
 value, a meter, the next frame of an animation). It may also ask to be run
@@ -74,6 +73,9 @@ while Melodee lets it sleep, for an input its audio side must take.
 - K1-K3 turn the three `controls` names, bound as any plug-in parameter
   (takeover, Erase + pot, the fader, Shift + wheel fine steps, motion
   recording).
+- Each control is drawn once. On a plug-in's page or strip Melodee draws no
+  rings and no K1-K3 cards: the plug-in draws its knobs, and its own pickup
+  marks from `pots` and `pots_live` (pick 1 a).
 - Order: the plug-in's screen, else a skin, else Melodee's pages.
 - VST2 plug-ins in the 32-bit bridge: the frame lives in a second shared block
   with its own request and reply words, served by a second bridge thread, so a
@@ -95,8 +97,8 @@ fixture (there is none today) built from vst2_abi.h; tests.
 **3. The 32-bit bridge.** The second shared block and bridge thread. Checked
 with an armv7 build of the fixture on the MPC.
 
-**4. Chain, pages and setting.** Picks 1-4: the K1-K3 marks, effects in a
-chain, Melodee's pages one press away, Settings.
+**4. Chain, pages, setting and skins.** Picks 2-5: effects in a chain,
+Melodee's pages one press away, Settings, skins drawn without doubles.
 
 **5. Example and docs.** `sdk/melodee-screen/example`: a small MIT plug-in,
 one source built as CLAP and as VST2 (aarch64, and armv7 for the bridge),
@@ -110,17 +112,16 @@ JUCE change or Melodee's own LV2 instance). Helpers for plug-in frameworks.
 
 ## Picks
 
-1. K1-K3 on a plug-in's screen.
+1. K1-K3 on a plug-in's screen. **Picked a** (Kerem, 2026-11-22: b and c show
+   each control twice).
    a. The plug-in draws everything, its own pickup marks from `pots`.
-   b. The plug-in says where its three controls are (`boxes`); Melodee draws
-      its rings there, as on skins: pickup dot, fader and Shift marks.
-      (recommended)
-   c. Melodee keeps K1-K3 cards along the bottom; the plug-in gets 320 × 166.
+   b. Melodee's rings round the plug-in's controls.
+   c. Melodee's K1-K3 cards along the bottom.
 2. Effects in a track's FX chain.
-   a. The plug-in draws the strip under the chain's slots (320 × 92), as a
-      skin's strip; Push opens its full page. (recommended)
-   b. Melodee's own strip (sound in and out); its full page from a PANEL card
-      in the slot's sheet.
+   a. The plug-in draws everything under the chain's slots, its knobs once
+      (320 × 144, no K1-K3 cards); Push opens its full page. (recommended)
+   b. Melodee's own strip and K1-K3 cards, as today; its full page from a
+      PANEL card in the slot's sheet.
 3. Melodee's pages for a plug-in with its own screen.
    a. One press away: on Stage, B1's cycle goes PRESETS, PANEL (its
       screen), EDIT (Melodee's pages of every parameter); on Edit, a free
@@ -130,7 +131,11 @@ JUCE change or Melodee's own LV2 instance). Helpers for plug-in frameworks.
    a. Settings > SCREEN > Plug-in skins becomes Plug-in screens and covers
       both. (recommended)
    b. A row of its own.
-5. Skins.
-   a. Kept: the way with no code, for VST3 and LV2 until their screens come
-      and for makers who write none. (recommended)
-   b. Taken out; page files keep their pages and pictures.
+5. Skins (built b8ed56c) show the same doubles: Melodee's ring round each
+   of the maker's knobs, K1-K3 cards under a skin's strip.
+   a. Kept, each control drawn once: no rings; a white dot where the pot sits
+      only while it has not reached its value, the fader and Shift marks only
+      while they apply; a skin's strip runs to the bottom (320 × 144) with no
+      cards. (recommended)
+   b. Kept as built.
+   c. Taken out; page files keep their pages and pictures.
