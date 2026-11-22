@@ -161,15 +161,27 @@ public:
     // Seq Record while the song plays: pattern launches become clips from the
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar
-    // Jam capture (model/jam_log.h, shell/jam_jobs.cpp): the last run outside Song, a bar at a time; TAKE JAM (Song's
-    // Shift + B1) lays it after the song's end.
-    JamLog jam;
+    // Jam capture (model/jam_log.h, shell/jam_jobs.cpp): each run outside Song, a bar at a time, kept as a jam when
+    // it stops; JAMS (Song's Shift + B1) lists them: B2 plays the picked one's FROM-TO, B3 (or Push) lays it after
+    // the song's end, ERASE deletes it (one undo). The jams are saved with the project (a JAMS section).
+    JamLog jam;              // the run being logged
+    JamList jams;            // the runs kept
+    std::shared_ptr<const JamList> jam_view; // the screen's copy, new on each change
     JamBar jam_now;          // the bar playing, logged when the next begins or the transport stops
     bool jam_running = false;
     uint32_t jam_bar_seen = 0;
     int jam_scene = -1;      // a sequence launched: the bar it takes over on gets its marker
+    bool jam_auditioning = false; // B2 on JAMS: the engine plays the jam as its song until it stops
+    bool jam_audition_heard = false; // and the engine has started it
     void jam_tick();
+    void open_jams(bool open);
+    void pick_jam(int delta);     // the wheel and -/+ on JAMS: older (+) or newer (-)
     void take_jam();
+    void erase_jam();
+    void audition_jam();          // B2 on JAMS: the picked jam's FROM-TO played as a song; again, it stops
+    void end_audition();          // the engine's song back to the project's
+    void publish_jams();          // the screen's copy and the counts, after any change to `jams`
+    void send_song(const Song& song); // a song to the audio thread (sync_song sends the project's)
     // Shift's second jobs.
     void double_length();     // Shift + Pad 3 (Double Seq): the pattern twice as long, played twice
     void half_length();       // Shift + Pad 2 (Half Seq): the first half only

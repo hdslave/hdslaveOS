@@ -80,7 +80,9 @@ void Context::save_project_to(const std::string& path) {
     if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
     // Save As: its prints copied (F2d); an imported project's first save: its takes copied in (F3)
     const std::string from = project_path.empty() ? audio_staging_from : project_path;
-    store->save(path, melodee::save_project(project, patterns, &states, &prints), from);
+    auto bytes = melodee::save_project(project, patterns, &states, &prints);
+    write_jams(bytes, jams); // jam capture: the jams kept (a JAMS section)
+    store->save(path, bytes, from);
     if (project_path.empty() && !audio_staging_from.empty()) audio_sent_path = path; // its takes play on from where they are
     project_path = path;
     dirty = false;
@@ -142,6 +144,10 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     audio_peaks.reset();  // and their takes' overviews read again (another folder's)
     audio_prune = true;   // and its takes no pattern plays removed (nothing in its history can bring them back)
     audio_staging_from.clear(); // an import's own are set by its loader
+    jams = JamList {}; jam.bars.clear(); jam_running = false; jam_scene = -1; // jam capture: the loader gives its own
+    if (jam_auditioning) end_audition();
+    ui.jam_sheet = false;
+    publish_jams();
     for (auto& serial : audio_serial) ++serial;
     if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;
@@ -296,6 +302,7 @@ void Context::open(PageId page) {
     ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
     ui.picker_open = false;
     ui.song_export = false;
+    if (ui.jam_sheet) open_jams(false); // JAMS closes (what it plays stops)
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) {
         push_back_stack(ui, page);
@@ -694,6 +701,14 @@ void Context::apply(const Binding& b, int value) {
         send({Type::Swing, 0, 0, 0, int16_t(value)});
         break;
     case Kind::SongZoom: ui.song_zoom = uint8_t(value); break;
+    case Kind::JamFrom: // JAMS: TO moves on with FROM past it, and FROM back with TO before it
+        ui.jam_from = uint16_t(std::clamp(value - 1, 0, std::max(int(ui.jam_pick_bars) - 1, 0)));
+        ui.jam_to = std::max<uint16_t>(ui.jam_to, uint16_t(ui.jam_from + 1));
+        break;
+    case Kind::JamTo:
+        ui.jam_to = uint16_t(std::clamp(value, 1, std::max(int(ui.jam_pick_bars), 1)));
+        ui.jam_from = std::min<uint16_t>(ui.jam_from, uint16_t(ui.jam_to - 1));
+        break;
     case Kind::RegionGain: case Kind::RegionStart: case Kind::RegionEnd: case Kind::RegionFadeIn: case Kind::RegionFadeOut:
     case Kind::RegionReverse: case Kind::RegionWarp: case Kind::RegionBpm: case Kind::RegionSemi: case Kind::RegionFine:
         set_region_value(b, value); // freeze plan F3 (shell/audio_jobs.cpp)
@@ -1632,6 +1647,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
     if (e.pattern_was >= 0 && e.pattern >= 0) // the pattern it played before, or the one the edit made it play, kept
         pick(e.track % track_count, unsigned(after ? e.pattern : e.pattern_was) % pattern_count);
+    if (const auto& m = after ? e.jams_after : e.jams_before) { jams = *m; publish_jams(); } // a jam deleted (JAMS' ERASE)
     if (const auto& m = after ? e.scene_after : e.scene_before) { // a sequence kept or cleared
         project.scenes[m->index % pattern_count] = m->scene;
         for (unsigned t = 0; t < track_count; ++t) project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
@@ -2099,8 +2115,9 @@ void Context::set_return(unsigned bus, int level) {
     send({Type::Return, 0, 0, uint16_t(bus % bus_count), int16_t(level)});
 }
 
-void Context::sync_song() {
-    const auto& song = project.song;
+void Context::sync_song() { send_song(project.song); }
+
+void Context::send_song(const Song& song) {
     for (unsigned n = 0; n < song.count; ++n) {
         Command c {Type::SongClip, 0, 0, uint16_t(n)};
         c.clip = song.clips[n];
@@ -2170,6 +2187,7 @@ void Context::send_click() {
 // armed, the take begins, after a bar's count when Count-In is on.
 void Context::play(bool external) {
     if (host.playing()) return;
+    if (ui.jam_sheet && ui.page == PageId::Song && !external) { audition_jam(); return; } // JAMS: the picked jam
     played_song = ui.page == PageId::Song;
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/jam_log.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/chop.h"
 #include <deque>
@@ -182,6 +183,7 @@ struct Edit {
     std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo
     std::unique_ptr<PluginSwap> plugin; // a plug-in replaced (its track's name and pads in track_before / after)
     std::unique_ptr<SceneState> scene_before, scene_after; // a sequence kept or cleared
+    std::unique_ptr<JamList> jams_before, jams_after;      // a jam deleted (JAMS' ERASE)
 };
 
 class History {

@@ -682,7 +682,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         if (!track.used()) return {};
         return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};
     case PageId::Song: { // roadmap P5: the tempo lane at the cursor's bar: its tempo, and (a point there) its shape
-        if (ui.song_export) return {};
+        if (ui.song_export || ui.jam_sheet) return {};
         const auto& lane = project.song.tempo;
         int at = lane.at_bar(ui.song_cursor);
         int tempo = at >= 0 ? (lane.points[size_t(at)].tempo + 5) / 10 : int(std::lround(lane.at(ui.song_cursor, project.tempo) / 10));
@@ -991,6 +991,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PrintTapPick, 0, 0, 1, int(sheet.tap)}, Binding {Kind::PrintTailPick, 0, 0, 2, int(sheet.tail)}, Binding {}};
     }
     case PageId::Song: {
+        if (ui.jam_sheet) // JAMS: the part of the picked jam, FROM and TO (bars from 1)
+            return {Binding {Kind::JamFrom, 0, 1, std::max<int>(ui.jam_pick_bars, 2), ui.jam_from + 1},
+                    Binding {Kind::JamTo, 0, 1, std::max<int>(ui.jam_pick_bars, 2), ui.jam_to}, Binding {}};
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
         int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;
         int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;

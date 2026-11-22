@@ -11636,6 +11636,60 @@ void jam_capture() {
     }
 }
 
+// The jam list (model/jam_log.h): each run kept as a jam of its own (not under two bars, the newest eight), part of a
+// jam taken, and the list in a project file's JAMS section.
+void jam_list() {
+    auto run = [](unsigned bars, uint8_t pattern) {
+        JamLog log;
+        for (unsigned n = 0; n < bars; ++n) { JamBar b; b.pattern[0] = pattern; b.tempo = 1200; log.bars.push_back(b); }
+        return log;
+    };
+    JamList list;
+    CHECK(!list.keep(run(1, 0)) && list.jams.empty()); // a PLAY and STOP by mistake
+    CHECK(list.keep(run(4, 0)) && list.jams.size() == 1 && list.jams[0].number == 1 && list.next == 2);
+    for (unsigned n = 0; n < 9; ++n) CHECK(list.keep(run(2 + n, 1)));
+    CHECK(list.jams.size() == jams_kept && list.jams.front().number == 3 && list.jams.back().number == 10 && list.jams.back().bars.size() == 10);
+    CHECK(list.erase(0) && list.jams.size() == jams_kept - 1 && list.jams.front().number == 4 && !list.erase(99));
+    {   // Bars 3-6 of a jam: what played there, from the song's end.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0);
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][1], 0, 60, 100);
+        p->tempo = 1200;
+        JamLog jam = run(8, 0);
+        for (unsigned n = 4; n < 8; ++n) jam.bars[n].pattern[0] = 1;
+        jam.bars[4].scene = 2;
+        const auto took = jam_to_song(*p, *bank, jam, 2, 6);
+        CHECK(took.at == 0 && took.bars == 4 && took.left_out == 0 && p->song.count == 2 && p->song.length() == 4);
+        CHECK(p->song.clips[size_t(p->song.clip_at(0, 0))].pattern == 0 && p->song.clips[size_t(p->song.clip_at(0, 0))].bars == 2);
+        CHECK(p->song.clips[size_t(p->song.clip_at(0, 2))].pattern == 1 && p->song.markers[0].bar == 2);
+        CHECK(jam_to_song(*p, *bank, jam, 6, 99).bars == 2 && p->song.length() == 6); // TO past the end: to the end
+        CHECK(jam_to_song(*p, *bank, jam, 9, 12).bars == 0);
+    }
+    {   // In a project file: after its own sections, which load_project skips.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0);
+        auto bytes = save_project(*p, *bank);
+        const size_t plain = bytes.size();
+        JamList none;
+        write_jams(bytes, none);
+        CHECK(bytes.size() == plain); // no jams: nothing written
+        list.jams.back().bars[1].muted = 3; list.jams.back().bars[1].scene = 5; list.jams.back().bars[0].pattern[15] = 127;
+        write_jams(bytes, list);
+        CHECK(bytes.size() > plain);
+        JamList back;
+        CHECK(read_jams(bytes, back) && back == list);
+        auto loaded = std::make_unique<Project>();
+        CHECK(load_project(bytes, *loaded, *bank).empty() && loaded->tracks[0].used());
+        auto plain_bytes = save_project(*p, *bank);
+        CHECK(read_jams(plain_bytes, back) && back.jams.empty() && back.next == 1);
+        auto broken = bytes;
+        broken.resize(broken.size() - 5); // the section's length now runs past the file: left out
+        CHECK(read_jams(broken, back) && back.jams.empty());
+    }
+}
+
 int main() {
     audio_monitor_choice();
     pad_value_erase();
@@ -11658,6 +11712,7 @@ int main() {
     sequence_links();
     song_steps_mpc();
     jam_capture();
+    jam_list();
     banks_f1();
     deep_freeze_f2d();
     midi_tracks_p4();

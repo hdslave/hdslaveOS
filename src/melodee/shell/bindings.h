@@ -124,6 +124,7 @@ struct Binding {
         // its semitones, Shift + K3 its cents (Stretch moves its pitch by them).
         RegionWarp, RegionBpm, RegionSemi, RegionFine,
         SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
+        JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

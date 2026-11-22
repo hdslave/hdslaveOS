@@ -19,6 +19,8 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
         return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;
     const auto& track = project.tracks[ui.track % track_count];
     bool kit = track.engine == EngineKind::Sampler;
+    if (ui.page == PageId::Song && ui.jam_sheet && (button == B::Chop || button == B::Erase || button == B::NoteRepeat || button == B::Loop))
+        return button == B::Erase && ui.jam_count; // JAMS: Erase deletes the picked jam
     if (ui.page == PageId::Song && !ui.song_export && (button == B::Chop || button == B::Erase || button == B::NoteRepeat)) { // the clip under the cursor
         int at = project.song.clip_at(ui.track % track_count, ui.song_cursor);
         if (at < 0) return button == B::Erase && ui.copying != UiState::Copying::Off;

@@ -830,6 +830,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         project_->chops = std::move(chops);
     }
     out.audio_peaks = context_.audio_peaks; // freeze plan F3
+    out.jams = context_.jam_view;           // jam capture: JAMS on Song
     out.pattern = context_.pattern();
     for (unsigned t = 0; t < track_count; ++t)
         out.has_notes[t] = !patterns_->at[t][project_->tracks[t].pattern].empty();
@@ -1043,11 +1044,13 @@ std::string Shell::phase10_summary() const {
            " melodee_engine=" + std::to_string(b >> 28) + jam_summary();
 }
 
-// Jam capture: the bars logged, whether it logs now, and the song's markers and tempo points (what TAKE JAM adds).
+// Jam capture: the run's bars and whether it logs now, the jams kept, JAMS open, and the song's markers and tempo
+// points (what TAKE adds).
 std::string Shell::jam_summary() const {
     uint32_t j = jam_bits.load(std::memory_order_relaxed);
-    return " melodee_jam=" + std::to_string(j & 0xffff) + "," + std::to_string((j >> 16) & 1) + " melodee_song_markers=" +
-           std::to_string((j >> 17) & 0x1f) + " melodee_song_tempo_points=" + std::to_string(j >> 22);
+    return " melodee_jam=" + std::to_string(j & 0x3ff) + "," + std::to_string((j >> 10) & 1) + " melodee_jams=" + std::to_string((j >> 11) & 0xf) +
+           " melodee_jam_sheet=" + std::to_string((j >> 15) & 1) + " melodee_song_markers=" + std::to_string((j >> 16) & 0x1f) +
+           " melodee_song_tempo_points=" + std::to_string((j >> 21) & 0x7f);
 }
 
 // Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).

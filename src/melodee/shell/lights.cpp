@@ -259,7 +259,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                     context_.import_unsaved = true; // opening one writes nothing: no background save until it has a file
                     context_.notice(loaded->note);
                 }
-                else context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
+                else {
+                    context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
+                    read_jams(loaded->bytes, context_.jams); // jam capture: its jams (a JAMS section)
+                    context_.publish_jams();
+                }
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
@@ -510,8 +514,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                            | uint32_t(ui_.map_open) << 10 | uint32_t(bool(context_.gesture.edit)) << 12
                            | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
                            std::memory_order_relaxed);
-        jam_bits.store(uint32_t(ui_.jam_bars) | uint32_t(ui_.jam_logging) << 16 | uint32_t(project_->song.marker_count) << 17
-                       | uint32_t(project_->song.tempo.count) << 22, std::memory_order_relaxed);
+        jam_bits.store(uint32_t(ui_.jam_bars & 0x3ff) | uint32_t(ui_.jam_logging) << 10 | uint32_t(ui_.jam_count & 0xf) << 11
+                       | uint32_t(ui_.jam_sheet) << 15 | uint32_t(project_->song.marker_count & 0x1f) << 16
+                       | uint32_t(project_->song.tempo.count & 0x7f) << 21, std::memory_order_relaxed);
         if (context_.gesture.edit && now - context_.gesture.last >= gesture_quiet_ms) context_.close_gesture(); // a pot left still
     }
     const auto& project = *project_;
