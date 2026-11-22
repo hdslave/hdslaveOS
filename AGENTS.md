@@ -51,3 +51,25 @@ written by `tools/boot_film.py`), which is not under the AGPL (THIRD_PARTY.md,
 Boot film). It replaced Melodee's logo and backdrop, which may not be part of
 any public release of a fork. Never add them back, and never ship the hdslave
 film in another project: write that project's own with `tools/boot_film.py`.
+
+## The hdslave workspace
+
+hdslaveOS is developed beside the hdslave CLAP plug-ins. On the author's
+machine, the folder holding this checkout has `../AGENTS.md` and
+`../Workflow/hdslaveos.md`: read them before changing anything. They cover
+which checkout or worktree to use, the shared Linux VM, packaging the
+unsigned build and staging it for the SD card. `../Workflow/host-facts.md`
+describes what this CLAP host does to plug-ins. The rules that hold here on
+their own:
+
+- The fork's branch is `hdslave`. The `base` and `core` submodules follow
+  the `hdslave` branches of hdslave/sample-base and hdslave/ellic-core, and
+  both must stay public.
+- Audio stays bit-exact. `build/melodee --self-test` and
+  `build/melodee --melodee-dsp-bench` must give the hashes listed in the
+  workspace guide: prove every engine change or optimization against them.
+  The CPU-speed setting defaults to Full.
+- Commit as `hdslave <111106843+hdslave@users.noreply.github.com>`. Never
+  push without the owner's word.
+- Other agents may be working in this checkout or its worktrees. Check
+  `git status` and `git worktree list`, and touch only your own changes.
