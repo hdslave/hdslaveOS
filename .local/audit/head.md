@@ -9,8 +9,8 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 ## Summary
 
 - **128 findings**: 127 from eleven auditors, each covering one part of the code, and one found while implementing. I checked each against the code. 95 are confirmed, 27 turned out to be the same issue reported by a second auditor, 5 are partly confirmed and 1 could not be checked without the compiler's output. None was rejected outright, but one recommended compiler flag turned out to change the audio and was dropped (BASE-5).
-- **The processor's speed is left alone.** The first pass built a CPU speed setting that held the cores at a lower clock and voltage to save battery. It was removed at the owner's request before the fork was ever run: the four cores stay at the kernel's 1.8 GHz, as under the stock app, and nothing in the fork touches the clocks.
-- **The fork implements 25 findings**, nine of them in part. They remove wasted work in the engine and around it and add three settings (Refresh, Dim after, Pad brightness). The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
+- **The processor runs at full speed by default.** The first pass built a CPU speed setting that can hold the cores at a lower clock and voltage to save battery. It ships as the CPU speed setting (Auto, Full, Balanced, Eco) and defaults to Full: untouched, the four cores stay at the kernel's 1.8 GHz, as under the stock app.
+- **The fork implements 25 findings**, nine of them in part. They remove wasted work in the engine and around it and add the Refresh, Dim after, Pad brightness and CPU speed settings. The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
 - **Second pass, for speed:** the engine runs **23 % fewer instructions** for the benchmark's busy 16-track project and **12 % fewer** for the same project stopped, playing the same to the bit. Most of it comes from one loop in the sampler.
 - **Third pass, silent chains:** a chain of effects that hears nothing and holds nothing is no longer run (HOST-1). Once a stopped project's chains rest, a block costs the engine **76 % fewer instructions**. The output is the same to the bit with resting on and off, through silence and the sound that ends it.
 - **Third pass, the screen:** the screen thread no longer copies the kits and redraws every pattern's sketch for frames in which neither can have changed (MODEL-1). With the MPC's cache sizes that takes its snapshot from about 3.4 million cycles a frame to 0.75 million, and the pads wait on its lock for that much less time. Every page gives the same pixels.
@@ -19,7 +19,7 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 
 | # | Lever | Finding | In the fork |
 | --- | --- | --- | --- |
-| 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | Not used. Built, then removed at the owner's request: full speed always |
+| 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | CPU speed setting, Full by default: full speed unless the player chooses less |
 | 2 | Any changed pixel bought 30 more full redraws at 60 fps. The place bar moves on every page while playing, so every page was redrawn 60 times a second. | BASE-2, UI-1, UI-4 | Refresh setting (30 fps by default), shorter tail, event-driven wake |
 | 2a | Every frame copied 0.8 MB of project and rebuilt 2,048 pattern sketches under the lock the pads use. | MODEL-1 | Third pass: only when a kit or pattern can have changed |
 | 3 | Nothing dims: backlight at its level and 16 RGB pads plus about 25 button lights on for hours. | BASE-3, LIGHT-4 | Dim after and Pad brightness settings |
@@ -62,8 +62,8 @@ Changes to `base/` are on a branch named `hdslave` inside the submodule, since t
 
 - The place bar, play head and meters step at 30 fps when your hands are off the controls. Set **Refresh** to 60 to get the old look.
 - After two minutes untouched and stopped, the screen and lights go low. Any control brings them back and still does its job.
-- The processor runs at its full speed at all times, as it does under the stock app. No setting changes that.
-- The settings file gains three lines (`refresh`, `dim_after`, `pad_level`). The original Melodee ignores lines it does not know, so the file still works there.
+- The processor runs at its full speed, as it does under the stock app, unless CPU speed is set below Full.
+- The settings file gains four lines (`refresh`, `dim_after`, `pad_level`, `cpu_speed`). The original Melodee ignores lines it does not know, so the file still works there.
 - A project is no longer marked unsaved after you only played pads with Note Repeat or the arpeggiator, or ran from an external clock.
 
 ## How this was done
@@ -87,7 +87,7 @@ Before committing I read every changed line again, against the code around it an
 
 What my own read changed:
 
-- **A killed app could leave the CPU limit or the dimmed backlight behind.** The recovery script runs when the app's service stops, but not when one app is swapped for another or updated in place. An app killed during such a stop left its changes, and the next one took the changed values for the MPC's own and "restored" those on leaving. The runtime now puts back what the notes in `/run` hold as it starts (`Platform::recover()`), with a test. (The CPU limit was removed altogether afterwards; the backlight's recovery stays.)
+- **A killed app could leave the CPU limit or the dimmed backlight behind.** The recovery script runs when the app's service stops, but not when one app is swapped for another or updated in place. An app killed during such a stop left its changes, and the next one took the changed values for the MPC's own and "restored" those on leaving. The runtime now puts back what the notes in `/run` hold as it starts (`Platform::recover()`), with a test.
 - **A control touched while a frame was being drawn could wait 100 ms for its picture** on a still screen. The original loop had the same gap. Such a control now gets a frame of its own at the fast rate.
 - **Start, Continue and Stop from outside wake the screen again**, so a transport started by another machine shows at once. MTC quarter frames joined the clock and Active Sensing as bytes that do not: they come a hundred times a second while timecode runs.
 - **A Looper loop that is still heard keeps the lights up.** Dim after looked at the sequencer and at recording, not at a loop playing by itself.
@@ -105,11 +105,11 @@ What my read confirmed, where I had relied on an assumption:
 - **The dimmed backlight is lit, not off.** The MPC Sample's device tree gives the backlight seven levels (0, 8, 16, 32, 64, 128, 255 of 255); Dim after uses level 1, which is also what Brightness at 20 % sets.
 - **None of the thirteen commands that no longer mark the project changed carries an edit.** I read each one's senders: each mirrors a value kept elsewhere (a track parameter, an Input Config setting, a sample's root note) or passes a gesture on. Input Config is saved by its own timer, not by the project's.
 - **The project-list cache is touched by one thread only**: saves and scans both run on the service thread.
-- **The recovery script's new lines** were run under the container's `sh` against stand-in files: the backlight went back, a line naming another device or carrying no number wrote nothing. (Run again after the CPU limit's part was removed.)
+- **The recovery script's new lines** were run under the container's `sh` against stand-in files: the backlight went back, a line naming another device or carrying no number wrote nothing.
 
 ## Second pass: speed, measured
 
-The owner asked for the CPU speed feature to be removed and for more speed with nothing lost. "Nothing lost" was taken strictly: the same features, and the same audio to the bit. The first pass was done by reading; this one was done by measuring.
+The owner asked for more speed with nothing lost, the processor at full speed by default. "Nothing lost" was taken strictly: the same features, and the same audio to the bit. The first pass was done by reading; this one was done by measuring.
 
 **How it was measured.** The DSP bench (`--melodee-dsp-bench`) plays a busy project: sixteen kits, three hits on every sixteenth, two effects on each track, four buses of reverbs and echoes, the master compressor. It gained three options (`pace=0`, `guard=0`, `play=0`) so that it can run under a profiler, where time means nothing: the blocks one after another, the overload guard off so that what is played cannot depend on how long a block took, and optionally stopped. Run that way under callgrind it gives an exact count of the instructions the engine executes, the same on every run, and a list of where they go. Each change was kept only if the bench's output hash stayed the same, playing and stopped.
 
@@ -206,7 +206,7 @@ All run in the project's own build container (Debian 12, arm64) on an Apple Sili
 | --- | --- |
 | Build with `-Wall -Wextra -Werror` | clean |
 | Melodee's test suite (44 tests, including the 18,000-line engine and shell test) | all pass |
-| New assertions: the three settings (defaults, every value, round trip through the settings file, older files); no setting writes a CPU speed | pass |
+| New assertions: the settings (defaults, every value, round trip through the settings file, older files); CPU speed defaults to Full | pass |
 | sample-base's whole suite, with new cases for backlight recovery, recovery after a killed app, LED scale and rest | 56 pass; 13 skipped, which need a built sample-base app or tools the container lacks |
 | Monkey test (12 seeds × 3,000 random control moves) | 0 failures |
 | Page previews | all 777 render; AUDIO and SCREEN checked by eye |
