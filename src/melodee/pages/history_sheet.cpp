@@ -36,7 +36,8 @@ void draw_history(Paint& p, const Snapshot& s) {
     const unsigned rows = history_rows(redos, kept), cursor = std::min<unsigned>(s.ui.history_row, rows - 1);
     const int step = history_step(cursor, redos);
     p.fill(0, 0, zone::width, zone::height, colour::bg);
-    Header h;
+    Header h = header_of(s); // the transport and the tempo as every page shows them; the sheet's own chips alone
+    h.left.clear(); h.right.clear(); h.lead = 0;
     h.left.push_back(chip("HISTORY", colour::text));
     h.left.push_back(pill(juce::String(redos + kept) + (redos + kept == 1 ? " step" : " steps")));
     h.right.push_back(tag_of(s, s.ui.track));
