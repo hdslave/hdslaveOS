@@ -1721,7 +1721,7 @@ the file holds, to the bit.
   pad 1 blinks red and plays the region; then the red walks to the pad of
   the slice the next tap makes, and only it cuts, each cut pulled onto the
   strongest hit; after pad 16 the pads turn to bank B with its pad 1 red, up
-  to 64 slices (`view_slice`, `red_slice`, `model/slice_banks.h`). A lit pad
+  to 128 slices (`view_slice`, `red_slice`, `model/slice_banks.h`). A lit pad
   tapped meanwhile plays again from its slice, the cuts after it gone (the
   MPC 3's way); stopped short of the end (another control, the page left)
   the sound stops and the red stays on the next pad (`chop_more`), tapped

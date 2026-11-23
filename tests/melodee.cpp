@@ -7945,9 +7945,10 @@ void pad_lights() {
     ui.slices.count = 1; light({}, 1000);
     CHECK(is(0, Hue::Red, 4) && is(1, Hue::None, 0));
     // The red walks (model/slice_banks.h): while the take plays, the slices so far light (the newest Full) and the
-    // next slice's pad blinks red; past sixteen the pads show bank B and its pad 1 is the red one; at 64, no red.
-    CHECK(view_slice(2, 5, true, max_slices) == 5 && view_slice(2, 5, false, max_slices) == 2 && view_slice(63, 64, true, max_slices) == 63);
-    CHECK(red_slice(5, 5, max_slices) && !red_slice(4, 5, max_slices) && !red_slice(64, 64, max_slices));
+    // next slice's pad blinks red; past sixteen the pads show bank B and its pad 1 is the red one; at 128, no red.
+    CHECK(view_slice(2, 5, true, max_slices) == 5 && view_slice(2, 5, false, max_slices) == 2 && view_slice(127, 128, true, max_slices) == 127
+          && view_slice(64, 64, true, max_slices) == 64 && slice_bank(127) == 7);
+    CHECK(red_slice(5, 5, max_slices) && !red_slice(4, 5, max_slices) && red_slice(64, 64, max_slices) && !red_slice(128, 128, max_slices));
     CHECK(pad_slice(view_slice(15, 16, true, max_slices), 0) == 16 && red_slice(16, 16, max_slices) && slice_bank(16) == 1);
     CHECK(take_frame(1000, 500, 1500) == 45100 && take_live(500, 1000, 50000, 1500) && !take_live(500, 1000, 40000, 1500)
           && !take_live(0, 0, 50000, 1500) && !take_live(2000, 0, 50000, 1500));
@@ -11655,8 +11656,8 @@ void mpc_chop_hits() {
     CHECK(mpc_slice_hit(false, 0.0, false) == 0 && mpc_slice_hit(false, 0.5, false) == 0);
     // Relative modifiers offset the pad's slice, and a pad playing its own region has none: its pad.
     CHECK(mpc_slice_hit(true, 0.015748031437397003, true) == 0);
-    // The last of the MPC's 128 slices and past Melodee's 64: past any chop (silent, as a slice past its chop's end).
-    CHECK(mpc_slice_hit(true, 1.0, false) == max_slices + 1 && mpc_slice_hit(true, 63.0 / 127, false) == 64);
+    // The MPC's 128 slices, all of them a chop's: the last is slice 128.
+    CHECK(mpc_slice_hit(true, 1.0, false) == max_slices && mpc_slice_hit(true, 63.0 / 127, false) == 64);
     CHECK(mpc_slice_hit(true, -0.1, false) == 0 && mpc_slice_hit(true, std::nan(""), false) == 0);
 }
 

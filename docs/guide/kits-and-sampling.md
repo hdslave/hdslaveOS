@@ -384,7 +384,7 @@ chords or a voice count too. The pads still play the sample, and **KIT**
 lays the drums stem. Press **B2** again to cut from the sample. The four
 stems stay in `Melodee/Samples/Stems`.
 
-A chop holds at most 64 slices: if a type needs more, the last slice runs to
+A chop holds at most 128 slices: if a type needs more, the last slice runs to
 the end, and Melodee says so.
 
 ### Manual chop
@@ -399,7 +399,7 @@ Manual cuts where you tap the pads while the sample plays.
 2. Tap pad 1. The sample plays and pad 2 blinks red.
 3. Tap the red pad on each hit you want to cut at. The red moves on to the
    next pad. After pad 16 the pads switch to bank B and its pad 1 blinks
-   red, up to bank D (64 slices).
+   red, up to bank H (128 slices).
 4. Let the sample play to the end. The take is done and the pads play the
    slices.
 

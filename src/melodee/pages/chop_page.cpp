@@ -24,7 +24,7 @@
 // Manual with no cut yet (K3 onto it, Erase + Chop; chop_fresh): pad 1
 // blinks red and plays the region; then the red walks, the pad of the slice
 // the next tap makes, and only it cuts (after pad 16 the pads turn to bank B,
-// its pad 1 red; up to 64 slices, shell/chop_mode.cpp). A lit pad tapped
+// its pad 1 red; up to 128 slices, shell/chop_mode.cpp). A lit pad tapped
 // meanwhile plays again from its slice, the cuts after it gone. Stopped short
 // of the end (another control, the page left), the sound stops and the red
 // stays on the next pad: tapped, it plays on from the last cut and the take

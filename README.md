@@ -38,7 +38,7 @@ page and control, read the [user guide](docs/GUIDE.md).
   follow), Cloud (granular) and a kit filter. Each pad has its own effects
   and sends to the four buses.
 - **Sampling**: Chop (by hits, regions, beats, or by hand as the sample
-  plays, up to 64 slices), Sample Record, Audio Recall, Resample and 16
+  plays, up to 128 slices), Sample Record, Audio Recall, Resample and 16
   Levels.
   Samples load from WAV, MP3, FLAC, Ogg Vorbis and AIFF files. A sample
   longer than 10 seconds plays from the card, up to 6 hours; a project holds

@@ -5,7 +5,7 @@
 // it plays the whole region, and the red walks: the pad of the slice the next
 // tap makes blinks red, and tapped it cuts the region there (the other pads
 // wait; a lit one plays again from its slice, the cuts after it gone). After
-// pad 16 the pads turn to bank B and its pad 1 is red, up to D (64 slices).
+// pad 16 the pads turn to bank B and its pad 1 is red, up to H (128 slices).
 // Stopped short of the end, the red stays on the next pad: tapped, it plays
 // on from the last cut; played to the end, no red. A take is one undo step
 // (open_take / end_take). Each cut is pulled onto the strongest hit just before it,

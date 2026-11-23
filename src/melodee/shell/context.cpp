@@ -1925,7 +1925,7 @@ void Context::rechop() {
     uint32_t clear = 0; // Auto keeps an eighth note (or 150 ms) clear of a hand cut: no sliver beside one
     if (ui.chop_mode == ChopMode::Auto) { const auto read = library->slot(chop_cut_slot()); clear = auto_keep_clear(read.autos, read.beats); }
     ui.slices = with_hand(type_chop(&capped), ui.chop_hand, frames, &full, clear); // the cuts made by hand stay
-    if (capped || full) notice("64 slices, the most: the last runs to the end");
+    if (capped || full) notice("128 slices, the most: the last runs to the end");
     snap_slices();
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_take_at = 0;
