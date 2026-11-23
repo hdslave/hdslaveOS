@@ -15,6 +15,7 @@
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
+#include "melodee/plugin/xpl_preset.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 #include <melodee_screen.h>
 #include <algorithm>
@@ -335,6 +336,51 @@ PluginLayout layout_of(juce::AudioPluginInstance& instance, const std::vector<Pl
 
 // The programs PRESETS lists: those with a name. Plug-ins that keep a fixed
 // number of slots name the unused ones "(empty)" (TONE3000), or leave them blank.
+// An MPC plug-in folder's own presets (Presets/, its .xpl files: plugin/xpl_preset.h) as PRESETS rows, numbered
+// from xpl_first, so never one of the plug-in's own program numbers.
+constexpr int xpl_first = 1 << 20;
+constexpr size_t xpl_most = 8u << 20; // the largest .xpl read
+bool has_mpc_presets(const PluginFile& file) {
+    std::error_code e;
+    return (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32)
+           && fs::is_directory(fs::path(file.path) / "Presets", e);
+}
+// Its .xpl files (folders below Presets/ kept as preset folders, in name order) after the plug-in's own programs
+// `own`: at the top when it lists none of its own, else in a Presets folder. One made for another plug-in (`id`, its
+// unique id; 0 not known: any) is left out, and so is one named as a program it lists already (same_preset_name()).
+// `files`: each row's file, in the same order.
+std::vector<PluginProgram> mpc_presets(const std::string& folder, const PluginProgramList& own, int32_t id,
+                                       std::vector<std::string>& files) {
+    fs::path root = fs::path(folder) / "Presets";
+    std::vector<fs::path> found;
+    std::error_code e;
+    for (auto it = fs::recursive_directory_iterator(root, e); !e && it != fs::recursive_directory_iterator(); it.increment(e)) {
+        std::error_code f;
+        auto name = it->path().filename().string();
+        bool dir = it->is_directory(f);
+        if (name.empty() || name[0] == '.') { if (dir) it.disable_recursion_pending(); continue; }
+        auto ext = it->path().extension().string();
+        for (auto& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
+        if (!dir && ext == ".xpl") found.push_back(it->path().lexically_relative(root));
+        if (found.size() >= 4096) break;
+    }
+    std::sort(found.begin(), found.end(), [](const fs::path& a, const fs::path& b) {
+        return juce::String(a.generic_string()).compareNatural(juce::String(b.generic_string())) < 0;
+    });
+    std::vector<PluginProgram> out;
+    for (const auto& rel : found) {
+        auto preset = xpl_preset_in(text_of(root / rel, xpl_most), false);
+        if (id != 0 && !preset.for_plugin(id)) continue;
+        std::string name = preset.name.empty() ? rel.stem().string() : preset.name;
+        if (std::any_of(own.begin(), own.end(), [&](const PluginProgram& p) { return same_preset_name(p.name, name); })) continue;
+        std::string where = own.empty() ? "" : "Presets", below = rel.parent_path().generic_string();
+        if (!below.empty()) where = where.empty() ? below : where + "/" + below;
+        out.push_back({xpl_first + int(files.size()), name, where});
+        files.push_back((root / rel).string());
+    }
+    return out;
+}
+
 PluginProgramList named_programs(juce::AudioPluginInstance& instance) {
     std::vector<PluginProgram> out;
     for (int i = 0; i < instance.getNumPrograms(); ++i) {
@@ -547,6 +593,7 @@ public:
     int program = -1;                    // the one picked last here (under the rack's lock)
     bool switching = false;              // a pick queued for the rack's thread (under the rack's lock)
     bool finding = false;                // a CLAP plug-in's presets still being looked for (under the rack's lock)
+    std::vector<std::string> preset_files; // an MPC plug-in's .xpl presets, program xpl_first on (under the rack's lock)
 
 private:
     // The engine host's clock at its block's start (engine/effects.h, EffectClock), counted on by the device frames
@@ -998,13 +1045,19 @@ void PluginRack::select_program(unsigned entry, int program) {
 // block, hence the wait.
 void PluginRack::switch_program(unsigned entry, uint32_t generation, int program) {
     juce::AudioPluginInstance* instance = nullptr;
+    std::string preset_file; // an MPC plug-in's .xpl
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
         if (e.generation != generation || !e.live) return; // changed since: the plug-in it was for is gone
         instance = e.live->instance.get(); // freed only on this thread, so it outlives the switch
+        if (program >= xpl_first && size_t(program - xpl_first) < e.live->preset_files.size())
+            preset_file = e.live->preset_files[size_t(program - xpl_first)];
     }
-    if (program >= 0 && program < instance->getNumPrograms()) {
+    if (!preset_file.empty()) { // its state, as the plug-in's VST2 host saves one (picked again: loaded again)
+        auto preset = xpl_preset_in(text_of(preset_file, xpl_most));
+        if (!preset.state.empty()) instance->setStateInformation(preset.state.data(), int(preset.state.size()));
+    } else if (program >= 0 && program < instance->getNumPrograms()) {
         if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1 && !dynamic_cast<ClapInstance*>(instance)) {
             instance->setCurrentProgram(program == 0 ? 1 : 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -1359,7 +1412,8 @@ void PluginRack::load(const Job& job) {
     handle->stage = stage.string();
     handle->format = file.format;
     handle->programs = named_programs(*handle->instance);
-    handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
+    // A CLAP plug-in's presets, or an MPC plug-in folder's .xpl files: looked for once it plays (find_presets()).
+    handle->finding = file.format == PluginFormat::Clap || has_mpc_presets(file);
     handle->folder = file.path;
     handle->file_pages = file_pages(*handle->instance, handle->clap, file, top, handle->shown, page_problems, handle->skin);
     write_page_problems(top);
@@ -1392,31 +1446,45 @@ void PluginRack::load(const Job& job) {
         unoffered.emplace_back(job.entry, raw);
     }
     changed();
-    if (file.format == PluginFormat::Clap) push({Job::Kind::Presets, job.entry, job.generation, {}, 0, 0});
+    if (file.format == PluginFormat::Clap || has_mpc_presets(file)) push({Job::Kind::Presets, job.entry, job.generation, {}, 0, 0});
 }
 
 // Rack thread: a CLAP plug-in's presets, looked for once it plays (the first time, Surge XT's on the card take a
 // while: thousands of files), then PRESETS' programs.
 void PluginRack::find_presets(unsigned entry, uint32_t generation) {
+    juce::AudioPluginInstance* instance = nullptr;
     ClapInstance* clap = nullptr;
+    PluginProgramList own;
+    std::string folder;
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
         if (e.generation != generation || !e.live) return; // changed since: the plug-in it was for is gone
-        clap = dynamic_cast<ClapInstance*>(e.live->instance.get()); // freed only on this thread, so it outlives this
+        instance = e.live->instance.get(); // freed only on this thread, so it outlives this
+        clap = dynamic_cast<ClapInstance*>(instance);
+        own = e.live->programs;
+        folder = e.live->folder;
     }
     std::vector<PluginProgram> list;
+    std::vector<std::string> files;
     if (clap) {
         auto found = clap->findPresets(clap_preset_cache(use_plugin_home(), clap->clapId()));
         list.reserve(found.size());
         for (size_t n = 0; n < found.size(); ++n) list.push_back({int(n), found[n].name, found[n].folder});
         clap->setPresets(std::move(found));
+    } else { // an MPC plug-in folder: its own programs, then its .xpl files
+        juce::PluginDescription description;
+        instance->fillInPluginDescription(description);
+        list.assign(own.begin(), own.end());
+        auto found = mpc_presets(folder, own, description.uniqueId, files);
+        list.insert(list.end(), found.begin(), found.end());
     }
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
-        if (e.generation == generation && e.live && e.live->instance.get() == clap) {
+        if (e.generation == generation && e.live && e.live->instance.get() == instance) {
             e.live->programs = PluginProgramList(std::move(list));
+            e.live->preset_files = std::move(files);
             e.live->finding = false;
             if (e.live->program < 0) e.live->program = program_keyed(e.live->programs, e.preset); // as at opening
 

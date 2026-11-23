@@ -158,7 +158,12 @@ folder it is in. The list opens in the folder of the preset picked last.
 
 ![Presets in folders](../images/screens/pluginpresetfolders.png)
 
-LV2 plug-ins list their presets too. A CLAP plug-in's presets show a moment
+LV2 plug-ins list their presets too. An MPC plug-in folder's own preset
+files (the `.xpl` files in its `Presets` folder) list after the plug-in's
+programs, in a **Presets** folder, or at the top when the plug-in has no
+programs of its own. A preset file with the same name as one of the
+plug-in's programs is not listed twice. A CLAP plug-in's presets, and an
+MPC plug-in's preset files, show a moment
 after it loads; until then the page says **LOOKING**. The first time,
 Melodee reads every preset file, which takes a while for a plug-in with
 thousands. It keeps what it read in `Melodee/Plugin Data/.cache`, so later

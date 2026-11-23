@@ -145,6 +145,7 @@
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
 #include "melodee/plugin/plugin_files.h"
+#include "melodee/plugin/xpl_preset.h"
 #include "melodee/plugin/page_file.h"
 #include "melodee/plugin/page_library.h"
 #include "melodee/plugin/nam.h"
@@ -7387,6 +7388,91 @@ void plugin_json() {
     CHECK(plugin_json_in("[1]").name.empty() && plugin_json_in("{\"name\": \"cut").name.empty() && plugin_json_in("").instrument == -1);
 }
 
+// MPC plug-in presets (plugin/xpl_preset.h): JUCE's base64 and standard base64, VST2 bank and program files turned
+// into Melodee's VST2 state, and an .xpl's name and ids.
+void xpl_presets() {
+    auto text = [](const std::vector<uint8_t>& b) { return std::string(b.begin(), b.end()); };
+    // JUCE's base64, vectors from an encoder written apart from this one; spaces passed over, a cut short one zeroed.
+    CHECK(text(juce_base64_decode("4.CMlaKA")) == "CcnK" && text(juce_base64_decode("8.MUFauQVYkEB")) == "Melodee!");
+    CHECK(text(juce_base64_decode(" 8.MUFa\nuQVYkEB ")) == "Melodee!" && text(juce_base64_decode("8.MUFauQVYkEB", 3)) == "Mel");
+    CHECK(juce_base64_decode("MUFauQVYkEB").empty() && juce_base64_decode("x.MUF").empty() && juce_base64_decode("").empty());
+    CHECK((juce_base64_decode("2.") == std::vector<uint8_t> {0, 0}));
+    CHECK(text(base64_decode("TWVsb2RlZSE=")) == "Melodee!" && text(base64_decode("TWVs\nb2Rl ZSE=", 4)) == "Melo");
+    CHECK(base64_decode("TWVs*b2RlZSE=").empty());
+    // VST2 bank and program files, built here as JUCE's host writes them (big-endian).
+    auto be = [](std::vector<uint8_t>& b, uint32_t v) { for (int s = 24; s >= 0; s -= 8) b.push_back(uint8_t(v >> s)); };
+    auto word = [](std::vector<uint8_t>& b, const char* w) { b.insert(b.end(), w, w + 4); };
+    auto head = [&](const char* kind, uint32_t version, uint32_t count) {
+        std::vector<uint8_t> b;
+        word(b, "CcnK"); be(b, 0); word(b, kind); be(b, version); word(b, "OxZy"); be(b, 740); be(b, count);
+        return b;
+    };
+    auto pad = [](std::vector<uint8_t>& b, size_t to) { b.resize(to, 0); };
+    auto program = [&](std::vector<float> values) { // FxCk: name at 28, values at 56
+        auto b = head("FxCk", 1, uint32_t(values.size()));
+        pad(b, 56);
+        for (float v : values) { uint32_t w; std::memcpy(&w, &v, 4); be(b, w); }
+        return b;
+    };
+    std::string chunk = "master=94;preset=1;";
+    auto bank = head("FBCh", 1, 1); // numPrograms at 24, current at 28, 124 spare, chunk size at 156
+    pad(bank, 156); be(bank, uint32_t(chunk.size())); bank.insert(bank.end(), chunk.begin(), chunk.end());
+    uint32_t id = 0;
+    auto state = vst2_state_from_fx(bank, &id);
+    CHECK(text(state) == std::string("MVS2\x01", 5) + chunk && id == 0x4f785a79);
+    auto one = head("FPCh", 1, 1);
+    pad(one, 56); be(one, 3); word(one, "abc!");
+    CHECK(text(vst2_state_from_fx(one)) == std::string("MVS2\x03", 5) + "abc"); // only the chunk's 3 bytes
+    auto values = vst2_state_from_fx(program({0.25f, 0.5f}));
+    CHECK(values.size() == 13 && values[4] == vst2::state::parameters);
+    if (values.size() == 13) {
+        float a, b;
+        std::memcpy(&a, values.data() + 5, 4); std::memcpy(&b, values.data() + 9, 4);
+        CHECK(a == 0.25f && b == 0.5f);
+    }
+    auto params = head("FxBk", 2, 2); // version 2: on program 2 of 2
+    be(params, 1); pad(params, 156);
+    for (auto p : {program({0.1f}), program({0.75f})}) params.insert(params.end(), p.begin(), p.end());
+    auto second = vst2_state_from_fx(params);
+    CHECK(second.size() == 9);
+    if (second.size() == 9) { float v; std::memcpy(&v, second.data() + 5, 4); CHECK(v == 0.75f); }
+    CHECK(text(vst2_state_from_fx({'r', 'a', 'w'})) == std::string("MVS2\x01raw", 8)); // no header: the chunk
+    auto cut = bank;
+    cut.resize(cut.size() - 2);
+    CHECK(vst2_state_from_fx(cut).empty() && vst2_state_from_fx({}).empty());
+    auto odd = head("FxQQ", 1, 0);
+    CHECK(vst2_state_from_fx(odd).empty());
+    // An .xpl as MPC OS writes one: its name (entities undone), its plug-in's uid, the state's id; JUCE's base64.
+    auto juce64 = [](const std::vector<uint8_t>& b) {
+        static const char* a = ".ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+";
+        std::string out = std::to_string(b.size()) + ".";
+        for (size_t bit = 0; bit < b.size() * 8; bit += 6) {
+            unsigned v = 0;
+            for (unsigned k = 0; k < 6; ++k)
+                if (bit + k < b.size() * 8 && (b[(bit + k) >> 3] >> ((bit + k) & 7) & 1)) v |= 1u << k;
+            out += a[v];
+        }
+        return out;
+    };
+    std::string xpl = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<pluginstate>\n  <version file=\"1\"/>\n"
+                      "  <PLUGIN name=\"OxZygen\" format=\"VST\" file=\"%payload-path%/oxzygen - VST - OxZygen/oxzygen.so\" uid=\"4f785a79\" isInstrument=\"1\"/>\n"
+                      "  <preset> VOX Angel &amp; Lead&#33; </preset>\n  <state>" + juce64(bank) + "</state>\n</pluginstate>\n";
+    auto p = xpl_preset_in(xpl);
+    CHECK(p.name == "VOX Angel & Lead!" && p.uid == 0x4f785a79 && p.fx_id == 0x4f785a79 && p.state == state);
+    CHECK(p.for_plugin(0x4f785a79) && !p.for_plugin(0x4d64506c));
+    auto listed = xpl_preset_in(xpl, false); // listing: no state, ids still read
+    CHECK(listed.state.empty() && listed.name == p.name && listed.fx_id == 0x4f785a79);
+    // <state64>, standard base64 ("TWVsb2RlZSE=" is "Melodee!"): no header, so the chunk itself; no uid said.
+    auto sdk = xpl_preset_in("<pluginstate><PLUGIN name=\"X\"/><preset>Init</preset><state64>TWVsb2RlZSE=</state64></pluginstate>");
+    CHECK(sdk.name == "Init" && sdk.uid == 0 && sdk.fx_id == 0 && text(sdk.state) == std::string("MVS2\x01Melodee!", 13));
+    CHECK(sdk.for_plugin(12345));
+    CHECK(xpl_preset_in("<pluginstate><PLUGIN uid=\"zz\"/></pluginstate>").uid == 0 && xpl_preset_in("").state.empty());
+    // A program the plug-in lists already: the same name, or cut to a VST2 program name's 23 characters.
+    CHECK(same_preset_name("VOX Angel Lead", " vox angel lead ") && same_preset_name("SYN Analog Brass Sectio", "SYN Analog Brass Section"));
+    CHECK(!same_preset_name("Bass", "Bass 2") && !same_preset_name("VOX Angel Lead 2", "VOX Angel Lead") && !same_preset_name("", "Init"));
+    CHECK(!same_preset_name("SYN Analog Brass Sectiq", "SYN Analog Brass Section"));
+}
+
 // A plug-in's pages (plugin/plugin_pages.h): each page's parameters in rows of three on K1-K3, a page's last row
 // filled with -1, so no row holds two pages; groups make pages, with MAIN for the parameters outside any group.
 void plugin_page_layout() {
@@ -12054,6 +12140,7 @@ int main() {
     card_plugin_paths();
     qlink_pages();
     plugin_json();
+    xpl_presets();
     plugin_page_layout();
     page_files();
     synths_as_plugins();

@@ -2530,6 +2530,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   many presets it holds; Push opens one, B1 comes back out on it, and the
   folder holding the one picked has the check. PRESETS opens in the folder
   of the one picked last (`plugin/preset_rows.h`).
+  An MPC plug-in folder's `.xpl` files (`Presets/`, its subfolders as
+  preset folders) follow its programs, under a Presets folder (at the top
+  when it lists no programs), looked for once it plays as a CLAP plug-in's
+  are (`find_presets()`, `mpc_presets()`). Left out: a file whose
+  `<PLUGIN uid>` or state id is another plug-in's, and one named as a
+  program the plug-in lists (`same_preset_name()`: also a program name cut
+  to VST2's 23 characters; OxZygen's 200 files all are). Picking one sets
+  its state: `<state>` (JUCE base64) or `<state64>` (base64), a VST2 bank
+  or program file (`CcnK`: `FBCh`/`FPCh` chunk, `FxCk`/`FxBk` values) made
+  into `vst2::state` (`plugin/xpl_preset.h`); a program's chunk goes to
+  `setChunk` as one program, through the armv7 bridge too.
 - **Transport.** Every plug-in gets Melodee's transport as a JUCE play
   head (`PluginHandle` in `plugin/plugin_rack.cpp`): playing once any
   count-in is over, the place in quarter notes from the song's top (as

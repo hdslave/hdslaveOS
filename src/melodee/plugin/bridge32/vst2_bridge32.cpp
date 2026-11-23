@@ -359,7 +359,7 @@ bool run (bridge::Command command)
             break;
         }
         case Command::setState:
-            dispatch (vst2::op::setChunk, 0, (intptr_t) shared->dataSize, shared->data);
+            dispatch (vst2::op::setChunk, shared->i0 != 0 ? 1 : 0, (intptr_t) shared->dataSize, shared->data);
             break;
         case Command::close:
             dispatch (vst2::op::close);

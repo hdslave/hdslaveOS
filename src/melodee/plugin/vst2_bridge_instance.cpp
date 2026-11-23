@@ -42,8 +42,6 @@ AudioChannelSet channelSet (int channels)
                          : AudioChannelSet::discreteChannels (channels);
 }
 
-constexpr char stateTag[4] = { 'M', 'V', 'S', '2' };
-constexpr uint8 stateChunk = 1, stateParameters = 2;
 } // namespace
 
 class Vst2BridgeInstance::Parameter final : public AudioPluginInstance::HostedParameter
@@ -497,18 +495,18 @@ const String Vst2BridgeInstance::getProgramName (int index)
 void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 {
     state.reset();
-    state.append (stateTag, sizeof (stateTag));
+    state.append (vst2::state::tag, sizeof (vst2::state::tag));
     {
         const std::lock_guard<InheritingMutex> held (connection->lock);
         if ((shared->info.flags & vst2::flag::programChunks) != 0 && call (bridge::Command::getState) && shared->result == 1)
         {
-            state.append (&stateChunk, 1);
+            state.append (&vst2::state::chunk, 1);
             state.append (shared->data, shared->dataSize);
             return;
         }
     }
     // One parameter a round trip, each under the lock alone: the audio thread's blocks pass in between.
-    state.append (&stateParameters, 1);
+    state.append (&vst2::state::parameters, 1);
     for (int i = 0; i < shared->info.numParams; ++i)
     {
         const float value = parameter (i);
@@ -518,22 +516,25 @@ void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 
 void Vst2BridgeInstance::setStateInformation (const void* data, int size)
 {
-    if (size < 5 || std::memcmp (data, stateTag, sizeof (stateTag)) != 0)
+    if (size < 5 || std::memcmp (data, vst2::state::tag, sizeof (vst2::state::tag)) != 0)
         return;
     const auto* bytes = static_cast<const uint8*> (data);
     const auto* body = bytes + 5;
     const auto bodySize = size - 5;
-    if (bytes[4] == stateChunk)
+    if (bytes[4] == vst2::state::chunk || bytes[4] == vst2::state::programChunk)
     {
         const std::lock_guard<InheritingMutex> held (connection->lock);
         if (bodySize <= (int) bridge::maxData)
         {
             std::memcpy (shared->data, body, (size_t) bodySize);
             shared->dataSize = (uint32_t) bodySize;
+            shared->i0 = bytes[4] == vst2::state::programChunk ? 1 : 0;
             call (bridge::Command::setState);
         }
         return;
     }
+    if (bytes[4] != vst2::state::parameters)
+        return;
     for (int i = 0; i < std::min ((int) shared->info.numParams, bodySize / (int) sizeof (float)); ++i)
     {
         const std::lock_guard<InheritingMutex> held (connection->lock); // one at a time, as getStateInformation
