@@ -11124,6 +11124,16 @@ void sample_lists() {
     CHECK(star_toggle(starred, "/content/Samples/Drums/Snare.wav"));
     CHECK(!star_toggle(starred, "/media/card/Melodee/Samples/Kick.wav")); // again: no longer starred
     CHECK(starred.size() == 1 && starred[0] == "/content/Samples/Drums/Snare.wav");
+    // A part of a file (a program's pad, a SoundFont's preset) by its '#'; a '#' in a file's or a folder's own name is
+    // no part: the factory's "G#m90" phrases star and delete as files.
+    std::string whole;
+    CHECK(part_of_file("/media/card/Kits/Kit.xpm#3", &whole) && whole == "/media/card/Kits/Kit.xpm");
+    CHECK(part_of_file("/content/Projects/Kits/Kalim.XPJ#k2") && part_of_file("/media/card/Kit.xty#1.4"));
+    CHECK(part_of_file("/media/card/Melodee/Samples/Piano.sf2#12", &whole) && whole == "/media/card/Melodee/Samples/Piano.sf2");
+    CHECK(!part_of_file("/content/Samples/Phrases/KeysPh-Kalim1 G#m90 MP.WAV"));
+    CHECK(!part_of_file("/media/card/Melodee/Samples/C# Loops/Strings.wav") && !part_of_file("/media/card/Melodee/Samples/Kit.xpm#"));
+    whole = "unchanged";
+    CHECK(!part_of_file("/media/card/F#m.wav", &whole) && whole == "unchanged");
     std::vector<std::string> recent;
     for (int n = 0; n < 20; ++n) recent_add(recent, "/media/card/Melodee/Samples/" + std::to_string(n) + ".wav");
     CHECK(recent.size() == recent_max && recent.front() == "/media/card/Melodee/Samples/19.wav" && recent.back() == "/media/card/Melodee/Samples/4.wav");

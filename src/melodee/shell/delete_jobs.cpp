@@ -36,7 +36,7 @@ bool sample_in_use(const Context& c, const std::string& path) {
     for (const auto& ref : c.project.samples) {
         if (!ref.used()) continue;
         std::string file = ref.path;
-        if (auto pad = file.find('#'); pad != std::string::npos) file.resize(pad); // "<file>#<pad>": a pad of a program
+        part_of_file(ref.path, &file); // "<file>#<pad>": a pad of a program (shell/sample_lists.h)
         if (within(file, path) || (!data.empty() && within(file, data))) return true;
     }
     return false;
@@ -64,7 +64,7 @@ bool samples_erase(Context& c) {
     if (list_folder(c.library->folder())) { c.library->unlist(file.path); return true; } // in a list: off it, the file kept
     const std::string card = c.library->card(), samples = samples_folder(card); // <card>/Melodee/Samples
     const std::string name = fs::path(file.path).filename().string();
-    if (file.path.find('#') != std::string::npos) { c.notice("Delete: its file, not a preset of it"); return true; }
+    if (part_of_file(file.path)) { c.notice("Delete: its file, not a preset of it"); return true; }
     if (card.empty() || !within(file.path, card) || file.path == card) { c.notice("Delete: files on the card only"); return true; }
     if (fs::path(file.path).parent_path().string() == card) { c.notice("Delete: not the card's own folders"); return true; }
     // In Melodee's folder only what is in its Samples folder: the samples are the user's, the rest Melodee's.
