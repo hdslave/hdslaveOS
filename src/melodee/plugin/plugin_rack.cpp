@@ -462,6 +462,9 @@ public:
     // A parameter value or program set for it off the audio thread: run a block for it, asleep or not (a CLAP
     // plug-in says the same itself, wantsProcess(); JUCE's VST3 and LV2 plug-ins cannot, so the rack remembers).
     void note_change() { change_waiting.store(true, std::memory_order_release); }
+    // Its tail was told again (a CLAP plug-in's changed, taken in idle_plugins()): the gate's span follows it
+    // from the next render, on the audio thread where the gate lives.
+    void note_tail(double seconds) { tail_waiting.store(seconds, std::memory_order_release); }
     // Events with nowhere to go since it opened: MIDI its pending room had no place for, and a CLAP plug-in's own.
     uint32_t dropped() const { return dropped_midi.load(std::memory_order_relaxed) + (clap ? clap->droppedEvents() : 0); }
     void silence() override {
@@ -504,6 +507,7 @@ public:
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         follow_clock(frames);
+        if (double tail = tail_waiting.exchange(-1, std::memory_order_acq_rel); tail >= 0) idle.setTail(tail);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
         // its audio side takes) or a value waiting for it (a pot turned; another format's value the rack noted,
@@ -619,6 +623,7 @@ public:
         scope_head.store(at + 1, std::memory_order_release);
     }
     std::atomic<bool> change_waiting {false}; // a value or program set for it, to be taken by a block (note_change())
+    std::atomic<double> tail_waiting {-1};   // a tail told again, for its gate's span (-1: none; note_tail())
     std::atomic<uint32_t> dropped_midi {0};   // MIDI its pending room had no place for (dropped())
     unsigned load_tick = 0;              // renders run, for sampling the load (audio thread)
     std::string stage;                   // the RAM copy it runs from, removed with it
@@ -1749,6 +1754,7 @@ void PluginRack::idle_plugins() {
     bool moved = false;
     for (auto* h : clap) {
         h->clap->idle();
+        if (h->clap->takeTailChanged()) h->note_tail(h->clap->getTailLengthSeconds()); // its gate's span follows the new tail
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
         auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown, h->file_pages));
         std::lock_guard<std::mutex> held(lock);

@@ -37,6 +37,7 @@
 namespace {
 std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0}, presetReads {0};
 std::atomic<int> failSaves {0};
+std::atomic<int> tailSamples {0}; // the tail Test Gain reports, set by fixture_set_tail()
 bool choked[16][128] {}; // (channel, key) NOTE_CHOKEs taken, for fixture_chokes()
 std::atomic<int> chokeCount {0};
 std::string libraryPath;
@@ -145,6 +146,10 @@ const clap_plugin_note_ports notePorts {noteCount, noteInfo};
 
 uint32_t latency(const clap_plugin* p) { return of(p).instrument ? 0 : 32; }
 const clap_plugin_latency latencyExt {latency};
+
+uint32_t tailGet(const clap_plugin* p) { of(p).main(); return uint32_t(tailSamples.load()); }
+const clap_plugin_tail tailExt {tailGet};
+Plugin* gainPlugin = nullptr; // the Test Gain made last, so fixture_set_tail() can tell its host
 
 struct PresetLine { std::string name; double value = 0; std::string forWhom; };
 std::vector<PresetLine> presetFile(const char* path) {
@@ -348,6 +353,7 @@ const void* extension(const clap_plugin* p, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;
+    if (!std::strcmp(id, CLAP_EXT_TAIL)) return &tailExt;
     if (!std::strcmp(id, CLAP_EXT_PRESET_LOAD)) return &presetLoad;
     if (!std::strcmp(id, CLAP_EXT_REMOTE_CONTROLS) && of(p).instrument) return &remoteControls;
     return nullptr;
@@ -359,6 +365,7 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     auto* s = new Plugin;
     s->host = host;
     s->instrument = instrument;
+    if (!instrument) gainPlugin = s;
     auto& p = s->plugin;
     p.desc = instrument ? &sineDescriptor : &gainDescriptor;
     p.plugin_data = s;
@@ -369,7 +376,7 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
         s.host->request_callback(s.host);
         return true;
     };
-    p.destroy = [](const clap_plugin* p) { of(p).main(); delete &of(p); };
+    p.destroy = [](const clap_plugin* p) { of(p).main(); if (gainPlugin == &of(p)) gainPlugin = nullptr; delete &of(p); };
     p.activate = [](const clap_plugin* p, double rate, uint32_t, uint32_t) { of(p).main(); of(p).rate = rate; return true; };
     p.deactivate = [](const clap_plugin* p) { of(p).main(); };
     p.start_processing = [](const clap_plugin* p) { of(p).audio(); return true; };
@@ -415,6 +422,13 @@ CLAP_EXPORT void fixture_counts(int* wrong, int* callbacks, int* initialised) {
 CLAP_EXPORT int fixture_preset_reads() { return presetReads; }
 // State saves fail (after writing a part of one) while `on`.
 CLAP_EXPORT void fixture_fail_saves(int on) { failSaves = on; }
+// A new tail for Test Gain, told to its host through the tail host's changed, as a preset change would.
+CLAP_EXPORT void fixture_set_tail(int samples) {
+    tailSamples = samples;
+    if (gainPlugin == nullptr) return;
+    if (auto* told = static_cast<const clap_host_tail*>(gainPlugin->host->get_extension(gainPlugin->host, CLAP_EXT_TAIL)))
+        told->changed(gainPlugin->host);
+}
 // Distinct (channel, key) NOTE_CHOKEs taken since the last reset.
 CLAP_EXPORT int fixture_chokes() { return chokeCount; }
 CLAP_EXPORT void fixture_chokes_reset() { std::memset(choked, 0, sizeof(choked)); chokeCount = 0; }

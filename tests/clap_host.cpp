@@ -284,6 +284,15 @@ int main(int argc, char** argv) {
         CHECK(gain->wantsProcess());                                    // an effect too: run for a value set
         CHECK(std::abs(peak(run(*gain, {}, 0.25f)) - 0.125f) < 1e-6f);
         CHECK(!gain->wantsProcess());
+        // A tail told again through the tail host's changed is taken, and the new length reads back.
+        auto setTail = reinterpret_cast<void (*)(int)>(dlsym(fixture, "fixture_set_tail"));
+        CHECK(setTail != nullptr);
+        CHECK(gain->getTailLengthSeconds() == 0 && !gain->takeTailChanged());
+        setTail(int(rate)); // a second
+        CHECK(gain->takeTailChanged() && !gain->takeTailChanged());
+        CHECK(std::abs(gain->getTailLengthSeconds() - 1.0) < 1e-9);
+        setTail(0);
+        CHECK(gain->takeTailChanged() && gain->getTailLengthSeconds() == 0);
     }
     { // Presets: files in folders beside the library, as Surge XT keeps them.
         auto reads = reinterpret_cast<int (*)()>(dlsym(fixture, "fixture_preset_reads"));

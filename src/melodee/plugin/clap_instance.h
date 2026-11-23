@@ -63,6 +63,9 @@ public:
     // be run (request_process, or its parameters' request_flush), or a value set here waits for it (a pot turned).
     // The next processBlock() takes both.
     bool wantsProcess() const override;
+    // Its tail was told again (the CLAP tail host's changed) since this was last taken: getTailLengthSeconds()
+    // reads the new one, so whoever cached the old one (the idle gate's span) can follow. Any thread.
+    bool takeTailChanged();
     // Events a full block had no room for and could not keep for the next one (a choke or note-off burst is
     // kept, never counted here). Any thread.
     uint32_t droppedEvents() const { return droppedCount.load (std::memory_order_relaxed); }

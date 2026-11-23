@@ -31,13 +31,18 @@ public:
     // its output already, so only an effect's counts).
     void reset(bool is_instrument, double rate, double tail_seconds = 0) {
         instrument = is_instrument;
-        double span = quiet_seconds;
-        if (!instrument && tail_seconds > span) span = std::min(tail_seconds, 10.0);
-        quiet_needed = uint32_t(std::lround(span * rate));
+        sample_rate = rate;
+        quiet_needed = span_frames(tail_seconds);
         quiet = 0;
         held.fill(0);
         held_count = 0;
         sustain = 0;
+    }
+    // A tail told again (a preset whose echoes last longer, or shorter): the quiet span follows it, the quiet
+    // already counted stands. Audio thread, as the rest.
+    void setTail(double tail_seconds) {
+        quiet_needed = span_frames(tail_seconds);
+        quiet = std::min(quiet, quiet_needed);
     }
     // Every MIDI message sent to the plug-in, as sent: keys held and the sustain pedal followed.
     void midi(uint8_t status, uint8_t data1, uint8_t data2) {
@@ -87,12 +92,18 @@ public:
     unsigned keys_held() const { return held_count; }
 
 private:
+    uint32_t span_frames(double tail_seconds) const {
+        double span = quiet_seconds;
+        if (!instrument && tail_seconds > span) span = std::min(tail_seconds, 10.0);
+        return uint32_t(std::lround(span * sample_rate));
+    }
     static bool loud(const float* left, const float* right, unsigned frames) {
         for (unsigned f = 0; f < frames; ++f)
             if (std::fabs(left[f]) > quiet_level || std::fabs(right[f]) > quiet_level) return true;
         return false;
     }
     bool instrument = true;
+    double sample_rate = 44100;
     uint32_t quiet_needed = 22050, quiet = 0;
     std::array<uint8_t, 16 * 16> held {}; // a bit a channel's key
     unsigned held_count = 0;
