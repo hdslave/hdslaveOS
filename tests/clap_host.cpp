@@ -186,6 +186,39 @@ int main(int argc, char** argv) {
             CHECK(peak(run(*sine)) == 0.0f);
         }
 
+        // Preparing again (a new rate, a reload) forgets the keys it had and the chokes still queued for them:
+        // the plug-in was deactivated, so nothing of the old session may be choked or released into the new one.
+        {
+            auto chokes = reinterpret_cast<int (*)()>(dlsym(fixture, "fixture_chokes"));
+            auto chokesReset = reinterpret_cast<void (*)()>(dlsym(fixture, "fixture_chokes_reset"));
+            CHECK(chokes && chokesReset);
+            auto blockWith = [&](const juce::MidiBuffer& events) {
+                juce::AudioBuffer<float> buffer(2, block);
+                buffer.clear();
+                juce::MidiBuffer copy(events);
+                sine->processBlock(buffer, copy);
+                return buffer;
+            };
+            for (int channel = 1; channel <= 16; ++channel) {
+                juce::MidiBuffer notes;
+                for (int key = 0; key < 100; ++key) notes.addEvent(juce::MidiMessage::noteOn(channel, key, 1.0f), 0);
+                blockWith(notes);
+            }
+            juce::MidiBuffer silence;
+            for (int channel = 1; channel <= 16; ++channel) {
+                silence.addEvent(juce::MidiMessage::controllerEvent(channel, 120, 0), 0);
+                silence.addEvent(juce::MidiMessage::controllerEvent(channel, 123, 0), 0);
+            }
+            blockWith(silence); // one block of the burst: the rest is still queued
+            sine->prepareToPlay(rate, block);
+            chokesReset();
+            for (int b = 0; b < 6; ++b) blockWith({});
+            CHECK(chokes() == 0); // nothing queued before the prepare drains after it
+            blockWith(silence);
+            for (int b = 0; b < 6; ++b) blockWith({});
+            CHECK(chokes() == 0); // and the keys played before it are not remembered for a later silence
+        }
+
         sine->idle(); // its request_callback from init()
         counts(&wrong, &callbacks, &inits);
         CHECK(callbacks == 1 && inits == 1);
