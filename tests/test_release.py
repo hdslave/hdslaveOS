@@ -13,6 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import make_release  # noqa: E402
+import package_unsigned  # noqa: E402
 
 
 @unittest.skipUnless((ROOT / "build/deps/rubik/OFL.txt").is_file(), "dependencies not fetched")
@@ -98,6 +99,16 @@ class ReleaseTests(unittest.TestCase):
         key = make_release.public_key()
         self.assertTrue(key.startswith("-----BEGIN PUBLIC KEY-----\n") and key.endswith("-----END PUBLIC KEY-----\n"))
         self.assertEqual(len(key.splitlines()), 3)
+
+    def test_unsigned_package_refuses_a_dirty_tree(self):
+        def git(status):
+            return lambda *args: status if args[0] == "status" else "0123456789ab"
+        with mock.patch.object(make_release, "git", git(" M src/x.cpp\n")):
+            with self.assertRaises(SystemExit):
+                package_unsigned.stamped_commit(False)
+            self.assertEqual(package_unsigned.stamped_commit(True), "0123456789ab+")
+        with mock.patch.object(make_release, "git", git("")):
+            self.assertEqual(package_unsigned.stamped_commit(False), "0123456789ab")
 
 
 if __name__ == "__main__":
