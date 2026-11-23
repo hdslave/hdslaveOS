@@ -26,7 +26,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 
 All eleven plug-ins in the [hdslave MPC Sample Synths & Drum Machines](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines) collection use the `hdslaveOS` screen extension to render bespoke hardware-inspired interfaces right on the MPC Sample:
 
-> **Desktop CLAP versions (macOS & Windows):** All 11 plug-ins are also available for FL Studio and other desktop CLAP hosts with expanded control panels and MIDI Learn in [**hdslave-Synths-and-drum-machines-Mac-Win**](https://github.com/hdslave/hdslave-Synths-and-drum-machines-Mac-Win).
+> **Desktop CLAP versions (macOS & Windows):** Each plug-in repository below also includes a separate desktop CLAP build in its `mac-clap/` folder (for FL Studio and other desktop CLAP hosts) with all MPC screens on one interactive panel and MIDI Learn.
 
 <table>
   <tr>
