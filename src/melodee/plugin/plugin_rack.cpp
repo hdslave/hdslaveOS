@@ -244,7 +244,7 @@ public:
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
-        idle.reset(is_instrument, this->plugin_rate);
+        idle.reset(is_instrument, this->plugin_rate, instance->getTailLengthSeconds());
         clap = dynamic_cast<ClapInstance*>(instance.get());
         // A side-chain key (melodee-hdslave): a CLAP instrument's second output port (plugin/clap_instance.h).
         key_source = is_instrument && clap && clap->hasKeyOutput() ? clap : nullptr;
@@ -257,8 +257,14 @@ public:
 
     void midi(uint8_t status, uint8_t data1, uint8_t data2) override {
         if (pending_count < pending.size()) pending[pending_count++] = {status, data1, data2};
+        else dropped_midi.fetch_add(1, std::memory_order_relaxed); // no room before its next render: counted
         idle.midi(status, data1, data2);
     }
+    // A parameter value or program set for it off the audio thread: run a block for it, asleep or not (a CLAP
+    // plug-in says the same itself, wantsProcess(); JUCE's VST3 and LV2 plug-ins cannot, so the rack remembers).
+    void note_change() { change_waiting.store(true, std::memory_order_release); }
+    // Events with nowhere to go since it opened: MIDI its pending room had no place for, and a CLAP plug-in's own.
+    uint32_t dropped() const { return dropped_midi.load(std::memory_order_relaxed) + (clap ? clap->droppedEvents() : 0); }
     void silence() override {
         for (uint8_t ch = 0; ch < 16; ++ch) {
             midi(uint8_t(0xb0 | ch), 120, 0); // all sound off
@@ -298,12 +304,12 @@ public:
         key_frames = 0;
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
-        auto t0 = std::chrono::steady_clock::now();
         follow_clock(frames);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a CLAP plug-in's own wish to run or a value waiting for it (a pot turned
-        // on its page, a press there it asked to be run for): else neither reaches it until a note does.
-        const bool waiting = pending_count > 0 || (clap && clap->wantsProcess());
+        // on its page, a press there it asked to be run for; another format's value the rack noted, note_change()):
+        // else neither reaches it until a note does.
+        const bool waiting = pending_count > 0 || (clap && clap->wantsProcess()) || change_waiting.load(std::memory_order_acquire);
         bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
@@ -311,14 +317,21 @@ public:
             load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
             return;
         }
+        change_waiting.store(false, std::memory_order_release); // this block takes it
+        // Its load, sampled: two clock reads a block for every plug-in is work the audio thread need not do.
+        const bool measure = (++load_tick & 15) == 0;
+        std::chrono::steady_clock::time_point t0;
+        if (measure) t0 = std::chrono::steady_clock::now();
         if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
         else {
             run(left, right, frames, instrument);
             if (key_source) key_frames = std::min(frames, unsigned(std::max(key_source->keyFrames(), 0)));
         }
-        double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-        float share = float(took / (frames / sample_rate));
-        load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
+        if (measure) {
+            double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            float share = float(took / (frames / sample_rate));
+            load.store(load.load(std::memory_order_relaxed) * 0.8f + share * 0.2f, std::memory_order_relaxed);
+        }
     }
     // One processBlock of `frames`: an effect's input in left/right; the output added there (`add`) or in their place.
     void run(float* left, float* right, unsigned frames, bool add) {
@@ -347,9 +360,10 @@ public:
         }
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
-        idle.heard(l, r, frames);
-        if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += sane(l[f]); right[f] += sane(r[f]); }
-        else for (unsigned f = 0; f < frames; ++f) { left[f] = sane(l[f]); right[f] = sane(r[f]); }
+        float peak = 0; // taken passing the samples by: the gate is told it, not left to walk the block again
+        if (add) for (unsigned f = 0; f < frames; ++f) { peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])}); left[f] += sane(l[f]); right[f] += sane(r[f]); }
+        else for (unsigned f = 0; f < frames; ++f) { peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])}); left[f] = sane(l[f]); right[f] = sane(r[f]); }
+        idle.heardPeak(peak, frames);
     }
     // What a plug-in gives, kept finite and within ±8.
     static float sane(float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; }
@@ -369,6 +383,9 @@ public:
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
+    std::atomic<bool> change_waiting {false}; // a value or program set for it, to be taken by a block (note_change())
+    std::atomic<uint32_t> dropped_midi {0};   // MIDI its pending room had no place for (dropped())
+    unsigned load_tick = 0;              // renders run, for sampling the load (audio thread)
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
     UserPresets user_presets;
@@ -429,6 +446,16 @@ private:
     ClapInstance* key_source = nullptr; // `instance`, when it is a CLAP instrument with a key port (has_key())
     unsigned key_frames = 0;            // frames of it the last render() played (0: none, or it slept)
 };
+
+// A loaded plug-in's state as it is now. An empty read - a save that failed (plugin/clap_instance.cpp gives no
+// state for one), or a plug-in with nothing to save - leaves the state kept for the entry standing, so a failed
+// save never overwrites a good state in the project, a copy, a rerate or a freeze.
+std::vector<uint8_t> state_now(PluginHandle* handle, const std::vector<uint8_t>& kept) {
+    juce::MemoryBlock block;
+    handle->instance->getStateInformation(block);
+    if (block.isEmpty()) return kept;
+    return {static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize()};
+}
 
 PluginRack::PluginRack(EngineHost& engine, std::string stage) : host(engine), stage_tag(std::move(stage)) {
     racks.fetch_add(1);
@@ -511,12 +538,9 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             case PluginStep::Keep: case PluginStep::Changed: break;
             case PluginStep::Sleep: wanted.push_back({Job::Kind::Sleep, e, entry.generation, {}, 0}); break;
             case PluginStep::Unload: wanted.push_back({Job::Kind::Unload, e, entry.generation, {}, 0}); break;
-            case PluginStep::Rerate: { // keep what it is now through the reload
-                juce::MemoryBlock block;
-                entry.live->instance->getStateInformation(block);
-                entry.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
+            case PluginStep::Rerate: // keep what it is now through the reload
+                entry.state = state_now(entry.live, entry.state);
                 [[fallthrough]];
-            }
             case PluginStep::Load: wanted.push_back({Job::Kind::Load, e, entry.generation, want, rate, id}); break;
             }
         }
@@ -539,13 +563,7 @@ PluginStates PluginRack::states() const {
     std::lock_guard<std::mutex> held(lock);
     for (unsigned e = 0; e < max_plugins; ++e) {
         const auto& entry = entries[e];
-        if (entry.live && entry.status == PluginStatus::Ready) {
-            juce::MemoryBlock block;
-            entry.live->instance->getStateInformation(block);
-            out[e].assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
-        } else {
-            out[e] = entry.state;
-        }
+        out[e] = entry.live && entry.status == PluginStatus::Ready ? state_now(entry.live, entry.state) : entry.state;
     }
     return out;
 }
@@ -554,13 +572,8 @@ void PluginRack::clone(unsigned entry, unsigned copy) {
     if (entry >= max_plugins || copy >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);
     auto& from = entries[entry];
-    std::vector<uint8_t> state = from.state;
-    if (from.live && from.status == PluginStatus::Ready) {
-        juce::MemoryBlock block;
-        from.live->instance->getStateInformation(block);
-        state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
-    }
-    entries[copy].state = std::move(state);
+    entries[copy].state = from.live && from.status == PluginStatus::Ready ? state_now(from.live, from.state)
+                                                                           : from.state;
 }
 
 std::string PluginRack::summary() const {
@@ -583,8 +596,10 @@ std::string PluginRack::summary() const {
         std::string name = entry.file.name.empty() ? fs::path(entry.path).stem().string() : entry.file.name;
         for (auto& ch : name) if (ch == ' ' || ch == ',' || ch == ':') ch = '_';
         int load = entry.live ? int(entry.live->load.load(std::memory_order_relaxed) * 1000) : 0;
+        uint32_t dropped = entry.live ? entry.live->dropped() : 0; // only when any: the usual line is unchanged
         if (!out.empty()) out += ',';
-        out += std::to_string(e) + ':' + states[unsigned(status) % 5] + ':' + name + ':' + format_tag(entry.file.format) + ':' + std::to_string(load);
+        out += std::to_string(e) + ':' + states[unsigned(status) % 5] + ':' + name + ':' + format_tag(entry.file.format) + ':' + std::to_string(load)
+             + (dropped ? ":dropped-" + std::to_string(dropped) : "");
     }
     return out.empty() ? "none" : out;
 }
@@ -606,11 +621,8 @@ void PluginRack::reload(unsigned entry) {
     auto& e = entries[entry];
     if (e.live && e.status == PluginStatus::Ready) {
         auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
-        if (!bridged || !bridged->bridgeDied()) { // a working one keeps what it is now; a dead bridge has nothing to say
-            juce::MemoryBlock block;
-            e.live->instance->getStateInformation(block);
-            e.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
-        }
+        if (!bridged || !bridged->bridgeDied()) // a working one keeps what it is now; a dead bridge has nothing to say
+            e.state = state_now(e.live, e.state);
     }
     e.reload = true;
 }
@@ -620,9 +632,7 @@ std::vector<uint8_t> PluginRack::state(unsigned entry) const {
     std::lock_guard<std::mutex> held(lock);
     const auto& e = entries[entry];
     if (!e.live || e.status != PluginStatus::Ready) return e.state;
-    juce::MemoryBlock block;
-    e.live->instance->getStateInformation(block);
-    return {static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize()};
+    return state_now(e.live, e.state);
 }
 
 void PluginRack::restore(unsigned entry, std::vector<uint8_t> state) {
@@ -718,6 +728,7 @@ void PluginRack::set_param(unsigned entry, unsigned shown_index, int value) {
     auto* p = h->instance->getParameters()[h->shown[shown_index]];
     float v = std::clamp(value, 0, plugin_param_max) / float(plugin_param_max);
     p->setValue(v);
+    h->note_change(); // a block runs for it, asleep or not (a CLAP plug-in's setValue asks the same itself)
 }
 
 PluginPrograms PluginRack::programs(unsigned entry) const {
@@ -760,7 +771,7 @@ uint32_t PluginRack::preset_generation(unsigned entry) const {
     std::lock_guard<std::mutex> held(lock);
     if (entry >= max_plugins) return 0;
     const auto& e = entries[entry];
-    return e.status == PluginStatus::Ready && e.live && e.live->instrument ? e.generation : 0;
+    return e.status == PluginStatus::Ready && e.live ? e.generation : 0;
 }
 
 void PluginRack::save_user_preset(unsigned entry, uint32_t generation, const std::string& name) {
@@ -769,8 +780,8 @@ void PluginRack::save_user_preset(unsigned entry, uint32_t generation, const std
         std::lock_guard<std::mutex> held(lock);
         const auto& e = entries[entry];
         const auto* h = e.live;
-        if (generation != e.generation || e.status != PluginStatus::Ready || !h || !h->instrument) {
-            preset_results.push_back({entry, generation, e.selection, true, name, "Synth changed", {}});
+        if (generation != e.generation || e.status != PluginStatus::Ready || !h) {
+            preset_results.push_back({entry, generation, e.selection, true, name, "Plug-in changed", {}});
             return;
         }
         // Snapshot at confirmation, as for a project save. Further edits or unloading the track while the
@@ -861,7 +872,10 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
-        if (e.generation == generation && e.live && e.live->instance.get() == instance) e.live->switching = false;
+        if (e.generation == generation && e.live && e.live->instance.get() == instance) {
+            e.live->switching = false;
+            e.live->note_change(); // the program is taken by a block, asleep or not
+        }
     }
     changed();
 }
@@ -1182,7 +1196,7 @@ void PluginRack::load(const Job& job) {
     handle->stage = stage.string();
     handle->format = file.format;
     handle->factory_programs = named_programs(*handle->instance);
-    if (is_instrument) {
+    { // an effect's user presets too, kept by the same identity as an instrument's
         auto id = handle->clap ? juce::String(handle->clap->clapId())
                                : description.manufacturerName + "/" + description.name + "/" + juce::String::toHexString(description.uniqueId);
         handle->user_presets = UserPresets(home, juce::String(format_tag(file.format)) + "/" + id);
@@ -1300,9 +1314,7 @@ void PluginRack::sleep(unsigned entry, uint32_t generation) {
         old = e.live;
         e.live = nullptr;
         if (old) {
-            juce::MemoryBlock block;
-            old->instance->getStateInformation(block);
-            e.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
+            e.state = state_now(old, e.state);
             retiring.push_back(old);
         }
     }

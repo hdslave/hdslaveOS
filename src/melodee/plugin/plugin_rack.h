@@ -124,7 +124,8 @@ public:
     };
     View view() const;
     unsigned changes() const { return change_count.load(std::memory_order_acquire); } // the view or a status moved
-    // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated.
+    // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated,
+    // with :dropped-N after the load when events for it had nowhere to go.
     std::string summary() const;
     // About (round 2): how many plug-ins are loaded and running, and their share of the audio time together.
     struct Usage { unsigned loaded = 0; float load = 0; };

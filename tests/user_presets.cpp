@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/plugin_rack.h"
+#include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/shell.h"
 #include "runtime/controller.h"
@@ -18,9 +19,10 @@ namespace fs = std::filesystem;
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
     CHECK(argc == 4);
-    const std::string card = argv[1], plugin = argv[2];
-    bool saving = std::string(argv[3]) == "save";
-    const unsigned entry = saving ? 0 : 4;
+    const std::string card = argv[1], plugin = argv[2], mode = argv[3];
+    bool saving = mode == "save" || mode == "fxsave";
+    bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
+    const unsigned entry = fx ? 2 : saving ? 0 : 4;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
     auto rack = std::make_unique<PluginRack>(*host);
@@ -33,10 +35,17 @@ int main(int argc, char** argv) {
     rack->set_card(card);
     shell->set_plugins(rack.get());
     std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
-    load_sound(tr, EngineKind::Plugin, 0);
-    tr.plugin = uint8_t(entry);
+    if (fx) {
+        ref.id = clap_id_hash("org.melodee.test.gain");
+        auto& slot = project.chain(master_chain).slots[0]; // the master's chain: mixed (so run) even in silence
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = int16_t(entry);
+    } else {
+        load_sound(tr, EngineKind::Plugin, 0);
+        tr.plugin = uint8_t(entry);
+    }
     // Two already-open instances must both see a new patch.
-    if (saving) {
+    if (saving && !fx) {
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -87,6 +96,24 @@ int main(int argc, char** argv) {
         return values;
     };
     wait([&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding; });
+    if (fx) { // an effect's user presets: saved and loaded by the rack as an instrument's are
+        CHECK(rack->instrument(entry) == 0);
+        if (saving) {
+            rack->set_param(entry, 0, 250); // Gain 0.5 of 0..2
+            wait([&] { return state()[2] == 0.5; });
+            uint32_t generation = rack->preset_generation(entry);
+            CHECK(generation != 0);
+            rack->save_user_preset(entry, generation, "My Patch");
+            wait([&] { return has_patch(entry); });
+        } else {
+            CHECK(has_patch(entry));
+            CHECK(state()[2] == 1.0);
+            rack->load_user_preset(entry, "My Patch");
+            wait([&] { return rack->status(entry) == PluginStatus::Ready && state()[2] == 0.5; });
+        }
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     if (saving) {
         wait([&] { return rack->status(1) == PluginStatus::Ready && !rack->programs(1).finding; });
         rack->set_param(entry, 0, 750);

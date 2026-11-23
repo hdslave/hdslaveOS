@@ -477,7 +477,7 @@ void Shell::press(Button b, bool pressed) {
             if (ui.page == PageId::Sounds) context_.toggle_favourite();
             else if (ui.page == PageId::Samples && context_.track().engine == EngineKind::Sampler) context_.save_bank();
             else if (context_.track().engine == EngineKind::Sampler) context_.save_sample();
-            else if (context_.track().engine == EngineKind::Plugin) context_.name_plugin_preset();
+            else if (context_.track().engine == EngineKind::Plugin || ui.page == PageId::PluginPresets) context_.name_plugin_preset();
             else context_.save_sound();
             break;
         }

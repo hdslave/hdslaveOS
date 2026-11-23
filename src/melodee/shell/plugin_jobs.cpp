@@ -220,11 +220,13 @@ void Context::toggle_plugin_transport(unsigned entry) {
 }
 
 void Context::name_plugin_preset() {
-    name_preset_entry = track().plugin;
+    // On PRESETS the entry open there - an effect in a chain as well as a track's synth; elsewhere the track's.
+    name_preset_entry = ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins ? ui.presets_entry
+                                                                                           : track().plugin;
     name_preset_generation = plugins ? plugins->preset_generation(name_preset_entry) : 0;
-    if (!name_preset_generation) { notice("Synth is not ready"); return; }
+    if (!name_preset_generation) { notice("Plug-in is not ready"); return; }
     if (ui.page == PageId::PluginPresets && ui.presets_entry != name_preset_entry) {
-        notice("Open the synth to save its preset");
+        notice("Open the plug-in to save its preset");
         return;
     }
     open_name(NameTarget::PluginPreset, "My Patch", NameEntry::capacity - 1, false);
