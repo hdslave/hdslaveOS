@@ -141,7 +141,8 @@ public:
     // forgotten for one gone or changed since, and card_changes() counts up: an open picker lists again.
     void card_changed();
     unsigned card_changes() const { return card_count.load(std::memory_order_acquire); }
-    // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated.
+    // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated,
+    // with :dropped-N after the load when events for it had nowhere to go.
     std::string summary() const;
     // About (round 2): how many plug-ins are loaded and running, and their share of the audio time together.
     struct Usage { unsigned loaded = 0; float load = 0; };

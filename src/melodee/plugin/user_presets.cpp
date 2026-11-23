@@ -36,7 +36,7 @@ std::vector<std::string> UserPresets::names() const {
 std::string UserPresets::save(const std::string& name, const juce::MemoryBlock& state) const {
     if (!valid_name(name)) return "Choose another preset name";
     if (folder == juce::File() || !folder.getParentDirectory().getParentDirectory().isDirectory()) return "No SD card for presets";
-    if (state.isEmpty()) return "Synth has no preset state";
+    if (state.isEmpty()) return "Plug-in has no preset state";
     if (state.getSize() > max_state_bytes) return "Preset exceeds 64 MB";
     auto file = folder.getChildFile(juce::String(name) + extension);
     if (file.exists()) return "Preset name already used";
@@ -63,7 +63,7 @@ std::string UserPresets::load(const std::string& name, std::vector<uint8_t>& sta
     header.writeString(identity);
     juce::MemoryBlock found;
     if (in->readIntoMemoryBlock(found, ssize_t(header.getDataSize())) != header.getDataSize()
-        || std::memcmp(found.getData(), header.getData(), header.getDataSize())) return "Wrong synth or invalid preset";
+        || std::memcmp(found.getData(), header.getData(), header.getDataSize())) return "Wrong plug-in or invalid preset";
     int size = in->readInt();
     uint32_t expected = uint32_t(in->readInt());
     if (size <= 0 || size > max_state_bytes || in->getNumBytesRemaining() != size) return "Incomplete preset";
