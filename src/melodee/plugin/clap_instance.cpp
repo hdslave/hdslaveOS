@@ -200,7 +200,7 @@ public:
     Parameter (ClapInstance& owner, const clap_param_info& info, double current)
         : owner (owner), id (info.id), cookie (info.cookie), flags (info.flags),
           minimum (info.min_value), maximum (info.max_value), initial (normalise (info.default_value)),
-          label (text (info.name)), value ((float) normalise (current)) {}
+          label (text (info.name)), value ((float) normalise (current)), wanted ((float) normalise (current)) {}
 
     double normalise (double plain) const { return maximum > minimum ? std::clamp ((plain - minimum) / (maximum - minimum), 0.0, 1.0) : 0.0; }
     double plain (double normalised) const
@@ -209,9 +209,16 @@ public:
         return (flags & CLAP_PARAM_IS_STEPPED) != 0 ? std::round (v) : v;
     }
 
-    float getValue() const override { return value.load (std::memory_order_relaxed); }
+    float getValue() const override
+    {
+        // A value of ours still to go is the value, even where a refresh has since stored the plug-in's older one.
+        return pending.load (std::memory_order_acquire) ? wanted.load (std::memory_order_relaxed)
+                                                         : value.load (std::memory_order_relaxed);
+    }
     void setValue (float v) override
     {
+        generation.fetch_add (1, std::memory_order_acq_rel); // first: a refresh reading the plug-in now stands down
+        wanted.store (v, std::memory_order_relaxed);
         value.store (v, std::memory_order_relaxed);
         pending.store (true, std::memory_order_release);
         owner.anyPending.store (true, std::memory_order_release);
@@ -257,7 +264,9 @@ public:
     const uint32_t flags;
     const double minimum, maximum, initial;
     const String label;
-    std::atomic<float> value;
+    std::atomic<float> value;  // the plug-in's last word (or ours, from setValue)
+    std::atomic<float> wanted; // ours alone: what the pending event sends, whatever a refresh stored meanwhile
+    std::atomic<uint32_t> generation { 0 }; // setValue's count: a refresh that began before one does not store
     std::atomic<bool> pending { false };
 };
 
@@ -405,10 +414,15 @@ void ClapInstance::refreshValues()
     if (params == nullptr) return;
     for (auto* p : parameters)
     {
+        const uint32_t generation = p->generation.load (std::memory_order_acquire);
         if (p->pending.load (std::memory_order_acquire)) continue; // one of ours still to go: that is the value
         double v = 0;
-        if (params->get_value (plugin, p->id, &v))
-            p->value.store ((float) p->normalise (v), std::memory_order_relaxed);
+        if (! params->get_value (plugin, p->id, &v)) continue;
+        // A setValue that landed while the plug-in was being read wins: its generation moved (it is bumped
+        // before the value is stored), and the event it queues sends `wanted` in any case.
+        if (p->generation.load (std::memory_order_acquire) != generation
+            || p->pending.load (std::memory_order_acquire)) continue;
+        p->value.store ((float) p->normalise (v), std::memory_order_relaxed);
     }
 }
 
@@ -576,6 +590,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
     if (anyPending.exchange (false, std::memory_order_acq_rel))
         for (auto* p : parameters)
             if (p->pending.exchange (false, std::memory_order_acq_rel))
+            {
                 if (auto* e = add())
                 {
                     auto& v = e->param;
@@ -584,8 +599,56 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
                     v.param_id = p->id;
                     v.cookie = p->cookie;
                     v.note_id = -1; v.port_index = -1; v.channel = -1; v.key = -1;
-                    v.value = p->plain (p->value.load (std::memory_order_relaxed));
+                    v.value = p->plain (p->wanted.load (std::memory_order_relaxed));
                 }
+                else // no room this block: still to go in the next one, not lost
+                {
+                    p->pending.store (true, std::memory_order_release);
+                    anyPending.store (true, std::memory_order_release);
+                }
+            }
+    if (notePort >= 0 && midiNotes && queuedAllOff != 0)
+    {
+        // All sound/notes off as MIDI that a full block left for these ones, before anything newer.
+        for (int bit = 0; bit < 32; ++bit)
+        {
+            if ((queuedAllOff & (1u << bit)) == 0) continue;
+            auto* e = add();
+            if (e == nullptr) break;
+            queuedAllOff &= ~(1u << bit);
+            auto& x = e->midi;
+            x = {};
+            x.header = { sizeof (clap_event_midi), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, 0 };
+            x.port_index = (uint16_t) notePort;
+            x.data[0] = (uint8_t) (0xb0 | (bit / 2));
+            x.data[1] = (uint8_t) (bit % 2 ? 123 : 120);
+            x.data[2] = 0;
+        }
+    }
+    if (notePort >= 0 && clapNotes)
+    {
+        // Chokes and note-offs a wider burst than one block holds left for these blocks, first and key by key.
+        auto queued = [&] (std::array<std::bitset<128>, 16>& queue, uint16_t type) {
+            for (int channel = 0; channel < 16; ++channel)
+                for (int k = 0; k < 128; ++k)
+                {
+                    if (! queue[(size_t) channel].test ((size_t) k)) continue;
+                    auto* e = add();
+                    if (e == nullptr) return;
+                    queue[(size_t) channel].reset ((size_t) k);
+                    auto& n = e->note;
+                    n = {};
+                    n.header = { sizeof (clap_event_note), 0, CLAP_CORE_EVENT_SPACE_ID, type, 0 };
+                    n.note_id = -1;
+                    n.port_index = (int16_t) notePort;
+                    n.channel = (int16_t) channel;
+                    n.key = (int16_t) k;
+                    n.velocity = 0.0;
+                }
+        };
+        queued (chokeQueue, CLAP_EVENT_NOTE_CHOKE);
+        queued (offQueue, CLAP_EVENT_NOTE_OFF);
+    }
     if (notePort >= 0)
     {
         for (const auto m : midi)
@@ -598,35 +661,46 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
             const bool allOff = kind == 0xb0 && (d1 == 120 || d1 == 123);
             if (clapNotes && (noteOn || noteOff || allOff))
             {
-                auto note = [&] (uint16_t type, int key, double velocity)
-                {
-                    if (auto* e = add())
-                    {
-                        auto& n = e->note;
-                        n = {};
-                        n.header = { sizeof (clap_event_note), time, CLAP_CORE_EVENT_SPACE_ID, type, 0 };
-                        n.note_id = -1;
-                        n.port_index = (int16_t) notePort;
-                        n.channel = (int16_t) channel;
-                        n.key = (int16_t) key;
-                        n.velocity = velocity;
-                    }
+                auto fill = [&] (Event* e, uint16_t type, int key, double velocity) {
+                    auto& n = e->note;
+                    n = {};
+                    n.header = { sizeof (clap_event_note), time, CLAP_CORE_EVENT_SPACE_ID, type, 0 };
+                    n.note_id = -1;
+                    n.port_index = (int16_t) notePort;
+                    n.channel = (int16_t) channel;
+                    n.key = (int16_t) key;
+                    n.velocity = velocity;
                 };
                 const int key = d1 & 0x7f;
-                if (allOff) // key by key, never key -1 (heldKeys)
+                if (allOff) // key by key, never key -1 (heldKeys); what this block has no room for waits queued
                 {
                     const bool cut = d1 == 120;
                     const auto& keys = cut ? playedKeys[channel] : heldKeys[channel];
+                    auto& queue = cut ? chokeQueue[channel] : offQueue[channel];
                     for (int k = 0; k < 128; ++k)
-                        if (keys.test ((size_t) k)) note (cut ? CLAP_EVENT_NOTE_CHOKE : CLAP_EVENT_NOTE_OFF, k, 0.0);
+                    {
+                        if (! keys.test ((size_t) k)) continue;
+                        // A MIDI copy follows below where the port takes MIDI: its place is kept for it, so a
+                        // burst queues chokes rather than crowding the controller itself out.
+                        if (midiNotes && eventCount + 1 >= maxEvents) queue.set ((size_t) k);
+                        else if (auto* e = add()) fill (e, cut ? CLAP_EVENT_NOTE_CHOKE : CLAP_EVENT_NOTE_OFF, k, 0.0);
+                        else queue.set ((size_t) k);
+                    }
                     heldKeys[channel].reset();
                     if (cut) playedKeys[channel].reset();
                 }
                 else
                 {
-                    note (noteOn ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF, key, (d2 & 0x7f) / 127.0);
+                    if (auto* e = add()) fill (e, noteOn ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF, key, (d2 & 0x7f) / 127.0);
+                    else droppedCount.fetch_add (1, std::memory_order_relaxed); // a timed note: counted, not queued
                     heldKeys[channel].set ((size_t) key, noteOn);
-                    if (noteOn) playedKeys[channel].set ((size_t) key);
+                    if (noteOn)
+                    {
+                        playedKeys[channel].set ((size_t) key);
+                        chokeQueue[channel].reset ((size_t) key); // struck again: no longer to be choked for before
+                        offQueue[channel].reset ((size_t) key);
+                        queuedAllOff &= ~(3u << (channel * 2));
+                    }
                 }
                 if (! allOff || ! midiNotes) continue; // all notes off goes on as MIDI too, for a plug-in's own handling
             }
@@ -638,7 +712,10 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
                 x.header = { sizeof (clap_event_midi), time, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, 0 };
                 x.port_index = (uint16_t) notePort;
                 x.data[0] = status; x.data[1] = d1; x.data[2] = d2;
+                if (noteOn) queuedAllOff &= ~(3u << (channel * 2)); // struck again (above, for CLAP notes)
             }
+            else if (allOff) queuedAllOff |= 1u << (channel * 2 + (d1 == 123 ? 1 : 0)); // silence waits, not lost
+            else droppedCount.fetch_add (1, std::memory_order_relaxed);
         }
     }
 
@@ -663,6 +740,8 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         {
             if (i == 0 && (int) c < buffer.getNumChannels() && (int) c < getTotalNumInputChannels())
                 std::memcpy (inputPointers[at], buffer.getReadPointer ((int) c), sizeof (float) * (size_t) frames);
+            else if (c < 64) // silent, and said to be: silence (zeroed as made) for the whole block, not cleared again
+                inBuffers[i].constant_mask |= uint64_t (1) << c;
             else
                 std::memset (inputPointers[at], 0, sizeof (float) * (size_t) frames);
         }
@@ -708,6 +787,7 @@ const float* ClapInstance::keyChannel (int channel) const
 double ClapInstance::getTailLengthSeconds() const
 {
     if (tail == nullptr || ! active) return 0.0;
+    std::lock_guard<std::recursive_mutex> held (mainLock); // a main-thread call, as the rest here
     const uint32_t samples = tail->get (plugin);
     if (samples == UINT32_MAX) return 60.0; // "infinite"
     return samples > 1 ? (double) samples / rate : 0.0;
@@ -734,7 +814,7 @@ void ClapInstance::getStateInformation (MemoryBlock& out)
         static_cast<MemoryBlock*> (s->ctx)->append (data, (size_t) size);
         return (int64_t) size;
     } };
-    if (! state->save (plugin, &stream)) out.setSize (sizeof (stateTag));
+    if (! state->save (plugin, &stream)) out.reset(); // a failed save is no state, never a bare header taken for one
 }
 
 void ClapInstance::setStateInformation (const void* data, int size)

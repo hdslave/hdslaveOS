@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <dlfcn.h>
 
 using namespace melodee;
@@ -54,6 +55,23 @@ int main(int argc, char** argv) {
     // The picker's view of it.
     auto f = describe_plugin(argv[1]);
     CHECK(f.format == PluginFormat::Clap && f.loadable() && f.library == argv[1] && std::string(format_tag(f.format)) == "CLAP");
+
+    // A .clap drum machine's pad map, read from its library as for a .so (plugin/drum_map.h): the same library
+    // with a map appended (describe reads the file's bytes; the copy is never opened).
+    {
+        auto drums = file.getSiblingFile("Drums.clap");
+        CHECK(file.copyFileTo(drums));
+        {
+            juce::FileOutputStream out(drums);
+            out.setPosition(out.getFile().getSize());
+            const char* map = "{\"pad_layout\":\"drums\",\"levels\":{\"bd\":{\"name\":\"Kick\",\"note\":36},\"sd\":{\"name\":\"Snare\",\"note\":38}}}";
+            out.write(map, std::strlen(map));
+        }
+        auto d = describe_plugin(drums.getFullPathName().toStdString());
+        CHECK(d.format == PluginFormat::Clap && d.drums.size() == 2);
+        CHECK(d.drums.size() == 2 && d.drums[0].key == 36 && d.drums[0].name == "Kick" && d.drums[1].key == 38 && d.drums[1].name == "Snare");
+        drums.deleteFile();
+    }
 
     juce::String error;
     auto list = ClapInstance::list(file, error);
@@ -113,6 +131,51 @@ int main(int argc, char** argv) {
         run(*sine, {juce::MidiMessage::noteOn(1, 60, 1.0f), juce::MidiMessage::noteOn(1, 64, 1.0f)});
         run(*sine, {juce::MidiMessage::allNotesOff(1)}); // as a choke of every note
         CHECK(peak(run(*sine)) == 0.0f);
+
+        // A failed save leaves no state at all, never a bare "MCLP" header a later load would take for one.
+        {
+            auto failSaves = reinterpret_cast<void (*)(int)>(dlsym(fixture, "fixture_fail_saves"));
+            CHECK(failSaves != nullptr);
+            juce::MemoryBlock good;
+            sine->getStateInformation(good);
+            CHECK(good.getSize() > 4);
+            failSaves(1);
+            juce::MemoryBlock failed;
+            sine->getStateInformation(failed);
+            failSaves(0);
+            CHECK(failed.isEmpty());
+        }
+
+        // Silence after a wide session: more played (channel, key) pairs than one block's events hold, every one
+        // of them choked within a few blocks (none dropped, none by a wildcard key the fixture would clear on).
+        {
+            auto chokes = reinterpret_cast<int (*)()>(dlsym(fixture, "fixture_chokes"));
+            auto chokesReset = reinterpret_cast<void (*)()>(dlsym(fixture, "fixture_chokes_reset"));
+            CHECK(chokes && chokesReset);
+            auto blockWith = [&](const juce::MidiBuffer& events) {
+                juce::AudioBuffer<float> buffer(2, block);
+                buffer.clear();
+                juce::MidiBuffer copy(events);
+                sine->processBlock(buffer, copy);
+                return buffer;
+            };
+            for (int channel = 1; channel <= 16; ++channel) {
+                juce::MidiBuffer notes;
+                for (int key = 0; key < 100; ++key) notes.addEvent(juce::MidiMessage::noteOn(channel, key, 1.0f), 0);
+                blockWith(notes);
+            }
+            chokesReset();
+            juce::MidiBuffer silence;
+            for (int channel = 1; channel <= 16; ++channel) {
+                silence.addEvent(juce::MidiMessage::controllerEvent(channel, 120, 0), 0);
+                silence.addEvent(juce::MidiMessage::controllerEvent(channel, 123, 0), 0);
+            }
+            blockWith(silence);
+            for (int b = 0; b < 6; ++b) blockWith({});
+            CHECK(chokes() == 1600);
+            CHECK(sine->droppedEvents() == 0);
+            CHECK(peak(run(*sine)) == 0.0f);
+        }
 
         sine->idle(); // its request_callback from init()
         counts(&wrong, &callbacks, &inits);

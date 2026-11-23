@@ -218,7 +218,11 @@ PluginFile describe_plugin(const std::string& path) {
         else if (!describe_open_mpc(f)) { f.folder = true; f.name = fs::path(path).filename().string(); }
         return f;
     }
-    if (ends_with(path, ".clap")) { describe_clap(f); return f; }
+    if (ends_with(path, ".clap")) {
+        describe_clap(f);
+        if (!f.library.empty()) read_drums(f, f.library); // a drum machine's pads, as for a .so below
+        return f;
+    }
     f.name = stem(path);
     describe_library(f, path);
     read_drums(f, path);

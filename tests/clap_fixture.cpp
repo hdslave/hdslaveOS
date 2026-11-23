@@ -41,6 +41,9 @@
 
 namespace {
 std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0}, presetReads {0};
+std::atomic<int> failSaves {0};
+bool choked[16][128] {}; // (channel, key) NOTE_CHOKEs taken, for fixture_chokes()
+std::atomic<int> chokeCount {0};
 std::atomic<int> screenPaints {0}, screenDrawn {0}, screenInputs {0}, screenLastKind {-1}, screenLastValue {0}, screenAccent {0};
 std::string libraryPath;
 
@@ -103,10 +106,11 @@ bool textValue(const clap_plugin* p, clap_id, const char* text, double* v) { of(
 void flush(const clap_plugin*, const clap_input_events*, const clap_output_events*) {}
 const clap_plugin_params params {paramCount, paramInfo, paramValue, valueText, textValue, flush};
 
-// State: Level, Wave and Gain as three doubles.
+// State: Level, Wave and Gain as three doubles (fixture_fail_saves(1): a part-written save that then fails).
 bool save(const clap_plugin* p, const clap_ostream* out) {
     of(p).main();
     double v[3] {of(p).level, of(p).wave, of(p).gain};
+    if (failSaves) { out->write(out, v, sizeof(double)); return false; }
     return out->write(out, v, sizeof(v)) == int64_t(sizeof(v));
 }
 bool load(const clap_plugin* p, const clap_istream* in) {
@@ -255,6 +259,10 @@ void event(Plugin& s, const clap_event_header* e) {
         s.phases.erase(reinterpret_cast<const clap_event_note*>(e)->key);
     } else if (e->type == CLAP_EVENT_NOTE_CHOKE) {
         auto& n = *reinterpret_cast<const clap_event_note*>(e);
+        if (n.channel >= 0 && n.channel < 16 && n.key >= 0 && n.key < 128 && !choked[n.channel][n.key]) {
+            choked[n.channel][n.key] = true;
+            ++chokeCount;
+        }
         if (n.key < 0) s.phases.clear(); else s.phases.erase(n.key);
     } else if (e->type == CLAP_EVENT_MIDI) {
         auto& m = *reinterpret_cast<const clap_event_midi*>(e);
@@ -417,6 +425,11 @@ CLAP_EXPORT void fixture_counts(int* wrong, int* callbacks, int* initialised) {
 }
 // Preset files read through get_metadata().
 CLAP_EXPORT int fixture_preset_reads() { return presetReads; }
+// State saves fail (after writing a part of one) while `on`.
+CLAP_EXPORT void fixture_fail_saves(int on) { failSaves = on; }
+// Distinct (channel, key) NOTE_CHOKEs taken since the last reset.
+CLAP_EXPORT int fixture_chokes() { return chokeCount; }
+CLAP_EXPORT void fixture_chokes_reset() { std::memset(choked, 0, sizeof(choked)); chokeCount = 0; }
 // The screen: paint() calls and those that drew, input() calls, the last input's kind and value, the accent last told.
 CLAP_EXPORT void fixture_screen(int* paints, int* drawn, int* inputs, int* kind, int* value, int* accent) {
     *paints = screenPaints; *drawn = screenDrawn; *inputs = screenInputs; *kind = screenLastKind; *value = screenLastValue;
