@@ -116,6 +116,26 @@ class PluginHostTests(unittest.TestCase):
                 subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                                check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
+    def test_rack_level_behaviours(self):
+        """Through the rack itself (tests/user_presets.cpp modes): a failed save keeps the rack's good state,
+        a sleeping LV2 wakes for a value the rack sets, and a mono plug-in is heard on both channels."""
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Test.clap"
+            plugin.parent.mkdir(parents=True)
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            bundle = card / "Melodee/Plugins/Tone.lv2"
+            bundle.mkdir()
+            for name in ("manifest.ttl", "tone.ttl", "presets.ttl"):
+                shutil.copy(ROOT / "tests/lv2_fixture" / name, bundle / name)
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-Wno-parentheses", "-shared", "-fPIC",
+                            str(ROOT / "tests/lv2_fixture/tone.cpp"), "-o", str(bundle / "tone.so")], check=True)
+            for target, mode in ((plugin, "failsave"), (plugin, "mono"), (bundle, "lv2wake")):
+                subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(target), mode],
+                               check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"

@@ -107,11 +107,12 @@ bool textValue(const clap_plugin* p, clap_id, const char* text, double* v) { of(
 void flush(const clap_plugin*, const clap_input_events*, const clap_output_events*) {}
 const clap_plugin_params params {paramCount, paramInfo, paramValue, valueText, textValue, flush};
 
-// State: Level, Wave and Gain as three doubles (fixture_fail_saves(1): a part-written save that then fails).
+// State: Level, Wave and Gain as three doubles (fixture_fail_saves(1), or MELODEE_TEST_FAIL_SAVES in the
+// environment where the test cannot reach this copy's globals: a part-written save that then fails).
 bool save(const clap_plugin* p, const clap_ostream* out) {
     of(p).main();
     double v[3] {of(p).level, of(p).wave, of(p).gain};
-    if (failSaves) { out->write(out, v, sizeof(double)); return false; }
+    if (failSaves || std::getenv("MELODEE_TEST_FAIL_SAVES")) { out->write(out, v, sizeof(double)); return false; }
     return out->write(out, v, sizeof(v)) == int64_t(sizeof(v));
 }
 bool load(const clap_plugin* p, const clap_istream* in) {
@@ -138,8 +139,9 @@ bool audioInfo(const clap_plugin* p, uint32_t i, bool input, clap_audio_port_inf
     *info = {};
     info->id = input ? 1 : 2;
     info->flags = CLAP_AUDIO_PORT_IS_MAIN;
-    info->channel_count = 2;
-    info->port_type = CLAP_PORT_STEREO;
+    const bool mono = std::getenv("MELODEE_TEST_MONO") != nullptr; // a mono main port, for the rack's hearing of it
+    info->channel_count = mono ? 1 : 2;
+    info->port_type = mono ? CLAP_PORT_MONO : CLAP_PORT_STEREO;
     info->in_place_pair = CLAP_INVALID_ID;
     return true;
 }
@@ -291,6 +293,7 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
         s.outLevel = -1;
     }
     float** out = proc->audio_outputs[0].data32;
+    const uint32_t outCh = proc->audio_outputs[0].channel_count;
     for (uint32_t f = 0; f < proc->frames_count; ++f) {
         float x = 0;
         if (s.instrument) {
@@ -298,7 +301,8 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
                 x += float(s.level * std::sin(phase));
                 phase += 2 * M_PI * 440.0 * std::pow(2.0, (key - 69) / 12.0) / s.rate;
             }
-            out[0][f] = out[1][f] = x;
+            out[0][f] = x;
+            if (outCh > 1) out[1][f] = x;
             if (proc->audio_outputs_count > 1) {
                 float** key = proc->audio_outputs[1].data32;
                 key[0][f] = key[1][f] = s.pulse > 0 ? 1.0f : 0.0f;
@@ -306,8 +310,9 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
             }
         } else {
             float** in = proc->audio_inputs[0].data32;
+            const uint32_t inCh = proc->audio_inputs[0].channel_count;
             out[0][f] = float(in[0][f] * s.gain);
-            out[1][f] = float(in[1][f] * s.gain);
+            if (outCh > 1) out[1][f] = float((inCh > 1 ? in[1][f] : in[0][f]) * s.gain);
         }
     }
     return CLAP_PROCESS_CONTINUE;
