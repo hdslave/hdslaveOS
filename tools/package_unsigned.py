@@ -23,16 +23,27 @@ sys.path.insert(0, str(ROOT / "tools"))
 import make_release  # noqa: E402
 
 
+def stamped_commit(allow_dirty):
+    """The commit a package is stamped with. A tree with changes in no commit is refused, so a package always
+    names the code in it; --allow-dirty packages it anyway, stamped with + as such a package was before."""
+    commit = make_release.git("rev-parse", "--short=12", "HEAD")
+    if make_release.git("status", "--porcelain"):
+        if not allow_dirty:
+            raise SystemExit("The tree has uncommitted changes: commit them first, or pass --allow-dirty")
+        commit += "+"  # the tree has changes that are in no commit
+    return commit
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("version", help="such as v0.5.1-fork.1")
     parser.add_argument("--binary", default=str(ROOT / "build/melodee.release"), help="stripped build to ship")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="package a tree with uncommitted changes (stamped with +)")
     arguments = parser.parse_args()
     if not make_release.VERSION.fullmatch(arguments.version):
         raise SystemExit("Version must look like v0.1.0 or v0.1.0-alpha.1")
-    commit = make_release.git("rev-parse", "--short=12", "HEAD")
-    if make_release.git("status", "--porcelain"):
-        commit += "+"  # the tree has changes that are in no commit
+    commit = stamped_commit(arguments.allow_dirty)
     files = make_release.collect(Path(arguments.binary), arguments.version, commit)
     for name, data in files.items():
         make_release.scan(name, data)
