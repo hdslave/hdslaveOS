@@ -263,6 +263,9 @@ public:
     // A parameter value or program set for it off the audio thread: run a block for it, asleep or not (a CLAP
     // plug-in says the same itself, wantsProcess(); JUCE's VST3 and LV2 plug-ins cannot, so the rack remembers).
     void note_change() { change_waiting.store(true, std::memory_order_release); }
+    // Its tail was told again (a CLAP plug-in's changed, taken in idle_plugins()): the gate's span follows it
+    // from the next render, on the audio thread where the gate lives.
+    void note_tail(double seconds) { tail_waiting.store(seconds, std::memory_order_release); }
     // Events with nowhere to go since it opened: MIDI its pending room had no place for, and a CLAP plug-in's own.
     uint32_t dropped() const { return dropped_midi.load(std::memory_order_relaxed) + (clap ? clap->droppedEvents() : 0); }
     void silence() override {
@@ -305,6 +308,7 @@ public:
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         follow_clock(frames);
+        if (double tail = tail_waiting.exchange(-1, std::memory_order_acq_rel); tail >= 0) idle.setTail(tail);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a CLAP plug-in's own wish to run or a value waiting for it (a pot turned
         // on its page, a press there it asked to be run for; another format's value the rack noted, note_change()):
@@ -384,6 +388,7 @@ public:
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
     std::atomic<bool> change_waiting {false}; // a value or program set for it, to be taken by a block (note_change())
+    std::atomic<double> tail_waiting {-1};   // a tail told again, for its gate's span (-1: none; note_tail())
     std::atomic<uint32_t> dropped_midi {0};   // MIDI its pending room had no place for (dropped())
     unsigned load_tick = 0;              // renders run, for sampling the load (audio thread)
     std::string stage;                   // the RAM copy it runs from, removed with it
@@ -1373,14 +1378,17 @@ void PluginRack::destroy(PluginHandle* handle) {
 // What CLAP plug-ins asked of their main thread (plugin/clap_instance.h), done on this one. Handles are freed only on
 // this thread, so they outlive the calls.
 void PluginRack::idle_plugins() {
-    std::vector<ClapInstance*> clap;
+    std::vector<std::pair<PluginHandle*, ClapInstance*>> clap;
     {
         std::lock_guard<std::mutex> held(lock);
         for (const auto& h : handles)
             if (h->format == PluginFormat::Clap)
-                if (auto* c = dynamic_cast<ClapInstance*>(h->instance.get())) clap.push_back(c);
+                if (auto* c = dynamic_cast<ClapInstance*>(h->instance.get())) clap.push_back({h.get(), c});
     }
-    for (auto* c : clap) c->idle();
+    for (auto& [h, c] : clap) {
+        c->idle();
+        if (c->takeTailChanged()) h->note_tail(c->getTailLengthSeconds()); // its gate's span follows the new tail
+    }
 }
 
 // Melodee's plug-in screen (plugin/melodee_screen.h).

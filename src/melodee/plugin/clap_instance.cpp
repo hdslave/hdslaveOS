@@ -107,7 +107,7 @@ struct ClapInstance::Host
 {
     clap_host host {};
     ClapInstance* owner = nullptr;
-    std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
+    std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false }, tailChanged { false };
     std::atomic<bool> paint { true }; // Melodee's plug-in screen: paint() wanted (at first, always)
     std::atomic<bool> process { false }; // a block wanted, asleep or not (request_process, request_flush)
 
@@ -148,7 +148,7 @@ struct ClapInstance::Host
             [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); },
         };
         static const clap_host_latency latency { [] (const clap_host* h) { of (h).latencyChanged = true; } };
-        static const clap_host_tail tail { [] (const clap_host*) {} };
+        static const clap_host_tail tail { [] (const clap_host* h) { of (h).tailChanged = true; } };
         static const clap_host_state state { [] (const clap_host*) {} };
         static const clap_host_audio_ports audioPorts {
             [] (const clap_host*, uint32_t) { return false; },
@@ -444,6 +444,8 @@ bool ClapInstance::wantsProcess() const
 {
     return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
 }
+
+bool ClapInstance::takeTailChanged() { return host->tailChanged.exchange (false); }
 
 // Melodee's plug-in screen. The calls try the main-thread lock and give up at once if another main-thread call holds it
 // (the rack's thread loading presets, a save), so the screen's thread never waits behind them.
