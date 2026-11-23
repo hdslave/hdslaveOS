@@ -1881,7 +1881,14 @@ void Context::send_pad(unsigned t, unsigned n) {
 int Context::sample_slot(const std::string& path, const std::string& name) {
     int free = -1;
     for (unsigned n = 0; n < sample_slots; ++n) {
-        if (project.samples[n].used() && path == project.samples[n].path) return int(n); // already in the project
+        if (project.samples[n].used() && path == project.samples[n].path) { // already in the project
+            // Its last read failed (the file was missing then, or the card was lent): read it again, it may be there now.
+            if (library && library->slot_load(n).settled) {
+                const auto loaded = library->slot(n);
+                if (!loaded.ready && !loaded.error.empty() && loaded.path == path && !library->load(n, path)) slots_waiting.push_back(uint16_t(n));
+            }
+            return int(n);
+        }
         if (free < 0 && !project.samples[n].used()) free = int(n);
     }
     if (free < 0 || !library || path.size() >= sizeof(SampleRef::path)) return -1; // a path cut short opens nothing
