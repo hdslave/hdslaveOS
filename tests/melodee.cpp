@@ -5,6 +5,8 @@
 #include "melodee/engine/effects.h"
 #include "melodee/model/slice_banks.h"
 #include "melodee/model/slice_hits.h"
+#include "melodee/model/song_steps.h"
+#include "melodee/model/jam_log.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
 #include <fstream>
@@ -112,6 +114,7 @@
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sequences.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/note_preview.h"
 #include "melodee/shell/pad_job.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/pad_gap.h"
@@ -119,6 +122,7 @@
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/zone_shapes.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/roll.h"
@@ -141,6 +145,9 @@
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
 #include "melodee/plugin/plugin_files.h"
+#include "melodee/plugin/xpl_preset.h"
+#include "melodee/plugin/page_file.h"
+#include "melodee/plugin/page_library.h"
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/preset_rows.h"
 #include <algorithm>
@@ -1374,7 +1381,7 @@ void button_remap() {
     cards = page_bindings(*project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::PatternLength && cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     cards = page_bindings(*project, ui, pattern, true);
-    CHECK(cards[0].kind == Binding::Kind::PatternBars && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
+    CHECK(cards[0].kind == Binding::Kind::PatternSteps && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
     project->knob_fx.on = true; project->knob_fx.kind = 1;
     CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::PatternLength);
     ui.seq_held = false;
@@ -1414,8 +1421,8 @@ void button_remap() {
         j.menu = menu_closed; j.copying = UiState::Copying::Tracks; CHECK(job().empty()); // a move's prompt has the header
     }
     // Sequences first (shell/sequences.h): Seq held's pads are the track's patterns, the sequences with Shift held;
-    // a launch takes every used track; an empty pattern takes the sequence's length; a track on another number has
-    // a pattern of its own.
+    // a launch takes every used track; an empty kept pattern takes the sequence's length; a track off what the
+    // sequence in hand keeps for it is marked.
     {
         UiState q; q.track = 0; q.page = PageId::Stage;
         CHECK(!sequences_on_pads(q));
@@ -1431,12 +1438,20 @@ void button_remap() {
         Track used = project->tracks[0]; // a track with a sound
         CHECK(used.used() && sequence_takes(used) && !sequence_takes(Track {}));
         p->tracks[0] = used; p->tracks[1] = used; p->tracks[2] = used;
+        p->scene = 3;
+        for (unsigned t = 0; t < 3; ++t) p->tracks[t].in_scene[3] = 4; // SEQ 4 keeps P4 on each
         p->tracks[0].pattern = 3; p->tracks[1].pattern = 3; p->tracks[2].pattern = 5;
         CHECK(sequence_in_view(*p, q) == 3 && !own_pattern(*p, q, 0) && !own_pattern(*p, q, 1) && own_pattern(*p, q, 2) && !own_pattern(*p, q, 7));
         int first = -1;
         CHECK(own_patterns(*p, q, first) == 1 && first == 2);
         p->tracks[2].pattern = 3; CHECK(own_patterns(*p, q, first) == 0 && first == -1);
-        // The length: the selected track's pattern there, else the longest with notes in the column, else the fallback.
+        p->tracks[1].pattern = 9; p->tracks[1].in_scene[3] = 0; CHECK(!own_pattern(*p, q, 1)); // it keeps nothing: plays on
+        p->tracks[0].off = true; CHECK(own_pattern(*p, q, 0));                                   // off where it keeps P4
+        p->tracks[0].in_scene[3] = scene_off; CHECK(!own_pattern(*p, q, 0));                      // kept off
+        p->tracks[0].off = false; CHECK(own_pattern(*p, q, 0));                                   // playing where it keeps off
+        p->tracks[0].in_scene[3] = 4; p->tracks[1].in_scene[3] = 4; p->tracks[1].pattern = 3;
+        // The length: the selected track's kept pattern, else the longest kept with notes, else the fallback.
+        for (unsigned t = 0; t < 3; ++t) p->tracks[t].in_scene[4] = 5; // SEQ 5 keeps P5 on each
         CHECK(sequence_length(*p, *b, 0, 4, 1920) == 1920);
         b->at[1][4].length = 960; b->at[1][4].add({0, 60, 100, 120});
         b->at[2][4].length = 3840; b->at[2][4].add({0, 62, 100, 120});
@@ -1730,6 +1745,58 @@ void button_remap() {
         off.reset_factory();
         CHECK(off.autosave);
     }
+    // Settings > SEQ > Mute (issue 27): Audio unless the file says Notes.
+    {
+        Settings fresh;
+        CHECK(!fresh.note_mutes && fresh.value_text(Settings::MuteKind) == "Audio" && fresh.choice(Settings::MuteKind) == 0 &&
+              std::string(Settings::row_name(Settings::MuteKind)) == "Mute" && fresh.choices(Settings::MuteKind) == 2);
+        Settings notes = fresh;
+        notes.step(Settings::MuteKind, 1);
+        CHECK(notes.note_mutes && notes.value_text(Settings::MuteKind) == "Notes");
+        Settings back; back.read(notes.text());
+        CHECK(back.note_mutes);
+        Settings old; old.read("seq_follow=1\n"); // a file from before the row: Audio
+        CHECK(!old.note_mutes);
+        notes.set_choice(Settings::MuteKind, 0);
+        CHECK(!notes.note_mutes);
+    }
+    // Settings > SEQ > Note preview (shell/note_preview.h): On unless the file says Off; how long a note sounds and
+    // which of a list are heard.
+    {
+        Settings fresh;
+        CHECK(fresh.note_preview && fresh.value_text(Settings::NotePreview) == "On" &&
+              std::string(Settings::row_name(Settings::NotePreview)) == "Note preview");
+        Settings off = fresh;
+        off.step(Settings::NotePreview, 1);
+        CHECK(!off.note_preview && off.value_text(Settings::NotePreview) == "Off" && off.choice(Settings::NotePreview) == 0);
+        Settings back; back.read(off.text());
+        CHECK(!back.note_preview);
+        Settings old; old.read("seq_follow=1\n"); // a file from before the row: On
+        CHECK(old.note_preview && old.seq_follow == 1);
+        off.reset_factory();
+        CHECK(off.note_preview);
+
+        Event e; // a 16th at 120 BPM: 24 ticks of 125 ms, held a tenth of a step short
+        e.length = 24;
+        CHECK(preview_ms(e, 24, 1200) == 112);
+        e.length = 96 * 16; CHECK(preview_ms(e, 24, 1200) == preview_longest_ms); // four bars: a second
+        e.length = 1; CHECK(preview_ms(e, 24, 1200) == preview_shortest_ms);
+        e.length = 96; e.ratchet = 4; CHECK(preview_ms(e, 24, 1200) == 112); // a ratchet: its first hit
+        e.ratchet = 1; e.length = 24; CHECK(preview_ms(e, 24, 600) == 225); // half the tempo: twice as long
+
+        std::array<Event, preview_notes_max> out {};
+        std::vector<Event> notes;
+        CHECK(preview_chord(notes, out) == 0);
+        auto at = [](uint32_t tick, uint8_t key, uint8_t flags = 0) { Event n; n.tick = tick; n.key = key; n.flags = flags; return n; };
+        notes = {at(48, 60), at(24, 64, step_mute), at(48, 67), at(96, 72), at(48, 71, step_mute)};
+        unsigned heard = preview_chord(notes, out); // the earliest not muted: the chord on 48, its muted note left out
+        CHECK(heard == 2 && out[0].key == 60 && out[1].key == 67);
+        notes.clear();
+        for (unsigned n = 0; n < 12; ++n) notes.push_back(at(0, uint8_t(48 + n)));
+        CHECK(preview_chord(notes, out) == preview_notes_max); // a chord past eight notes: its first eight
+        notes = {at(0, 60, step_mute)};
+        CHECK(preview_chord(notes, out) == 0); // only muted: nothing
+    }
     // Tap Tempo held (shell/tap_hold.h): a turn of the encoder shows the Tempo page until it is let go; held alone,
     // the page opens to stay; held on the page, it closes.
     {
@@ -1902,6 +1969,30 @@ void parity_1c() {
     CHECK(kit.pad_muted(100) && !kit.pad_muted(3) && kit.any_pad_muted() && pad_soloed(kit, 3) && !pad_soloed(kit, 100));
     kit.set_pad_muted(100, false);
     CHECK(!kit.any_pad_muted() && !pad_soloed(kit, 3));
+    { // Issue 32: a kit pad's mute lane. Motion lists it for the last pad hit and names it for its pad; its card is the
+      // pad's mute; while the pattern plays, the mute heard follows the lane (before its first point, as set).
+        auto lanes_project = std::make_unique<Project>();
+        auto& drums = lanes_project->tracks[0];
+        drums.engine = EngineKind::Sampler; drums.pads[4].sample = 0; drums.pads[5].sample = 0; drums.last_pad = 4;
+        Pattern p;
+        MotionPoint on; on.tick = 4 * sixteenth_ticks; on.param = uint8_t(motion_pad_mute); on.pad = 4; on.value = 1;
+        MotionPoint off = on; off.tick = 8 * sixteenth_ticks; off.value = 0;
+        CHECK(p.write_motion(on) && p.write_motion(off));
+        UiState mui; mui.page = PageId::Motion;
+        auto lanes = motion_lanes(*lanes_project, mui, p);
+        CHECK(lanes[0] == motion_lane(motion_pad_mute, 4) && lane_name(drums, lanes[0]) == "A05 MUTE");
+        auto cards = page_bindings(*lanes_project, mui, p);
+        CHECK(cards[0].kind == Binding::Kind::PadMute && cards[0].id == 4 && cards[0].min == 0 && cards[0].max == 1 && cards[0].value == 0);
+        drums.set_pad_muted(4, true);
+        CHECK(page_bindings(*lanes_project, mui, p)[0].value == 1 && motion_param(drums, lanes[0]).value == 1);
+        drums.last_pad = 5; // another pad's lane waits for that pad
+        CHECK(motion_lanes(*lanes_project, mui, p)[0] != lanes[0]);
+        drums.set_pad_muted(4, false);
+        CHECK(!pad_muted_now(drums, p, -1, 4) && !pad_muted_now(drums, p, 0, 4) && pad_muted_now(drums, p, 5 * sixteenth_ticks, 4));
+        CHECK(!pad_muted_now(drums, p, 9 * sixteenth_ticks, 4) && !pad_muted_now(drums, p, 5 * sixteenth_ticks, 5));
+        drums.set_pad_muted(4, true);
+        CHECK(pad_muted_now(drums, p, 0, 4) && pad_muted_now(drums, p, -1, 4) && !pad_muted_now(drums, p, 9 * sixteenth_ticks, 4));
+    }
 
     // Pad Bank held or a track copy: the pads are the tracks; Shift + Erase there copies.
     UiState held; held.pad_bank = true;
@@ -2229,7 +2320,8 @@ void timing() {
         CHECK(peak_of(first_bar, 0, 40000) == 0 && peak_of(second) > 0.005f);
     }
 
-    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 any count, Shift + K2 the time signature.
+    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 in sixteenths up to four bars (issue 27), Shift + K2 the
+    // time signature.
     {
         Project project;
         UiState ui; ui.page = PageId::Patterns;
@@ -2237,7 +2329,9 @@ void timing() {
         auto base = page_bindings(project, ui, five, false);
         CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == 7 && pattern_lengths[base[0].value] == 4);
         auto shifted = page_bindings(project, ui, five, true);
-        CHECK(shifted[0].kind == Binding::Kind::PatternBars && shifted[0].value == 5 && shifted[0].max == 128);
+        CHECK(shifted[0].kind == Binding::Kind::PatternSteps && shifted[0].value == 64 && shifted[0].min == 1 && shifted[0].max == 64);
+        Pattern seven; seven.length = 7 * sixteenth_ticks; seven.free = false; // 7/16 against a bar on another track
+        CHECK(page_bindings(project, ui, seven, true)[0].value == 7 && pattern_lengths[page_bindings(project, ui, seven, false)[0].value] == 1);
         CHECK(shifted[1].kind == Binding::Kind::TimeSignature && shifted[1].value == int(common_time));
         CHECK(shifted[2].kind == Binding::Kind::ClickLevel);
         ui.page = PageId::TimeCorrect; five.feel.strength = 70; five.feel.swing = 60; five.feel.humanize = 20;
@@ -5526,15 +5620,28 @@ void stage() {
     const Pattern& pattern = bank->at[0][0];
     UiState ui;
     ui.page = PageId::Stage;
-    auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track], stage_instrument(*project, project->tracks[ui.track])).key); };
+    auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track], stage_skip(*project, ui, project->tracks[ui.track])).key); };
     auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
 
     // Every track gives B1-B3 the same jobs (hubs plan, S-B): B1 the source, B2 how it plays, B3 where it goes.
     // A synth (a PLUGIN track): B1 PRESETS -> EDIT, B2 ARP -> CHORD, B3 MIX -> SENDS -> FX; another button jumps to
     // its own first page; each track keeps its own.
     CHECK(key() == "PRESETS");
-    stage_press(ui, project->tracks[0], 0, false); CHECK(key() == "EDIT");
-    stage_press(ui, project->tracks[0], 0, false); CHECK(key() == "PRESETS");
+    stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+    stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PRESETS -> PANEL -> EDIT; Plug-in screens off, no PANEL.
+        ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
+        CHECK(plugin_screen_place(*project, ui).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui).area == 0);
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+        CHECK(plugin_screen_place(*project, ui).entry < 0); // EDIT: Melodee's pages
+        ui.settings.plugin_skins = false;
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        ui.settings.plugin_skins = true;
+        ui.plugin_panel = {};
+    }
     stage_press(ui, project->tracks[0], 1, false); CHECK(key() == "ARP");
     stage_press(ui, project->tracks[0], 1, false); CHECK(key() == "CHORD");
     ui.track = 1; CHECK(key() == "TRIM");
@@ -5569,23 +5676,24 @@ void stage() {
     {
         // Shift + wheel: a parameter with 401 values (x42 Fat1's Tuning, 400-480 Hz) moves one of them a detent, so
         // 440 Hz (500) is reached and a detent is never rounded back; a smooth one moves a thousandth.
-        const auto& b = cards(false)[0];
+        const auto b = cards(false)[0]; // a copy: cards() gives its array by value
         CHECK(plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[0]);
         PluginPanelParam tuning; tuning.used = true; tuning.steps = 401;
         CHECK(plugin_param_step(tuning, 500, 1) == 503 && plugin_param_step(tuning, 503, -1) == 500 &&
               plugin_param_step(tuning, 498, 1) == 500 && plugin_param_step(tuning, 1000, 1) == 1000);
         PluginPanelParam smooth; smooth.used = true;
         CHECK(plugin_param_step(smooth, 500, 1) == 501 && plugin_param_step(smooth, 0, -1) == 0);
-        ui.plugin_panel.row = 1; ui.plugin_panel.knob = {3, 4, 5};
-        CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
-        // A plug-in that draws its own page names its three, in any order (plugin/melodee_screen.h): the cards and
-        // the pots follow them, not the rows.
-        ui.plugin_panel.screen = true; ui.plugin_panel.knob = {5, -1, 0};
-        ui.plugin_panel.params[2].used = true;
-        auto screen = cards(false);
-        CHECK(screen[0].kind == K::PluginParam && plugin_binding_shown(screen[0].id) == 5 && !screen[1].bound());
-        CHECK(screen[2].kind == K::PluginParam && plugin_binding_shown(screen[2].id) == 0);
-        CHECK(plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[2]); // shown 0, now on K3
+        ui.plugin_panel.row = 1; CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
+        // Its own screen (plugin/plugin_screen.h) names its three: bound apart from the rows, each once.
+        ui.plugin_panel.row = 0;
+        ui.plugin_panel.screen = true;
+        ui.plugin_panel.params[1].used = ui.plugin_panel.params[2].used = true;
+        const auto own = cards(false);
+        CHECK(own[0].kind == K::PluginParam && plugin_binding_shown(own[0].id) == plugin_screen_slot && plugin_binding_k(own[2].id) == 2);
+        CHECK(plugin_card(ui.plugin_panel, own[1].id) == &ui.plugin_panel.params[1]);
+        CHECK(!plugin_card(ui.plugin_panel, b.id)); // a row's binding while its screen is in view: none
+        ui.plugin_panel.screen = false;
+        CHECK(!plugin_card(ui.plugin_panel, own[1].id) && plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[0]);
     }
     ui.plugin_panel = {};
 
@@ -7296,18 +7404,29 @@ void preset_folders() {
     CHECK(none.empty() && preset_rows(none, "", -1).empty() && none.begin() == none.end());
 }
 
-// Neural Amp Modeler (plugin/nam.h): its page Model, Cab and Output first, the tone stack next, the rest in its own
-// order, Slim among them; long names shorter on the cards; its two folders made under the home.
+// Neural Amp Modeler (plugin/nam.h): its pages from Melodee's library, Model, Cab and Output first, the tone stack
+// next, the rest in its own order, Slim among them; long names shorter on the cards; its two folders made under the home.
 void nam_page() {
     namespace fs = std::filesystem;
     const std::vector<std::string> names {"Input", "Threshold", "Bass", "Middle", "Treble", "Output", "NoiseGateActive",
                                           "ToneStack", "IRToggle", "CalibrateInput", "InputCalibrationLevel", "OutputMode",
                                           "Slim", "Model", "Cab"};
-    CHECK((nam_page_order(names) == std::vector<size_t> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10, 12}));
-    CHECK((nam_page_order({"Slim", "Drive", "Model"}) == std::vector<size_t> {2, 0, 1})); // parameters it does not know: after, in its order
-    CHECK(nam_page_order({}).empty());
-    CHECK(nam_card_name("NoiseGateActive") == "Gate" && nam_card_name("InputCalibrationLevel") == "Cal level");
-    CHECK(nam_card_name("Model") == "Model" && is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));
+    // Its pages: Melodee's library page file (plugin/page_library.h), the order and short names the cards had before.
+    PageFile file;
+    std::string why;
+    CHECK(read_page_file(page_library[0], file, why));
+    PluginIdentity who; who.name = "NeuralAmpModeler";
+    CHECK(page_file_matches(file, who));
+    std::vector<int> shown;
+    std::vector<std::string> ids;
+    for (size_t i = 0; i < names.size(); ++i) { shown.push_back(int(i)); ids.push_back(std::to_string(i)); }
+    std::vector<std::string> problems;
+    auto layout = lay_out(resolve_page_file(file, shown, names, ids, problems));
+    CHECK(problems.empty());
+    CHECK((layout.slots == std::vector<int> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10, 12})); // Slim last, with the rest
+    CHECK((layout.names == std::vector<std::string> {"AMP", "TONE", "INPUT", "SWITCHES", "MORE"}));
+    CHECK(layout.labels[8] == "Gate" && layout.labels[13] == "Cal level" && layout.labels[0].empty());
+    CHECK(is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));
     auto home = fs::temp_directory_path() / ("melodee-nam-" + std::to_string(getpid()));
     nam_folders(home);
     CHECK(fs::is_directory(home / "Neural Amp Modeler" / "Models") && fs::is_directory(home / "Neural Amp Modeler" / "IRs"));
@@ -7353,6 +7472,320 @@ void qlink_pages() {
         {"Tab": 3, "SubTab": 1, "Q-Links": {"Q-Link 4": 11, "Q-Link 3": 10, "Q-Link 1": 0, "Q-Link 17": 12}}]}})";
     CHECK((qlink_order_in(skin) == std::vector<int> {0, 1, 2, 3, 4, 5, 6, 9, 8, 7, 10, 11}));
     CHECK(qlink_order_in("{\"Screen Mode Q-Links\": {\"map\": [").empty() && qlink_order_in("").empty()); // cut short
+    // Page by page, with the tab each is on; a parameter may be on two pages (0 on pages 1 and 3).
+    auto pages = qlink_pages_in(skin);
+    CHECK(pages.size() == 3);
+    CHECK(pages.size() == 3 && pages[0].tab == 1 && pages[1].tab == 2 && pages[2].tab == 3);
+    CHECK(pages.size() == 3 && (pages[0].params == std::vector<int> {0, 1, 2, 3, 4, 5, 6}));
+    CHECK(pages.size() == 3 && (pages[1].params == std::vector<int> {9, 8, 7}) && (pages[2].params == std::vector<int> {0, 10, 11}));
+    // Named after TUI.json's tabs (Melodee Poly's: OSC, FILTER, ...); a tab's second page " 2"; no name: Q-LINKS n.
+    const char* tui = R"({"pageData": {"version": 1, "componentDefinitions": {"tabName": "not this"},
+        "tabs": [{"tabName": "OSC", "components": [{"tabName": "nor this"}]}, {"tabName": "FILTER"}, {"other": 1}]}})";
+    auto tabs = skin_tab_names_in(tui);
+    CHECK((tabs == std::vector<std::string> {"OSC", "FILTER", ""}));
+    CHECK(skin_tab_names_in("{\"pageData\": {\"tabs\": [").empty() && skin_tab_names_in("").empty());
+    std::vector<QLinkPage> raw {{1, {0, 1}}, {2, {2}}, {1, {3}}, {3, {4}}, {0, {5}}};
+    auto named = named_qlink_pages(raw, tabs);
+    CHECK(named.size() == 5);
+    CHECK(named.size() == 5 && named[0].name == "OSC" && named[1].name == "FILTER" && named[2].name == "OSC 2"
+          && named[3].name == "Q-LINKS 4" && named[4].name == "Q-LINKS 5");
+    CHECK(named.size() == 5 && (named[2].params == std::vector<int> {3}));
+}
+
+// Akai's plugin.json in an MPC plug-in folder (plugin/plugin_files.h): name, instrument or effect, and the libraries
+// by build, each kept inside the folder.
+void plugin_json() {
+    // OxZygen 0.7.7's -mpc-sdk.zip (an Open MPC release in the SDK's folder): both builds at the folder's top.
+    auto ox = plugin_json_in(R"({"name": "OxZygen", "manufacturer": "oxzygen", "version": "0.7.7", "kind": "instrument",
+        "uid": "0x4f785a79", "numInputs": 0, "numOutputs": 2, "file64": "oxzygen-arm64.so", "file32": "oxzygen-arm32.so"})");
+    CHECK(ox.name == "OxZygen" && ox.instrument == 1);
+    CHECK(ox.file64 == "oxzygen-arm64.so" && ox.file32 == "oxzygen-arm32.so" && ox.file.empty());
+    // An SDK build: libraries in VST/; isInstrument wins over kind.
+    auto sdk = plugin_json_in(R"({"name": "Drive", "kind": "instrument", "isInstrument": false, "file64": "VST/drive-arm64.so"})");
+    CHECK(sdk.instrument == 0 && sdk.file64 == "VST/drive-arm64.so");
+    CHECK(plugin_json_in(R"({"kind": "Effect", "file": "x.so"})").instrument == 0);
+    CHECK(plugin_json_in(R"({"isInstrument": 1})").instrument == 1);
+    CHECK(plugin_json_in(R"({"kind": "midi"})").instrument == -1); // not said: opened once to find out
+    // Paths out of the folder are dropped; a backslash reads as a slash.
+    auto out = plugin_json_in(R"({"file64": "../other/x.so", "file32": "/usr/lib/x.so", "file": "C:\\VST\\x.so"})");
+    CHECK(out.file64.empty() && out.file32.empty() && out.file.empty());
+    CHECK(folder_path_in("VST\\x.so") == "VST/x.so" && folder_path_in("a/../x.so").empty() && folder_path_in("..").empty());
+    CHECK(folder_path_in("x..so") == "x..so" && folder_path_in("").empty());
+    // Not an object: nothing.
+    CHECK(plugin_json_in("[1]").name.empty() && plugin_json_in("{\"name\": \"cut").name.empty() && plugin_json_in("").instrument == -1);
+}
+
+// MPC plug-in presets (plugin/xpl_preset.h): JUCE's base64 and standard base64, VST2 bank and program files turned
+// into Melodee's VST2 state, and an .xpl's name and ids.
+void xpl_presets() {
+    auto text = [](const std::vector<uint8_t>& b) { return std::string(b.begin(), b.end()); };
+    // JUCE's base64, vectors from an encoder written apart from this one; spaces passed over, a cut short one zeroed.
+    CHECK(text(juce_base64_decode("4.CMlaKA")) == "CcnK" && text(juce_base64_decode("8.MUFauQVYkEB")) == "Melodee!");
+    CHECK(text(juce_base64_decode(" 8.MUFa\nuQVYkEB ")) == "Melodee!" && text(juce_base64_decode("8.MUFauQVYkEB", 3)) == "Mel");
+    CHECK(juce_base64_decode("MUFauQVYkEB").empty() && juce_base64_decode("x.MUF").empty() && juce_base64_decode("").empty());
+    CHECK((juce_base64_decode("2.") == std::vector<uint8_t> {0, 0}));
+    CHECK(text(base64_decode("TWVsb2RlZSE=")) == "Melodee!" && text(base64_decode("TWVs\nb2Rl ZSE=", 4)) == "Melo");
+    CHECK(base64_decode("TWVs*b2RlZSE=").empty());
+    // VST2 bank and program files, built here as JUCE's host writes them (big-endian).
+    auto be = [](std::vector<uint8_t>& b, uint32_t v) { for (int s = 24; s >= 0; s -= 8) b.push_back(uint8_t(v >> s)); };
+    auto word = [](std::vector<uint8_t>& b, const char* w) { b.insert(b.end(), w, w + 4); };
+    auto head = [&](const char* kind, uint32_t version, uint32_t count) {
+        std::vector<uint8_t> b;
+        word(b, "CcnK"); be(b, 0); word(b, kind); be(b, version); word(b, "OxZy"); be(b, 740); be(b, count);
+        return b;
+    };
+    auto pad = [](std::vector<uint8_t>& b, size_t to) { b.resize(to, 0); };
+    auto program = [&](std::vector<float> values) { // FxCk: name at 28, values at 56
+        auto b = head("FxCk", 1, uint32_t(values.size()));
+        pad(b, 56);
+        for (float v : values) { uint32_t w; std::memcpy(&w, &v, 4); be(b, w); }
+        return b;
+    };
+    std::string chunk = "master=94;preset=1;";
+    auto bank = head("FBCh", 1, 1); // numPrograms at 24, current at 28, 124 spare, chunk size at 156
+    pad(bank, 156); be(bank, uint32_t(chunk.size())); bank.insert(bank.end(), chunk.begin(), chunk.end());
+    uint32_t id = 0;
+    auto state = vst2_state_from_fx(bank, &id);
+    CHECK(text(state) == std::string("MVS2\x01", 5) + chunk && id == 0x4f785a79);
+    auto one = head("FPCh", 1, 1);
+    pad(one, 56); be(one, 3); word(one, "abc!");
+    CHECK(text(vst2_state_from_fx(one)) == std::string("MVS2\x03", 5) + "abc"); // only the chunk's 3 bytes
+    auto values = vst2_state_from_fx(program({0.25f, 0.5f}));
+    CHECK(values.size() == 13 && values[4] == vst2::state::parameters);
+    if (values.size() == 13) {
+        float a, b;
+        std::memcpy(&a, values.data() + 5, 4); std::memcpy(&b, values.data() + 9, 4);
+        CHECK(a == 0.25f && b == 0.5f);
+    }
+    auto params = head("FxBk", 2, 2); // version 2: on program 2 of 2
+    be(params, 1); pad(params, 156);
+    for (auto p : {program({0.1f}), program({0.75f})}) params.insert(params.end(), p.begin(), p.end());
+    auto second = vst2_state_from_fx(params);
+    CHECK(second.size() == 9);
+    if (second.size() == 9) { float v; std::memcpy(&v, second.data() + 5, 4); CHECK(v == 0.75f); }
+    CHECK(text(vst2_state_from_fx({'r', 'a', 'w'})) == std::string("MVS2\x01raw", 8)); // no header: the chunk
+    auto cut = bank;
+    cut.resize(cut.size() - 2);
+    CHECK(vst2_state_from_fx(cut).empty() && vst2_state_from_fx({}).empty());
+    auto odd = head("FxQQ", 1, 0);
+    CHECK(vst2_state_from_fx(odd).empty());
+    // An .xpl as MPC OS writes one: its name (entities undone), its plug-in's uid, the state's id; JUCE's base64.
+    auto juce64 = [](const std::vector<uint8_t>& b) {
+        static const char* a = ".ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+";
+        std::string out = std::to_string(b.size()) + ".";
+        for (size_t bit = 0; bit < b.size() * 8; bit += 6) {
+            unsigned v = 0;
+            for (unsigned k = 0; k < 6; ++k)
+                if (bit + k < b.size() * 8 && (b[(bit + k) >> 3] >> ((bit + k) & 7) & 1)) v |= 1u << k;
+            out += a[v];
+        }
+        return out;
+    };
+    std::string xpl = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<pluginstate>\n  <version file=\"1\"/>\n"
+                      "  <PLUGIN name=\"OxZygen\" format=\"VST\" file=\"%payload-path%/oxzygen - VST - OxZygen/oxzygen.so\" uid=\"4f785a79\" isInstrument=\"1\"/>\n"
+                      "  <preset> VOX Angel &amp; Lead&#33; </preset>\n  <state>" + juce64(bank) + "</state>\n</pluginstate>\n";
+    auto p = xpl_preset_in(xpl);
+    CHECK(p.name == "VOX Angel & Lead!" && p.uid == 0x4f785a79 && p.fx_id == 0x4f785a79 && p.state == state);
+    CHECK(p.for_plugin(0x4f785a79) && !p.for_plugin(0x4d64506c));
+    auto listed = xpl_preset_in(xpl, false); // listing: no state, ids still read
+    CHECK(listed.state.empty() && listed.name == p.name && listed.fx_id == 0x4f785a79);
+    // <state64>, standard base64 ("TWVsb2RlZSE=" is "Melodee!"): no header, so the chunk itself; no uid said.
+    auto sdk = xpl_preset_in("<pluginstate><PLUGIN name=\"X\"/><preset>Init</preset><state64>TWVsb2RlZSE=</state64></pluginstate>");
+    CHECK(sdk.name == "Init" && sdk.uid == 0 && sdk.fx_id == 0 && text(sdk.state) == std::string("MVS2\x01Melodee!", 13));
+    CHECK(sdk.for_plugin(12345));
+    CHECK(xpl_preset_in("<pluginstate><PLUGIN uid=\"zz\"/></pluginstate>").uid == 0 && xpl_preset_in("").state.empty());
+    // A program the plug-in lists already: the same name, or cut to a VST2 program name's 23 characters.
+    CHECK(same_preset_name("VOX Angel Lead", " vox angel lead ") && same_preset_name("SYN Analog Brass Sectio", "SYN Analog Brass Section"));
+    CHECK(!same_preset_name("Bass", "Bass 2") && !same_preset_name("VOX Angel Lead 2", "VOX Angel Lead") && !same_preset_name("", "Init"));
+    CHECK(!same_preset_name("SYN Analog Brass Sectiq", "SYN Analog Brass Section"));
+}
+
+// A plug-in's pages (plugin/plugin_pages.h): each page's parameters in rows of three on K1-K3, a page's last row
+// filled with -1, so no row holds two pages; groups make pages, with MAIN for the parameters outside any group.
+void plugin_page_layout() {
+    // Remote-controls-like pages: 8, then 2, then one left empty by keep_only, then 3 with a repeat.
+    std::vector<PluginPage> pages {{"OSC", {0, 1, 2, 3, 4, 5, 6, 7}}, {"AMP", {8, 9}}, {"HIDDEN", {20}}, {"FX", {10, 11, 10, 12}}};
+    keep_only(pages, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    CHECK(pages[2].params.empty());
+    auto layout = lay_out(pages);
+    CHECK(layout.pages() == 3 && (layout.names == std::vector<std::string> {"OSC", "AMP", "FX"}));
+    CHECK((layout.slots == std::vector<int> {0, 1, 2, 3, 4, 5, 6, 7, -1, 8, 9, -1, 10, 11, 12}));
+    CHECK(layout.rows() == 5 && (layout.first_rows == std::vector<uint16_t> {0, 3, 4}));
+    CHECK(layout.page_of(0) == 0 && layout.page_of(2) == 0 && layout.page_of(3) == 1 && layout.page_of(4) == 2 && layout.page_of(9) == 2);
+    CHECK(layout.rows_of(0) == 3 && layout.rows_of(1) == 1 && layout.rows_of(2) == 1 && layout.rows_of(3) == 0);
+    CHECK(layout.at(8) == -1 && layout.at(14) == 12 && layout.at(15) == -1);
+    CHECK(lay_out({}).rows() == 0 && lay_out({}).page_of(5) == 0);
+
+    // Groups: none named, one list; named, MAIN first for the rest, in the order the groups first appear.
+    auto flat = group_pages({3, 4, 5}, {"", "", ""});
+    CHECK(flat.size() == 1 && flat[0].name.empty() && (flat[0].params == std::vector<int> {3, 4, 5}));
+    auto grouped = group_pages({0, 1, 2, 3, 4, 5}, {"Osc 1", "", "Filter", "Osc 1", "Amp/Env", ""});
+    CHECK(grouped.size() == 4);
+    CHECK(grouped.size() == 4 && grouped[0].name == "MAIN" && (grouped[0].params == std::vector<int> {1, 5}));
+    CHECK(grouped.size() == 4 && grouped[1].name == "Osc 1" && (grouped[1].params == std::vector<int> {0, 3}));
+    CHECK(grouped.size() == 4 && grouped[2].name == "Filter" && grouped[3].name == "Env");
+    auto no_main = group_pages({0, 1}, {"A", "B"}); // every parameter in a group: no MAIN
+    CHECK(no_main.size() == 2 && no_main[0].name == "A");
+    auto same_leaf = group_pages({0, 1}, {"Osc 1/Env", "Filter/Env"}); // two groups ending alike: their whole paths
+    CHECK(same_leaf.size() == 2 && same_leaf[0].name == "Osc 1 Env" && same_leaf[1].name == "Filter Env");
+
+    // The plug-in's own pages first, then its groups for the rest (Surge XT: 5 remote pages hold 36 of 775).
+    std::vector<int> shown {0, 1, 2, 3, 4, 5};
+    std::vector<std::string> groups {"Osc", "Osc", "Filter", "", "Filter", "Env"};
+    auto both = pages_with_groups({{"Macros", {2, 0}}, {"Empty", {}}}, shown, groups);
+    CHECK(both.size() == 5); // Macros, then MAIN, Osc, Filter, Env for the five it leaves out
+    CHECK(both.size() == 5 && both[0].name == "Macros" && (both[0].params == std::vector<int> {2, 0}));
+    CHECK(both.size() == 5 && both[1].name == "MAIN" && (both[1].params == std::vector<int> {3}));
+    CHECK(both.size() == 5 && both[2].name == "Osc" && (both[2].params == std::vector<int> {1}));
+    CHECK(both.size() == 5 && both[3].name == "Filter" && (both[3].params == std::vector<int> {4}));
+    CHECK(both.size() == 5 && both[4].name == "Env" && (both[4].params == std::vector<int> {5}));
+    auto none = pages_with_groups({{"Q", {1, 2}}}, shown, std::vector<std::string>(6)); // no groups: only its own
+    CHECK(none.size() == 1 && none[0].name == "Q");
+    auto all_own = pages_with_groups({{"All", {0, 1, 2, 3, 4, 5}}}, shown, groups); // nothing left over
+    CHECK(all_own.size() == 1);
+    auto rest_ungrouped = pages_with_groups({{"A", {0, 1, 2, 4, 5}}}, shown, groups); // the rest outside every group
+    CHECK(rest_ungrouped.size() == 2 && rest_ungrouped[1].name == "MAIN" && (rest_ungrouped[1].params == std::vector<int> {3}));
+    auto no_own = pages_with_groups({}, shown, groups);
+    CHECK(no_own.size() == 4 && no_own[0].name == "MAIN");
+
+    // Pictures from names: an envelope of one prefix, a filter's cutoff with its resonance.
+    std::vector<std::string> names {"Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", "Filter Attack", "Cutoff",
+                                    "Resonance", "Drive", "A Filter 1 Cutoff", "A Filter 2 Resonance", "A Filter 1 Resonance"};
+    auto pictured = lay_out({{"AMP", {4, 0, 1, 2, 3}}, {"FILTER", {5, 7, 6}}, {"SURGE", {8, 9, 10}}, {"NONE", {7, 4}}});
+    find_pictures(pictured, names);
+    CHECK(pictured.pictures.size() == 4);
+    auto first = [&](unsigned page) { return pictured.pictures[page].empty() ? PagePictureSlots {} : pictured.pictures[page][0]; };
+    CHECK(pictured.pictures.size() == 4 && pictured.pictures[0].size() == 1 && first(0).kind == PagePicture::Envelope); // Filter Attack alone: no envelope
+    CHECK(pictured.pictures.size() == 4 && first(0).slots[0] == 1 && first(0).slots[1] == 2 && first(0).slots[2] == 3 && first(0).slots[3] == 4);
+    CHECK(pictured.pictures.size() == 4 && first(1).kind == PagePicture::Filter && first(1).slots[0] == 6 && first(1).slots[1] == 8);
+    CHECK(pictured.pictures.size() == 4 && first(2).kind == PagePicture::Filter && first(2).slots[0] == 9 && first(2).slots[1] == 11); // the same prefix's resonance
+    CHECK(pictured.pictures.size() == 4 && pictured.pictures[3].empty() && picture_for(pictured, 3, 7).kind == PagePicture::None);
+    // A page of both (Melodee Poly's FILTER tab): the one its row in hand turns.
+    std::vector<std::string> poly {"Cutoff", "Resonance", "Filter Env Amount", "Filter Attack", "Filter Decay", "Filter Sustain", "Filter Release"};
+    auto both_kinds = lay_out({{"FILTER", {0, 1, 2, 3, 4, 5, 6}}});
+    find_pictures(both_kinds, poly);
+    CHECK(both_kinds.pictures.size() == 1 && both_kinds.pictures[0].size() == 2);
+    CHECK(picture_for(both_kinds, 0, 0).kind == PagePicture::Filter);   // Cutoff, Resonance, Env Amount in hand
+    CHECK(picture_for(both_kinds, 0, 1).kind == PagePicture::Envelope); // Attack, Decay, Sustain in hand
+    CHECK(picture_for(both_kinds, 0, 2).kind == PagePicture::Envelope); // Release: still the envelope's
+    auto poly_tab = lay_out({{"FILTER", {0, 1, 2, 7, 8, 9, 3, 4, 5, 6}}}); // Key Track's row between: nothing on it, the filter nearest
+    std::vector<std::string> poly2 = poly;
+    poly2.insert(poly2.end(), {"Key Track", "Vel > Filter", "Vel > Amp"});
+    find_pictures(poly_tab, poly2);
+    CHECK(picture_for(poly_tab, 0, 1).kind == PagePicture::Filter);
+    CHECK(picture_for(poly_tab, 0, 2).kind == PagePicture::Envelope);
+
+    // Units from a value's text.
+    double v = 0;
+    CHECK(value_in("12.5 ms", false, v) && std::abs(v - 0.0125) < 1e-9);
+    CHECK(value_in("1.2 s", false, v) && std::abs(v - 1.2) < 1e-9);
+    CHECK(value_in("350ms", false, v) && std::abs(v - 0.35) < 1e-9);
+    CHECK(value_in(" 2,5 sec", false, v) && std::abs(v - 2.5) < 1e-9);
+    CHECK(value_in("2 kHz", true, v) && std::abs(v - 2000) < 1e-9);
+    CHECK(value_in("440 Hz", true, v) && std::abs(v - 440) < 1e-9);
+    CHECK(!value_in("45", false, v) && !value_in("62 %", true, v) && !value_in("Off", false, v) && !value_in("2 kHz", false, v));
+}
+
+// Page files (plugin/page_file.h): which plug-in, its pages by names or IDs, labels, a last page of the rest,
+// pictures; files that cannot be used say why.
+void page_files() {
+    const char* nam = R"({"melodee-pages": 1, "plugin": {"name": "NeuralAmpModeler"},
+        "pages": [
+          {"name": "AMP", "params": ["Model", "Cab", "Output"]},
+          {"name": "INPUT", "params": ["Input", {"name": "NoiseGateActive", "label": "Gate"}, {"id": "7"}],
+           "picture": {"kind": "value", "params": ["Input", "Output", "Bass", "Middle"]}},
+          {"name": "EQ", "params": ["Bass"], "picture": {"kind": "eq", "bands": [{"freq": "Low Freq", "gain": "Bass", "q": "Gone"}]}},
+          {"name": "MORE", "rest": true}]})";
+    PageFile file;
+    std::string why;
+    CHECK(read_page_file(nam, file, why));
+    CHECK(file.name == "NeuralAmpModeler" && file.pages.size() == 4 && file.pages[3].rest && !file.pages[0].rest);
+    CHECK(file.pages.size() == 4 && file.pages[1].params.size() == 3 && file.pages[1].params[1].label == "Gate" && file.pages[1].params[2].id == "7");
+    CHECK(file.pages.size() == 4 && file.pages[1].picture == PagePicture::Value && file.pages[1].parts.size() == 3); // values: three at most
+    CHECK(file.pages.size() == 4 && file.pages[2].picture == PagePicture::Eq && file.pages[2].parts.size() == 3);
+
+    PluginIdentity who; who.name = "NeuralAmpModeler"; who.vendor = "Steven Atkinson";
+    CHECK(page_file_matches(file, who));
+    who.name = "Other";
+    CHECK(!page_file_matches(file, who));
+    PageFile by_id; by_id.clap = "org.surge-synth-team.surge-xt"; by_id.vst2 = "NAMp";
+    PluginIdentity surge; surge.clap = "org.surge-synth-team.surge-xt";
+    PluginIdentity coded; coded.vst2 = int32_t('N' << 24 | 'A' << 16 | 'M' << 8 | 'p');
+    CHECK(page_file_matches(by_id, surge) && page_file_matches(by_id, coded) && vst2_code(coded.vst2) == "NAMp" && vst2_code(5) == "5");
+    PageFile vendored; vendored.name = "Reverb"; vendored.vendor = "Acme";
+    PluginIdentity reverb; reverb.name = "Reverb"; reverb.vendor = "Other";
+    CHECK(!page_file_matches(vendored, reverb));
+
+    // Resolved against the plug-in: names by index, IDs by index; 9 is hidden (not shown).
+    std::vector<std::string> names {"Model", "Cab", "Output", "Bass", "Middle", "Treble", "Input", "Threshold", "NoiseGateActive", "Slim"};
+    std::vector<std::string> ids {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    std::vector<int> shown {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    std::vector<std::string> problems;
+    auto pages = resolve_page_file(file, shown, names, ids, problems);
+    CHECK(pages.size() == 4);
+    CHECK(pages.size() == 4 && (pages[1].params == std::vector<int> {6, 8, 7}) && pages[1].labels.size() == 3 && pages[1].labels[1] == "Gate");
+    CHECK(pages.size() == 4 && (pages[3].params == std::vector<int> {4, 5})); // the rest: Middle, Treble (Slim is hidden)
+    CHECK(pages.size() == 4 && (pages[1].picture_params == std::vector<int> {6, 2, 3}));
+    CHECK(pages.size() == 4 && (pages[2].picture_params == std::vector<int> {-1, 3, -1}));
+    CHECK((problems == std::vector<std::string> {"no parameter \"Low Freq\"", "no parameter \"Gone\""}));
+    auto layout = lay_out(pages);
+    CHECK(layout.labels.size() == layout.slots.size() && layout.labels[4] == "Gate"); // INPUT's second slot
+    CHECK(layout.named.size() == 4 && !layout.named[0] && layout.named[1] && layout.named[2] && !layout.named[3]);
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1].size() == 1 && layout.pictures[1][0].kind == PagePicture::Value);
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1][0].slots[0] == 3 && layout.pictures[1][0].slots[1] == -1); // Output: not on INPUT
+    CHECK(layout.pictures.size() == 4 && layout.pictures[1][0].params[1] == 2);
+    find_pictures(layout, names); // the file's pictures stay
+    CHECK(layout.pictures[1].size() == 1 && layout.pictures[1][0].kind == PagePicture::Value && picture_for(layout, 1, 1).kind == PagePicture::Value);
+
+    // Files that cannot be used.
+    PageFile bad;
+    CHECK(!read_page_file("{\"pages\": [", bad, why) && why == "not JSON Melodee can read");
+    CHECK(!read_page_file(R"({"plugin": {"name": "X"}, "pages": [{"name": "A"}]})", bad, why) && why == "no \"melodee-pages\": 1");
+    CHECK(!read_page_file(R"({"melodee-pages": 2, "plugin": {"name": "X"}, "pages": [{}]})", bad, why) && why == "version 2 is newer than this Melodee");
+    CHECK(!read_page_file(R"({"melodee-pages": 1, "pages": [{}]})", bad, why) && why == "names no plug-in");
+    CHECK(!read_page_file(R"({"melodee-pages": 1, "plugin": {"lv2": "urn:x"}, "pages": []})", bad, why) && why == "has no pages");
+    CHECK(read_page_file(R"({"melodee-pages": 1, "plugin": {"vst2": 1234}, "pages": [{"name": "A", "picture": {"kind": "spiral"}}], "skin": {}})", bad, why)
+          && bad.vst2 == "1234" && bad.pages[0].picture == PagePicture::None); // unknown keys and kinds: skipped
+
+    // A skin: the font, pages by name, each control's kind, box and part; a nested label is a control of its own;
+    // a kind it does not know (a later version's) is skipped; the strip for an effect.
+    const char* skinned = R"({"melodee-pages": 1, "plugin": {"name": "Melodee Poly"}, "pages": [{"name": "FILTER", "params": ["Cutoff"]}],
+      "skin": {"font": "fonts/panel.ttf",
+        "pages": {"FILTER": {"background": "art/filter.png", "controls": [
+          {"param": "Cutoff", "kind": "knob", "strip": "art/knob.png", "frames": 128, "x": 136, "y": 22, "size": 28,
+           "label": {"text": "CUTOFF", "x": 150, "y": 76, "colour": "#ECE3CF", "size": 9, "align": "left"}},
+          {"param": {"id": "17"}, "kind": "switch", "image": "art/slide3.png", "frames": 3, "x": 148, "y": 101},
+          {"param": "Amp Attack", "kind": "slider", "image": "art/track.png", "cap": "art/cap.png", "x": 170, "y": 20, "w": 16, "h": 84},
+          {"param": "Cutoff", "kind": "value", "x": 120, "y": 60, "w": 60, "size": 13, "colour": "FFB347", "align": "right"},
+          {"kind": "curve", "of": "filter", "x": 8, "y": 22, "w": 104, "h": 108, "colour": "FFB347"},
+          {"kind": "canvas", "x": 0, "y": 0, "w": 10, "h": 10},
+          {"kind": "scope", "x": 124, "y": 21, "w": 186, "h": 16}]}},
+        "strip": {"background": "art/strip.png", "controls": [{"kind": "meter", "of": "out", "image": "art/vu.png", "frames": 32, "x": 4, "y": 4}]}}})";
+    PageFile skin_file;
+    CHECK(read_page_file(skinned, skin_file, why));
+    const auto& sk = skin_file.skin;
+    CHECK(sk.present && sk.font == "fonts/panel.ttf" && sk.pages.size() == 1 && sk.pages[0].first == "FILTER" && sk.has_strip);
+    const auto& ctl = sk.pages.empty() ? SkinPageSpec {} : sk.pages[0].second;
+    CHECK(ctl.background == "art/filter.png" && ctl.controls.size() == 7); // knob, its label, switch, slider, value, curve, scope
+    if (ctl.controls.size() == 7) {
+        const auto& knob = ctl.controls[0];
+        CHECK(knob.kind == SkinKind::Knob && knob.param.name == "Cutoff" && knob.image == "art/knob.png" && knob.frames == 128
+              && knob.x == 136 && knob.y == 22 && knob.w == 28 && knob.h == 28);
+        const auto& label = ctl.controls[1];
+        CHECK(label.kind == SkinKind::Label && label.text == "CUTOFF" && label.coloured && label.colour == 0xECE3CF && label.text_size == 11
+              && label.align == -1 && label.x == 150); // 9 px is drawn at 11
+        CHECK(ctl.controls[2].kind == SkinKind::Switch && ctl.controls[2].param.id == "17" && ctl.controls[2].frames == 3);
+        CHECK(ctl.controls[3].kind == SkinKind::Slider && ctl.controls[3].cap == "art/cap.png" && ctl.controls[3].h == 84 && !ctl.controls[3].horizontal);
+        CHECK(ctl.controls[4].kind == SkinKind::Value && ctl.controls[4].text_size == 13 && ctl.controls[4].w == 60 && ctl.controls[4].align == 1);
+        CHECK(ctl.controls[5].kind == SkinKind::Curve && ctl.controls[5].of == "filter" && ctl.controls[5].colour == 0xFFB347);
+        CHECK(ctl.controls[6].kind == SkinKind::Scope && !ctl.controls[6].coloured);
+    }
+    CHECK(sk.strip.background == "art/strip.png" && sk.strip.controls.size() == 1 && sk.strip.controls[0].kind == SkinKind::Meter
+          && sk.strip.controls[0].of == "out" && sk.strip.controls[0].frames == 32);
+    CHECK(!file.skin.present); // NAM's file above has none
+
+    double db = 0;
+    CHECK(decibels_in("-3.5 dB", db) && std::abs(db + 3.5) < 1e-9 && decibels_in("+6dB", db) && std::abs(db - 6) < 1e-9 && !decibels_in("6", db));
 }
 
 void synths_as_plugins() {
@@ -7682,9 +8115,9 @@ void pad_lights() {
     ui.page = PageId::Song; project->song.clips[0].track = 0; project->song.clips[0].bars = 2; project->song.count = 1; light({});
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 3) && is(5, Hue::Track, 1));
 
-    // Seq held: the sequences, white (shell/sequences.h): the one every track with notes there plays Full, one with
-    // notes on a track Faint, empty dark. On Patterns the selected track's patterns: the one in play Full, with
-    // notes Dim; + Erase red; + Shift a column; a copy.
+    // Seq held: the sequences, white (shell/sequences.h): the one in hand Full, one keeping notes on a track Faint,
+    // one keeping nothing dark. On Patterns the selected track's patterns: the one in play Full, with notes Dim;
+    // + Erase red; + Shift the sequences; a copy.
     auto& p = bank->at[1][0];
     put(p, 0, uint8_t(sampler_first_note + 1), 127);
     put(p, 2, uint8_t(sampler_first_note), 100);
@@ -7696,8 +8129,9 @@ void pad_lights() {
     ui.page = PageId::Stage;
     ui.erase = true; light(plays);
     CHECK(is(0, Hue::Red, 3) && is(2, Hue::Red, 2) && is(5, Hue::None, 0));
+    project->tracks[1].in_scene[0] = 1; project->tracks[1].in_scene[2] = 3; // SEQ 1 (in hand) keeps P1, SEQ 3 P3
     ui.erase = false; ui.shift = true; light(plays);
-    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 1));
+    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 1) && is(1, Hue::None, 0));
     ui.shift = false; ui.copying = UiState::Copying::Patterns; ui.copy_from = 0; ui.copy_track = 1; light(plays);
     CHECK(is(0, Hue::White, 4) && is(2, Hue::Red, 1) && is(3, Hue::Track, 1));
     ui.copying = UiState::Copying::Off; ui.copy_from = -1; ui.seq_held = false;
@@ -7747,9 +8181,10 @@ void pad_lights() {
     ui.slices.count = 1; light({}, 1000);
     CHECK(is(0, Hue::Red, 4) && is(1, Hue::None, 0));
     // The red walks (model/slice_banks.h): while the take plays, the slices so far light (the newest Full) and the
-    // next slice's pad blinks red; past sixteen the pads show bank B and its pad 1 is the red one; at 64, no red.
-    CHECK(view_slice(2, 5, true, max_slices) == 5 && view_slice(2, 5, false, max_slices) == 2 && view_slice(63, 64, true, max_slices) == 63);
-    CHECK(red_slice(5, 5, max_slices) && !red_slice(4, 5, max_slices) && !red_slice(64, 64, max_slices));
+    // next slice's pad blinks red; past sixteen the pads show bank B and its pad 1 is the red one; at 128, no red.
+    CHECK(view_slice(2, 5, true, max_slices) == 5 && view_slice(2, 5, false, max_slices) == 2 && view_slice(127, 128, true, max_slices) == 127
+          && view_slice(64, 64, true, max_slices) == 64 && slice_bank(127) == 7);
+    CHECK(red_slice(5, 5, max_slices) && !red_slice(4, 5, max_slices) && red_slice(64, 64, max_slices) && !red_slice(128, 128, max_slices));
     CHECK(pad_slice(view_slice(15, 16, true, max_slices), 0) == 16 && red_slice(16, 16, max_slices) && slice_bank(16) == 1);
     CHECK(take_frame(1000, 500, 1500) == 45100 && take_live(500, 1000, 50000, 1500) && !take_live(500, 1000, 40000, 1500)
           && !take_live(0, 0, 50000, 1500) && !take_live(2000, 0, 50000, 1500));
@@ -10213,9 +10648,9 @@ void scenes_p5() {
               cards[1].value == 66 && cards[2].kind == Binding::Kind::FollowChance && cards[2].value == 75);
         auto shifted = shift_bindings(*project, ui, p);
         CHECK(shifted[0].kind == Binding::Kind::FollowOther && shifted[0].value == int(FA::Previous) && !shifted[1].bound());
-        // SCENE (Shift + B1): K1 the tempo of the scene in view, the selected track's pattern's column; the pattern's cards
-        // again on PATTERNS.
-        ui.patterns_cards = 1; project->tracks[1].pattern = 19; project->scenes[19].tempo = 1284;
+        // SEQUENCE (Shift + B1): K1 the tempo of the sequence in hand, whatever pattern the track is on; the pattern's
+        // cards again on PATTERNS.
+        ui.patterns_cards = 1; project->tracks[1].pattern = 4; project->scene = 19; project->scenes[19].tempo = 1284;
         auto scene = base_bindings(*project, ui, p);
         CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128);
         CHECK(scene[1].kind == Binding::Kind::SceneColour && scene[1].id == 19 && scene[1].value == 0 && scene[1].max == 16 && !scene[2].bound());
@@ -10784,20 +11219,26 @@ void free_length() {
         CHECK(p.events[0].tick == 0 && p.events[1].tick == 10 && p.events[1].key == 64 && p.events[2].tick == 2 * bar);
         CHECK(p.motion.size() == 2 && p.motion[0].tick == 12 && p.motion[1].tick == bar);
     }
-    {   // The sequence: the longest pattern with notes on another used track, and that track.
+    {   // What plays with it: the longest pattern with notes another used track is on (not off), and that track.
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         synth(project->tracks[0], 0); synth(project->tracks[1], 0); synth(project->tracks[2], 0);
-        CHECK(column_fit(*project, *bank, 0, 3).length == 0 && column_fit(*project, *bank, 0, 3).track == -1);
+        for (unsigned t = 0; t < track_count; ++t) project->tracks[t].pattern = 3;
+        CHECK(column_fit(*project, *bank, 0).length == 0 && column_fit(*project, *bank, 0).track == -1);
         bank->at[0][3].add(note(0, 60)); // its own notes do not count
-        CHECK(column_fit(*project, *bank, 0, 3).length == 0);
+        CHECK(column_fit(*project, *bank, 0).length == 0);
         bank->at[1][3].length = 2 * bar; bank->at[1][3].add(note(0, 60));
         bank->at[2][3].length = 4 * bar; bank->at[2][3].add(note(0, 60));
-        auto fit = column_fit(*project, *bank, 0, 3);
+        auto fit = column_fit(*project, *bank, 0);
         CHECK(fit.length == 4 * bar && fit.track == 2);
         bank->at[5][3].length = 8 * bar; bank->at[5][3].add(note(0, 60)); // an unused track's pattern does not count
-        CHECK(column_fit(*project, *bank, 0, 3).length == 4 * bar);
-        CHECK(column_fit(*project, *bank, 0, 4).length == 0);
+        CHECK(column_fit(*project, *bank, 0).length == 4 * bar);
+        project->tracks[2].off = true; CHECK(column_fit(*project, *bank, 0).length == 2 * bar); // an off track does not count
+        project->tracks[2].off = false;
+        project->tracks[2].pattern = 7; bank->at[2][7].length = 6 * bar; bank->at[2][7].add(note(0, 60)); // another number counts
+        CHECK(column_fit(*project, *bank, 0).length == 6 * bar && column_fit(*project, *bank, 0).track == 2);
+        project->tracks[1].pattern = 4; project->tracks[2].pattern = 4;
+        CHECK(column_fit(*project, *bank, 0).length == 0);
         // K1: Free below 1 bar on an empty pattern of an empty sequence; a Free pattern shows the sequence's length.
         UiState ui;
         Pattern empty;
@@ -10943,6 +11384,16 @@ void sample_lists() {
     CHECK(star_toggle(starred, "/content/Samples/Drums/Snare.wav"));
     CHECK(!star_toggle(starred, "/media/card/Melodee/Samples/Kick.wav")); // again: no longer starred
     CHECK(starred.size() == 1 && starred[0] == "/content/Samples/Drums/Snare.wav");
+    // A part of a file (a program's pad, a SoundFont's preset) by its '#'; a '#' in a file's or a folder's own name is
+    // no part: the factory's "G#m90" phrases star and delete as files.
+    std::string whole;
+    CHECK(part_of_file("/media/card/Kits/Kit.xpm#3", &whole) && whole == "/media/card/Kits/Kit.xpm");
+    CHECK(part_of_file("/content/Projects/Kits/Kalim.XPJ#k2") && part_of_file("/media/card/Kit.xty#1.4"));
+    CHECK(part_of_file("/media/card/Melodee/Samples/Piano.sf2#12", &whole) && whole == "/media/card/Melodee/Samples/Piano.sf2");
+    CHECK(!part_of_file("/content/Samples/Phrases/KeysPh-Kalim1 G#m90 MP.WAV"));
+    CHECK(!part_of_file("/media/card/Melodee/Samples/C# Loops/Strings.wav") && !part_of_file("/media/card/Melodee/Samples/Kit.xpm#"));
+    whole = "unchanged";
+    CHECK(!part_of_file("/media/card/F#m.wav", &whole) && whole == "unchanged");
     std::vector<std::string> recent;
     for (int n = 0; n < 20; ++n) recent_add(recent, "/media/card/Melodee/Samples/" + std::to_string(n) + ".wav");
     CHECK(recent.size() == recent_max && recent.front() == "/media/card/Melodee/Samples/19.wav" && recent.back() == "/media/card/Melodee/Samples/4.wav");
@@ -11488,7 +11939,7 @@ void mpc_chop_hits() {
         const auto& e = p.events[n];
         CHECK(e.slice == slices[n] && unsigned(e.slice - 1) < chop.count);
         // What the sampler plays for it (SamplerEngine::hit): the pad over that slice, not 1790..987775.
-        const auto played = slice_sound(pad, chop.start[size_t(e.slice - 1)], chop.stop[size_t(e.slice - 1)]);
+        const auto played = slice_sound(pad, chop.start[size_t(e.slice - 1)], chop.stop[size_t(e.slice - 1)], 0);
         CHECK(played.start == atem[e.slice - 1][0] && played.end == atem[e.slice - 1][1]);
         CHECK(note_slice(pad_note(int(e.key), 0, -1, e.slice - 1)) == e.slice - 1);
     }
@@ -11496,9 +11947,334 @@ void mpc_chop_hits() {
     CHECK(mpc_slice_hit(false, 0.0, false) == 0 && mpc_slice_hit(false, 0.5, false) == 0);
     // Relative modifiers offset the pad's slice, and a pad playing its own region has none: its pad.
     CHECK(mpc_slice_hit(true, 0.015748031437397003, true) == 0);
-    // The last of the MPC's 128 slices and past Melodee's 64: past any chop (silent, as a slice past its chop's end).
-    CHECK(mpc_slice_hit(true, 1.0, false) == max_slices + 1 && mpc_slice_hit(true, 63.0 / 127, false) == 64);
+    // The MPC's 128 slices, all of them a chop's: the last is slice 128.
+    CHECK(mpc_slice_hit(true, 1.0, false) == max_slices && mpc_slice_hit(true, 63.0 / 127, false) == 64);
     CHECK(mpc_slice_hit(true, -0.1, false) == 0 && mpc_slice_hit(true, std::nan(""), false) == 0);
+}
+
+// Sequence links (model/scene_links.h): a pick kept in the sequence in hand fills what the others are on; a sequence
+// keeping nothing plays on; off; the file keeps them, a file from before them plays its columns; prints do not see
+// them; the engine's off waits for the bar and holds through Play.
+void sequence_links() {
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0); synth(p->tracks[2], 0); // track 4 unused
+        CHECK(!scene_kept(*p, 0) && scene_target(p->tracks[0], 0) == scene_plays_on);
+        // The first pick in SEQ 1: every used track keeps what it is on (P1), the picked one P3.
+        CHECK(keep_pick(*p, 0, 1, 2, 0));
+        CHECK(scene_kept(*p, 0) && p->tracks[0].in_scene[0] == 1 && p->tracks[1].in_scene[0] == 3 && p->tracks[2].in_scene[0] == 1);
+        CHECK(p->tracks[3].in_scene[0] == 0 && scene_target(p->tracks[1], 0) == 2);
+        // A second pick changes that track alone.
+        p->tracks[0].pattern = 7;
+        CHECK(!keep_pick(*p, 0, 2, 4, 0));
+        CHECK(p->tracks[0].in_scene[0] == 1 && p->tracks[2].in_scene[0] == 5);
+        // SEQ 2: a track off and one a follow action stopped are kept off.
+        p->tracks[0].off = true;
+        CHECK(keep_pick(*p, 1, 1, 6, 1u << 2));
+        CHECK(p->tracks[0].in_scene[1] == scene_off && p->tracks[2].in_scene[1] == scene_off && p->tracks[1].in_scene[1] == 7);
+        CHECK(scene_target(p->tracks[0], 1) == scene_stops && scene_now(*p, 0, 0) == scene_stops && scene_now(*p, 1, 0) == 0);
+        // Off picked: kept off.
+        p->tracks[0].off = false;
+        keep_pick(*p, 0, 0, scene_stops, 0);
+        CHECK(scene_target(p->tracks[0], 0) == scene_stops);
+        // Exports: the kept pattern, nothing where off, pattern n where nothing is kept.
+        CHECK(export_pattern(*p, 1, 0) == 2 && export_pattern(*p, 0, 0) == -1 && export_pattern(*p, 0, 5) == 5);
+        // Which sequences keep a pattern.
+        unsigned out[2] {};
+        CHECK(scenes_keeping(p->tracks[1], 2, out, 2) == 1 && out[0] == 0);
+        p->tracks[1].in_scene[9] = 3; p->tracks[1].in_scene[20] = 3;
+        CHECK(scenes_keeping(p->tracks[1], 2, out, 2) == 3 && out[0] == 0 && out[1] == 9);
+        // How many play notes there.
+        put(bank->at[1][2], 0, 60, 100);
+        CHECK(scene_with(*p, *bank, 0) == 1 && scene_with(*p, *bank, 3) == 0);
+        // CAPTURE keeps what every used track is on; ERASE keeps nothing.
+        p->tracks[2].pattern = 11;
+        CHECK(keep_all(*p, 6, 0) == 3 && p->tracks[0].in_scene[6] == 8 && p->tracks[2].in_scene[6] == 12 && p->tracks[3].in_scene[6] == 0);
+        forget_scene(*p, 6);
+        CHECK(!scene_kept(*p, 6));
+    }
+    {   // Before links (and from the MPC): a scene with notes on a used track's pattern n, or a name, tempo or colour,
+        // keeps pattern n on every used track; the rest keep nothing.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0);
+        put(bank->at[0][2], 0, 60, 100);
+        p->scenes[4].set_name("BREAK");
+        put(bank->at[5][7], 0, 60, 100); // an unused track's notes do not count
+        keep_columns(*p, *bank);
+        CHECK(p->tracks[0].in_scene[2] == 3 && p->tracks[1].in_scene[2] == 3 && p->tracks[5].in_scene[2] == 0);
+        CHECK(p->tracks[0].in_scene[4] == 5 && p->tracks[1].in_scene[4] == 5);
+        CHECK(!scene_kept(*p, 3) && !scene_kept(*p, 7));
+    }
+    {   // The file: kept patterns, off and the sequence in hand come back; a file without SEQL loads its columns.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0);
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[1][3], 0, 60, 100);
+        p->tracks[0].in_scene[2] = 1; p->tracks[1].in_scene[2] = 4; p->tracks[1].in_scene[5] = scene_off;
+        p->tracks[1].off = true; p->scene = 5;
+        auto bytes = save_project(*p, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty());
+        CHECK(back->scene == 5 && back->tracks[1].off && !back->tracks[0].off);
+        CHECK(back->tracks[0].in_scene == p->tracks[0].in_scene && back->tracks[1].in_scene == p->tracks[1].in_scene);
+        CHECK(!scene_kept(*back, 0) && !scene_kept(*back, 3)); // new sequences stay new: no columns
+        // Without SEQL (an older file): its columns, scene 1 (notes on track 1) and 4 (notes on track 2).
+        std::vector<uint8_t> old(bytes.begin(), bytes.begin() + 8);
+        for (size_t at = 8; at + 8 <= bytes.size();) {
+            size_t size = size_t(bytes[at + 4]) | size_t(bytes[at + 5]) << 8 | size_t(bytes[at + 6]) << 16 | size_t(bytes[at + 7]) << 24;
+            if (std::memcmp(bytes.data() + at, "SEQL", 4) != 0) old.insert(old.end(), bytes.begin() + long(at), bytes.begin() + long(at + 8 + size));
+            at += 8 + size;
+        }
+        CHECK(old.size() < bytes.size());
+        CHECK(load_project(old, *back, *back_bank).empty());
+        CHECK(back->scene == 0 && !back->tracks[1].off);
+        CHECK(back->tracks[0].in_scene[0] == 1 && back->tracks[1].in_scene[0] == 1 && back->tracks[0].in_scene[3] == 4);
+        CHECK(!scene_kept(*back, 2) && !scene_kept(*back, 5));
+        // A print's hash does not see them (prints made before links stay good).
+        std::array<std::vector<uint8_t>, max_plugins> states;
+        const uint64_t with = print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000);
+        for (auto& t : p->tracks) { t.in_scene = {}; t.off = false; }
+        p->scene = 0;
+        CHECK(print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000) == with);
+    }
+    {   // The engine: off stops the track on the next bar, holds through Stop and Play, and a launch ends it.
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 8, 60, 100); // two notes a bar
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        host->set_audio_format(44100, 384);
+        std::vector<int32_t> buffer(256);
+        auto play = [&](unsigned blocks) { // the notes on in these blocks
+            unsigned ons = 0;
+            for (unsigned b = 0; b < blocks; ++b) {
+                host->render(buffer.data(), 128, 1);
+                MidiOutEvent e;
+                while (host->take_midi(e)) ons += e.kind == MidiOutEvent::Kind::NoteOn;
+            }
+            return ons;
+        };
+        const unsigned bar = 690; // blocks of 128 frames in a bar at 120 BPM (88200 frames)
+        host->send({Command::Type::Play});
+        CHECK(play(bar / 4) == 1);
+        host->send({Command::Type::Pattern, 0, 0, 0, -1}); // off: the rest of this bar still plays
+        CHECK(play(bar / 2) == 1 && !(host->stopped_tracks() & 1));
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1) && host->position_of(0) < 0);
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1)); // still off after Play (a follow action's STOP is not)
+        host->send({Command::Type::Pattern, 0, 0, 0, 0}); // a launch: back on the next bar
+        CHECK(play(2 * bar) >= 2 && !(host->stopped_tracks() & 1));
+        // Off while stopped, and off as the project has it: silent from Play.
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Pattern, 0, 0, 0, -1});
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0);
+        host->send({Command::Type::Stop});
+        play(10);
+        project->tracks[0].off = true;
+        host->load(*project, *bank);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0 && (host->stopped_tracks() & 1));
+        // A launch waiting for its bar when the transport stops ends off too.
+        host->send({Command::Type::Pattern, 0, 0, 0, 0});
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 1 && !(host->stopped_tracks() & 1));
+    }
+}
+
+// An MPC song as Song (model/song_steps.h): the steps end to end, a clip a step on each track with notes in its
+// sequence's pattern, a marker a step, and the tempo lane where the sequences' tempos change.
+void song_steps_mpc() {
+    auto setup = [](Project& p, PatternBank& bank) {
+        synth(p.tracks[0], 0); synth(p.tracks[1], 0); synth(p.tracks[2], 0); // track 3 has no notes anywhere
+        put(bank.at[0][0], 0, 60, 100); put(bank.at[0][1], 0, 60, 100);
+        put(bank.at[1][1], 0, 60, 100); put(bank.at[1][2], 0, 60, 100);
+        p.scenes[1].set_name("Verse");
+        p.tempo = 900;
+        p.pattern_tempo[0] = 900; p.pattern_tempo[1] = 900; p.pattern_tempo[2] = 960;
+        keep_columns(p, bank);
+    };
+    const std::vector<SongStep> steps {{0, 1, 4}, {1, 1, 8}, {2, 2, 8}, {1, 1, 8}};
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.markers[0].bar = 99; p->song.marker_count = 1; // whatever Song held goes
+        CHECK(song_from_steps(*p, *bank, steps, true) == 0);
+        const auto& song = p->song;
+        CHECK(song.count == 6 && song.length() == 36 && !song.looping());
+        CHECK(song.clip_at(0, 0) >= 0 && song.clip_at(1, 0) < 0 && song.clip_at(2, 0) < 0);   // SEQ 1: track 1 alone
+        const auto& verse = song.clips[size_t(song.clip_at(1, 4))];
+        CHECK(verse.pattern == 1 && verse.bar == 4 && verse.bars == 8 && song.clip_at(0, 4) >= 0);
+        const auto& twice = song.clips[size_t(song.clip_at(1, 12))]; // two repeats: one clip of 16 bars
+        CHECK(twice.pattern == 2 && twice.bar == 12 && twice.bars == 16 && song.clip_at(0, 12) < 0 && song.clip_at(1, 27) >= 0);
+        CHECK(song.clip_at(0, 28) >= 0 && song.clip_at(1, 35) >= 0 && song.clip_at(1, 36) < 0);
+        CHECK(song.marker_count == 4 && !std::strcmp(song.markers[0].name, "SEQ 1") && song.markers[1].bar == 4);
+        CHECK(!std::strcmp(song.markers[1].name, "Verse") && !std::strcmp(song.markers[2].name, "SEQ 3") && song.markers[3].bar == 28);
+        CHECK(song.tempo.count == 3 && song.tempo.points[0].bar == 0 && song.tempo.points[0].tempo == 900);
+        CHECK(song.tempo.points[1].bar == 12 && song.tempo.points[1].tempo == 960 && !song.tempo.points[1].ramp);
+        CHECK(song.tempo.points[2].bar == 28 && song.tempo.points[2].tempo == 900);
+        CHECK(int(song.tempo.at(14.0, p->tempo)) == 960);
+    }
+    {   // GBL tempo or Ignore Tempo: no lane. Every sequence at the project's tempo: none either.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        song_from_steps(*p, *bank, steps, false);
+        CHECK(p->song.tempo.empty() && p->song.count == 6);
+        p->pattern_tempo[2] = 900;
+        song_from_steps(*p, *bank, steps, true);
+        CHECK(p->song.tempo.empty());
+    }
+    {   // A track the sequence keeps off gets no clip; one it keeps another pattern for plays that.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->tracks[0].in_scene[1] = scene_off;
+        p->tracks[1].in_scene[0] = 3; // P3 (pattern 2)
+        song_from_steps(*p, *bank, steps, false);
+        CHECK(p->song.clip_at(0, 4) < 0 && p->song.clip_at(1, 0) >= 0 && p->song.clips[size_t(p->song.clip_at(1, 0))].pattern == 2);
+    }
+    {   // Song's room: past 999 bars, or 256 clips, the rest is left out; markers stop at 16.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        CHECK(song_from_steps(*p, *bank, {{1, 1, 128}, {1, 7, 128}, {0, 1, 4}}, false) == 2 && p->song.length() == 128);
+        std::vector<SongStep> many(200, SongStep {1, 1, 1});
+        CHECK(song_from_steps(*p, *bank, many, false) == 72);
+        CHECK(p->song.count == song_clips && p->song.length() == 128 && p->song.marker_count == song_markers);
+        CHECK(song_from_steps(*p, *bank, {}, true) == 0 && !p->song.count && !p->song.marker_count);
+    }
+}
+
+// Jam capture (model/jam_log.h): the bars logged outside Song laid after the song's end, a clip a run of the same
+// pattern (muted where not heard), a marker where a sequence took over, the tempo lane where the tempo changed.
+void jam_capture() {
+    auto setup = [](Project& p, PatternBank& bank) {
+        synth(p.tracks[0], 0); synth(p.tracks[1], 0); synth(p.tracks[2], 0);
+        put(bank.at[0][0], 0, 60, 100); put(bank.at[0][1], 0, 60, 100); put(bank.at[1][0], 0, 60, 100);
+        p.scenes[1].set_name("Drop");
+        p.tempo = 1200;
+    };
+    auto bar = [](std::initializer_list<int> patterns, uint16_t muted = 0, uint16_t tempo = 1200, int16_t scene = -1) {
+        JamBar b;
+        unsigned t = 0;
+        for (int v : patterns) b.pattern[t++] = v < 0 ? jam_silent : uint8_t(v);
+        b.muted = muted; b.tempo = tempo; b.scene = scene;
+        return b;
+    };
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.place({0, 0, 0, 4, false}); // the song so far: four bars
+        JamLog log;
+        // T1 P1 two bars, then P2 three (muted in the last), T2 P1 silent in bar 3, T3 on an empty pattern throughout
+        log.bars = {bar({0, 0, 2}, 0, 1200, 0), bar({0, 0, 2}), bar({1, -1, 2}, 0, 1400, 1), bar({1, 0, 2}, 0, 1400),
+                    bar({1, 0, 2}, 1, 1400)};
+        const auto took = jam_to_song(*p, *bank, log);
+        const auto& song = p->song;
+        CHECK(took.at == 4 && took.bars == 5 && took.left_out == 0 && took.clips == 5 && song.count == 6 && song.length() == 9);
+        const auto& first = song.clips[size_t(song.clip_at(0, 4))];
+        CHECK(first.pattern == 0 && first.bars == 2 && !first.muted);
+        const auto& second = song.clips[size_t(song.clip_at(0, 6))];
+        CHECK(second.pattern == 1 && second.bar == 6 && second.bars == 2 && !second.muted);
+        CHECK(song.clips[size_t(song.clip_at(0, 8))].muted && song.clips[size_t(song.clip_at(0, 8))].bars == 1);
+        CHECK(song.clip_at(1, 4) >= 0 && song.clip_at(1, 6) < 0 && song.clips[size_t(song.clip_at(1, 7))].bars == 2);
+        CHECK(song.clip_at(2, 4) < 0 && song.clip_at(2, 8) < 0); // an empty pattern: no clip
+        CHECK(song.marker_count == 2 && song.markers[0].bar == 4 && !std::strcmp(song.markers[0].name, "SEQ 1"));
+        CHECK(song.markers[1].bar == 6 && !std::strcmp(song.markers[1].name, "Drop"));
+        CHECK(song.tempo.count == 1 && song.tempo.points[0].bar == 6 && song.tempo.points[0].tempo == 1400);
+        // Taken again: after it, the tempo stepping back first.
+        const auto again = jam_to_song(*p, *bank, log);
+        CHECK(again.at == 9 && again.bars == 5 && p->song.length() == 14);
+        CHECK(p->song.tempo.count == 3 && p->song.tempo.points[1].bar == 9 && p->song.tempo.points[1].tempo == 1200);
+        CHECK(p->song.tempo.points[2].bar == 11 && p->song.tempo.points[2].tempo == 1400);
+    }
+    {   // Song's room: past 999 bars, or 256 clips, the rest is left out.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*p, *bank);
+        p->song.place({2, 0, 0, 995, false});
+        JamLog log;
+        log.bars.assign(10, bar({0, 0, -1}));
+        auto took = jam_to_song(*p, *bank, log);
+        CHECK(took.at == 995 && took.bars == 4 && took.left_out == 6 && p->song.length() == 999);
+        CHECK(jam_to_song(*p, *bank, log).bars == 0);
+        p->song = Song {};
+        log.bars.clear();
+        for (unsigned n = 0; n < 200; ++n) log.bars.push_back(bar({int(n % 2), 0, -1}, uint16_t(n % 2 ? 2 : 0))); // a clip a bar on two lanes
+        took = jam_to_song(*p, *bank, log);
+        CHECK(took.clips == song_clips && took.bars == 128 && took.left_out == 72 && p->song.length() == 128);
+        CHECK(jam_to_song(*p, *bank, log).bars == 0 && JamLog {}.bars.empty());
+    }
+}
+
+// The jam list (model/jam_log.h): each run kept as a jam of its own (not under two bars, the newest eight), part of a
+// jam taken, and the list in a project file's JAMS section.
+void jam_list() {
+    auto run = [](unsigned bars, uint8_t pattern) {
+        JamLog log;
+        for (unsigned n = 0; n < bars; ++n) { JamBar b; b.pattern[0] = pattern; b.tempo = 1200; log.bars.push_back(b); }
+        return log;
+    };
+    JamList list;
+    CHECK(!list.keep(run(1, 0)) && list.jams.empty()); // a PLAY and STOP by mistake
+    CHECK(list.keep(run(4, 0)) && list.jams.size() == 1 && list.jams[0].number == 1 && list.next == 2);
+    for (unsigned n = 0; n < 9; ++n) CHECK(list.keep(run(2 + n, 1)));
+    CHECK(list.jams.size() == jams_kept && list.jams.front().number == 3 && list.jams.back().number == 10 && list.jams.back().bars.size() == 10);
+    CHECK(list.erase(0) && list.jams.size() == jams_kept - 1 && list.jams.front().number == 4 && !list.erase(99));
+    {   // Bars 3-6 of a jam: what played there, from the song's end.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0);
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][1], 0, 60, 100);
+        p->tempo = 1200;
+        JamLog jam = run(8, 0);
+        for (unsigned n = 4; n < 8; ++n) jam.bars[n].pattern[0] = 1;
+        jam.bars[4].scene = 2;
+        const auto took = jam_to_song(*p, *bank, jam, 2, 6);
+        CHECK(took.at == 0 && took.bars == 4 && took.left_out == 0 && p->song.count == 2 && p->song.length() == 4);
+        CHECK(p->song.clips[size_t(p->song.clip_at(0, 0))].pattern == 0 && p->song.clips[size_t(p->song.clip_at(0, 0))].bars == 2);
+        CHECK(p->song.clips[size_t(p->song.clip_at(0, 2))].pattern == 1 && p->song.markers[0].bar == 2);
+        CHECK(jam_to_song(*p, *bank, jam, 6, 99).bars == 2 && p->song.length() == 6); // TO past the end: to the end
+        CHECK(jam_to_song(*p, *bank, jam, 9, 12).bars == 0);
+    }
+    {   // In a project file: after its own sections, which load_project skips.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0);
+        auto bytes = save_project(*p, *bank);
+        const size_t plain = bytes.size();
+        JamList none;
+        write_jams(bytes, none);
+        CHECK(bytes.size() == plain); // no jams: nothing written
+        list.jams.back().bars[1].muted = 3; list.jams.back().bars[1].scene = 5; list.jams.back().bars[0].pattern[15] = 127;
+        write_jams(bytes, list);
+        CHECK(bytes.size() > plain);
+        JamList back;
+        CHECK(read_jams(bytes, back) && back == list);
+        auto loaded = std::make_unique<Project>();
+        CHECK(load_project(bytes, *loaded, *bank).empty() && loaded->tracks[0].used());
+        auto plain_bytes = save_project(*p, *bank);
+        CHECK(read_jams(plain_bytes, back) && back.jams.empty() && back.next == 1);
+        auto broken = bytes;
+        broken.resize(broken.size() - 5); // the section's length now runs past the file: left out
+        CHECK(read_jams(broken, back) && back.jams.empty());
+    }
 }
 
 int main() {
@@ -11520,6 +12296,10 @@ int main() {
     pad_colours();
     tempo_lane_p5();
     scenes_p5();
+    sequence_links();
+    song_steps_mpc();
+    jam_capture();
+    jam_list();
     banks_f1();
     deep_freeze_f2d();
     midi_tracks_p4();
@@ -11541,6 +12321,10 @@ int main() {
     nam_page();
     card_plugin_paths();
     qlink_pages();
+    plugin_json();
+    xpl_presets();
+    plugin_page_layout();
+    page_files();
     synths_as_plugins();
     voice_taps();
     voice_heads();

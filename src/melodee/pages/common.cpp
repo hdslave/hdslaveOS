@@ -368,7 +368,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = "AMOUNT"; c.bipolar = true;
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
         break;
-    case Kind::PatternBars: case Kind::PatternLength: { // by the bar; a length that is not whole bars by the step of Q
+    case Kind::PatternSteps: case Kind::PatternLength: { // by the bar; a length not whole bars in sixteenths (issue 27), else steps of Q
         unsigned bar = std::max(s.project.bar_ticks(), 1u);
         juce::String which = "P" + juce::String(s.track().pattern % pattern_count + 1) + " "; // the pattern it belongs to
         c.label = which + "LENGTH"; c.label_mixed = which + "Length"; // mixed case where capitals don't fit (P128)
@@ -380,6 +380,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         }
         uint32_t length = free_shown(s.pattern, s.ui.column_ticks); // a Free pattern: the take's length (0 Free)
         if (!length) { c.value = "Free"; break; }
+        if (length % bar && length % sixteenth_ticks == 0) { c.value = juce::String(length / sixteenth_ticks) + "/16"; break; }
         if (length % bar) { c.value = juce::String((length + s.pattern.q() - 1) / s.pattern.q()); c.unit = "steps"; break; }
         unsigned bars = length / bar;
         c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars";
@@ -397,6 +398,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     case Kind::TcSwing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::JamFrom: c.label = "FROM"; c.value = juce::String(b.value); c.unit = "bar"; break;
+    case Kind::JamTo: c.label = "TO"; c.value = juce::String(b.value); c.unit = "bar"; break;
+    case Kind::PadMute: { // issue 32: a kit pad's mute lane on Motion
+        char label[4];
+        pad_label(unsigned(b.id), label);
+        c.label = juce::String(label) + " MUTE"; c.value = b.value ? "On" : "Off";
+        break;
+    }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
     case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
     case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
@@ -706,13 +715,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PluginParam: { // as the shell last read it from the plug-in (plugin/plugin_panel.h)
-        static const PluginPanelParam none {};
-        const auto* held = plugin_card(s.ui.plugin_panel, b.id); // whichever pot it is on (a plug-in screen picks its own)
-        const auto& card = held ? *held : none;
+        const unsigned k = plugin_binding_k(b.id), shown = plugin_binding_shown(b.id);
+        const auto& card = s.ui.plugin_panel.params[k];
         // Its name as the plug-in gives it (capitals, else mixed case, else over two lines: ui/knobs.cpp); its number
         // where it has none.
         auto name = juce::String::fromUTF8(card.name).trim();
-        c.label = name.isEmpty() ? juce::String(plugin_binding_shown(b.id) + 1) : name.toUpperCase();
+        c.label = name.isEmpty() ? juce::String(shown >= plugin_screen_slot ? k + 1 : shown + 1) : name.toUpperCase();
         if (name.isNotEmpty()) c.label_mixed = name;
         c.value = juce::String::fromUTF8(card.text);
         c.fill = std::clamp(b.value / float(plugin_param_max), 0.0f, 1.0f);
@@ -864,7 +872,7 @@ FaderShown fader_shown(const Snapshot& s) {
 }
 
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header) {
-    soft_row(p, s, keys);
+    frame_keys(p, s, keys);
     auto cards = cards_of(s);
     bool knob_fx = std::any_of(cards.begin(), cards.end(), [](const ui::KnobCard& c) { return c.knob_fx; });
     if (knob_fx && s.ui.page != PageId::KnobFx) { // the pots are Knob FX's: the header names its effect first
@@ -878,7 +886,7 @@ void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::
     ui::knob_strip(p, cards);
 }
 
-void soft_row(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys) {
+void frame_keys(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys) {
     if (s.ui.pad_bank && !track_overlay_shown(s.ui)) { // Pad Bank held: its keys over the page's (shell/pad_bank.h)
         ui::SoftKeys held {{"TRACKS", "MOVE", "COPY"}, -1, colour_of(s)};
         held.glyphs[1] = ui::Icon::Swap; held.glyphs[2] = ui::Icon::Copy;

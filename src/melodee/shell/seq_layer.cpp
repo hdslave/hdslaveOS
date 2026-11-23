@@ -37,10 +37,11 @@ void launch_one(Context& c, unsigned pattern) {
         target.free = free_now;
         c.sync_pattern(t, pattern);
     }
-    c.launch(t, pattern);
+    const bool first = c.pick(t, pattern); // kept in the sequence in hand (model/scene_links.h)
     c.ui.pattern_bank = uint8_t(pattern / pattern_pads); // its bank in view (−/+ cross from one to the next)
     bool waits = c.host.playing() && pattern != now;
-    c.notice(name_of(pattern) + (target.empty() ? " new" : "") + (waits ? ", next bar" : ""));
+    c.notice(name_of(pattern) + (target.empty() ? " new" : "") + (waits ? ", next bar" : "") +
+             (first ? " · SEQ " + std::to_string(c.project.scene % pattern_count + 1) + " kept" : ""));
 }
 
 // Shift + pad: that sequence on every used track (shell/sequences.h), its tempo with it.
@@ -155,6 +156,21 @@ bool seq_button(Context& c, SurfaceButton button) {
         int to = std::clamp(from + way, 0, int(pattern_count) - 1);
         if (to == from) { c.notice(way > 0 ? "P" + std::to_string(pattern_count) + " is the last" : std::string("P1 is the first")); return true; }
         launch_one(c, unsigned(to));
+        return true;
+    }
+    case B::Stop: { // sequence links: the selected track off in the sequence in hand; again, back on its pattern
+        if (ui.shift) return false; // as printed
+        unsigned t = ui.track % track_count;
+        if (!c.track().used()) { c.notice("Track " + std::to_string(t + 1) + " is empty"); return true; }
+        if (c.host.song_playing()) { c.notice("Not while the song plays"); return true; }
+        const std::string seq = "SEQ " + std::to_string(c.project.scene % pattern_count + 1);
+        if (c.track().off) {
+            c.pick(t, c.track().pattern % pattern_count);
+            c.notice("T" + std::to_string(t + 1) + " on in " + seq);
+        } else {
+            c.pick_off(t);
+            c.notice("T" + std::to_string(t + 1) + " off in " + seq + (c.host.playing() ? ", next bar" : ""));
+        }
         return true;
     }
     case B::SeqRecord:

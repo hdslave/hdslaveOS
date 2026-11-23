@@ -164,7 +164,7 @@ void draw(Paint& p, const Snapshot& s) {
         bool presets = ours && panel.programs > 0, chosen = s.track().plugin < max_plugins;
         SoftKeys keys {{"PLUG-INS", presets ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, c};
         if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[s.track().plugin].transport ? 4 : 0; }
-        if (plugin_screen_shown(s, s.track().plugin)) { draw_plugin_screen(p, s, s.track().plugin, keys); return; } // its own page
+        if (plugin_page_shown(s, s.track().plugin)) { draw_plugin_page(p, s, s.track().plugin, keys); return; } // its page under B1-B3
         frame(p, s, keys, h);
         if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
             icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
@@ -213,6 +213,13 @@ unsigned page_count(Context& c) { return std::max(edit_page_count(engine_info(c.
 
 void soft(Context& c, int key) {
     if (c.track().engine == EngineKind::Plugin) {
+        if (key == 2 && c.ui.shift) { // Shift + B3: a plug-in's own screen, or Melodee's pages of it, in turn
+            if (c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.has_screen) {
+                c.ui.plugin_own_pages = !c.ui.plugin_own_pages;
+                c.plugin_panel_at = 0; // its cards again at once
+            }
+            return;
+        }
         if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument);
         if (key == 1 && c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(c.track().plugin);
         if (key == 2) c.toggle_plugin_transport(c.track().plugin);
@@ -242,11 +249,20 @@ void plugin_rows(Context& c, int delta) {
     c.plugin_panel_at = 0; // its cards again at once
 }
 
+// Minus / Plus on a plug-in's page: the first row of the page after, or of the page before.
+void plugin_page_step(Context& c, int way) {
+    unsigned entry = c.track().plugin;
+    const auto& panel = c.ui.plugin_panel;
+    if (entry >= max_plugins || panel.entry != entry || !panel.rows) return;
+    unsigned to = way > 0 ? panel.next_page : panel.prev_page;
+    plugin_rows(c, int(to) - int(panel.row));
+}
+
 namespace {
 
 void wheel(Context& c, int delta) {
-    if (c.track().engine == EngineKind::Plugin) { // to its own page, or its rows
-        if (!c.plugin_screen_input(PluginScreenKey::Wheel, delta)) plugin_rows(c, delta);
+    if (c.track().engine == EngineKind::Plugin) { // its own screen takes the wheel, else its rows
+        if (!c.plugin_screen_input(ScreenKey::Wheel, delta)) plugin_rows(c, delta);
         return;
     }
     const auto& info = engine_info(c.track().engine);
@@ -261,7 +277,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
-    if (c.track().engine == EngineKind::Plugin && c.plugin_screen_input(PluginScreenKey::Push, 1)) return; // its own page
+    if (c.track().engine == EngineKind::Plugin && c.plugin_screen_input(ScreenKey::Push, 1)) return; // its own screen's
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
     unsigned t = c.ui.track;
@@ -282,9 +298,9 @@ void push(Context& c) {
     }
 }
 
-// Minus / Plus: the octave, or on a PLUGIN track its rows as the wheel (its own page: to it).
+// Minus / Plus: the octave, or on a PLUGIN track its pages (the wheel walks its rows).
 void nudge(Context& c, int way) {
-    if (c.track().engine == EngineKind::Plugin) { if (!c.plugin_screen_input(PluginScreenKey::Nudge, way)) plugin_rows(c, way); }
+    if (c.track().engine == EngineKind::Plugin) { if (!c.plugin_screen_input(ScreenKey::Step, way)) plugin_page_step(c, way); }
     else octave(c, way);
 }
 } // namespace

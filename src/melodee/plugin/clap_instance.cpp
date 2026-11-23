@@ -2,13 +2,14 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/host_time.h"
-#include "melodee/plugin/melodee_screen.h"
 #include "melodee/plugin/plugin_files.h"
 
 #include <clap/clap.h>
+#include <melodee_screen.h>
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cmath>
 #include <cctype>
 #include <cstdio>
@@ -108,8 +109,9 @@ struct ClapInstance::Host
     clap_host host {};
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
-    std::atomic<bool> paint { true }; // Melodee's plug-in screen: paint() wanted (at first, always)
-    std::atomic<bool> process { false }; // a block wanted, asleep or not (request_process, request_flush)
+    std::atomic<bool> remoteChanged { false }; // remote-controls changed(): its pages to be read again
+    std::atomic<bool> process { false }; // request_process or request_flush: run the next block even if it sleeps
+    std::atomic<bool> redraw { false };  // its screen asked to be drawn (sdk/melodee-screen/melodee_screen.h)
 
     Host()
     {
@@ -121,8 +123,7 @@ struct ClapInstance::Host
         host.version = "1";
         host.get_extension = &extension;
         host.request_restart = [] (const clap_host*) {}; // not while it plays: a reload (picked again) restarts it
-        // Run in the next block, even if the rack let it sleep as silent (wantsProcess()): what a plug-in asks when
-        // something outside its blocks (a press on its page) needs its audio side.
+        // The rack does not run a silent plug-in (plugin/idle_gate.h): asked, it runs the next block anyway.
         host.request_process = [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); };
         host.request_callback = [] (const clap_host* h) { of (h).callback = true; };
     }
@@ -173,9 +174,22 @@ struct ClapInstance::Host
         if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &state;
         if (std::strcmp (id, CLAP_EXT_AUDIO_PORTS) == 0) return &audioPorts;
         if (std::strcmp (id, CLAP_EXT_NOTE_PORTS) == 0) return &notePorts;
-        static const clap_host_melodee_screen screenHost { [] (const clap_host* h) { of (h).paint = true; } };
+        // Its pages of controls (plugin/plugin_pages.h): read again once it says they changed; a page it suggests
+        // (what its own GUI is on) means nothing here, with no GUI.
+        static const clap_host_remote_controls remote {
+            [] (const clap_host* h) { of (h).remoteChanged = true; },
+            [] (const clap_host*, clap_id) {},
+        };
         if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &presetLoad;
-        if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screenHost;
+        if (std::strcmp (id, CLAP_EXT_REMOTE_CONTROLS) == 0 || std::strcmp (id, CLAP_EXT_REMOTE_CONTROLS_COMPAT) == 0) return &remote;
+        // Its own screen: a draw asked for (any thread), and maybe a block run for an input its audio side takes.
+        static const melodee_screen_host screenHost { [] (const void* h, uint32_t flags) {
+            if (h == nullptr) return;
+            auto& self = of (static_cast<const clap_host*> (h));
+            self.redraw.store (true, std::memory_order_release);
+            if ((flags & MELODEE_SCREEN_RUN) != 0) self.process.store (true, std::memory_order_release);
+        } };
+        if (std::strcmp (id, MELODEE_SCREEN_CLAP_HOST) == 0) return &screenHost;
         return nullptr;
     }
 };
@@ -200,7 +214,21 @@ public:
     Parameter (ClapInstance& owner, const clap_param_info& info, double current)
         : owner (owner), id (info.id), cookie (info.cookie), flags (info.flags),
           minimum (info.min_value), maximum (info.max_value), initial (normalise (info.default_value)),
-          label (text (info.name)), value ((float) normalise (current)) {}
+          label (text (info.name)), module (moduleOf (info.module)), value ((float) normalise (current)) {}
+
+    // clap_param_info.module as a path, "/" between levels, without empty levels ("" none).
+    static std::string moduleOf (const char* m)
+    {
+        std::string out, level;
+        auto end = [&] { if (! level.empty()) { if (! out.empty()) out += '/'; out += level; } level.clear(); };
+        for (size_t i = 0; m != nullptr && i < CLAP_PATH_SIZE && m[i] != 0; ++i)
+        {
+            if (m[i] == '/') end();
+            else level += m[i];
+        }
+        end();
+        return out;
+    }
 
     double normalise (double plain) const { return maximum > minimum ? std::clamp ((plain - minimum) / (maximum - minimum), 0.0, 1.0) : 0.0; }
     double plain (double normalised) const
@@ -257,6 +285,7 @@ public:
     const uint32_t flags;
     const double minimum, maximum, initial;
     const String label;
+    const std::string module;
     std::atomic<float> value;
     std::atomic<bool> pending { false };
 };
@@ -361,11 +390,11 @@ ClapInstance::ClapInstance (std::unique_ptr<Host> h, Library* l, const clap_plug
     latency = static_cast<const clap_plugin_latency*> (plugin->get_extension (plugin, CLAP_EXT_LATENCY));
     tail = static_cast<const clap_plugin_tail*> (plugin->get_extension (plugin, CLAP_EXT_TAIL));
     presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD));
-    screen = static_cast<const clap_plugin_melodee_screen*> (plugin->get_extension (plugin, CLAP_EXT_MELODEE_SCREEN));
-    if (screen != nullptr && (screen->paint == nullptr || screen->input == nullptr || screen->knobs == nullptr))
-        screen = nullptr; // a half-made one is none
     if (presetLoad == nullptr)
         presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
+    screen = static_cast<const melodee_screen*> (plugin->get_extension (plugin, MELODEE_SCREEN_CLAP));
+    if (screen != nullptr && (screen->draw == nullptr || screen->input == nullptr || screen->controls == nullptr))
+        screen = nullptr; // a table missing a call: no screen
     events.resize (maxEvents);
     std::lock_guard<std::recursive_mutex> held (mainLock);
     readParameters();
@@ -426,51 +455,77 @@ void ClapInstance::idle()
     if (host->latencyChanged.exchange (false)) readLatency();
 }
 
-bool ClapInstance::wantsProcess() const
+std::string ClapInstance::module (int index) const
 {
-    return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
+    return index >= 0 && index < (int) parameters.size() ? parameters[(size_t) index]->module : std::string();
 }
 
-// Melodee's plug-in screen. The calls try the main-thread lock and give up at once if another main-thread call holds it
-// (the rack's thread loading presets, a save), so the screen's thread never waits behind them.
-bool ClapInstance::paintWanted() { return screen != nullptr && host->paint.exchange (false); }
-
-bool ClapInstance::screenPaint (const melodee_screen_canvas& canvas, bool& changed)
+std::vector<ClapInstance::RemotePage> ClapInstance::remotePages()
 {
-    changed = false;
-    if (screen == nullptr) return true;
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    host->remoteChanged = false;
+    auto* remote = static_cast<const clap_plugin_remote_controls*> (plugin->get_extension (plugin, CLAP_EXT_REMOTE_CONTROLS));
+    if (remote == nullptr)
+        remote = static_cast<const clap_plugin_remote_controls*> (plugin->get_extension (plugin, CLAP_EXT_REMOTE_CONTROLS_COMPAT));
+    std::vector<RemotePage> out;
+    if (remote == nullptr || remote->count == nullptr || remote->get == nullptr) return out;
+    for (uint32_t i = 0, n = std::min<uint32_t> (remote->count (plugin), 256); i < n; ++i)
+    {
+        clap_remote_controls_page page {};
+        if (! remote->get (plugin, i, &page)) continue;
+        RemotePage p;
+        p.section = text (page.section_name).toStdString();
+        p.name = text (page.page_name).toStdString();
+        for (clap_id id : page.param_ids)
+        {
+            if (id == CLAP_INVALID_ID) continue;
+            auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, INT_MIN));
+            if (it != byId.end() && it->first == id) p.params.push_back (it->second);
+        }
+        out.push_back (std::move (p));
+    }
+    return out;
+}
+
+bool ClapInstance::remotePagesChanged() const { return host->remoteChanged.load(); }
+
+bool ClapInstance::screenDraw (const melodee_screen_frame& frame, bool& changed)
+{
     std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
-    if (! held.owns_lock()) return false;
-    changed = screen->paint (plugin, &canvas);
+    if (! held.owns_lock() || screen == nullptr) return false;
+    changed = screen->draw (plugin, &frame);
     return true;
 }
 
 bool ClapInstance::screenInput (const melodee_screen_input& input, bool& used)
 {
-    used = false;
-    if (screen == nullptr) return true;
     std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
-    if (! held.owns_lock()) return false;
+    if (! held.owns_lock() || screen == nullptr) return false;
     used = screen->input (plugin, &input);
-    host->paint = true; // an input may change the picture
     return true;
 }
 
-bool ClapInstance::screenKnobs (int32_t (&indices)[3])
+bool ClapInstance::screenControls (std::array<int, 3>& indices)
 {
-    indices[0] = indices[1] = indices[2] = -1;
-    if (screen == nullptr) return true;
     std::unique_lock<std::recursive_mutex> held (mainLock, std::try_to_lock);
-    if (! held.owns_lock()) return false;
-    clap_id ids[3] = { CLAP_INVALID_ID, CLAP_INVALID_ID, CLAP_INVALID_ID };
-    screen->knobs (plugin, ids);
-    for (int k = 0; k < 3; ++k)
+    if (! held.owns_lock() || screen == nullptr) return false;
+    uint32_t ids[3] { MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL };
+    screen->controls (plugin, ids);
+    for (size_t k = 0; k < 3; ++k)
     {
-        if (ids[k] == CLAP_INVALID_ID) continue;
-        auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair ((uint32_t) ids[k], -1));
+        indices[k] = -1;
+        if (ids[k] == MELODEE_SCREEN_NO_CONTROL) continue;
+        auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair ((clap_id) ids[k], INT_MIN));
         if (it != byId.end() && it->first == ids[k]) indices[k] = it->second;
     }
     return true;
+}
+
+bool ClapInstance::takeRedraw() { return host->redraw.exchange (false, std::memory_order_acq_rel); }
+
+bool ClapInstance::wantsProcess() const
+{
+    return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
 }
 
 AudioProcessorParameter* ClapInstance::getBypassParameter() const { return bypass; }
@@ -546,7 +601,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
     const int frames = std::min (buffer.getNumSamples(), block);
     keyWritten = 0;
-    // This block answers a request to be run: one made from now on wants the next (even one that does not run).
+    // This block answers any request to be run so far; one made from here on wants the next.
     host->process.store (false, std::memory_order_release);
     if (! active || frames <= 0) { buffer.clear(); return; }
     AudioScope audioThread;

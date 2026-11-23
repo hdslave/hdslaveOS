@@ -105,7 +105,7 @@ bool print_covers(const std::array<TrackFreeze, track_count>& freeze, const Undo
 UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding& b) {
     switch (b.kind) {
     case Kind::PadColour: return {}; // a pad's colour is not heard: no print holds it
-    case Kind::PatternBars: case Kind::PatternLength: case Kind::Division: case Kind::Swing: case Kind::TcShift: case Kind::TcSwing:
+    case Kind::PatternSteps: case Kind::PatternLength: case Kind::Division: case Kind::Swing: case Kind::TcShift: case Kind::TcSwing:
         return pattern_scope(project, ui);
     case Kind::TrackSpeed: case Kind::StageSound: case Kind::PluginParam: case Kind::ArpMode: case Kind::ArpRate: case Kind::ArpOctaves:
     case Kind::ArpGate: case Kind::ArpHold: case Kind::ArpOn: case Kind::ChordType: case Kind::ChordVoicing: case Kind::ChordInvert: case Kind::ChordOn:

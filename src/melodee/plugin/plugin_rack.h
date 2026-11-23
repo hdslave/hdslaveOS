@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -36,6 +37,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginHandle;
+struct PluginSkin;
 
 using PluginStates = std::array<std::vector<uint8_t>, max_plugins>;
 
@@ -62,8 +64,6 @@ public:
     // untouched), and loads with that state once its track wakes.
     void sync(const Project& project, uint32_t asleep = 0);
     bool asleep(unsigned entry) const;
-    // Whether its plug-in skipped its last render as idle (plugin/idle_gate.h), not freeze plan F2d's sleep.
-    bool idling(unsigned entry) const;
     // A project's file was read: the states it carried, each used the next
     // time its entry loads (sync() right after).
     void set_states(PluginStates states);
@@ -83,8 +83,18 @@ public:
 
     // MIDI thread: the panel for `entry` with row `row` of its parameters on
     // K1-K3; a parameter by its place among the shown ones, 0..plugin_param_max.
-    void panel(unsigned entry, unsigned row, bool use_screen, PluginPanel& out) const;
+    void panel(unsigned entry, unsigned row, PluginPanel& out) const;
     void set_param(unsigned entry, unsigned shown, int value);
+    // A plug-in's own screen (plugin/plugin_screen.h). MIDI thread: screen_view() each tick, the page in view (entry
+    // no_plugin: none); screen_input() an input on that page, handed to the plug-in by the screen thread;
+    // set_screen_param() a value for the parameter its screen puts on K`k`. screen_picture(): the newest picture of
+    // the screen in view, null none (any thread). panel() gives `screen` once the plug-in has drawn and named K1-K3.
+    void screen_view(const ScreenView& view);
+    void screen_input(unsigned entry, const ScreenInput& input);
+    void set_screen_param(unsigned entry, unsigned k, int value);
+    ScreenPicturePtr screen_picture() const;
+    // Its skin (plugin/plugin_skin.h), null none; loaded with it and never changed after. Any thread.
+    std::shared_ptr<const PluginSkin> skin(unsigned entry) const;
     // PRESETS: the plug-in's named programs, and one of them picked (by its
     // number in the plug-in), switched to on the rack's thread. Picking the
     // one it is on loads it again (edits since are dropped). A CLAP plug-in's
@@ -104,6 +114,7 @@ public:
     };
     bool take_preset_result(PresetResult& result);
     PluginStatus status(unsigned entry) const;
+    bool idling(unsigned entry) const; // last render skipped as silent (plugin/idle_gate.h)
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
     // A drum plug-in's voices (plugin/drum_map.h) on `entry`; none for any other.
     void drum_voices(unsigned entry, DrumVoices& out) const;
@@ -112,38 +123,36 @@ public:
     // library; the picker starts in its Plugins folder and goes up as far as
     // the card's top, so a plug-in anywhere on the card can be picked.
     void set_card(const std::string& top);
-    void browse(const std::string& folder); // "" the Plugins folder itself
+    // "" the Plugins folder itself. With `row` (a listed plug-in's path, and its id in a bundle of several), the
+    // listing's came_from is where that row is now. A folder no longer there lists the Plugins folder.
+    void browse(const std::string& folder, const std::string& row = {}, int32_t row_id = 0);
     void browse_up();
     struct View {
         std::string root;   // the card's Melodee/Plugins folder; empty: no card
         std::string folder; // the folder listed
         bool top = true;    // the card's top: nothing above it to go back to
         bool home = true;   // the Plugins folder itself
-        int came_from = -1; // after going up: the row of the folder it came out of
+        int came_from = -1; // after going up: the row of the folder it came out of; after browse() with a row: that row
         std::vector<PluginFile> files;
     };
     View view() const;
     unsigned changes() const { return change_count.load(std::memory_order_acquire); } // the view or a status moved
+    // The web page installed, replaced or deleted something on the card (any thread). What opening a plug-in found is
+    // forgotten for one gone or changed since, and card_changes() counts up: an open picker lists again.
+    void card_changed();
+    unsigned card_changes() const { return card_count.load(std::memory_order_acquire); }
     // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated.
     std::string summary() const;
     // About (round 2): how many plug-ins are loaded and running, and their share of the audio time together.
     struct Usage { unsigned loaded = 0; float load = 0; };
     Usage usage() const;
 
-    // Melodee's plug-in screen (plugin/melodee_screen.h). MIDI thread: the entry whose page is in view (no_plugin
-    // none) and what that page tells it, each tick; an input on its page. The rack's screen thread, started the first
-    // time an entry is in view, hands both on and asks the plug-in to paint, apart from the rack's own thread so a
-    // load or a preset scan never stops the picture. Any thread: the newest picture (nullptr none yet).
-    void screen_focus(unsigned entry, const PluginScreenContext& context);
-    void screen_input(unsigned entry, const PluginScreenInput& input);
-    PluginScreenFramePtr screen_frame() const;
-
 private:
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
         std::string preset;               // the preset picked last (PluginRef::preset), named again when it reopens
-        uint32_t selection = 0; // invalidates a pending user preset read when a later program is picked
+        uint32_t selection = 0;           // invalidates a pending user preset read when a later program is picked
         std::string error;
         PluginFile file;
     };
@@ -155,6 +164,7 @@ private:
         std::string path;
         double rate = 0;
         int32_t id = 0;
+        std::string row {}; // Browse: the row to find again (browse())
         uint32_t selection = 0;
         std::shared_ptr<const PatchWrite> patch {};
     };
@@ -166,16 +176,17 @@ private:
     void user_preset(const Job& job);
     void find_presets(unsigned entry, uint32_t generation); // a CLAP plug-in's, once it plays
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
-    void list(const std::string& folder, int came_from);
+    void list(const std::string& folder, const std::string& row, int32_t row_id); // `row` as in browse()
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
+    void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)
     void destroy(PluginHandle* handle);
+    void screen_run();                              // the screen thread: draws the screen in view
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);
     void changed() { change_count.fetch_add(1, std::memory_order_acq_rel); }
     bool referenced(const Project& project, unsigned entry) const;
-    void screen_run();                              // the screen's thread
 
     EngineHost& host;
     mutable std::mutex lock;                        // everything below but the thread
@@ -191,25 +202,27 @@ private:
     View shown;
     // What opening a plug-in once found: its own name, instrument or effect, and every plug-in a bundle holds.
     struct Class { int32_t id = 0; std::string name; int8_t instrument = 0; };
-    struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; };
+    // `time`: the file's or the folder's own when it was opened (card_changed() forgets it once that moves).
+    struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; std::filesystem::file_time_type time {}; };
     std::vector<Known> known;
     Known probe(const PluginFile& file);            // opens it just long enough to ask
+    // Page files that could not be used, by file, and what was last written of them (rack's thread only).
+    std::map<std::string, std::vector<std::string>> page_problems;
+    std::string page_problems_written;
     std::string stage_tag;
     uint32_t stage_count = 0;
-    std::atomic<unsigned> change_count {0};
+    std::atomic<unsigned> change_count {0}, card_count {0};
     std::thread thread;
-    // The plug-in screen's: what the MIDI thread told it, the newest picture, and its thread.
-    mutable std::mutex screen_lock;                 // the fields below to screen_thread
+    // The screen thread's: what the MIDI thread told it and the newest picture (under `screen_lock`, never held while
+    // `lock` is taken); `screen_calls` held while it calls into a plug-in, so destroy() frees none meanwhile.
+    mutable std::mutex screen_lock;
     std::condition_variable screen_wake;
-    bool screen_stopping = false, screen_poked = false;
-    unsigned screen_entry = no_plugin;
-    PluginScreenContext screen_context;
-    std::deque<std::pair<unsigned, PluginScreenInput>> screen_inputs;
-    PluginScreenFramePtr screen_latest;
+    bool screen_stop = false, screen_poked = false;
+    ScreenView screen_now;
+    std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
+    ScreenPicturePtr screen_latest;
+    std::mutex screen_calls;
     std::thread screen_thread;
-    // Held by the screen's thread while it calls a plug-in (it takes `lock` inside it), taken by destroy() before it
-    // frees one, with `lock` let go.
-    std::mutex screen_use;
 };
 
 } // namespace melodee

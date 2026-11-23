@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/pad_params.h"
+#include "melodee/model/pattern.h"
 #include "melodee/shell/ui_state.h"
+#include <algorithm>
 
 // Mute, as printed (MELODEE_PARITY.md, phase 1c): a tap latches mute mode,
 // a hold lasts while Mute is held, Shift + Mute unmutes everything. In mute
@@ -22,6 +25,15 @@ void mute_pad(Context& c, unsigned pad, bool kit_pads);
 void set_pad_mute(Context& c, unsigned track, unsigned kit, bool on);
 // Shift + Mute: every track, every solo, every kit pad of every track.
 void unmute_all(Context& c);
+// Issue 32: kit pad `kit` muted as heard now. While `pattern` plays at `position` (written ticks; -1 stopped), where
+// its mute lane last put it (before the lane's first point, as set); else as set (Mute + pad).
+inline bool pad_muted_now(const Track& t, const Pattern& pattern, int position, unsigned kit) {
+    kit %= sampler_pads;
+    bool own = t.pad_muted(kit);
+    if (position < 0 || pattern.motion.empty()) return own;
+    return pattern.lane_value(uint32_t(position) % std::max<uint32_t>(pattern.length, 1), motion_pad_mute, kit, own) != 0;
+}
+bool pad_muted_now(const Context& c, unsigned track, unsigned kit);
 // A kit pad soloed: the only used pad of the kit not muted.
 inline bool pad_soloed(const Track& t, unsigned kit) {
     kit %= sampler_pads;

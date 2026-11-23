@@ -228,6 +228,15 @@ it is held.
 
 Muted pads light red. Soloed pads light white.
 
+**Mute** in [Settings](settings.md) (**SEQ**) sets what a mute does:
+
+- **Audio**: the track or pad is silent at once, as on the MPC.
+- **Notes**: the track or pad plays no new notes. What it plays rings out.
+  A MIDI track sends each note's Note Off when it is due.
+
+With **SEQ RECORD** on, kit pad mutes are recorded in the pattern. See
+[Sequencing](sequencing.md) (**Motion**).
+
 ## Pad lights
 
 The pads show what a press does on the page:

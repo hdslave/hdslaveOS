@@ -18,32 +18,37 @@ plug-in instrument. For every page and control, read the
 
 You need:
 
-- An Akai MPC Sample with firmware **1.3.0.12**. On any other firmware
-  Melodee does not start and the stock app keeps running.
+- An Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any
+  other firmware Melodee does not start and the stock app keeps running.
+- On firmware 1.4: **Developer Mode** on, in the stock app's Settings on
+  the **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
 - The release zip, `Melodee-MPC-Sample-<version>.zip`.
 
-The zip holds one folder, `autorun`. Its `README.txt` and the licences are
-inside it, in `autorun/melodee/`.
+The zip holds the `autorun` folder and an `autorun.sh` file. The
+`README.txt` and the licences are in `autorun/melodee/`.
 
 To install Melodee:
 
 1. Back up the card. If it has an `autorun` folder at its top level, move
    that folder somewhere safe. Melodee's `autorun` folder replaces it.
-2. Unzip the release and copy the `autorun` folder to the top level of the
-   card. The card now has `autorun/autorun.sh` and `autorun/melodee/`. Do
-   not edit or rename anything inside `autorun`: the MPC does not start an
-   autorun whose files have changed.
+2. Unzip the release and copy the `autorun` folder and `autorun.sh` to
+   the top level of the card. The card now has `autorun.sh`,
+   `autorun/autorun.sh` and `autorun/melodee/`. Do not edit or rename
+   anything inside them: the MPC does not start an autorun whose files
+   have changed.
 3. Optional: to use plug-ins, make a folder named `Plugins` inside the
    `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
    into it. A plug-in's release zip can go in as it is: Melodee unzips it
    the next time the plug-in picker opens. See
    [Plug-ins](guide/plug-ins.md) for what runs.
-4. Put the card in the MPC and switch it on. The stock app starts first. A
-   few seconds later Melodee starts, with a new project open on track 1.
+4. Put the card in the MPC and switch it on. The stock app starts first.
+   On firmware 1.4 it asks whether to run the card's autorun script: press
+   Yes. A few seconds later Melodee starts, with a new project open on
+   track 1.
 
 Melodee changes nothing on the MPC itself. To stop it from starting, delete
-the `autorun` folder from the card.
+the `autorun` folder and `autorun.sh` from the card.
 
 While Melodee runs, connect the MPC to a computer with USB-C and open
 **http://melodee.local** in a browser. The page installs plug-ins and
@@ -163,20 +168,22 @@ To chop a sample into slices, press **CHOP**. See [Chop](guide/kits-and-sampling
 
 1. Press **SEQ** to open **Sequences**. If Patterns, Roll or Motion opens
    instead, press **B1** (**SEQUENCES**). The bank's 16 sequences are laid out as
-   the pads: pad 1 bottom left. A sequence is one number on every track:
-   sequence 1 is pattern 1 of each track.
+   the pads: pad 1 bottom left. A sequence keeps one pattern for each
+   track.
 2. Hold **SEQ** and use **K1** to set the pattern length in bars and **K2**
    the grid (Q) of the selected track's pattern. **K3** sets the swing of
    the project.
 3. To change to another sequence, press its pad. Pad 1 is sequence 1. Every
-   track goes to that number, and a track with no notes there is silent. On
-   other pages, hold **SEQ** and press **SHIFT** + a pad.
+   track goes to the pattern that sequence keeps. A new sequence keeps
+   nothing: the tracks play on until you launch a pattern. On other pages,
+   hold **SEQ** and press **SHIFT** + a pad.
 
    ![Sequences](images/screens/scenes.png)
 
-   To put one track on a pattern of its own, press **B1** again for
+   To put one track on another pattern, press **B1** again for
    **Patterns**. Its pads are the selected track's patterns. On any page,
-   hold **SEQ** and press a pad for the same.
+   hold **SEQ** and press a pad for the same. The sequence you are on keeps
+   the pattern you launch.
 
 4. Press **SEQ RECORD**. The button flashes and the screen shows that
    recording is armed.
@@ -242,8 +249,8 @@ Melodee synths are free downloads; see [Plug-ins](guide/plug-ins.md).
    ![Stage PRESETS on a plug-in track](images/screens/stagepluginpresets.png)
 
 7. Press **B1** for **EDIT**, its next page: the plug-in's own parameters
-   come on **K1**–**K3**. Turn the encoder or press **−** / **+** to move
-   through the rows.
+   come on **K1**–**K3**, in rows of three. Turn the encoder to move through
+   the rows, and press **−** / **+** for the plug-in's page before or after.
 
    ![Stage EDIT: a plug-in's parameters](images/screens/stagepluginedit.png)
 

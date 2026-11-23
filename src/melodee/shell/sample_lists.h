@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,19 @@ inline bool list_folder(const std::string& folder) { return folder == starred_li
 
 constexpr size_t recent_max = 16;
 constexpr size_t starred_max = 500;
+
+// A path that names a part of a file, as the library and the projects write them: a pad of an MPC program or project
+// ("<file>.xpm#<pad>", .xty, .xpj) or a SoundFont's preset ("<file>.sf2#<preset>"). Its file into `file`. A file
+// whose own name has a '#' in it ("KeysPh G#m90.wav", a folder "C# Loops") is a whole file.
+inline bool part_of_file(const std::string& path, std::string* file = nullptr) {
+    const size_t mark = path.rfind('#');
+    if (mark == std::string::npos || mark < 4 || mark + 1 >= path.size() || path[mark - 4] != '.') return false;
+    std::string kind = path.substr(mark - 3, 3);
+    for (auto& ch : kind) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    if (kind != "xpm" && kind != "xty" && kind != "xpj" && kind != "sf2") return false;
+    if (file) *file = path.substr(0, mark);
+    return true;
+}
 
 // Shift + B3: starred if it was not, else no longer. True when it is starred now. Taken off with a range erase, not
 // erase(at): GCC 12 at -O2 reads erase(at) on a list it sees empty as a write before the list (-Warray-bounds).

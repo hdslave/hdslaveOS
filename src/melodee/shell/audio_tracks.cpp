@@ -153,10 +153,10 @@ void AudioTracks::run() {
         std::deque<std::pair<std::string, std::vector<unsigned>>> pruning;
         {
             std::unique_lock<std::mutex> held(lock);
-            // Often enough to keep up with a take (the engine host's ring holds 10 s at the highest rate): every
-            // 25 ms while one is written. A take asked for wakes it once, to open its file; from then on (`taking`)
-            // it is not a reason to skip the wait, or this loop would spin a core for as long as the take lasts.
-            // With no take, ten looks a second still find a ring the engine ended with nobody asking (drain()).
+            // Every 25 ms while a take is written, often enough to keep up with it (the engine host's ring holds 10 s
+            // at the highest rate). A take asked for wakes the thread once, to open its file; take_wanted stays set
+            // until the take ends, so once `taking` it must not end the wait, or the loop spins a core for the whole
+            // take. With no take, ten looks a second still find a ring the engine ended on its own (drain()).
             wake.wait_for(held, std::chrono::milliseconds(taking ? 25 : 100),
                           [&] { return stopping || !jobs.empty() || !trash.empty() || (take_wanted && !taking) || !prunes.empty(); });
             if (stopping) return;

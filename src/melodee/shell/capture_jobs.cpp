@@ -71,7 +71,7 @@ void Context::capture() {
     if (edit.patterns_after.empty()) { notice(full ? "No empty pattern to capture into" : "Nothing played to capture"); return; }
     for (const auto& p : edit.patterns_after) {
         restore_pattern(p.track, p.pattern, p.value);
-        launch(p.track, p.pattern); // and it plays from here (the next bar while playing)
+        pick(p.track, p.pattern); // and it plays from here (the next bar while playing), kept in the sequence in hand
     }
     unsigned count = unsigned(edit.patterns_after.size());
     ui.captured_pattern = uint8_t(selected >= 0 ? selected : edit.patterns_after.front().pattern);

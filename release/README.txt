@@ -14,8 +14,10 @@ card before you install it.
 
 Requirements
 ------------
-- MPC Sample on firmware 1.3.0.12 exactly. On any other firmware Melodee
-  does not start and the stock app keeps running.
+- MPC Sample on firmware 1.3.0.12 or 1.4.0.7. On any other firmware
+  Melodee does not start and the stock app keeps running.
+- On firmware 1.4: Developer Mode on, in the stock app's Settings on the
+  DEV ENHANCEMENTS (BETA) page.
 - A microSD card for the MPC (the one you already use is fine).
 
 
@@ -24,11 +26,16 @@ Install
 1. Back up the card. If it already has a folder named "autorun" at its top
    level (MPC Sample Plugins uses one, for example), move it somewhere
    safe: Melodee's replaces it.
-2. Unzip the release. It holds one folder, "autorun". Copy that folder to
-   the top level of the card. Do not edit or rename anything inside it:
-   the MPC refuses an autorun whose files changed.
-3. Put the card in the MPC and switch it on. The stock app starts first;
-   a few seconds later Melodee takes over the screen.
+2. Unzip the release. It holds the folder "autorun" and the file
+   "autorun.sh". Copy both to the top level of the card. Do not edit or
+   rename anything inside them: the MPC refuses an autorun whose files
+   changed.
+3. Put the card in the MPC and switch it on. The stock app starts first.
+   On firmware 1.4 it asks whether to run the card's autorun script:
+   press Yes. A few seconds later Melodee takes over the screen.
+
+On firmware 1.4, Screen Mirror is not available and Melodee runs at
+44.1 kHz only.
 
 A new install starts on Basic, with one of the MPC's factory kits on
 track 1. Basic shows the stock app's pages plus tracks, plug-ins, the
@@ -78,8 +85,9 @@ Back to the stock app
 - Press Power briefly. On the Exit screen, press B3 (MPC APP): Melodee
   saves the project and the stock app runs until the next time the MPC is
   switched on.
-- To stop Melodee starting at all, delete the "autorun" folder from the
-  card (and put back any autorun folder you moved away).
+- To stop Melodee starting at all, delete the "autorun" folder and the
+  "autorun.sh" file from the card (and put back any autorun folder you
+  moved away).
 
 
 Reporting problems
@@ -87,8 +95,9 @@ Reporting problems
 Say what you pressed, what you saw and the version (Settings, ABOUT,
 press B3 for the credits, or the line below). After a crash, add the
 report Melodee wrote to the card's "Melodee/Crashes" folder. If Melodee
-did not start at all, check that the firmware is 1.3.0.12 and that the
-autorun folder sits at the top level of the card.
+did not start at all, check that the firmware is 1.3.0.12 or 1.4.0.7
+(with Developer Mode on) and that the autorun folder and autorun.sh sit
+at the top level of the card.
 Issues: https://github.com/keremimo/melodee-sample/issues
 
 

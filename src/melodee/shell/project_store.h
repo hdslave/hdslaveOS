@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 struct Hardware;
@@ -147,9 +148,8 @@ private:
     void scan_sounds();
     bool started = false;
     unsigned ticks = 0;
-    // What scan() read out of each project file, by its path: kept while the file's time and size stand, so a
-    // save, a settings change or a usage-log line does not read and parse every project of the folder again
-    // (melodee-hdslave; optimization.md IO-1). Service thread.
+    // Service thread: what scan() read out of each project file, by its path, kept while the file's time and size
+    // stand, so a scan does not parse every project of the folder again.
     struct Scanned { int64_t modified = 0; uint64_t bytes = 0; unsigned tracks = 0, tempo = 0; bool ok = false; };
     std::unordered_map<std::string, Scanned> scanned;
     mutable std::mutex lock;

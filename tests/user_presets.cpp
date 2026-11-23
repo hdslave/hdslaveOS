@@ -89,8 +89,9 @@ int main(int argc, char** argv) {
     wait([&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding; });
     if (saving) {
         wait([&] { return rack->status(1) == PluginStatus::Ready && !rack->programs(1).finding; });
-        rack->set_param(entry, 0, 750);
-        rack->set_param(entry, 1, 1000);
+        // Test Sine's CLAP remote-controls page puts Wave (id 9) at slot 0 and Level (id 7) at slot 1.
+        rack->set_param(entry, 1, 750);
+        rack->set_param(entry, 0, 1000);
         wait([&] { return state()[0] == 0.75 && state()[1] == 2; });
         chord();
         CHECK(ui.name.target == NameTarget::PluginPreset);
@@ -99,7 +100,7 @@ int main(int argc, char** argv) {
         chord();
         tap(SurfaceButton::TopRight);
         wait([&] { return has_patch(entry) && has_patch(1) && std::string(ref.preset) == "/user/My Patch"; });
-        rack->set_param(entry, 0, 250);
+        rack->set_param(entry, 1, 250);
         wait([&] { return state()[0] == 0.25; });
         chord();
         tap(SurfaceButton::TopRight);

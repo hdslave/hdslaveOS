@@ -125,6 +125,7 @@ Binding filter_second(const PadSound& pad, bool other) {
 // The mod wheel's lane, as Motion shows it (parity phase 8), and a plug-in track's or a kit's pitch bend.
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
 const ParamInfo bend_info {"PITCH BEND", -64, 63, 0, Format::Number};
+const ParamInfo pad_mute_info {"MUTE", 0, 1, 0, Format::Switch}; // issue 32: a kit pad's mute lane
 
 // Roadmap P4: the mix's lanes as Motion shows them.
 const ParamInfo level_info {"LEVEL", 0, 127, 100, Format::Level};
@@ -153,6 +154,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
         if (!pi.label || s.kind == plugin_effect_kind) return {};
         return {&pi, s.params[q]};
     }
+    if (unsigned(param) == motion_pad_mute) return track.sampled() ? MotionParam {&pad_mute_info, int(track.pad_muted(lane_pad(lane)))} : MotionParam {};
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // a kit pad's own value
         auto p = PadParam(which);
         if (!track.sampled()) return {};
@@ -175,7 +177,7 @@ std::string lane_name(const Track& track, int lane, const Project* project) {
     auto m = motion_param(track, lane, project);
     if (!m.info) return "lane";
     if (is_master_lane(lane_param(lane)) && lane_param(lane) < motion_return_base) return std::string("MASTER ") + m.info->label; // roadmap P4
-    if (pad_param_of(lane_param(lane)) < 0) return m.info->label;
+    if (!is_pad_lane(lane_param(lane))) return m.info->label;
     char label[4];
     pad_label(lane_pad(lane), label);
     return std::string(label) + " " + m.info->label;
@@ -185,6 +187,8 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
+    if (unsigned(param) == motion_pad_mute) // issue 32: the pad's mute, as Mute + pad sets it
+        return track.sampled() ? Binding {Kind::PadMute, int32_t(lane_pad(lane) % sampler_pads), 0, 1, int(track.pad_muted(lane_pad(lane)))} : Binding {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};
@@ -308,7 +312,7 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
     bool kit = track.engine == EngineKind::Sampler;
     unsigned pad = track.last_pad % sampler_pads;
     for (const auto& m : pattern.motion) {
-        bool pad_lane = pad_param_of(m.param) >= 0;
+        bool pad_lane = is_pad_lane(m.param);
         if (pad_lane && m.pad != pad) continue; // another pad's lane: shown when that pad is the last hit
         add(motion_lane(m.param, pad_lane ? m.pad : 0));
     }
@@ -350,8 +354,10 @@ std::array<Binding, 3> plugin_cards(const UiState& ui, unsigned entry) {
     const auto& panel = ui.plugin_panel;
     if (panel.entry != entry || panel.status != PluginStatus::Ready) return out;
     for (unsigned k = 0; k < 3; ++k)
-        if (panel.params[k].used && panel.knob[k] >= 0)
-            out[k] = {Kind::PluginParam, plugin_binding(entry, unsigned(panel.knob[k])), 0, plugin_param_max, panel.params[k].value};
+        if (panel.params[k].used) {
+            unsigned shown = panel.screen ? plugin_screen_slot + k : panel.row * 3u + k; // its own screen's three
+            out[k] = {Kind::PluginParam, plugin_binding(entry, shown), 0, plugin_param_max, panel.params[k].value};
+        }
     return out;
 }
 // Knob FX's row (Shift: its second), while the mode is on.
@@ -574,7 +580,8 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     case SK::PluginSound: // the three performance knobs, the same on every plug-in (engine/macros.h)
         if (shift_row) return {};
         return {param(track, plugin_track::Macro1), param(track, plugin_track::Macro2), param(track, plugin_track::Macro3)};
-    case SK::PluginEdit: // the plug-in's own row of three
+    case SK::PluginEdit:   // the plug-in's own row of three
+    case SK::PluginScreen: // or the three its own screen names
         if (shift_row) return {};
         return plugin_cards(ui, track.plugin);
     case SK::NewSynth: case SK::NewKit: case SK::NewMidi: return {}; // an empty track: the wheel and Push (shell/new_track.h)
@@ -630,14 +637,18 @@ std::array<Binding, 3> trig_cards(const Event& e, bool step) {
             Binding {step ? Kind::StepCondition : Kind::EventCondition, 0, 0, int(trig_count) - 1, e.condition}};
 }
 // Patterns' cards, and Seq held's on any page (shell/seq_layer.h): the selected track's pattern,
-// K1 length by the bar, K2 Q, K3 swing; Shift: any bar count, the time signature, the metronome's level (as on the MPC).
+// K1 length by the bar, K2 Q, K3 swing; Shift: the length in sixteenths (issue 27), the time signature, the metronome's
+// level (as on the MPC).
 std::array<Binding, 3> pattern_cards(const Project& project, const UiState& ui, const Pattern& pattern) {
     return {length_card(project, ui, pattern),
             Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
             Binding {Kind::Swing, 0, 50, 75, project.swing}};
 }
 std::array<Binding, 3> pattern_shift_cards(const Project& project, const UiState& ui, const Pattern& pattern) {
-    return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
+    uint32_t length = free_shown(pattern, ui.column_ticks);
+    if (!length) length = pattern.length;
+    unsigned steps = std::clamp<unsigned>((length + sixteenth_ticks - 1) / sixteenth_ticks, 1, pattern_step_max);
+    return {Binding {Kind::PatternSteps, 0, 1, int(pattern_step_max), int(steps)},
             Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
             Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
 }
@@ -682,7 +693,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         if (!track.used()) return {};
         return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};
     case PageId::Song: { // roadmap P5: the tempo lane at the cursor's bar: its tempo, and (a point there) its shape
-        if (ui.song_export) return {};
+        if (ui.song_export || ui.jam_sheet) return {};
         const auto& lane = project.song.tempo;
         int at = lane.at_bar(ui.song_cursor);
         int tempo = at >= 0 ? (lane.points[size_t(at)].tempo + 5) / 10 : int(std::lround(lane.at(ui.song_cursor, project.tempo) / 10));
@@ -884,10 +895,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned t = ui.track % track_count;
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
-    case PageId::Patterns: { // the pattern's cards; SCENE: the scene in view's tempo and colour; FOLLOW: the pattern's follow action
+    case PageId::Patterns: { // the pattern's cards; SEQUENCE: the sequence in hand's tempo and colour; FOLLOW: the pattern's follow action
         if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet
         if (ui.patterns_cards == 1) {
-            unsigned scene = track.pattern % pattern_count; // the selected track's pattern's column
+            unsigned scene = project.scene % pattern_count; // the sequence in hand
             unsigned tempo = project.scenes[scene].tempo;
             return {Binding {Kind::SceneTempo, int32_t(scene), 29, 300, tempo ? int((tempo + 5) / 10) : 29},
                     Binding {Kind::SceneColour, int32_t(scene), 0, 16, project.scenes[scene].colour}, Binding {}};
@@ -992,6 +1003,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PrintTapPick, 0, 0, 1, int(sheet.tap)}, Binding {Kind::PrintTailPick, 0, 0, 2, int(sheet.tail)}, Binding {}};
     }
     case PageId::Song: {
+        if (ui.jam_sheet) // JAMS: the part of the picked jam, FROM and TO (bars from 1)
+            return {Binding {Kind::JamFrom, 0, 1, std::max<int>(ui.jam_pick_bars, 2), ui.jam_from + 1},
+                    Binding {Kind::JamTo, 0, 1, std::max<int>(ui.jam_pick_bars, 2), ui.jam_to}, Binding {}};
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
         int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;
         int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;
@@ -1006,11 +1020,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
-        if (c.slots[slot].kind == plugin_effect_kind) {
-            // While opening or closing a panel, wait for the matching knob map from the rack.
-            if ((ui.fx_panel_entry != no_plugin) != ui.plugin_panel.screen) return {};
-            return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
-        }
+        if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)]); // a keyed kind's KEY last (roadmap P4)
     }
     case PageId::Sends: { // one bus at a time: K1 the track's send into it (a kit's pads: the last pad's), K2 which bus, K3 its return

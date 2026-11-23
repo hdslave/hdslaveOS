@@ -98,7 +98,7 @@ page and control, read the [user guide](docs/GUIDE.md).
   follow), Cloud (granular) and a kit filter. Each pad has its own effects
   and sends to the four buses.
 - **Sampling**: Chop (by hits, regions, beats, or by hand as the sample
-  plays, up to 64 slices), Sample Record, Audio Recall, Resample and 16
+  plays, up to 128 slices), Sample Record, Audio Recall, Resample and 16
   Levels.
   Samples load from WAV, MP3, FLAC, Ogg Vorbis and AIFF files. A sample
   longer than 10 seconds plays from the card, up to 6 hours; a project holds
@@ -146,8 +146,10 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Requirements
 
-- Akai MPC Sample with firmware **1.3.0.12**. On any other firmware Melodee
-  does not start and the stock app keeps running.
+- Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any other
+  firmware Melodee does not start and the stock app keeps running.
+- On firmware 1.4: **Developer Mode** on, in the stock app's Settings on the
+  **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
 
 ## Install
@@ -161,12 +163,17 @@ stock Melodee, not this fork.
 
 1. Back up the card. If the card already has an `autorun` folder at its top
    level, move it somewhere safe.
-2. Unzip the package. It holds one folder, `autorun`. Copy that folder to the
-   top level of the card (or, under a boot menu such as SampleBoot, its
-   contents into that menu's folder for it). Do not edit or rename anything
-   inside it.
+2. Unzip the package. It holds the `autorun` folder and an `autorun.sh` file.
+   Copy both to the top level of the card (or, under a boot menu such as
+   SampleBoot, copy the contents of `autorun/` into that menu's folder for it).
+   Do not edit or rename anything inside them.
 3. Put the card in the MPC and switch it on. The stock app starts first.
-   A few seconds later hdslaveOS starts.
+   On firmware 1.4 it asks whether to run the card's autorun script: press
+   Yes. A few seconds later hdslaveOS starts.
+
+On firmware 1.4, Screen Mirror is not available and hdslaveOS runs at
+44.1 kHz only: the firmware no longer lets apps load their own kernel
+drivers, and its audio driver takes 44.1 kHz alone.
 
 The [quickstart](docs/QUICKSTART.md) has the full steps, with screenshots.
 

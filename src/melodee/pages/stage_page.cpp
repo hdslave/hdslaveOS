@@ -1156,7 +1156,7 @@ void draw(Paint& p, const Snapshot& s) {
     } else if (page.kind == StageKind::PluginSound && plugin_presets(s)) { // which preset of how many
         int at = plugin_preset_at(s);
         h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String::fromUTF8("\xe2\x80\x93")) + " / " + juce::String(int(s.presets.list.size()))));
-    } else if (page.kind == StageKind::PluginEdit && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
+    } else if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
         const auto& panel = s.ui.plugin_panel;
         h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
     } else if (t.is_audio() && t.used()) { // freeze plan F3: the pattern in hand and its bars; red armed, filled recording
@@ -1201,8 +1201,9 @@ void draw(Paint& p, const Snapshot& s) {
         for (const auto& other : s.project.tracks) any |= other.used();
         keys = SoftKeys {{any ? (s.ui.new_sources ? "BACK" : "CANCEL") : "", "", ""}, -1, c, {any ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
     }
-    if (page.picture == StagePicture::PluginEdit && t.used() && !frozen && plugin_screen_shown(s, t.plugin)) { // its own page
-        draw_plugin_screen(p, s, t.plugin, keys);
+    // EDIT: Melodee's pages of the plug-in under B1-B3; PANEL: its own screen there (Melodee's pages until it has drawn).
+    if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && t.used() && !frozen && plugin_page_shown(s, t.plugin)) {
+        draw_plugin_page(p, s, t.plugin, keys);
         return;
     }
     frame(p, s, keys, h);
@@ -1268,8 +1269,8 @@ void wheel(Context& c, int delta) {
         return;
     }
     if (page.kind == StageKind::PluginSound) { c.plugin_preset_turn(delta); return; } // its presets (none: nothing)
-    if (page.kind == StageKind::PluginEdit) { // its rows of three, or its own page
-        if (!c.plugin_screen_input(PluginScreenKey::Wheel, delta)) plugin_rows(c, delta);
+    if (page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) { // its own screen's wheel, else its rows
+        if (!c.plugin_screen_input(ScreenKey::Wheel, delta)) plugin_rows(c, delta);
         return;
     }
     int n = stage_focus(c.ui, c.track());
@@ -1289,6 +1290,7 @@ void push(Context& c) {
     auto& t = c.track();
     const auto& page = stage_page_now(c.ui, t, stage_skip(c.project, c.ui, t));
     if (!t.used()) { new_track_push(c); return; } // the card in the middle: a type's sources, or the track made
+    if (page.kind == StageKind::PluginScreen && c.plugin_screen_input(ScreenKey::Push, 1)) return; // its own screen's
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
     if (page.kind == StageKind::Fx) { // the chain's effects, then its open slot (the plus), where Push adds one
         auto& slot = c.ui.fx_cursor[UiState::cursor_of(c.ui.track)];
@@ -1308,7 +1310,6 @@ void push(Context& c) {
         if (t.plugin < max_plugins && c.ui.plugin_panel.entry == t.plugin && c.ui.plugin_panel.programs) c.open_plugin_presets(t.plugin);
         return;
     }
-    if (page.kind == StageKind::PluginEdit && c.plugin_screen_input(PluginScreenKey::Push, 1)) return; // its own page
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
     int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
@@ -1323,8 +1324,9 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
-    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { // as Edit's (a plug-in track)
-        if (!c.plugin_screen_input(PluginScreenKey::Nudge, way)) plugin_rows(c, way);
+    const auto kind = stage_page_now(c.ui, c.track(), stage_skip(c.project, c.ui, c.track())).kind;
+    if (kind == StageKind::PluginEdit || kind == StageKind::PluginScreen) { // its own screen's, else its pages
+        if (!c.plugin_screen_input(ScreenKey::Step, way)) plugin_page_step(c, way);
         return;
     }
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);

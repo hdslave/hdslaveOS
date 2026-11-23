@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// Roadmap P5: scenes and follow actions. A scene is a column of patterns
-// across the tracks (pattern n of each), with a name and a tempo of its own;
-// on screen it is a sequence (shell/sequences.h). Launching it queues pattern
-// n on every used track for the next bar, as a sequence on the stock app: a
-// track with no notes there goes silent, its empty pattern as long as the
-// sequence. Its tempo takes over on that bar. A pattern's follow
-// action (model/follow.h) is the audio thread's (EngineHost::follow); here the
-// shell tells it which tracks play a chain (their follow actions wait) and
-// follows what it brought, so a track's pattern is the one playing.
+// Roadmap P5: scenes and follow actions. A scene (a sequence on screen) keeps a pattern, or off, for each track,
+// with a name and a tempo of its own (model/scene_links.h, shell/sequences.h). A pattern picked by hand is kept in
+// the sequence in hand (pick()); launching a sequence queues each track's kept pattern for the next bar, stops a
+// track kept off, and leaves a track it keeps nothing for playing. An empty kept pattern takes the sequence's
+// length. Its tempo takes over on that bar. A pattern's follow action (model/follow.h) is the audio thread's
+// (EngineHost::follow); here the shell tells it which tracks play a chain (their follow actions wait) and follows
+// what it brought, so a track's pattern is the one playing. Follow actions, chains and the song keep nothing.
 #include "melodee/shell/context.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/sequences.h"
+#include "melodee/model/scene_links.h"
 #include "melodee/engine/engine_host.h"
 #include <algorithm>
 #include <string>
@@ -19,22 +18,61 @@
 namespace melodee {
 using Type = Command::Type;
 
+uint32_t Context::stopped_now() const { return host.playing() && !host.song_playing() ? host.stopped_tracks() : 0; }
+
+bool Context::keep(unsigned t, int target) {
+    if (host.song_playing()) return false; // the song plays the tracks: nothing is kept
+    const unsigned n = project.scene % pattern_count;
+    std::array<uint8_t, track_count> before {};
+    for (unsigned k = 0; k < track_count; ++k) before[k] = project.tracks[k].in_scene[n];
+    bool first = keep_pick(project, n, t % track_count, target, stopped_now());
+    for (unsigned k = 0; k < track_count; ++k) dirty |= project.tracks[k].in_scene[n] != before[k];
+    return first;
+}
+
+bool Context::pick(unsigned t, unsigned p) {
+    launch(t, p);
+    return keep(t, int(p % pattern_count));
+}
+
+void Context::track_off(unsigned t) {
+    t %= track_count;
+    auto& tr = project.tracks[t];
+    if (!chaining) { // off by hand: the chain ends, as a launch ends it
+        tr.chain_count = 0; chain_queued[t] = false;
+        if (chain_lead == int(t)) chain_lead = -1;
+    }
+    tr.off = true;
+    send({Type::Pattern, uint8_t(t), 0, 0, int16_t(-1)});
+    if (recording_tracks >> t & 1) finish_launches(uint16_t(1u << t)); // Seq Record into the song: its clip ends
+}
+
+bool Context::pick_off(unsigned t) {
+    track_off(t);
+    return keep(t, scene_stops);
+}
+
 void Context::launch_scene(unsigned scene, bool quiet) {
     scene %= pattern_count;
+    jam_scene = int(scene); // jam capture: a marker on the bar it takes over on
     unsigned count = 0, selected = ui.track % track_count;
     unsigned playing = host.playing() ? unsigned(host.pattern_of(selected)) % pattern_count : track().pattern % pattern_count;
     const auto& fallback = patterns.at[selected][playing];
     uint32_t length = sequence_length(project, patterns, selected, scene, fallback.length);
     bool free_now = !sequence_length(project, patterns, selected, scene, 0) && fallback.is_free(); // no notes there, none playing: Free stays
+    const bool kept = scene_kept(project, scene);
     for (unsigned t = 0; t < track_count; ++t) {
-        if (!sequence_takes(project.tracks[t]) && t != selected) continue;
-        auto& target = patterns.at[t][scene];
-        if (target.empty() && length && (target.length != length || target.free != free_now)) { // silent, as long as the sequence
-            target.length = length; target.free = free_now;
-            sync_pattern(t, scene);
+        if (!sequence_takes(project.tracks[t])) continue;
+        const int target = scene_target(project.tracks[t], scene);
+        if (target == scene_plays_on) continue; // it keeps nothing for the track: it plays on
+        if (target == scene_stops) { track_off(t); continue; }
+        auto& pattern = patterns.at[t][unsigned(target)];
+        if (pattern.empty() && length && (pattern.length != length || pattern.free != free_now)) { // silent, as long as the sequence
+            pattern.length = length; pattern.free = free_now;
+            sync_pattern(t, unsigned(target));
         }
-        launch(t, scene);
-        count += !target.empty();
+        launch(t, unsigned(target));
+        count += !pattern.empty();
     }
     const auto& s = project.scenes[scene];
     if (s.tempo) { // on the bar the patterns take over on (stopped, at once)
@@ -42,11 +80,12 @@ void Context::launch_scene(unsigned scene, bool quiet) {
         send({Type::SceneTempo, 0, 0, 0, int16_t(s.tempo)});
         dirty = true;
     }
-    ui.scene = uint8_t(scene);
+    project.scene = uint8_t(scene);
     if (quiet) return;
     std::string text = "SEQ " + std::to_string(scene + 1);
     if (s.name[0]) text += std::string(" ") + s.name;
-    text += ": " + std::to_string(count) + (count == 1 ? " track" : " tracks");
+    if (kept) text += ": " + std::to_string(count) + (count == 1 ? " track" : " tracks");
+    else text += ": new, plays on";
     if (s.tempo) text += ", " + std::to_string(s.tempo / 10) + (s.tempo % 10 ? "." + std::to_string(s.tempo % 10) : "") + " BPM";
     notice(text);
 }
@@ -80,12 +119,30 @@ void Context::name_track(unsigned t) {
     open_name(NameTarget::Track, track.name[0] ? std::string(track.name) : "TRACK " + std::to_string(name_track_at + 1), name_length - 1, true);
 }
 
+// A sequence as it is now, for an undo.
+static SceneState scene_state(const Project& project, unsigned scene) {
+    SceneState state;
+    state.index = uint8_t(scene % pattern_count);
+    state.scene = project.scenes[state.index];
+    for (unsigned t = 0; t < track_count; ++t) state.kept[t] = project.tracks[t].in_scene[state.index];
+    return state;
+}
+
+// ERASE + pad on Sequences: the sequence keeps nothing, and loses its name, tempo and colour; one undo.
 void Context::clear_scene(unsigned scene) {
-    auto& s = project.scenes[scene % pattern_count];
-    if (s.plain()) { notice("SEQ " + std::to_string(scene % pattern_count + 1) + " has no name, tempo or colour"); return; }
-    s = Scene {};
+    scene %= pattern_count;
+    const std::string name = "SEQ " + std::to_string(scene + 1);
+    if (project.scenes[scene].plain() && !scene_kept(project, scene)) { notice(name + " is empty"); return; }
+    Edit edit;
+    edit.what = "Clear " + name;
+    edit.track = ui.track;
+    edit.scene_before = std::make_unique<SceneState>(scene_state(project, scene));
+    project.scenes[scene] = Scene {};
+    forget_scene(project, scene);
+    edit.scene_after = std::make_unique<SceneState>(scene_state(project, scene));
+    edits.push(std::move(edit));
     dirty = true;
-    notice("SEQ " + std::to_string(scene % pattern_count + 1) + " cleared");
+    notice(name + " cleared");
 }
 
 // The selected track's pattern's follow action, from its cards on SCENES (one undo a turn: the pattern's).
@@ -103,57 +160,48 @@ void Context::set_follow(Binding::Kind kind, int value) {
     if (f != was) sync_pattern(ui.track, track().pattern);
 }
 
-// B3 ALL on SCENES: the pattern in hand's follow action onto every track's pattern with notes in its column; one undo.
+// B3 ALL on SEQUENCES: the pattern in hand's follow action onto the pattern every other used track is on (with
+// notes, not off); one undo.
 void Context::follow_to_column() {
-    unsigned column = track().pattern % pattern_count;
     PatternFollow f = pattern().follow;
     Edit edit;
-    edit.what = "Follow to SEQ " + std::to_string(column + 1);
+    edit.what = "Follow to SEQ " + std::to_string(project.scene % pattern_count + 1);
     edit.track = ui.track;
-    edit.column = int16_t(column);
     for (unsigned t = 0; t < track_count; ++t) {
-        const auto& p = patterns.at[t][column];
-        if (t == ui.track % track_count || !project.tracks[t].used() || p.empty() || p.follow == f) continue;
+        const auto& tr = project.tracks[t];
+        const unsigned at = tr.pattern % pattern_count;
+        const auto& p = patterns.at[t][at];
+        if (t == ui.track % track_count || !tr.used() || tr.off || p.empty() || p.follow == f) continue;
         Pattern after = p;
         after.follow = f;
-        edit.column_before.emplace_back(uint8_t(t), p);
-        edit.column_after.emplace_back(uint8_t(t), std::move(after));
+        edit.patterns_before.push_back({uint8_t(t), uint8_t(at), p});
+        edit.patterns_after.push_back({uint8_t(t), uint8_t(at), std::move(after)});
     }
-    if (edit.column_after.empty()) { notice("SEQ " + std::to_string(column + 1) + ": nothing else to follow"); return; }
-    for (const auto& [t, value] : edit.column_after) restore_pattern(t, column, value);
-    unsigned count = unsigned(edit.column_after.size());
+    if (edit.patterns_after.empty()) { notice("Nothing else to follow"); return; }
+    for (const auto& p : edit.patterns_after) restore_pattern(p.track, p.pattern, p.value);
+    unsigned count = unsigned(edit.patterns_after.size());
     edits.push(std::move(edit));
     dirty = true;
     notice("Follow to " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
 }
 
-// CAPTURE on Scenes (Shift + B2, then a pad): what plays becomes scene n, each used track's playing pattern copied
-// into its pattern n, one undo. Patterns with notes there would be replaced: asked first ("Replace 2 patterns in S5?").
-void Context::capture_scene(unsigned column, bool asked) {
-    column %= pattern_count;
+// CAPTURE on Sequences (Shift + B2, then a pad): sequence n keeps what every used track is on now (off where it is
+// stopped) and becomes the sequence in hand; one undo. No notes are copied.
+void Context::capture_scene(unsigned scene) {
+    scene %= pattern_count;
     ui.scene_capture = false;
+    if (host.song_playing()) { notice("Not while the song plays"); return; }
     Edit edit;
-    edit.what = "Capture SEQ " + std::to_string(column + 1);
+    edit.what = "Capture SEQ " + std::to_string(scene + 1);
     edit.track = ui.track;
-    edit.column = int16_t(column);
-    unsigned replaced = 0;
-    for (unsigned t = 0; t < track_count; ++t) {
-        if (!project.tracks[t].used()) continue;
-        unsigned from = host.pattern_of(t) % pattern_count;
-        if (from == column) continue; // it plays this column already
-        const auto& was = patterns.at[t][column];
-        if (!was.empty()) ++replaced;
-        edit.column_before.emplace_back(uint8_t(t), was);
-        edit.column_after.emplace_back(uint8_t(t), patterns.at[t][from]);
-    }
-    if (edit.column_after.empty()) { notice("SEQ " + std::to_string(column + 1) + ": every track plays it already"); return; }
-    if (replaced && !asked) { ask(*this, UiState::Ask::CaptureScene, int(column)); return; }
-    for (const auto& [t, value] : edit.column_after) restore_pattern(t, column, value);
-    unsigned count = unsigned(edit.column_after.size());
+    edit.scene_before = std::make_unique<SceneState>(scene_state(project, scene));
+    unsigned count = keep_all(project, scene, stopped_now());
+    if (!count) { notice("No tracks to capture"); return; }
+    edit.scene_after = std::make_unique<SceneState>(scene_state(project, scene));
     edits.push(std::move(edit));
+    project.scene = uint8_t(scene);
     dirty = true;
-    ui.scene = uint8_t(column);
-    notice("SEQ " + std::to_string(column + 1) + " captured: " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
+    notice("SEQ " + std::to_string(scene + 1) + " captured: " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
 }
 
 unsigned Context::tempo_now() const {

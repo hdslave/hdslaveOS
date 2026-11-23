@@ -109,6 +109,7 @@ void Context::reset_settings() {
     input_changed(); // Input Config's source and monitor as they come
     send_click();
     send_repeat_velocity();
+    send_mute_kind();
     notice("Factory settings");
 }
 
@@ -219,8 +220,8 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (!config_port || !config.program_change || (config.in_channel && config.in_channel != channel)) return;
         int pattern = m.getProgramChangeNumber();
         if (pattern >= int(pattern_count)) return;
-        for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, unsigned(pattern));
-        c.notice("Program change: P" + std::to_string(pattern + 1));
+        c.launch_scene(unsigned(pattern), true); // sequence n, as a pad on Sequences
+        c.notice("Program change: SEQ " + std::to_string(pattern + 1));
         return;
     }
     uint16_t tracks = note_tracks(config, own, heard, c.ui.track, unsigned(channel), config_port);
@@ -299,7 +300,7 @@ void MidiIo::do_remote(Context& c, const RemoteJob& job) {
         c.notice("Track " + std::to_string(job.index + 1));
         break;
     case K::Pattern:
-        c.launch(c.ui.track % track_count, job.index);
+        c.pick(c.ui.track % track_count, job.index);
         c.notice("Pattern " + print_pattern_name(job.index));
         break;
     case K::Scene:
@@ -651,9 +652,10 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
         hand_sum = hand_max = hand_made_sum = hand_woke_sum = 0; hand_count = 0;
     }
     pending.drop_front(sent);
-    // While SysEx goes out nothing above is sent, so a message already due would wake this thread again at once,
-    // and again, for as long as the SysEx takes: woken a millisecond on instead.
-    if (pending.size()) out.wake_at(Clock::time_point(std::chrono::nanoseconds(sysex.active ? std::max(pending[0].due, now_ns + 1000000) : pending[0].due)));
+    // While SysEx goes out nothing waiting is sent, so a message already due would wake this thread again at once,
+    // and again, for as long as the SysEx takes. The SysEx's own wake (its next piece) comes back here, and the
+    // pass that sends its last piece sends what waits behind it.
+    if (pending.size() && !sysex.active) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
 }
 
 std::string MidiIo::summary(const EngineHost& host) const {

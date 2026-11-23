@@ -348,7 +348,7 @@ void Shell::press(Button b, bool pressed) {
     // and does its own job.
     if (pressed && ui.history && !ui.exit_open && history_button(context_, b)) return;
     if (b == Button::Seq && (!ui.exit_open || !pressed)) { seq_press(context_, pressed); return; } // tap, hold or Shift (shell/seq_layer.cpp)
-    if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
+    if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Stop, Seq Record, Push
     if (pressed && !ui.exit_open && (b == Button::TopLeft || b == Button::TopMiddle || b == Button::TopRight) &&
         sample_key(context_, b == Button::TopLeft ? 0 : b == Button::TopMiddle ? 1 : 2)) return; // Sample held: Stage's sections
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
@@ -566,6 +566,7 @@ void Shell::press(Button b, bool pressed) {
         else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && project_folder_up(context_)) {
             // up a folder, done
         }
+        else if (ui.shift && ui.page == PageId::Tracks && context_.track().used()) page.push(context_); // the Name sheet (pages/tracks_page.cpp)
         else if (ui.shift) context_.back();
         else encoder_press(enc, context_.now); // its job waits for the release: held, it opens the MENU (shell/menu.h)
         break;
@@ -847,10 +848,10 @@ void copy_track_light(Track& to, const Track& from) {
 void copy_light(Project& to, const Project& from) {
     auto& [name, tempo, seq_tempo, pattern_tempo, signature, swing, root, scale, punch_target, punch_bank, punch_depth, punch_snap, punch_tail,
            punch_quantize, pad_fx_params, flex, tracks, knob_fx, compressor, song, buses, samples, chops, plugins, master, looper, loop_mix, loop_fx,
-           modulators, macros, scenes] = to;
+           modulators, macros, scenes, scene] = to;
     const auto& [name_, tempo_, seq_tempo_, pattern_tempo_, signature_, swing_, root_, scale_, punch_target_, punch_bank_, punch_depth_, punch_snap_,
                  punch_tail_, punch_quantize_, pad_fx_params_, flex_, tracks_, knob_fx_, compressor_, song_, buses_, samples_, chops_, plugins_, master_,
-                 looper_, loop_mix_, loop_fx_, modulators_, macros_, scenes_] = from;
+                 looper_, loop_mix_, loop_fx_, modulators_, macros_, scenes_, scene_] = from;
     put(name, name_); put(tempo, tempo_); put(seq_tempo, seq_tempo_); put(pattern_tempo, pattern_tempo_); put(signature, signature_);
     put(swing, swing_); put(root, root_); put(scale, scale_); put(punch_target, punch_target_); put(punch_bank, punch_bank_);
     put(punch_depth, punch_depth_); put(punch_snap, punch_snap_); put(punch_tail, punch_tail_); put(punch_quantize, punch_quantize_);
@@ -859,7 +860,7 @@ void copy_light(Project& to, const Project& from) {
     put(knob_fx, knob_fx_); put(compressor, compressor_); put(song, song_); put(buses, buses_); put(samples, samples_);
     (void)chops; (void)chops_; // not copied: as the whole copy leaves them
     put(plugins, plugins_); put(master, master_); put(looper, looper_); put(loop_mix, loop_mix_); put(loop_fx, loop_fx_);
-    put(modulators, modulators_); put(macros, macros_); put(scenes, scenes_);
+    put(modulators, modulators_); put(macros, macros_); put(scenes, scenes_); put(scene, scene_);
 }
 bool same_kits(const Project& a, const Project& b) {
     for (unsigned t = 0; t < track_count; ++t) {
@@ -909,7 +910,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         copy_light(out.project, *project_);
     }
     out.audio_peaks = context_.audio_peaks; // freeze plan F3
-    out.plugin_screen = context_.plugins ? context_.plugins->screen_frame() : nullptr; // whichever page is in view
+    out.jams = context_.jam_view;           // jam capture: JAMS on Song
     out.pattern = context_.pattern();
     for (unsigned t = 0; t < track_count; ++t)
         out.has_notes[t] = !patterns_->at[t][project_->tracks[t].pattern].empty();
@@ -943,6 +944,8 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
+    out.plugin_skin = context_.plugins && ui_.plugin_panel.skin_page != -1 ? context_.plugins->skin(ui_.plugin_panel.entry) : nullptr;
+    out.plugin_picture = context_.plugins && ui_.plugin_panel.screen ? context_.plugins->screen_picture() : nullptr;
     if (context_.plugins && ui_.page == PageId::Stage) { // Stage PRESETS: the track's plug-in's
         const auto& t = project_->tracks[ui_.track % track_count];
         if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && stage_page_now(ui_, t, false).kind == StageKind::PluginSound)
@@ -1125,7 +1128,16 @@ std::string Shell::phase10_summary() const {
            " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_held=" + std::to_string((b >> 9) & 1) +
            " melodee_map=" + std::to_string((b >> 10) & 1) +
            " melodee_gesture=" + std::to_string((b >> 12) & 1) + " melodee_song_clips=" + std::to_string((b >> 16) & 0xfff) +
-           " melodee_engine=" + std::to_string(b >> 28);
+           " melodee_engine=" + std::to_string(b >> 28) + jam_summary();
+}
+
+// Jam capture: the run's bars and whether it logs now, the jams kept, JAMS open, and the song's markers and tempo
+// points (what TAKE adds).
+std::string Shell::jam_summary() const {
+    uint32_t j = jam_bits.load(std::memory_order_relaxed);
+    return " melodee_jam=" + std::to_string(j & 0x3ff) + "," + std::to_string((j >> 10) & 1) + " melodee_jams=" + std::to_string((j >> 11) & 0xf) +
+           " melodee_jam_sheet=" + std::to_string((j >> 15) & 1) + " melodee_song_markers=" + std::to_string((j >> 16) & 0x1f) +
+           " melodee_song_tempo_points=" + std::to_string((j >> 21) & 0x7f);
 }
 
 // Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).

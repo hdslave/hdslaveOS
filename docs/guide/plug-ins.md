@@ -26,8 +26,14 @@ Melodee loads plug-ins built for the MPC's ARM processor:
   Surge XT needs its data folder: put `SurgeXTData` (the `resources/data`
   folder of Surge XT's source, for the same version) next to
   `Surge XT.clap`. Without it Surge XT has no presets or wavetables.
-- [Open MPC](https://open-mpc.github.io) plug-in folders (a VST2 `.so`
-  with a `plugin-meta.xml`).
+- MPC plug-in folders, named `Maker - VST - Name`: the folder of a
+  `-mpc-sdk.zip` (Akai's plug-in format, with a `plugin.json`), or an
+  [Open MPC](https://open-mpc.github.io) folder (a VST2 `.so` with a
+  `plugin-meta.xml`). Melodee opens the 64-bit build when the folder has
+  one, else the 32-bit build. The plug-in's data (samples, skins, presets)
+  is read from the card. Plug-ins kept in `VST2 Plugins` at the top of the
+  card, where MPC Sample 1.4 reads them, load too: press **B1** (**BACK**)
+  up to the top of the card and open `VST2 Plugins`.
 - VST2 `.so` files for 64-bit ARM (aarch64), or 32-bit ARM (armv7). 32-bit
   plug-ins run in a separate bridge process. If one crashes, only the
   bridge stops.
@@ -55,12 +61,14 @@ picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
 unzipped stays, dimmed, with **Won't unzip** (or **Card full** when the
 card has no room for it). Zips in other folders on the
-card are left as they are.
+card are left as they are. Other MPC plug-in releases install the same
+way: copy their `-mpc-sdk.zip` into `Melodee/Plugins`.
 
 To install a plug-in without moving the card, connect the MPC to a computer
 with USB-C and open **http://melodee.local** (or **http://192.168.155.1**) while Melodee runs. On
 **Device**, drop the `-mpc-sample.zip` on **Plug-ins** and press **Install**. Melodee
 unzips it into `Melodee/Plugins` and the header shows **Plug-in installed**.
+An open plug-in picker lists it at once.
 To remove one, press the delete button on its row under **Installed**.
 The same page updates Melodee: drop the release zip on **Update**, press
 **Send**, then press **INSTALL** on the MPC. Its **Quickstart** and
@@ -94,17 +102,36 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 [Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
 
 **Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
-on Stage (**EDIT**) to see the same parameters there.
+on Stage (**EDIT**) to see the same parameters there. A plug-in that draws its
+own screen shows that instead (see
+[A plug-in's own screen](#a-plug-ins-own-screen)).
 
 ![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
 
-- **K1**–**K3** set the three parameters shown, in their colours. Each card
-  shows the parameter's name.
-- Turn the encoder or press **−** / **+** to move to other parameters.
+- The page shows the plug-in's parameters in rows of three, each over its
+  pot: **K1**, **K2**, **K3**. The row the pots turn is raised, in their
+  colours. A pot that has not reached its parameter's value yet shows faint,
+  with a white dot where the pot is.
+- The plug-in's parameters come in pages, named at the top left; the dots
+  at the right show which page is open. The pages are the plug-in's own (an
+  Open MPC plug-in's skin tabs, a CLAP plug-in's pages), then its groups of
+  parameters.
+- Turn the encoder to move to the next row of three. Press **−** / **+** to
+  go to the page before or after.
+- A page with an envelope (attack, decay, sustain, release) or a filter
+  (cutoff and resonance) draws it above the row.
+- A page file sets the pages by hand: which parameters, their order, shorter
+  names and a picture. Put it in `Melodee/Plugin Pages/` on the card; some
+  plug-ins bring their own, and Melodee has one for Neural Amp Modeler. The
+  format is in [Plug-in page files](../PLUGIN_PAGES.md).
+- A page file can bring a skin: the maker's own art for the page, with its
+  knobs and sliders turning with the values. On the controls **K1**–**K3**
+  turn, a white dot shows where a pot sits until it reaches the value.
+  Settings > SCREEN > **Plug-in screens** turns skins and plug-ins' own
+  screens off for every plug-in.
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
-- The header shows how much of each audio block the plug-in uses.
 - **B1** (**PLUG-INS**) opens the picker. **B2** (**PRESETS**) opens the
   plug-in's presets, when it has some. Picking another plug-in there asks
   "Replace Surge XT?" first. The old plug-in's sound and settings go;
@@ -137,7 +164,12 @@ folder it is in. The list opens in the folder of the preset picked last.
 
 ![Presets in folders](../images/screens/pluginpresetfolders.png)
 
-LV2 plug-ins list their presets too. A CLAP plug-in's presets show a moment
+LV2 plug-ins list their presets too. An MPC plug-in folder's own preset
+files (the `.xpl` files in its `Presets` folder) list after the plug-in's
+programs, in a **Presets** folder, or at the top when the plug-in has no
+programs of its own. A preset file with the same name as one of the
+plug-in's programs is not listed twice. A CLAP plug-in's presets, and an
+MPC plug-in's preset files, show a moment
 after it loads; until then the page says **LOOKING**. The first time,
 Melodee reads every preset file, which takes a while for a plug-in with
 thousands. It keeps what it read in `Melodee/Plugin Data/.cache`, so later
@@ -179,7 +211,36 @@ encoder to **PANEL** and push it. The wheel, encoder push, **− / +** and
 plug-in track's Edit page. A kit pad's own chain and Knob FX take no
 plug-ins.
 
+A plug-in effect that draws its own screen draws under the slots instead (see
+[A plug-in's own screen](#a-plug-ins-own-screen)).
+
 ![A plug-in effect's sheet](../images/screens/rackpluginsheet.png)
+
+## A plug-in's own screen
+
+Some plug-ins draw their own page on the MPC Sample. Melodee keeps **B1**–**B3**
+and draws nothing over the plug-in's knobs: the plug-in shows where a pot sits
+until it reaches its value. **K1**–**K3** turn the three parameters it names.
+
+- **On a plug-in track**: Edit shows the plug-in's page. On Stage, **B1** goes
+  **PRESETS**, **PANEL** (its page), **EDIT** (Melodee's pages of its
+  parameters). On its page the encoder, its push and **−** / **+** are the
+  plug-in's. **SHIFT** + **B3** on Edit swaps its page and Melodee's.
+
+![PANEL: a plug-in's own page](../images/screens/stagepluginpanel.png)
+
+- **As an effect**: on a chain the plug-in draws everything under the slots,
+  with no cards. Push opens its full page; **B3** or **SHIFT** + push goes
+  back. **SHIFT** + **B3** opens the slot's sheet (on any effect).
+
+![A plug-in effect's own strip](../images/screens/rackpluginscreen.png)
+
+![Push: its full page](../images/screens/rackpluginpanel.png)
+
+- Settings > SCREEN > **Plug-in screens** off: Melodee's own pages for every
+  plug-in.
+
+Plug-in makers: [Plug-in screens](../PLUGIN_SCREENS.md).
 
 ## Neural Amp Modeler
 

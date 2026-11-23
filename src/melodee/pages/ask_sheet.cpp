@@ -159,21 +159,6 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         verb = "DELETE";
         break;
     }
-    case Ask::CaptureScene: { // Scenes' CAPTURE onto a column with notes (shell/scene_jobs.cpp)
-        unsigned column = unsigned(s.ui.ask_target) % pattern_count, replaced = 0;
-        for (unsigned t = 0; t < track_count; ++t) {
-            if (!s.project.tracks[t].used() || s.playing_patterns[t] % pattern_count == column) continue;
-            if (s.sketches[t][column].notes || s.sketches[t][column].moves) ++replaced;
-        }
-        sheet.icon = Icon::Pattern;
-        sheet.title = "Replace " + count_of(replaced, "pattern", "patterns") + " in SEQ " + juce::String(column + 1) + "?";
-        sheet.lines = {"They get the patterns playing now.", undo_line};
-        sheet.chip = "SEQ " + juce::String(column + 1);
-        sheet.chip_colour = colour_of(s);
-        sheet.undo = true;
-        verb = "REPLACE"; verb_glyph = Icon::Swap;
-        break;
-    }
     case Ask::ReplacePlugin: { // a picked plug-in over one in use (shell/plugin_jobs.cpp)
         sheet.icon = Icon::Plug;
         sheet.title = "Replace " + juce::String::fromUTF8(s.ui.ask_name.data()) + "?";

@@ -375,7 +375,7 @@ void import_mpc(LoadedProject& l, const std::string& root) {
     l.imported = true;
     l.note = "Opened a copy of " + fs::path(l.path).stem().string();
     if (report.missing) l.note = std::to_string(report.missing) + " samples missing";
-    else if (report.over_limit || report.regions_left_out) l.note += ", some left out";
+    else if (report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out) l.note += ", some left out";
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
     for (const char* tail : project_folders) {
@@ -559,17 +559,19 @@ void ProjectStore::scan() {
                 e.projects = projects_in(item.path(), extension);
             } else if (item.path().extension() == extension) {
                 e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count());
-                // Its size in tracks and its tempo, read from the file itself: once for the file as it stands (its
-                // time and size), not again for every other file saved beside it.
+                // Its size in tracks and its tempo, read from the file itself: once while its time and size stand,
+                // not again for every save, setting or usage line written beside it.
                 const uint64_t bytes = uint64_t(item.file_size(error));
-                auto& known = scanned[e.path];
-                if (!known.ok || known.modified != e.modified || known.bytes != bytes) {
-                    known = {e.modified, bytes, 0, 0, false};
+                auto& known_file = scanned[e.path];
+                if (!known_file.ok || known_file.modified != e.modified || known_file.bytes != bytes) {
+                    known_file = {e.modified, bytes, 0, 0, false};
                     auto project = std::make_unique<Project>();
                     auto patterns = std::make_unique<PatternBank>();
-                    if (load_project(read_file(e.path), *project, *patterns).empty()) { known.tracks = project->used_tracks(); known.tempo = project->tempo; known.ok = true; }
+                    if (load_project(read_file(e.path), *project, *patterns).empty()) {
+                        known_file.tracks = project->used_tracks(); known_file.tempo = project->tempo; known_file.ok = true;
+                    }
                 }
-                if (known.ok) { e.tracks = known.tracks; e.tempo = known.tempo; }
+                if (known_file.ok) { e.tracks = known_file.tracks; e.tempo = known_file.tempo; }
             } else if (is_mpc_project(e.path)) {
                 e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count()); // read only when opened: 10 MB of JSON
             } else {

@@ -21,9 +21,10 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/sample_library.h"
-#include "melodee/shell/features.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/ui/tokens.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -42,7 +43,6 @@ int free_entry(const Project& project) {
     return -1;
 }
 
-bool chain_page(PageId page) { return page == PageId::Rack || page == PageId::Bus || page == PageId::Master; }
 } // namespace
 
 // One instance plays one place: a track copy (or a copied chain) leaves two users on an entry, and the second and
@@ -194,11 +194,18 @@ void Context::swap_plugin(Edit& e, bool after) {
 void Context::set_plugin_param(int32_t id, int value) {
     if (!plugins) return;
     unsigned entry = plugin_binding_entry(id), shown = plugin_binding_shown(id);
-    plugins->set_param(entry, shown, value);
     auto& panel = ui.plugin_panel;
-    if (panel.entry == entry)
+    if (shown >= plugin_screen_slot) { // one of the three its own screen names
+        unsigned k = shown - plugin_screen_slot;
+        plugins->set_screen_param(entry, k, value);
+        if (panel.entry == entry && panel.screen && k < 3) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
+        dirty = true;
+        return;
+    }
+    plugins->set_param(entry, shown, value);
+    if (panel.entry == entry && !panel.screen)
         for (unsigned k = 0; k < 3; ++k)
-            if (panel.knob[k] >= 0 && unsigned(panel.knob[k]) == shown) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
+            if (panel.row * 3u + k == shown) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
     dirty = true;
 }
 
@@ -287,35 +294,26 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
+// An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
+bool Context::plugin_screen_input(ScreenKey key, int value) {
+    const auto at = plugin_screen_place(project, ui);
+    if (at.entry < 0 || !plugins || !ui.plugin_panel.screen) return false;
+    plugins->screen_input(unsigned(at.entry), {key, int32_t(value), ui.shift});
+    return true;
+}
+
 int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
     if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
     if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
-    if (chain_page(ui.page) && !ui.picker_open) {
+    if (fx_chain_page(ui.page) && !ui.picker_open) {
         unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
         const auto& chain = project.chain(n);
         if (k < chain.count() && chain.slots[k].kind == plugin_effect_kind && unsigned(chain.slots[k].params[0]) < max_plugins)
             return chain.slots[k].params[0];
     }
     return -1;
-}
-
-int Context::plugin_screen_in_view() const {
-    if (ui.fx_panel_entry != no_plugin && chain_page(ui.page) && plugin_in_focus() == ui.fx_panel_entry) return ui.fx_panel_entry;
-    const auto& t = project.tracks[ui.track % track_count];
-    if (t.engine != EngineKind::Plugin || t.plugin >= max_plugins) return -1;
-    if (ui.page == PageId::Edit) return t.plugin;
-    if (ui.page == PageId::Stage && stage_page_now(ui, t, stage_skip(project, ui, t)).kind == StageKind::PluginEdit) return t.plugin;
-    return -1;
-}
-
-bool Context::plugin_screen_input(PluginScreenKey key, int value) {
-    int entry = plugin_screen_in_view();
-    if (entry < 0 || !plugins || ui.plugin_panel.entry != unsigned(entry) || !ui.plugin_panel.screen) return false;
-    plugins->screen_input(unsigned(entry), {uint32_t(key), value, ui.shift});
-    if (ui.shift) ui.shift_used = true;
-    return true;
 }
 
 void Context::plugins_tick(uint32_t at) {
@@ -341,24 +339,35 @@ void Context::plugins_tick(uint32_t at) {
         plugin_panel_at = at - 50; // enable PRESETS immediately, including a synth's very first patch
         dirty = true;
     }
-    const int entry = plugin_in_focus();
-    if (ui.fx_panel_entry != no_plugin && entry != ui.fx_panel_entry) ui.fx_panel_entry = no_plugin;
-    const int screen = plugin_screen_in_view();
-    { // the plug-in screen in view, and what it is told: each tick, so a pot's move reaches its picture at once
-        PluginScreenContext told;
-        for (unsigned k = 0; k < 3; ++k) { told.pots[k] = ui.pots[k].position; told.engaged[k] = ui.pots[k].engaged; }
-        told.shift = ui.shift;
-        told.playing = host.playing();
-        told.accent = 0xff000000u | ui::palettes[ui.settings.palette % ui::palettes.size()].tracks[ui.track % 16][0];
-        plugins->screen_focus(screen >= 0 ? unsigned(screen) : no_plugin, told);
-    }
     delete_tick(*this); // the picker listed again once a plug-in is deleted (shell/delete_jobs.h)
+    // The web page installed or deleted a plug-in: an open picker lists again, its cursor on the plug-in it was on.
+    if (plugins->card_changes() != plugin_card_seen) {
+        plugin_card_seen = plugins->card_changes();
+        if (ui.page == PageId::Plugins) {
+            auto view = plugins->view();
+            const PluginFile on = ui.plugins_cursor < view.files.size() ? view.files[ui.plugins_cursor] : PluginFile {};
+            plugin_came_back = false;
+            plugins->browse(view.folder, on.path, on.id);
+        }
+    }
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
         plugin_view_seen = plugins->changes();
         auto view = plugins->view();
         ui.plugins_count = uint16_t(view.files.size());
         if (view.came_from >= 0 && !plugin_came_back) { ui.plugins_cursor = uint16_t(view.came_from); plugin_came_back = true; }
         if (ui.plugins_cursor >= ui.plugins_count) ui.plugins_cursor = uint16_t(ui.plugins_count ? ui.plugins_count - 1 : 0);
+    }
+    { // A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once.
+        ScreenView view;
+        if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {
+            view.entry = uint8_t(at.entry);
+            view.area = at.area;
+            view.shift = ui.shift;
+            view.playing = host.playing();
+            view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;
+            for (unsigned k = 0; k < 3; ++k) { view.pots[k] = ui.pots[k].position; view.live[k] = ui.pots[k].engaged ? 1 : 0; }
+        }
+        plugins->screen_view(view);
     }
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
     plugin_panel_at = at;
@@ -367,9 +376,9 @@ void Context::plugins_tick(uint32_t at) {
         if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
         else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
     }
+    int entry = plugin_in_focus();
     if (entry < 0) { ui.plugin_panel = PluginPanel {}; return; }
-    plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], screen == entry, ui.plugin_panel);
-    if (ui.fx_panel_entry != no_plugin && !ui.plugin_panel.has_screen) ui.fx_panel_entry = no_plugin;
+    plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], ui.plugin_panel);
     ui.plugin_row[size_t(entry)] = ui.plugin_panel.row; // clamped to its rows
 }
 

@@ -15,6 +15,8 @@
 // last said, so the MIDI thread never calls into it for a value.
 #pragma once
 
+#include "melodee/plugin/screen_source.h"
+
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 #include <array>
@@ -35,13 +37,11 @@ struct clap_plugin_note_ports;
 struct clap_plugin_preset_load;
 struct clap_event_header;
 struct clap_output_events;
-struct clap_plugin_melodee_screen;
-struct melodee_screen_canvas;
-struct melodee_screen_input;
+struct melodee_screen;
 
 namespace melodee {
 
-class ClapInstance final : public juce::AudioPluginInstance
+class ClapInstance final : public juce::AudioPluginInstance, public ScreenSource
 {
 public:
     struct Info
@@ -59,10 +59,10 @@ public:
     // The rack's thread, a few times a second: what the plug-in asked of the main thread (request_callback, a
     // parameter rescan, a new latency) done now.
     void idle();
-    // Whether its next block should run although the rack let it sleep (plugin/idle_gate.h): it asked to be run
-    // (request_process, or its parameters' request_flush), or a value set here waits for it (a pot turned). Any
-    // thread; the next processBlock() takes both.
-    bool wantsProcess() const;
+    // Any thread: whether its next block should run although the rack let it sleep (plugin/idle_gate.h). It asked to
+    // be run (request_process, or its parameters' request_flush), or a value set here waits for it (a pot turned).
+    // The next processBlock() takes both.
+    bool wantsProcess() const override;
 
     const juce::String getName() const override { return name; }
     void fillInPluginDescription (juce::PluginDescription&) const override;
@@ -91,6 +91,24 @@ public:
     std::vector<Preset> findPresets (const juce::File& cache) const;
     void setPresets (std::vector<Preset>);
     const std::string& clapId() const { return info.id; }
+    // Pages (plugin/plugin_pages.h). module(): the group of the parameter at `index` (its place in getParameters())
+    // as clap_param_info.module gives it, "/" between levels ("" none). remotePages(): the plug-in's own pages of
+    // up to eight controls (CLAP remote-controls), asked now, as parameter indices; empty with none.
+    // remotePagesChanged(): it said they changed since remotePages() was last called.
+    struct RemotePage
+    {
+        std::string section, name;
+        std::vector<int> params;
+    };
+    std::string module (int index) const;
+    std::vector<RemotePage> remotePages();
+    bool remotePagesChanged() const;
+    // Its own screen (plugin/screen_source.h), when it offers one: the calls wait for no other main-thread call.
+    bool hasScreen() const override { return screen != nullptr; }
+    bool screenDraw (const melodee_screen_frame& frame, bool& changed) override;
+    bool screenInput (const melodee_screen_input& input, bool& used) override;
+    bool screenControls (std::array<int, 3>& indices) override;
+    bool takeRedraw() override;
     int getNumPrograms() override;                      // its presets (1 with none, as JUCE has it)
     int getCurrentProgram() override;                   // the one loaded here last (0 none yet)
     void setCurrentProgram (int) override;              // loads that preset, again if it is the one loaded
@@ -108,14 +126,6 @@ public:
     bool hasKeyOutput() const { return outputPorts.size() > 1 && outputPorts[1].channels > 0; }
     int keyFrames() const { return keyWritten; }
     const float* keyChannel (int channel) const;
-    // Melodee's plug-in screen (plugin/melodee_screen.h): whether it offers one, and its calls. Each is made only if
-    // no other main-thread call is running now (a preset scan, a save): false then, and the caller tries again later.
-    // paintWanted(): it asked to be painted (or had an input) since the last time this was asked; always at first.
-    bool hasScreen() const { return screen != nullptr; }
-    bool paintWanted();
-    bool screenPaint (const melodee_screen_canvas& canvas, bool& changed);
-    bool screenInput (const melodee_screen_input& input, bool& used);
-    bool screenKnobs (int32_t (&parameterIndices)[3]); // the parameters (indices, as getParameters()) on K1-K3, -1 none
 
     struct Host; // the clap_host it gives the plug-in, and what the plug-in asked of it
 
@@ -142,7 +152,7 @@ private:
     const clap_plugin_latency* latency = nullptr;
     const clap_plugin_tail* tail = nullptr;
     const clap_plugin_preset_load* presetLoad = nullptr;
-    const clap_plugin_melodee_screen* screen = nullptr;
+    const melodee_screen* screen = nullptr;
     std::vector<Preset> presets;    // under `mainLock`
     int currentPreset = -1;         // under `mainLock`
     juce::File file;

@@ -12,11 +12,11 @@
 // for half a second, and does not hear the song playing (a plug-in with a
 // sequencer of its own plays from Play alone; TRANSPORT off, it never hears
 // it). An effect sleeps once its input and output have been as quiet for as
-// long; the song playing does not matter. Any MIDI for it, or sound in an
-// effect's input, wakes it for that block, and so does anything else waiting
-// for it (melodee-hdslave: a CLAP plug-in's request_process or request_flush,
-// a parameter value set for it); each counts it quiet again from there, as a
-// note does. Audio thread only; no allocation.
+// long; the song playing does not matter. Any MIDI for it, sound in an
+// effect's input, or anything else waiting for it (a CLAP plug-in's
+// request_process or request_flush, a parameter value set for it) wakes it
+// for that block and counts it quiet again from there, as a note does. Audio
+// thread only; no allocation.
 namespace melodee {
 
 class IdleGate {

@@ -656,8 +656,8 @@ hold to steer, Shift + Seq to zoom in**.
     follows the selected track's pattern again whenever that changes. Hold
     a pad, step the bank, tap a pad: a copy across banks.
   - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
-    or tenths); K1–K3 the pattern's length, Q and swing (Shift: any bar
-    count, time signature, metronome level), over Knob FX's.
+    or tenths); K1–K3 the pattern's length, Q and swing (Shift: the length
+    in sixteenths 1–64, time signature, metronome level), over Knob FX's.
   - B1–B3 open Sequences, Roll and Motion (the sheet stays away until Seq is
     let go); Seq Record starts a new take in the next empty pattern, armed
     (playing: recording at once). Other buttons keep their jobs.
@@ -693,15 +693,19 @@ hold to steer, Shift + Seq to zoom in**.
   down (not on a kit); the wheel picks, K1 the amount of the first three,
   B3 DO IT or Push makes it into the next empty pattern, which plays from
   the next bar (one undo); B1 BACK.
-- **Sequences** (on Patterns; roadmap P5): a sequence is a column, pattern n of
-  every track, with a name and a tempo of its own. Push on Patterns
-  launches the sequence of the selected track's pattern: pattern n on every track holding notes
-  there (and on the selected track) at the next bar (stopped, at once),
-  tracks with nothing there playing on; its tempo takes over on that bar,
-  or with its patterns when Stop comes first
-  (with BPM per pattern on, a pattern's own still leads). Shift + B1 SEQUENCE:
-  K1 sets the sequence's tempo (below 30 BPM: None), Push names it
-  (the ready names are the markers'). Files keep sequences in SCNE.
+- **Sequences** (roadmap P5, sequence links): a sequence keeps a pattern, or off, for each track
+  (Track::in_scene, model/scene_links.h), with a name and a tempo of its own. A pattern launched by
+  hand (Patterns, Seq held, Recall, VARY, TO PADS, a Remote pattern CC) is kept in the sequence in
+  hand (Project::scene, the one launched last); on the first pick in a sequence that keeps nothing,
+  every used track keeps what it is on (off when stopped). Launching a sequence queues each track's
+  kept pattern for the next bar (stopped, at once), stops a track kept off, and leaves a track it
+  keeps nothing for playing; follow actions, chains, Song and Program Change keep nothing. Seq +
+  Stop keeps the selected track off. Push on Patterns launches the sequence in hand again; its
+  tempo takes over on that bar, or with its patterns when Stop comes first (with BPM per pattern
+  on, a pattern's own still leads). Shift + B1 SEQUENCE: K1 sets the sequence's tempo (below 30
+  BPM: None), Push names it (the ready names are the markers'). Files keep sequences in SCNE and
+  the links, the tracks off and the sequence in hand in SEQL; a file without SEQL keeps pattern n
+  on every used track in each sequence with notes, a name, tempo or colour.
 - **Follow actions** (Patterns' Shift + B2 FOLLOW cards): what the selected track's pattern
   does once it has played a while, as melodee-ios's clips. K1 FOLLOW Next,
   Previous (round the track's patterns with notes), Any (another at
@@ -844,10 +848,31 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
+- **Mute** (Settings > SEQ, issue 27; `Settings::note_mutes`, Command
+  MuteMode): Audio (first) silences a muted track or kit pad at once;
+  Notes stops its new notes (pattern, pads, MIDI in, arp, Note Repeat, MIDI
+  out) and lets what it plays ring: the mix keeps it, a kit pad's voices
+  play on, a MIDI track's Note Offs go when due (no All Notes Off). AUDIO
+  tracks and frozen tracks play audio: muted, they are silent either way.
+  Back to Audio, what muted tracks and pads still play goes.
+- **Note preview** (Settings > SEQ, On by first; `Settings::note_preview`,
+  shell/note_preview.h): a note written or moved on Step Edit or Roll
+  without a pad or key playing it is heard once on the track, as long as the
+  sequencer holds it (60 ms to 1 s at the tempo), with its accent, 16 Levels
+  pitch and cutoff: a step set on the pads in STEPS, a held step's pitch
+  (the wheel; a kit lane: the pad it moved to), and on Roll the marked notes
+  moved up or down (Shift + wheel, Minus / Plus an octave) or pasted (Push).
+  Of several notes, those in the cursor's step, else the earliest; muted
+  ones are left out. A move with the wheel is heard once the wheel rests
+  150 ms, so a fast turn plays one note. The last preview stops when the
+  next is asked for. Pads and MIDI keys sound as they play, either way.
 - **Motion** (B3): the lanes of recorded pot moves (Seq Record + a pot
   writes at the playing tick; a kit pad's level, tune, pan, envelopes,
-  filter and more are lanes of that pad; Erase + pot asks, then clears the
-  lane, locks too), all three on one large graph in their knobs' colours,
+  filter and more are lanes of that pad, and so is its mute, issue 32:
+  Seq Record + Mute + pad writes the pad's MUTE lane, 1 or 0 with no glide,
+  `motion_pad_mute`; the pattern's start and Stop put the pads' mutes back
+  as set, and in mute mode the pads light the mute heard now; Erase + pot
+  asks, then clears the lane, locks too), all three on one large graph in their knobs' colours,
   the one in hand heavy, each lock a short raised bar at its value for as
   long as it holds; the cards are its legend. Motion is each pattern's own
   (up to 8192 points, at tick resolution): it goes with the pattern when it
@@ -1683,9 +1708,15 @@ the file holds, to the bit.
   slice of its own), or from where its steady beat starts when that is later
   (a free intro before it, and a free ending after its last beat, one slice
   each): its tempo, beats and where they fall are found when it
-  loads (the flux's autocorrelation, a beat tracker, the phase where the flux
-  is highest beat after beat; a loop's tempo exact from its length, and a
-  loop cut to bars that starts with an attack starts on a beat), the tempo
+  loads (the tempo from the flux's autocorrelation peaks, each twice and half
+  as fast, and the tempos its length is whole bars at, scored on the
+  autocorrelation, nearness to 135 BPM and how high the flux stands on their
+  beats, eighths and sixteenths, fitted on 1739 Apple Loops; a beat tracker,
+  the phase where the flux is highest beat after beat; a loop's tempo exact
+  from its length, and a loop cut to bars that starts with an attack starts
+  on a beat; Follow and Seq warp without # Beats take that tempo in the octave
+  nearest the project's, exact at whole bars of the region,
+  `shell/follow_tempo.h`), the tempo
   shown at the picture's top right; each cut takes the tracked beat within an
   eighth of a beat (so a take that drifts is followed), else the hit within
   30 ms. Which beat is a bar's 1 is the region's start: kicks and snares alone
@@ -1695,7 +1726,7 @@ the file holds, to the bit.
   pad 1 blinks red and plays the region; then the red walks to the pad of
   the slice the next tap makes, and only it cuts, each cut pulled onto the
   strongest hit; after pad 16 the pads turn to bank B with its pad 1 red, up
-  to 64 slices (`view_slice`, `red_slice`, `model/slice_banks.h`). A lit pad
+  to 128 slices (`view_slice`, `red_slice`, `model/slice_banks.h`). A lit pad
   tapped meanwhile plays again from its slice, the cuts after it gone (the
   MPC 3's way); stopped short of the end (another control, the page left)
   the sound stops and the red stays on the next pad (`chop_more`), tapped
@@ -2303,7 +2334,9 @@ while following.
   held where Shift + Play carries on.
 - **Mute mode** (Mute): the pads mute kit pads (bank in view) where they
   play a kit, tracks elsewhere; Shift + pad solos. Muted pads red, soloed
-  white. Shift + Mute unmutes everything. Kit pad mutes are saved.
+  white. Shift + Mute unmutes everything. Kit pad mutes are saved. With Seq
+  Record on, kit pad mutes land on the pads' MUTE lanes (Motion). Settings'
+  Mute: Audio or Notes (issue 27).
 - **Erase**: + pad on a kit, stopped, empties the pad; + an empty pad closes
   the gap: the pads after it move down one through its bank and the next
   (A's gap takes B01 onto A16 and B's pads down one, B16 left empty; C stays;
@@ -2423,10 +2456,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 
 - **What loads.** Builds for this MPC only: a `.vst3` bundle with
   `Contents/aarch64-linux/`, an `.lv2` bundle, a `.clap` library (both
-  aarch64), an
-  [Open MPC](https://open-mpc.github.io) plug-in folder (its
+  aarch64), an MPC plug-in folder (`Maker - VST - Name/`: Akai's
+  `plugin.json`, the MPC plug-in SDK's folder in a `-mpc-sdk.zip`, its
+  builds in `file64` / `file32`, at the top or in `VST/`; or an
+  [Open MPC](https://open-mpc.github.io) folder, its
   `plugin-meta.xml` beside a VST2 `.so`), or a VST2 `.so` on its own;
-  aarch64, or 32-bit ARM (armv7) through the bridge. The
+  aarch64, or 32-bit ARM (armv7) through the bridge. A folder's aarch64
+  build is opened before its armv7 one, at 44.1 kHz (the Open MPC engine
+  contract; `plugin/rate_bridge.h` converts). Plug-ins run from a copy in
+  RAM (the card is noexec); a plug-in folder's subfolders with no library
+  in them (`samples/`, `Plugin Skins/`, `Presets/`, `Content/`) are linked
+  from the card instead of copied (`stage_copy()`). The
   picker lists the rest dimmed with the reason ("Windows and Mac builds
   only"). Most commercial plug-ins have no Linux ARM build.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
@@ -2529,6 +2569,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   many presets it holds; Push opens one, B1 comes back out on it, and the
   folder holding the one picked has the check. PRESETS opens in the folder
   of the one picked last (`plugin/preset_rows.h`).
+  An MPC plug-in folder's `.xpl` files (`Presets/`, its subfolders as
+  preset folders) follow its programs, under a Presets folder (at the top
+  when it lists no programs), looked for once it plays as a CLAP plug-in's
+  are (`find_presets()`, `mpc_presets()`). Left out: a file whose
+  `<PLUGIN uid>` or state id is another plug-in's, and one named as a
+  program the plug-in lists (`same_preset_name()`: also a program name cut
+  to VST2's 23 characters; OxZygen's 200 files all are). Picking one sets
+  its state: `<state>` (JUCE base64) or `<state64>` (base64), a VST2 bank
+  or program file (`CcnK`: `FBCh`/`FPCh` chunk, `FxCk`/`FxBk` values) made
+  into `vst2::state` (`plugin/xpl_preset.h`); a program's chunk goes to
+  `setChunk` as one program, through the armv7 bridge too.
 - **Transport.** Every plug-in gets Melodee's transport as a JUCE play
   head (`PluginHandle` in `plugin/plugin_rack.cpp`): playing once any
   count-in is over, the place in quarter notes from the song's top (as
@@ -2692,7 +2743,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   files (`SysEx/` at the card's top, where older builds read them, too).
 
 Melodee makes no folder at the card's top: what it writes is under
-`Melodee/`. `autorun/` is the release's, which the stock firmware starts.
+`Melodee/`. `autorun/` is the release's, which the stock firmware starts;
+so is `autorun.sh` at the card's top, the only autorun firmware 1.4 runs
+(`base/install/top-autorun.sh`: it runs `autorun/autorun.sh`).
 
 Nothing is created on the card until something is saved. On a host,
 `$MELODEE_PROJECTS`, `$MELODEE_SAMPLES`, `$MELODEE_INTERNAL` and
@@ -2892,11 +2945,12 @@ of zip:
   release is deleted again.
 - **Plug-ins**: a plug-in zip (a release's `-mpc-sample.zip`). It is written
   to `Melodee/Plugins` and unzipped at once (`unzip_plugins()`); the header
-  shows **Plug-in installed** and the picker lists it the next time it
-  opens. A folder of the same name is replaced. A zip that will not unzip
+  shows **Plug-in installed** and an open picker lists it at once, its
+  cursor on the same plug-in. A folder of the same name is replaced. A zip that will not unzip
   is deleted again. **Installed** below lists them and scrolls; each row's delete button
   removes that entry from `Melodee/Plugins` (`POST /plugin/delete?file=`,
-  one name straight in the folder) and the header shows **Plug-in removed**.
+  one name straight in the folder), the header shows **Plug-in removed** and
+  an open picker lists without it.
 
 Uploads need the card on the MPC (not mounted on a computer). The server
 (`web/web_server.*`) serves one request at a time and refuses a Host that is

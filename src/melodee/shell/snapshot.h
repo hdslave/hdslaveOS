@@ -40,7 +40,7 @@ struct Snapshot {
     uint32_t sent_seen = 0, whole_at = 0;
     bool whole = true;
     std::shared_ptr<const TakePeaks> audio_peaks; // freeze plan F3: the takes' overviews (Context::audio_peaks)
-    PluginScreenFramePtr plugin_screen;           // a plug-in screen's newest picture (plugin/plugin_screen.h), shared
+    std::shared_ptr<const JamList> jams;         // jam capture: the jams kept (Context::jam_view), for JAMS
     UiState ui;
     Project project;
     Pattern pattern;                         // the selected track's pattern playing
@@ -99,6 +99,8 @@ struct Snapshot {
     bool files_top = true;             // nothing above it (B1 has no job)
     PluginRack::View plugins;          // the PLUG-INS picker: the folder listed
     PluginPrograms presets;            // PRESETS: the plug-in's programs
+    std::shared_ptr<const PluginSkin> plugin_skin; // the plug-in in the panel's skin (plugin/plugin_skin.h), null none
+    ScreenPicturePtr plugin_picture; // its own screen's newest picture (plugin/plugin_screen.h), null none
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;

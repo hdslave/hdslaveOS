@@ -5,7 +5,7 @@
 // it plays the whole region, and the red walks: the pad of the slice the next
 // tap makes blinks red, and tapped it cuts the region there (the other pads
 // wait; a lit one plays again from its slice, the cuts after it gone). After
-// pad 16 the pads turn to bank B and its pad 1 is red, up to D (64 slices).
+// pad 16 the pads turn to bank B and its pad 1 is red, up to H (128 slices).
 // Stopped short of the end, the red stays on the next pad: tapped, it plays
 // on from the last cut; played to the end, no red. A take is one undo step
 // (open_take / end_take). Each cut is pulled onto the strongest hit just before it,
@@ -29,8 +29,11 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     auto& sl = ui.slices;
     uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
     if (!frames || !sl.count) return;
-    auto audition = [&](uint32_t from, uint32_t to) {
-        Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(velocity)};
+    // A slice's pad plays it at the kit pad's speed and pitch, as its pad will (Warp, Semi, Fine); a take as the file
+    // is, since the red walks the region by the clock.
+    auto audition = [&](uint32_t from, uint32_t to, bool as_pad = false) {
+        const int kit = as_pad ? chop_kit_pad() : -1;
+        Command a {Command::Type::Audition, ui.track, 0, uint16_t(kit + 1), int16_t(velocity)};
         a.pad.sample = ui.chop_sample; a.pad.start = from; a.pad.end = to;
         send(a);
     };
@@ -81,7 +84,7 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     ui.chop_slice = uint8_t(slice);
     ui.chop_heard_at = 0; // the tap plays it
     if (slice_hit(pad, slice, velocity)) return; // Seq Record running: through its pad, and written (issue 24)
-    audition(sl.start[slice], sl.end(slice, frames));
+    audition(sl.start[slice], sl.end(slice, frames), true);
 }
 
 // Issue 24: the kit pad that plays Chop's sample, the one chopped (the last pad) or else the first holding it.
@@ -186,7 +189,7 @@ void Context::chop_tick(uint32_t ms) {
     if (ui.page != PageId::Chop || !frames || ui.chop_slice >= sl.count) return;
     const unsigned n = ui.chop_slice;
     const uint32_t a = sl.start[n], b = sl.end(n, frames);
-    Command c {Command::Type::Audition, ui.track, 0, 0, 100};
+    Command c {Command::Type::Audition, ui.track, 0, uint16_t(chop_kit_pad() + 1), 100}; // at the kit pad's speed, as a tap
     c.pad.sample = ui.chop_sample;
     c.pad.start = ui.chop_focus ? std::max(a, b > heard_tail ? b - heard_tail : 0) : (a > heard_lead ? a - heard_lead : 0);
     c.pad.end = b;

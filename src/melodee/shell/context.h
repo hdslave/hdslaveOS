@@ -9,11 +9,13 @@
 #include "melodee/model/project.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
+#include "melodee/model/jam_log.h"
 #include "melodee/plugin/plugin_screen.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/history.h"
+#include "melodee/shell/note_preview.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
@@ -61,7 +63,7 @@ public:
     int recording_punch = -1;                          // the punch being written, -1 none
     SongPunch punch_take {};
     void record_launch(unsigned track, unsigned pattern);
-    void finish_launches();
+    void finish_launches(uint16_t tracks = 0xffff);
     void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
     void end_punch();
     unsigned song_sixteenth() const;                   // where the song is, in sixteenths
@@ -160,6 +162,27 @@ public:
     // Seq Record while the song plays: pattern launches become clips from the
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar
+    // Jam capture (model/jam_log.h, shell/jam_jobs.cpp): each run outside Song, a bar at a time, kept as a jam when
+    // it stops; JAMS (Song's Shift + B1) lists them: B2 plays the picked one's FROM-TO, B3 (or Push) lays it after
+    // the song's end, ERASE deletes it (one undo). The jams are saved with the project (a JAMS section).
+    JamLog jam;              // the run being logged
+    JamList jams;            // the runs kept
+    std::shared_ptr<const JamList> jam_view; // the screen's copy, new on each change
+    JamBar jam_now;          // the bar playing, logged when the next begins or the transport stops
+    bool jam_running = false;
+    uint32_t jam_bar_seen = 0;
+    int jam_scene = -1;      // a sequence launched: the bar it takes over on gets its marker
+    bool jam_auditioning = false; // B2 on JAMS: the engine plays the jam as its song until it stops
+    bool jam_audition_heard = false; // and the engine has started it
+    void jam_tick();
+    void open_jams(bool open);
+    void pick_jam(int delta);     // the wheel and -/+ on JAMS: older (+) or newer (-)
+    void take_jam();
+    void erase_jam();
+    void audition_jam();          // B2 on JAMS: the picked jam's FROM-TO played as a song; again, it stops
+    void end_audition();          // the engine's song back to the project's
+    void publish_jams();          // the screen's copy and the counts, after any change to `jams`
+    void send_song(const Song& song); // a song to the audio thread (sync_song sends the project's)
     // Shift's second jobs.
     void double_length();     // Shift + Pad 3 (Double Seq): the pattern twice as long, played twice
     void half_length();       // Shift + Pad 2 (Half Seq): the first half only
@@ -276,6 +299,14 @@ public:
     }
     // Patterns (their cards: length, Q, swing; Shift: any bars, time signature, click)
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing (a chain ends: one tapped)
+    // Sequence links (model/scene_links.h, shell/scene_jobs.cpp): a pattern picked by hand, launched and kept in the
+    // sequence in hand (not while the song plays); true when that sequence kept nothing before. pick_off(): the track
+    // off (on the next bar while playing), kept so; track_off(): off without keeping (a sequence launch).
+    bool pick(unsigned track, unsigned pattern);
+    bool pick_off(unsigned track);
+    void track_off(unsigned track);
+    bool keep(unsigned track, int target); // target: a pattern or scene_stops
+    uint32_t stopped_now() const;          // tracks a follow action's STOP stopped, while patterns play
     // seq-sheet2 B (round 2, shell/chain_jobs.cpp): the pattern chain. chain_start() makes the selected track's chain
     // that one pattern, chain_add() puts another after the last (Seq held, a pad tapped after the first); chain_tick(),
     // each frame, queues a chained track's next pattern in the last bar of the one playing, so it begins as that ends.
@@ -284,19 +315,23 @@ public:
     void chain_sequence(unsigned pattern, bool first); // a chain of sequences: the selected track's chain, every track following it
     int8_t chain_lead = -1;                            // the track whose chain launches sequences (-1: chains are one track's)
     void chain_tick();
+    void sequence_chain_tick(unsigned t, uint32_t bar);
     std::array<bool, track_count> chain_queued {}; // the next of the chain is queued for the bar line
+    // A chain of sequences: the tick the lead's sequence in the chain began (or begins, queued; UINT32_MAX: at Play).
+    std::array<uint32_t, track_count> chain_from {};
     bool chaining = false;                         // chain_tick() launching: the chain stays
-    // Roadmap P5 (shell/scene_jobs.cpp): scenes, a column of patterns with a name and tempo of its own (Seq held +
-    // Shift + pad, or a pad on SCENES), and patterns' follow actions (model/follow.h; the audio thread brings them).
-    void launch_scene(unsigned scene, bool quiet = false); // pattern `scene` on every used track: a sequence (shell/sequences.h); quiet: no notice (the chain)
+    // Roadmap P5 (shell/scene_jobs.cpp): scenes, a pattern or off kept for each track with a name and tempo of its own
+    // (Seq held + Shift + pad, or a pad on SEQUENCES), and patterns' follow actions (model/follow.h; the audio thread
+    // brings them).
+    void launch_scene(unsigned scene, bool quiet = false); // each track on its kept pattern: a sequence (shell/sequences.h); quiet: no notice (the chain)
     void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
     void set_scene_colour(unsigned scene, int colour); // 0 none, 1-16 a track colour (issue 19)
     void name_scene(unsigned scene);                  // the Name sheet
     void name_track(unsigned t);                      // the Name sheet: a name of its own, kept when its sound changes
-    void clear_scene(unsigned scene);
+    void clear_scene(unsigned scene);                 // its kept patterns, name, tempo and colour; one undo
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
-    void follow_to_column();                          // and onto every track's pattern in its column, one undo
-    void capture_scene(unsigned column, bool asked = false); // CAPTURE: each track's playing pattern into the column, one undo
+    void follow_to_column();                          // and onto the pattern every other track is on, one undo
+    void capture_scene(unsigned scene);               // CAPTURE: what every track is on kept in the sequence, one undo
     void follow_tick();                               // MIDI thread, often: chains told, what came followed
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
@@ -331,15 +366,12 @@ public:
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
-    // Melodee's plug-in screen (plugin/melodee_screen.h): the entry whose own page is in view (Edit on a PLUGIN track,
-    // Stage's EDIT), -1 none; and an input on that page (a MELODEE_SCREEN_ kind) handed to the plug-in when it draws
-    // its own page: false when it does not, so the page does its own job with it.
-    int plugin_screen_in_view() const;
-    bool plugin_screen_input(PluginScreenKey key, int value);
+    bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;
-    bool plugin_came_back = true; // false after going up, until the cursor lands on the folder it came out of
+    unsigned plugin_card_seen = 0; // the web page's changes to the card the picker has listed again for
+    bool plugin_came_back = true; // false after going up (or a web page change), until the cursor lands on the row asked for
     // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
     // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results
     // taken in, often, from the shell's tick.
@@ -660,6 +692,13 @@ public:
     std::string files_folder_seen;
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
+    // Settings > SEQ > Note preview (shell/note_preview.h): `events` of the selected track's pattern heard once, the
+    // earliest of them (a chord), each as long as the sequencer holds it; `settle`: once the wheel has rested. What
+    // still sounds of the last preview ends first. Nothing while the setting is off.
+    void preview_notes(const std::vector<Event>& events, bool settle = false);
+    void note_preview_tick(); // each UI tick: a preview waiting for the wheel plays, a sounding one ends on time
+    void note_preview_end();  // what a preview still sounds ends now
+    NotePreview note_preview;
     // land: 0 Extract (the next empty pad after `pad`), or Trim (`trim`); 1 onto `pad` itself (Recall,
     // Resample; one undo); 2 the take of Sample Record onto `pad`, with the pads cut from it (ui.rec_chop_*).
     struct PendingFile { int16_t slot = -1; uint8_t track = 0; int16_t pad = -1; bool trim = false; PadSound sound {}; uint8_t land = 0; };
@@ -722,6 +761,7 @@ public:
     void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
     void send_click();
     void send_repeat_velocity();
+    void send_mute_kind(); // Settings > SEQ > Mute (issue 27): Audio or Notes, to the audio thread
     // Capture (Shift + Seq Record; round 2, capture C; roadmap P5): the last bars every track played (the phrase, or as
     // many bars as Settings keeps), each track's into its next empty pattern, which then plays; one undo. Nothing
     // played, or no pattern empty: a notice, and nothing changes.

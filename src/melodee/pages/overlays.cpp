@@ -5,6 +5,7 @@
 // rates, the Shift + K cards while Shift is held, and the Exit sheet after a
 // short press of Power; and over all of them the place bar.
 #include "melodee/pages/pages.h"
+#include "melodee/shell/screen_view.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/sample_mode.h"
@@ -40,7 +41,7 @@ void draw_update_sheet(Paint& p, const Snapshot& s) {
     p.text(title, x, zone::picture_y + 28, w, 28, p.fit(title, plain(colour::text, type::title, Weight::SemiBold), w, type::body),
            juce::Justification::centred);
     if (failed) {
-        juce::String line = juce::String("hdslaveOS ") + melodee_version() + " is still installed.";
+        juce::String line = juce::String("Melodee ") + melodee_version() + " is still installed.";
         p.text(line, x, zone::picture_y + 64, w, 18, p.fit(line, plain(colour::sec, type::body), w, type::floor),
                juce::Justification::centred);
         SoftKeys keys {{"CLOSE", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
@@ -130,13 +131,14 @@ void draw_repeat_keys(Paint& p, const Snapshot& s) {
 void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The Shift jobs are printed on the MPC: the page stays as it is, and
     // the knob strip shows the cards Shift turns (Shift + K), or dims when
-    // there are none. A plug-in's own page (plugin/melodee_screen.h) draws
-    // its own cards and is told Shift is held: none dimmed over it.
+    // there are none.
+    if (plugin_screen_shown(s) || plugin_screen_shown(s, 1) || (fx_chain_page(s.ui.page) && plugin_strip_shown(s, s.ui.plugin_panel.entry)))
+        return; // a plug-in's own screen or strip, or a skin's strip down to the bottom: nothing over it
     auto cards = cards_of(s);
     bool any = false;
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }
     if (any) knob_strip(p, cards);
-    else if (!plugin_screen_in_view(s)) p.dim_zone(zone::knobs_y, zone::knobs_h);
+    else p.dim_zone(zone::knobs_y, zone::knobs_h);
 }
 
 // The fader moved (parity phase 8) and drives a value none of K1-K3 shows

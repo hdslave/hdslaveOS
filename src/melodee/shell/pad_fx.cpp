@@ -97,7 +97,7 @@ void Context::set_punch_target(unsigned target) {
     if (project.punch_target == target) return;
     punch_release(true); // a new signal: everything lets go
     project.punch_target = uint8_t(target);
-    dirty = true; // the project's, and kept in its file: until now only the next punch's command marked it
+    dirty = true; // kept in the project's file; a punch's own commands no longer mark it
     notice(target ? "Pad FX: the track" : "Pad FX: the master");
 }
 

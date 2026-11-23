@@ -105,5 +105,8 @@ bool roll_selection_wheel(Context& c, int way);
 void roll_shift_up(Context& c);
 bool roll_selection_mute(Context& c);
 bool roll_selection_repeat(Context& c);
+// Settings > SEQ > Note preview: the marked notes in the cursor's step heard once (none there: the first marked);
+// `settle`: once the wheel rests.
+void roll_hear_marks(Context& c, bool settle);
 
 } // namespace melodee

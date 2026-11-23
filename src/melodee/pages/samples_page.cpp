@@ -45,8 +45,8 @@ juce::String folder_title(const Snapshot& s) {
 }
 
 // What Shift + B3 can star: a file (a sample, an instrument, a kit, a bank, a MIDI file), not a folder, a list, an
-// expansion or a preset inside an .sf2.
-bool starrable(const SampleFile& f) { return !f.folder && !f.list && !f.expansion && f.path.find('#') == std::string::npos; }
+// expansion or a preset inside an .sf2. A '#' in a file's own name ("KeysPh G#m90.wav") is no preset (shell/sample_lists.h).
+bool starrable(const SampleFile& f) { return !f.folder && !f.list && !f.expansion && !part_of_file(f.path); }
 
 void draw_list(Paint& p, const Snapshot& s) {
     const auto& track = s.track();

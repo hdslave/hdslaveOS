@@ -90,18 +90,28 @@ void effect_drawing(ui::Paint& p, const EffectSlot& slot, float x, float y, floa
 
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
-// The soft-key row alone, as frame() draws it (Pad Bank's or 16 Levels' keys while those are held).
-void soft_row(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys);
+void frame_keys(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys); // B1-B3 alone (Pad Bank's and 16 Levels' held keys as frame() draws them)
 // A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
 void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
+// A plug-in's page under B1-B3 (docs/PLUGIN_PAGES_PLAN.md, picks 3 c and 4 a): the page line, then its rows of three
+// as arcs over the pots, an envelope or filter on top where the page holds one; no header, no cards. Shown while the
+// plug-in is open and the pots are its own (not Knob FX's): plugin_page_shown().
+bool plugin_page_shown(const Snapshot& s, unsigned entry);
+void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui::SoftKeys& keys);
+// A plug-in's own picture (plugin/plugin_screen.h) at x, y: its page, or an effect's strip.
+// plugin_screen_shown(): the page in view is a plug-in's own screen (Edit on its track, Stage's EDIT), which Melodee
+// draws nothing over but its MENU, notices and questions.
+bool plugin_screen_shown(const Snapshot& s, uint8_t area = 0); // area 1: an effect's strip under its chain's slots
+void draw_screen_picture(ui::Paint& p, const ScreenPicture& picture, float x, float y);
+void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
+// An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
+void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
+// An effect's skin strip (docs/PLUGIN_PAGES.md, Skins) under the chain row, at x, y (320 x 92), where it has one and
+// Settings > SCREEN > Plug-in screens is on.
+bool plugin_strip_shown(const Snapshot& s, unsigned entry);
+void draw_plugin_strip(ui::Paint& p, const Snapshot& s, float x, float y);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
-// Melodee's plug-in screen (plugin/melodee_screen.h): `entry` draws its own page (the panel says so), and that page,
-// the soft keys over its picture of the rest of the screen. The wheel, Push and Minus / Plus go to it
-// (Context::plugin_screen_input).
-bool plugin_screen_shown(const Snapshot& s, unsigned entry);
-bool plugin_screen_in_view(const Snapshot& s); // the page in view is such a page (Edit, or Stage's EDIT)
-void draw_plugin_screen(ui::Paint& p, const Snapshot& s, unsigned entry, const ui::SoftKeys& keys);
 void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.

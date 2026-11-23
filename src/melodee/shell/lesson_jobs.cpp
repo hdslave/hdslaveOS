@@ -50,6 +50,7 @@ void lesson_start(Context& c, unsigned lesson) {
     load_sound(fresh->tracks[0], EngineKind::Sampler, 0); // an empty kit until the factory kit lands on it
     std::snprintf(fresh->name, sizeof(fresh->name), "Lesson");
     lesson_patterns(lesson % lesson_count, *bank);
+    if (lesson % lesson_count == 1) { fresh->tracks[0].in_scene[0] = 1; fresh->tracks[0].in_scene[1] = 2; } // SEQ 1 keeps P1, SEQ 2 P2
     c.switch_to(*fresh, *bank, {});
     c.lesson_return = back;
     c.ui.lesson = uint8_t(lesson % lesson_count + 1);

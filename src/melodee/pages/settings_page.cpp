@@ -51,11 +51,11 @@ constexpr int8_t none = -1;
 const std::array<Door, 8> doors {{
     {Icon::Pads, "PADS", ROWS(Settings::PadResponse, Settings::PadPressure, Settings::RepeatVelocity, Settings::PadLights, Settings::PadFade,
                               Settings::TapLight, Settings::PadLevel)},
-    {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::DoubleSeq, Settings::CaptureBars, Settings::CaptureQuantize,
-                            Settings::Autosave)},
+    {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::NotePreview, Settings::MuteKind, Settings::DoubleSeq,
+                            Settings::CaptureBars, Settings::CaptureQuantize, Settings::Autosave)},
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
     {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::Refresh, Settings::PlaceBarRow,
-                                  Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
+                                  Settings::PluginSkins, Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
     {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbDirect, Settings::DirectLevel,
                                   Settings::CpuSpeed)},
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
@@ -189,7 +189,7 @@ void rows_draw(Paint& p, const Snapshot& s) {
     }
     if (s.ui.settings_door % doors.size() != audio_door) return;
     // AUDIO (roadmap P2): what the blocks take of their time, beside the dropouts (a check while there are none).
-    // Four rows or more: the two lines under them close up, so PDC's still ends above K1's card.
+    // A short list leaves a gap above the lines; four rows or more close it up, so PDC's still ends above K1's card.
     float y = zone::picture_y + 1 + shown * (list_row_h + list_row_gap) + (shown > 3 ? 0 : 6), cy = y + list_row_h / 2, right = x + w - 9;
     float load = s.machine.render_load;
     icon(p, Icon::Chip, x + 10, cy - 7, 14, colour::sec, 1.4f);

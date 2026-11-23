@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/vst2_instance.h"
+#include "melodee/plugin/plugin_pages.h"
+#include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
@@ -26,6 +30,7 @@
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
+#include "melodee/model/scene_links.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
@@ -34,9 +39,11 @@
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/ui/boot.h"
 #include "melodee/ui/shades.h"
+#include "melodee/ui/tokens.h"
 #include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
+#include <melodee_screen.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -387,6 +394,19 @@ void preview_projects(Snapshot& s) {
     s.ui.project_rows = uint16_t(project_rows(v.entries.size())); // as the shell copies it in
 }
 
+// Sequence links for the sequence pages (model/scene_links.h): SEQ 1 keeps P1 on every used track, SEQ 2 the same
+// with track 3 on P2, SEQ 3 P3; SEQ 6 keeps every track off (a break); the rest keep nothing.
+void preview_links(Snapshot& s) {
+    for (unsigned t = 0; t < track_count; ++t) {
+        auto& track = s.project.tracks[t];
+        if (!track.used()) continue;
+        track.in_scene[0] = 1;
+        track.in_scene[1] = t == 2 ? 2 : 1;
+        track.in_scene[2] = 3;
+        track.in_scene[5] = scene_off;
+    }
+}
+
 // Step Edit on the kit (track 4), step entry: the caret on step 5 of pattern 1, which holds a kick, a hat and
 // a snare played a little late; the steps before it typed in, the transport stopped.
 void step_edit_kit(Shell& shell, Snapshot& s) {
@@ -727,7 +747,10 @@ void plugin_listing(Snapshot& s) {
     v.files.back().plugins = 214; // a bundle of many: a row that opens
 }
 
-void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* format, bool instrument, PluginStatus status) {
+// The rack's panel for a plug-in (plugin/plugin_panel.h). An instrument on Melodee Poly's pages (its skin's tabs, two
+// rows each): `page` 0 OSC (no picture), 1 FILTER (the filter curve), 2 AMP ENV (the envelope); its first row in hand.
+// An effect on one page with no name, its sound measured.
+void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* format, bool instrument, PluginStatus status, int page = 0) {
     auto& panel = s.ui.plugin_panel;
     panel = {};
     panel.entry = uint8_t(entry); panel.status = status; panel.instrument = instrument;
@@ -735,36 +758,87 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     std::snprintf(panel.format, sizeof(panel.format), "%s", format);
     if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
     if (status != PluginStatus::Ready) return;
-    panel.rows = 8; panel.row = 1; panel.load = 216; panel.programs = 12;
-    panel.knob = {3, 4, 5}; // row 1's three, as the rack fills them
-    const char* names[] {"Cutoff", "Filter envelope amount", "Decay time"};
-    const char* texts[] {"5.0", "7.2", "3.5"};
-    const int16_t values[] {500, 720, 350};
-    for (unsigned k = 0; k < 3; ++k) {
-        auto& c = panel.params[k];
-        c.used = true; c.value = values[k];
-        std::snprintf(c.name, sizeof(c.name), "%s", names[k]);
-        std::snprintf(c.text, sizeof(c.text), "%s", texts[k]);
-    }
-    // The list's window: the row before (Waveform, Tuning, Volume), then the three in hand.
-    const char* before[] {"Waveform", "Tuning", "Volume"};
-    const char* before_texts[] {"0.42", "3.1", "0.8"};
-    panel.window_first = 0;
+    panel.load = 216; panel.programs = 12;
+    struct Param { const char* name; const char* text; int16_t value; uint16_t steps; };
+    static const Param osc[6] {{"Osc A Freq", "+7 st", 646, 0}, {"Osc A PW", "50 %", 500, 0}, {"Osc A Saw", "On", 1000, 2},
+                               {"Osc A Pulse", "Off", 0, 2}, {"Osc A Sync", "Off", 0, 2}, {"", "", 0, 0}};
+    static const Param filter[6] {{"Cutoff", "62 %", 620, 0}, {"Resonance", "28 %", 280, 0}, {"Filter Env Amount", "45 %", 450, 0},
+                                  {"Key Track", "Half", 500, 3}, {"Vel > Filter", "40 %", 400, 0}, {"", "", 0, 0}};
+    static const Param amp[6] {{"Amp Attack", "0", 0, 0}, {"Amp Decay", "50", 500, 0}, {"Amp Sustain", "80 %", 800, 0},
+                               {"Amp Release", "35", 350, 0}, {"Vel > Amp", "65 %", 650, 0}, {"", "", 0, 0}};
+    static const Param effect[6] {{"Size", "62 %", 620, 0}, {"Decay", "2.4 s", 480, 0}, {"Mix", "35 %", 350, 0},
+                                  {"Damping", "40 %", 400, 0}, {"Pre-delay", "12 ms", 120, 0}, {"Width", "100 %", 1000, 0}};
+    static const Param output[6] {{"Volume", "-3.0 dB", 700, 0}, {"Pan", "C", 500, 0}, {"Glide", "120 ms", 240, 0},
+                                  {"Voices", "8", 1000, 8}, {"Bend Range", "2", 160, 0}, {"", "", 0, 0}};
+    static const Param eq[6] {{"Low Freq", "120 Hz", 320, 0}, {"Low Gain", "+3.0 dB", 580, 0}, {"Low Q", "0.70", 300, 0},
+                              {"High Freq", "4.2 kHz", 740, 0}, {"High Gain", "-4.5 dB", 380, 0}, {"High Q", "1.40", 420, 0}};
+    static const char* const tabs[6] {"OSC", "FILTER", "AMP ENV", "OUTPUT", "EQ", "MOD 1-4"};
+    const Param* rows = !instrument ? effect : page == 1 ? filter : page == 2 ? amp : page == 3 ? output : page == 4 ? eq : osc;
+    unsigned at = instrument ? unsigned(std::clamp(page, 0, 4)) : 0;
+    panel.pages = instrument ? 6 : 1; panel.page = uint16_t(at);
+    panel.rows = uint16_t(panel.pages * 2); panel.row = uint16_t(at * 2);
+    panel.page_rows = 2; panel.page_row = 0;
+    panel.prev_page = uint16_t(at > 0 ? (at - 1) * 2 : 0); panel.next_page = uint16_t(at + 1 < panel.pages ? (at + 1) * 2 : at * 2);
+    if (instrument) std::snprintf(panel.page_name, sizeof(panel.page_name), "%s", tabs[at]);
+    panel.window_first = uint16_t(panel.row * 3); panel.window_rows = 2;
     for (unsigned k = 0; k < 6; ++k) {
         auto& c = panel.window[k];
-        c.used = true;
-        if (k < 3) { std::snprintf(c.name, sizeof(c.name), "%s", before[k]); std::snprintf(c.text, sizeof(c.text), "%s", before_texts[k]); }
-        else c = panel.params[k - 3];
+        if (!rows[k].name[0]) continue;
+        c.used = true; c.value = rows[k].value; c.steps = rows[k].steps;
+        std::snprintf(c.name, sizeof(c.name), "%s", rows[k].name);
+        std::snprintf(c.text, sizeof(c.text), "%s", rows[k].text);
+        if (k < 3) panel.params[k] = c;
     }
-    s.ui.plugin_row[entry] = 1;
+    if (instrument && at >= 1) { // the page's picture, from slots in hand (and the next row's)
+        static const PagePicture kinds[5] {PagePicture::None, PagePicture::Filter, PagePicture::Envelope, PagePicture::Value, PagePicture::Eq};
+        static const unsigned counts[5] {0, 2, 4, 3, 6};
+        panel.picture = uint8_t(kinds[at]);
+        for (unsigned n = 0; n < counts[at]; ++n) { panel.picture_params[n] = panel.window[n]; panel.picture_slots[n] = int16_t(panel.window_first + n); }
+    }
+    if (!instrument) { // a few bars of a beat through it, newest on the right
+        panel.measured = true; panel.level_in = 520; panel.level_out = 610;
+        for (size_t n = 0; n < panel.scope.size(); ++n) {
+            float beat = std::pow(1.0f - float(n % 16) / 16.0f, 2.2f), a = 0.15f + 0.6f * beat, b = 0.12f + 0.55f * std::pow(1.0f - float((n + 2) % 16) / 16.0f, 2.2f);
+            auto byte = [](float v) { return uint32_t(uint8_t(int8_t(std::lround(v * 127)))); };
+            panel.scope[n] = byte(-a * 0.9f) | byte(a) << 8 | byte(-b * 0.9f) << 16 | byte(b) << 24;
+        }
+    }
+    s.ui.plugin_row[entry] = panel.row;
 }
 
-void plugin_track(Snapshot& s, PluginStatus status) {
+// The example skin (docs/examples/plugin-skin, Melodee Poly) on the panel's page, bound as the rack binds it: each
+// control's parameter is the window's parameter of that name. The preview runs from the repository's top.
+void skin_panel(Snapshot& s) {
+    auto& panel = s.ui.plugin_panel;
+    std::ifstream in("docs/examples/plugin-skin/melodee-pages.json");
+    std::string text((std::istreambuf_iterator<char>(in)), {});
+    PageFile file;
+    std::string why;
+    if (!read_page_file(text, file, why)) return;
+    std::vector<std::string> names, ids;
+    std::vector<int> shown;
+    for (unsigned k = 0; k < panel.window.size(); ++k) { names.push_back(panel.window[k].name); ids.push_back(std::to_string(k)); if (panel.window[k].used) shown.push_back(int(k)); }
+    std::vector<std::string> problems;
+    s.plugin_skin = load_skin(file.skin, "docs/examples/plugin-skin", shown, names, ids, problems);
+    if (!s.plugin_skin) return;
+    for (size_t n = 0; n < s.plugin_skin->pages.size(); ++n) {
+        if (s.plugin_skin->pages[n].first != panel.page_name) continue;
+        panel.skin_page = int16_t(n);
+        size_t at = 0;
+        for (const auto& c : s.plugin_skin->pages[n].second.controls) {
+            if (c.param < 0 || at >= panel.skin_params.size()) continue;
+            panel.skin_params[at] = panel.window[size_t(c.param)];
+            panel.skin_slots[at++] = int16_t(panel.window_first + c.param);
+        }
+    }
+}
+
+void plugin_track(Snapshot& s, PluginStatus status, int page = 0) {
     s.ui.page = PageId::Edit; s.ui.track = 2;
     auto& t = s.project.tracks[2];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Bass Synth");
-    plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status);
+    plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status, page);
 }
 
 // The same by the kind of page, wherever the track's Stage keeps it (shell/stage_map.h); a PLUGIN track's plug-in
@@ -798,6 +872,59 @@ void keygroup_scene(Snapshot& s, StageKind kind, bool wav = false) {
     s.playing = true;
 }
 // Stage B1 on track 1 (Melodee Poly, plug-in entry 0): its presets, `programs` of them (0: its face instead).
+// A stand-in plug-in's own picture for the previews (plugin/plugin_screen.h), drawn here with JUCE as a plug-in would
+// draw its own: its name, a wave and three knobs in its own colours, so the pages around it can be seen.
+ScreenPicturePtr preview_screen(unsigned entry, uint8_t area) {
+    const int w = int(picture_width), h = int(area ? picture_strip_rows : picture_page_rows);
+    juce::Image image(juce::Image::ARGB, w, h, true);
+    {
+        juce::Graphics g(image);
+        g.fillAll(juce::Colour(0xff0b1418));
+        g.setColour(juce::Colour(0xff12303a));
+        for (int x = 8; x < w; x += 16) g.fillRect(x, 0, 1, h);
+        for (int y = 8; y < h; y += 16) g.fillRect(0, y, w, 1);
+        g.setColour(juce::Colour(0xffddeff2));
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        g.drawText("SCREEN EXAMPLE", 10, 2, 200, 18, juce::Justification::centredLeft);
+        juce::Path wave;
+        const float top = 26, wave_h = float(h) - 92;
+        for (int x = 0; x <= 280; ++x) {
+            float t = x / 280.0f, v = std::sin(t * 6.2832f * 2) * (0.6f + 0.4f * std::sin(t * 3.1416f));
+            float px = 20.0f + x, py = top + wave_h / 2 - v * wave_h * 0.4f;
+            if (x == 0) wave.startNewSubPath(px, py); else wave.lineTo(px, py);
+        }
+        g.setColour(juce::Colour(0xffc6f432));
+        g.strokePath(wave, juce::PathStrokeType(2.0f));
+        const float ky = float(h) - 40;
+        const float values[3] {0.42f, 0.66f, 0.75f};
+        for (int k = 0; k < 3; ++k) {
+            const float cx = 58.0f + 102.0f * k;
+            g.setColour(juce::Colour(0xff10242b));
+            g.fillEllipse(cx - 16, ky - 16, 32, 32);
+            juce::Path arc;
+            arc.addCentredArc(cx, ky, 13, 13, 0, -2.356f, -2.356f + 4.712f * values[k], true);
+            g.setColour(juce::Colour(0xffc6f432));
+            g.strokePath(arc, juce::PathStrokeType(3.0f));
+        }
+    }
+    auto picture = std::make_shared<ScreenPicture>();
+    picture->entry = uint8_t(entry);
+    picture->area = area;
+    picture->serial = 1;
+    picture->width = uint16_t(w);
+    picture->height = uint16_t(h);
+    picture->pixels.resize(size_t(w) * size_t(h));
+    juce::Image::BitmapData bits(image, juce::Image::BitmapData::readOnly);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) picture->pixels[size_t(y) * size_t(w) + size_t(x)] = bits.getPixelColour(x, y).getARGB() | 0xff000000u;
+    return picture;
+}
+void own_screen(Snapshot& s, unsigned entry, uint8_t area) { // the panel and picture of a plug-in drawing its own screen
+    auto& panel = s.ui.plugin_panel;
+    panel.has_screen = panel.screen = true;
+    s.plugin_picture = preview_screen(entry, area);
+}
+
 void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
     on_stage(s, 0, kind); s.playing = true;
     plugin_panel(s, 0, "Melodee Poly", "VST3", true, PluginStatus::Ready);
@@ -901,7 +1028,7 @@ const Preview previews[] {
          s.ui.key_list_key = 2; s.ui.key_list_at = s.now;
      }},
     {"menuhere", [](Shell&, Snapshot& s) { // the encoder held on Sequences: HERE, the page's jobs as cards
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.ui.menu = menu_here_view; s.ui.menu_row = 0;
      }},
     {"menugo", [](Shell&, Snapshot& s) { // B3 GO: the sixteen places as the pads sit, the wheel on MIXER
@@ -1078,6 +1205,8 @@ const Preview previews[] {
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
+         preview_links(s); s.project.scene = 1;
+         s.project.tracks[3].in_scene[1] = 3; // track 4 on P3 in SEQ 2; track 1 moved off it (≠)
      }},
     {"plugins", [](Shell&, Snapshot& s) { // the picker for track 3's instrument: folders, plug-ins, one for Windows only
          s.ui.page = PageId::Plugins; s.ui.track = 2; s.ui.plugin_target = UiState::PluginTarget::Instrument;
@@ -1103,6 +1232,14 @@ const Preview previews[] {
     {"pluginedit", [](Shell&, Snapshot& s) { // Edit on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
          plugin_track(s, PluginStatus::Ready); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve
+    {"plugineditenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); }},    // a page with an envelope
+    {"plugineditvalue", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 3); }},  // a page file's large values
+    {"pluginskin", [](Shell&, Snapshot& s) { // the example skin's FILTER page (docs/examples/plugin-skin), K1 turning
+         plugin_track(s, PluginStatus::Ready, 1); skin_panel(s); s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"pluginskinenv", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 2); skin_panel(s); }}, // its AMP ENV page
+    {"plugineditq", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 4); }},      // a page file's EQ
     {"pluginopening", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Loading); }},
     {"pluginfailed", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Failed); }},
     {"rackplugin", [](Shell&, Snapshot& s) { // a plug-in effect on track 1's chain, after an echo
@@ -1112,6 +1249,27 @@ const Preview previews[] {
          std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Plate Reverb.vst3");
          s.ui.fx_cursor[0] = 1;
          plugin_panel(s, 4, "Plate Reverb", "VST3", false, PluginStatus::Ready);
+     }},
+    {"stagepluginpanel", [](Shell&, Snapshot& s) { // B1 again on a plug-in that draws its own screen: PANEL, its page
+         stage_plugin(s, StageKind::PluginSound, true); own_screen(s, 0, 0); stage_go(s.ui, EngineKind::Plugin, StageKind::PluginScreen);
+     }},
+    {"rackpluginscreen", [](Shell&, Snapshot& s) { // an effect that draws its own strip under the slots
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Screen Example.clap");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "Screen Example", "CLAP", false, PluginStatus::Ready);
+         own_screen(s, 4, 1);
+     }},
+    {"rackpluginpanel", [](Shell&, Snapshot& s) { // Push on it: its full page under the hub's keys
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Screen Example.clap");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "Screen Example", "CLAP", false, PluginStatus::Ready);
+         own_screen(s, 4, 0); s.ui.fx_panel = true;
      }},
     {"rackpluginsheet", [](Shell&, Snapshot& s) { // Push on that plug-in: its sheet, with Presets
          s.ui.page = PageId::Rack; s.ui.track = 0;
@@ -2772,7 +2930,7 @@ const Preview previews[] {
      }},
     // Roadmap P5: scenes on Patterns. Shift + B1 SCENE: the cursor's scene, its tempo on K1 (Push names it).
     {"patternsscene", [](Shell& shell, Snapshot& s) {
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 1;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true; s.ui.patterns_cards = 1;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
          s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAKDOWN");
          s.project.tracks[2].pattern = 1;
@@ -2782,20 +2940,20 @@ const Preview previews[] {
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patternsfollow", [](Shell& shell, Snapshot& s) { // Shift + B2 FOLLOW: the pattern in hand's follow action on K1-K3
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 2;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true; s.ui.patterns_cards = 2;
          s.project.tracks[2].pattern = 1;
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"patternsshift", [](Shell& shell, Snapshot& s) { // Shift held on Patterns: SCENE, FOLLOW, VARY; FOLLOW's Shift + K1 the second action
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.ui.shift = true; s.ui.patterns_cards = 2; s.project.tracks[2].pattern = 1;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.ui.shift = true; s.ui.patterns_cards = 2; s.project.tracks[2].pattern = 1;
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Again); f.other = uint8_t(FollowAction::Stop); f.chance = 50; f.count = 2; f.plays = true;
      }},
     // Roadmap P5: SCENES (B1 again on Patterns), the bank's scenes and the selected track's pattern's follow action.
     {"scenes", [](Shell& shell, Snapshot& s) {
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
          s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAK");
          s.project.tracks[2].pattern = 1;
@@ -2804,16 +2962,10 @@ const Preview previews[] {
          f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
      }},
     {"scenescapture", [](Shell&, Snapshot& s) { // Scenes, Shift + B2 CAPTURE: a pad picks the scene what plays goes to
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.project.scene = 1; preview_links(s); s.playing = true;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[2].set_name("DROP");
          for (unsigned t = 0; t < track_count; ++t) s.playing_patterns[t] = uint8_t(t % 3);
          s.ui.scene_capture = true;
-     }},
-    {"askcapture", [](Shell&, Snapshot& s) { // CAPTURE onto S5, where tracks 1 and 3 have notes
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
-         for (unsigned t = 0; t < track_count; ++t) s.playing_patterns[t] = uint8_t(t % 3);
-         s.sketches[0][4].notes = true; s.sketches[2][4].notes = true;
-         s.ui.ask = UiState::Ask::CaptureScene; s.ui.ask_target = 4;
      }},
     {"stepeditshift", [](Shell& shell, Snapshot& s) { // Shift held on Step Edit: PADS, TIE, INSERT; the pattern's length, Q, time signature
          step_edit_kit(shell, s);
@@ -2916,7 +3068,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     return text_issues || control_breaks || !flare ? 1 : 0;
 }
 
-// Melodee's plug-in screen (plugin/melodee_screen.h), as the MPC would show it: PLUGIN (a .clap) opened through the
+// Melodee's plug-in screen (sdk/melodee-screen/melodee_screen.h), as the MPC would show it: PLUGIN (a .clap) opened through the
 // rack on a PLUGIN track, its Edit page in view, then STEPS one after another, each a control as the hands use it:
 // wheel:N, push, minus, plus, shift (held; again, let go), k1:V k2:V k3:V (a pot to 0..127), play, stop, pad:N (1-16,
 // hit and let go: the track's note), wait:MS, edit or stage
@@ -2925,10 +3077,12 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
 // serial=N pixel=0xAARRGGBB (the picture's, at 0,5) page=0xAARRGGBB (the screen's there, row 27) low=0xAARRGGBB (the
 // screen's at 0,230, under the knobs' overlays) bar=W (row 1's white) bar2=W (row 2's) asleep=0|1 (the plug-in skipped
 // its last block as idle: plugin/idle_gate.h).
-int plugin_screen(const std::string& plugin, const std::string& folder, const std::vector<std::string>& steps) {
+int plugin_screen_rack(const std::string& plugin, const std::string& folder, const std::vector<std::string>& steps) {
     if (!std::getenv("MELODEE_PLUGIN_STAGE")) // its RAM copy somewhere of its own
         setenv("MELODEE_PLUGIN_STAGE", ("/tmp/melodee-plugin-screen-" + std::to_string(::getpid())).c_str(), 1);
     std::filesystem::create_directories(folder);
+    const PluginFile info = describe_plugin(plugin);
+    const bool is_effect = info.instrument == 0;
     EngineHost host;
     host.set_render_threads(0);
     auto shell = std::make_unique<Shell>(host);
@@ -2938,8 +3092,15 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
         auto& project = shell->project();
         std::snprintf(project.plugins[0].path, sizeof(project.plugins[0].path), "%s", plugin.c_str());
         auto& t = project.tracks[0];
-        load_sound(t, EngineKind::Plugin, 0);
-        t.plugin = 0;
+        if (is_effect) {
+            load_sound(t, EngineKind::Sampler, 0);
+            t.fx.slots[0].kind = plugin_effect_kind;
+            t.fx.slots[0].params[0] = 0;
+            t.fx.slots[0].bypass = false;
+        } else {
+            load_sound(t, EngineKind::Plugin, 0);
+            t.plugin = 0;
+        }
         host.load(project, shell->patterns());
         host.set_audio_format(48000, 384);
         Command c {Command::Type::Reload};
@@ -2947,7 +3108,12 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
         host.send(c);
     }
     shell->ui().track = 0;
-    shell->context().open(PageId::Edit);
+    if (is_effect) {
+        shell->context().open(PageId::Rack);
+        shell->ui().fx_panel = true; // default to full page unless `strip` step is requested
+    } else {
+        shell->context().open(PageId::Edit);
+    }
     uint32_t now = 1000;
     SurfaceLights lights;
     std::vector<int32_t> audio(EngineHost::block * 2);
@@ -2961,7 +3127,7 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     };
-    auto serial = [&] { auto f = rack->screen_frame(); return f && f->entry == 0 ? f->serial : 0u; };
+    auto serial = [&] { auto f = rack->screen_picture(); return f && f->entry == 0 ? f->serial : 0u; };
     using Clock = std::chrono::steady_clock;
     auto until = [&](auto done, double seconds) {
         auto t0 = Clock::now();
@@ -3014,8 +3180,12 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
         else if (what.size() == 2 && what[0] == 'k' && what[1] >= '1' && what[1] <= '3')
             control(SurfaceControl(unsigned(SurfaceControl::K1) + unsigned(what[1] - '1')), std::clamp(std::atoi(arg.c_str()), 0, 127), 0);
         else if (what == "edit" || what == "stage") {
-            if (what == "stage") { stage_go(shell->ui(), EngineKind::Plugin, StageKind::PluginEdit); shell->context().open(PageId::Stage); }
+            if (is_effect) { shell->context().open(PageId::Rack); shell->ui().fx_panel = true; }
+            else if (what == "stage") { stage_go(shell->ui(), EngineKind::Plugin, StageKind::PluginScreen); shell->context().open(PageId::Stage); }
             else shell->context().open(PageId::Edit);
+        }
+        else if (what == "strip") {
+            if (is_effect) { shell->context().open(PageId::Rack); shell->ui().fx_panel = false; }
         }
         else if (what == "wait") { tick(unsigned(std::max(0, std::atoi(arg.c_str())))); input = false; }
         else if (what == "png") {
@@ -3035,20 +3205,24 @@ int plugin_screen(const std::string& plugin, const std::string& folder, const st
                 if (scale == 1) shown = image;
             }
             const auto& panel = snapshot->ui.plugin_panel;
-            const auto& picture = snapshot->plugin_screen;
+            const auto& picture = snapshot->plugin_picture;
             uint32_t pixel = 0;
             unsigned bar = 0, bar2 = 0;
-            if (picture && picture->entry == 0) {
-                pixel = picture->pixels[5 * PluginScreenFrame::width];
-                while (bar < PluginScreenFrame::width && picture->pixels[PluginScreenFrame::width + bar] == 0xffffffffu) ++bar;
-                while (bar2 < PluginScreenFrame::width && picture->pixels[2 * PluginScreenFrame::width + bar2] == 0xffffffffu) ++bar2;
+            if (picture && picture->entry == 0 && picture->pixels.size() >= size_t(picture_width) * 6) {
+                pixel = picture->pixels[5 * picture_width];
+                while (bar < picture_width && picture->pixels[picture_width + bar] == 0xffffffffu) ++bar;
+                while (bar2 < picture_width && picture->pixels[2 * picture_width + bar2] == 0xffffffffu) ++bar2;
             }
-            std::printf("MELODEE_PLUGIN_SCREEN %s screen=%d knobs=%d,%d,%d serial=%u pixel=0x%08x page=0x%08x low=0x%08x bar=%u bar2=%u asleep=%d\n",
-                        arg.c_str(), int(panel.screen), panel.knob[0], panel.knob[1], panel.knob[2], picture ? picture->serial : 0u,
-                        pixel, unsigned(shown.getPixelAt(0, int(PluginScreenFrame::top) + 5).getARGB()),
+            std::printf("MELODEE_PLUGIN_SCREEN %s screen=%d area=%u knobs=%s,%s,%s serial=%u pixel=0x%08x page=0x%08x low=0x%08x bar=%u bar2=%u asleep=%d\n",
+                        arg.c_str(), int(panel.screen), picture ? unsigned(picture->area) : 0u,
+                        panel.params[0].used ? panel.params[0].name : "-",
+                        panel.params[1].used ? panel.params[1].name : "-",
+                        panel.params[2].used ? panel.params[2].name : "-",
+                        picture ? picture->serial : 0u,
+                        pixel, unsigned(shown.getPixelAt(0, int(ui::zone::header_y) + 5).getARGB()),
                         unsigned(shown.getPixelAt(0, 230).getARGB()), bar, bar2, int(rack->idling(0)));
         } else {
-            std::fprintf(stderr, "unknown step %s: use wheel:N push minus plus shift k1:V k2:V k3:V wait:MS edit stage png:NAME\n", step.c_str());
+            std::fprintf(stderr, "unknown step %s: use wheel:N push minus plus shift k1:V k2:V k3:V wait:MS edit stage strip png:NAME\n", step.c_str());
             return 2;
         }
         if (input) { // its next picture (if it draws one), then the panel's next refresh
@@ -3291,6 +3465,16 @@ static int mpc_import(const char* path) {
     std::printf("name=%s tracks=%u sequences=%u pads=%u notes=%u over_limit=%u missing=%u tempo=%u seq_tempo=%d signature=%u/%u ms=%lld\n", project->name, report.tracks,
                 report.sequences, report.pads, report.notes, report.over_limit, report.missing, project->tempo, project->seq_tempo,
                 project->time_signature().beats, project->time_signature().unit, (long long)ms);
+    for (unsigned n = 0; n < pattern_count; ++n)
+        if (project->scenes[n].name[0]) std::printf("scene %u name=%s\n", n, project->scenes[n].name);
+    const auto& song = project->song; // the MPC song (model/song_steps.h)
+    std::printf("song steps=%u steps_left_out=%u songs_left_out=%u clips=%u markers=%u tempo_points=%u bars=%u\n", report.song_steps,
+                report.steps_left_out, report.songs_left_out, song.count, song.marker_count, song.tempo.count, song.length());
+    for (unsigned n = 0; n < song.count; ++n)
+        std::printf("clip track=%u pattern=%u bar=%u bars=%u\n", song.clips[n].track, song.clips[n].pattern, song.clips[n].bar, song.clips[n].bars);
+    for (unsigned n = 0; n < song.marker_count; ++n) std::printf("marker bar=%u name=%s\n", song.markers[n].bar, song.markers[n].name);
+    for (unsigned n = 0; n < song.tempo.count; ++n)
+        std::printf("tempo bar=%u tempo=%u ramp=%d\n", song.tempo.points[n].bar, song.tempo.points[n].tempo, int(song.tempo.points[n].ramp));
     for (unsigned n = 0; n < sample_slots; ++n) { // each file's chop, from its WAV
         const auto& c = project->chops[n];
         if (!c.used()) continue;
@@ -3516,14 +3700,135 @@ static int project_export(bool live, const char* path, const char* folder, const
     return 0;
 }
 
+namespace {
+// A plug-in's own screen (sdk/melodee-screen/melodee_screen.h) for its maker, without an MPC: opens the plug-in at
+// `path` (a CLAP library's first, or a VST2 .so) as Edit on its PLUGIN track shows it and writes the screen into
+// `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
+// k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
+int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps) {
+    juce::String error;
+    const juce::File file {juce::String(path)};
+    const bool clap = file.hasFileExtension("clap");
+    std::unique_ptr<juce::AudioPluginInstance> plugin;
+    if (clap) plugin = ClapInstance::load(file, 0, 48000.0, 256, error);
+    else plugin = Vst2Instance::load(file, 48000.0, 256, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    auto* screen = dynamic_cast<ScreenSource*>(plugin.get());
+    if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
+    plugin->prepareToPlay(48000.0, 256);
+    std::error_code made;
+    std::filesystem::create_directories(folder, made);
+    EngineHost host;
+    Shell shell(host);
+    board_project(shell);
+    auto s = std::make_unique<Snapshot>();
+    shell.snapshot(*s, 100000);
+    s->ui = UiState {};
+    s->now = 100000;
+    plugin_track(*s, PluginStatus::Ready);
+    auto& panel = s->ui.plugin_panel;
+    std::snprintf(panel.name, sizeof(panel.name), "%s", plugin->getName().toRawUTF8());
+    std::snprintf(panel.format, sizeof(panel.format), "%s", clap ? "CLAP" : "VST2");
+    panel.has_screen = panel.screen = true;
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    frame.redraw_all = 1;
+    frame.colour = ui::track_colour(s->ui.track).getARGB() & 0xffffffu;
+    for (auto& p : frame.pots) p = -1;
+    std::array<int, 3> controls {-1, -1, -1};
+    const auto& params = plugin->getParameters();
+    const auto start = std::chrono::steady_clock::now();
+    unsigned written = 0;
+    uint32_t serial = 0;
+    auto run_block = [&] { // values set here reach it with its next block
+        juce::AudioBuffer<float> buffer(std::max(2, plugin->getTotalNumOutputChannels()), 256);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        plugin->processBlock(buffer, midi);
+        if (auto* c = dynamic_cast<ClapInstance*>(plugin.get())) c->idle(); // its values read again
+    };
+    auto shoot = [&] {
+        frame.time_ms = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
+        bool changed = false;
+        screen->screenDraw(frame, changed);
+        frame.redraw_all = 0;
+        auto picture = std::make_shared<ScreenPicture>();
+        picture->entry = 0;
+        picture->serial = ++serial;
+        picture->pixels.resize(canvas.size());
+        for (size_t n = 0; n < canvas.size(); ++n) picture->pixels[n] = canvas[n] | 0xff000000u;
+        s->plugin_picture = picture;
+        screen->screenControls(controls);
+        for (unsigned k = 0; k < 3; ++k) {
+            auto& card = panel.params[k];
+            card = {};
+            if (controls[k] < 0 || controls[k] >= params.size()) continue;
+            auto* p = params[controls[k]];
+            card.used = true;
+            std::snprintf(card.name, sizeof(card.name), "%s", p->getName(int(sizeof(card.name)) - 1).toRawUTF8());
+            std::snprintf(card.text, sizeof(card.text), "%s", p->getText(p->getValue(), 64).toRawUTF8());
+            card.value = int16_t(std::lround(std::clamp(p->getValue(), 0.0f, 1.0f) * plugin_param_max));
+            s->ui.pots[k].position = frame.pots[k];
+            s->ui.pots[k].engaged = frame.pots_live[k] != 0;
+        }
+        s->ui.shift = frame.shift != 0;
+        s->playing = frame.playing != 0;
+        juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
+        { juce::Graphics g(image); draw(g, *s); }
+        save_png(image, folder + "/" + std::to_string(written++) + ".png");
+    };
+    shoot();
+    for (const auto& step : steps) {
+        const auto colon = step.find(':');
+        const std::string word = step.substr(0, colon);
+        const int value = colon == std::string::npos ? 0 : std::atoi(step.c_str() + colon + 1);
+        auto send = [&](uint32_t kind, int32_t v) {
+            melodee_screen_input_t in {kind, v, frame.shift};
+            bool used = false;
+            screen->screenInput(in, used);
+        };
+        if (word == "wheel") send(MELODEE_SCREEN_WHEEL, value);
+        else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
+        else if (word == "minus") send(MELODEE_SCREEN_STEP, -1);
+        else if (word == "plus") send(MELODEE_SCREEN_STEP, 1);
+        else if (word == "shift") frame.shift = frame.shift ? 0 : 1;
+        else if (word == "play" || word == "stop") frame.playing = word == "play" ? 1 : 0;
+        else if (word.size() == 2 && word[0] == 'k' && word[1] >= '1' && word[1] <= '3') {
+            const unsigned k = unsigned(word[1] - '1');
+            frame.pots[k] = int16_t(std::clamp(value, 0, 127));
+            frame.pots_live[k] = 1;
+            if (controls[k] >= 0 && controls[k] < params.size()) params[controls[k]]->setValue(float(frame.pots[k]) / 127.0f);
+        } else if (word == "wait") {
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, value)));
+            continue;
+        } else {
+            std::printf("error=unknown step %s\n", step.c_str());
+            return 1;
+        }
+        run_block();
+        shoot();
+    }
+    plugin->releaseResources();
+    std::printf("written=%u\n", written);
+    return 0;
+}
+} // namespace
+
 std::optional<int> run_tool(int argc, char** argv) {
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
         auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
         return monkey(arg(2, 1), arg(3, 12), arg(4, 3000));
     }
-    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) { // PLUGIN DIR [STEPS...]
+    if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) { // PLUGIN (.clap or VST2 .so) DIR [STEPS...]
         std::vector<std::string> steps(argv + 4, argv + argc);
-        if (steps.empty()) steps.push_back("png:screen");
+        bool named = false;
+        for (const auto& st : steps)
+            if (st.rfind("png:", 0) == 0 || st.rfind("pad:", 0) == 0 || st == "edit" || st == "stage" || st == "strip") named = true;
+        if (named) return plugin_screen_rack(argv[2], argv[3], steps);
         return plugin_screen(argv[2], argv[3], steps);
     }
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-preview")) {

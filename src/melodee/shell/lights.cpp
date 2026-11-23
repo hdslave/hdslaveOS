@@ -286,7 +286,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                     context_.import_unsaved = true; // opening one writes nothing: no background save until it has a file
                     context_.notice(loaded->note);
                 }
-                else context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
+                else {
+                    context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
+                    read_jams(loaded->bytes, context_.jams); // jam capture: its jams (a JAMS section)
+                    context_.publish_jams();
+                }
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
@@ -300,6 +304,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.reload_tick(); // a project parked for: built once the audio thread is still; the Loading sheet till it is in
     if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
+    context_.jam_tick();      // jam capture: the bar playing outside Song (shell/jam_jobs.cpp)
     context_.free_tick();     // Free length: a take on a Free pattern grows it (shell/free_length.h)
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.print_tick();      // prints made (freeze plan F2a) into the project's records
@@ -311,6 +316,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.follow_tick();   // roadmap P5: chains told to the audio thread, follow actions that came followed
     context_.capture_tick();  // roadmap P5: the transport's runs, for what Capture keeps
     seq_follow(context_);     // Settings > SEQ > Follow: Step Edit and Roll with the playhead
+    context_.note_preview_tick(); // Settings > SEQ > Note preview: a note written or moved heard, and ended on time
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {
         sounds_seen = store_->generation();
@@ -326,7 +332,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         ProjectStore::View v;
         store_->view(v);
         if (v.settings_read) {
-            ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); context_.send_repeat_velocity();
+            ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); context_.send_repeat_velocity(); context_.send_mute_kind();
             if (ui_.settings.usage_log) context_.usage.start(now, (long long)std::time(nullptr), melodee_version(), ui_.settings.full_features);
         }
     }
@@ -536,6 +542,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                            | uint32_t(ui_.map_open) << 10 | uint32_t(bool(context_.gesture.edit)) << 12
                            | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
                            std::memory_order_relaxed);
+        jam_bits.store(uint32_t(ui_.jam_bars & 0x3ff) | uint32_t(ui_.jam_logging) << 10 | uint32_t(ui_.jam_count & 0xf) << 11
+                       | uint32_t(ui_.jam_sheet) << 15 | uint32_t(project_->song.marker_count & 0x1f) << 16
+                       | uint32_t(project_->song.tempo.count & 0x7f) << 21, std::memory_order_relaxed);
         if (context_.gesture.edit && now - context_.gesture.last >= gesture_quiet_ms) context_.close_gesture(); // a pot left still
     }
     const auto& project = *project_;

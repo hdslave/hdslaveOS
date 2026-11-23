@@ -16,16 +16,11 @@
 // gives each its line number as its load key. fixture_preset_reads() counts
 // the files read.
 //
-// Test Sine draws its own page on Melodee's screen (melodee/plugin/melodee_screen.h): one colour all over, its red
-// the Level, its green full while the cursor is on its second row, its blue the inputs it took; a white bar on its
-// first row as wide as the Level, and on its second as far as K1's pot sits. The wheel moves the cursor (Minus /
-// Plus too, Push puts it back on the first row); K1 and K2 turn the row under the cursor and the other, K3 nothing.
-// A Level that changes asks for a paint from the audio thread. Push and Minus / Plus are presses its audio side takes
-// too, as a real plug-in's page may need: each asks to be run (Push by request_process, Minus / Plus by the
-// parameters' request_flush), and its next block counts it and asks for a paint; a white bar on the third row, 16
-// pixels for each counted. fixture_screen() reports what it was asked.
+// Both draw their own screen (sdk/melodee-screen/melodee_screen.h): a bar as
+// wide as Sine's Level, or half Gain's Gain, in the track's colour over a dark
+// page or strip.
 #include <clap/clap.h>
-#include "melodee/plugin/melodee_screen.h"
+#include <melodee_screen.h>
 
 #include <algorithm>
 #include <atomic>
@@ -41,7 +36,6 @@
 
 namespace {
 std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0}, presetReads {0};
-std::atomic<int> screenPaints {0}, screenDrawn {0}, screenInputs {0}, screenLastKind {-1}, screenLastValue {0}, screenAccent {0};
 std::string libraryPath;
 
 struct Plugin {
@@ -53,13 +47,7 @@ struct Plugin {
     std::map<int, double> phases; // key: phase of its sine
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
     int pulse = 0;                // Sine's SC Key: frames of its pulse still to play
-    const clap_host_melodee_screen* screen = nullptr; // Melodee's, where it is the host
-    const clap_host_params* hostParams = nullptr;
-    int cursor = 0, inputs = 0;   // the screen's: the row under the cursor, the inputs taken
-    std::atomic<int> asked {0}, heard {0}; // presses for the audio side: made on the page, counted by process()
-    int drawnHeard = -1;          // `heard` as it was last drawn
-    uint32_t drawn = 0;           // the colour last drawn (0: never)
-    int drawnPot = -2;            // and K1's pot as it was then
+    int drawnBar = -1;            // its screen's bar as last drawn, pixels
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
     void audio() { if (threads && !threads->is_audio_thread(host)) ++wrongThread; }
@@ -73,14 +61,16 @@ const clap_plugin_descriptor sineDescriptor {CLAP_VERSION_INIT, "org.melodee.tes
 const clap_plugin_descriptor gainDescriptor {CLAP_VERSION_INIT, "org.melodee.test.gain", "Test Gain", "Melodee", "", "", "", "1",
                                             "", gainFeatures};
 
-// Parameters: Sine's Level (id 7) and Wave (id 9, stepped 0-2); Gain's Gain (id 3, 0-2).
+// Parameters: Sine's Level (id 7, module "Voice/Amp") and Wave (id 9, stepped 0-2, no module); Gain's Gain (id 3,
+// 0-2, module "Out"). Sine has one remote-controls page, Main: Wave, Level, the rest of its eight unused; its
+// on_main_thread says its pages changed.
 uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? 2 : 1; }
 bool paramInfo(const clap_plugin* p, uint32_t i, clap_param_info* info) {
     of(p).main();
     *info = {};
-    if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); info->max_value = 1; info->default_value = 0.5; }
+    if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); std::strcpy(info->module, "Voice/Amp/"); info->max_value = 1; info->default_value = 0.5; }
     else if (of(p).instrument && i == 1) { info->id = 9; std::strcpy(info->name, "Wave"); info->max_value = 2; info->flags = CLAP_PARAM_IS_STEPPED; }
-    else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); info->max_value = 2; info->default_value = 1; }
+    else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); std::strcpy(info->module, "Out"); info->max_value = 2; info->default_value = 1; }
     else return false;
     info->flags |= CLAP_PARAM_IS_AUTOMATABLE;
     return true;
@@ -243,11 +233,7 @@ void event(Plugin& s, const clap_event_header* e) {
     if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) return;
     if (e->type == CLAP_EVENT_PARAM_VALUE) {
         auto& v = *reinterpret_cast<const clap_event_param_value*>(e);
-        if (auto* f = field(s, v.param_id)) {
-            bool moved = *f != v.value;
-            *f = v.value;
-            if (moved && s.screen) s.screen->request_paint(s.host); // from the audio thread: any thread may
-        }
+        if (auto* f = field(s, v.param_id)) *f = v.value;
     } else if (e->type == CLAP_EVENT_NOTE_ON) {
         s.phases[reinterpret_cast<const clap_event_note*>(e)->key] = 0;
         s.pulse = 16;
@@ -266,10 +252,6 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     auto& s = of(p);
     s.audio();
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
-    if (const int presses = s.asked.load(); presses != s.heard.load()) {
-        s.heard.store(presses);
-        if (s.screen) s.screen->request_paint(s.host);
-    }
     if (s.outLevel >= 0) {
         clap_event_param_value v {};
         v.header = {sizeof(v), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
@@ -300,66 +282,66 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     return CLAP_PROCESS_CONTINUE;
 }
 
-// Melodee's screen, Test Sine's alone.
-uint32_t screenColour(const Plugin& s) {
-    return 0xff000000u | uint32_t(std::lround(s.level * 255)) << 16 | (s.cursor ? 0xff00u : 0u) | uint32_t(s.inputs & 0xff);
-}
-bool screenPaint(const clap_plugin* p, const melodee_screen_canvas_t* c) {
-    auto& s = of(p);
-    s.main();
-    ++screenPaints;
-    screenAccent = int(c->accent & 0xffffff);
-    uint32_t colour = screenColour(s);
-    const int heard = s.heard.load();
-    if (!c->whole && colour == s.drawn && c->knobs[0].position == s.drawnPot && heard == s.drawnHeard) return false; // as it is
-    for (uint32_t y = 0; y < c->height; ++y)
-        for (uint32_t x = 0; x < c->width; ++x) c->pixels[y * c->stride + x] = colour;
-    auto bar = [&](uint32_t y, double share) {
-        for (uint32_t x = 0; x < uint32_t(std::lround(std::clamp(share, 0.0, 1.0) * c->width)); ++x) c->pixels[y * c->stride + x] = 0xffffffffu;
-    };
-    bar(0, s.level);
-    if (c->knobs[0].position >= 0) bar(1, c->knobs[0].position / 127.0);
-    bar(2, heard * 16.0 / c->width);
-    s.drawn = colour;
-    s.drawnPot = c->knobs[0].position;
-    s.drawnHeard = heard;
-    ++screenDrawn;
+uint32_t remoteCount(const clap_plugin* p) { of(p).main(); return 1; }
+bool remotePage(const clap_plugin* p, uint32_t i, clap_remote_controls_page* page) {
+    of(p).main();
+    if (i != 0) return false;
+    *page = {};
+    std::strcpy(page->section_name, "Sound");
+    std::strcpy(page->page_name, "Main");
+    page->page_id = 1;
+    for (auto& id : page->param_ids) id = CLAP_INVALID_ID;
+    page->param_ids[0] = 9;
+    page->param_ids[1] = 7;
     return true;
 }
-bool screenInput(const clap_plugin* p, const melodee_screen_input_t* in) {
-    auto& s = of(p);
+const clap_plugin_remote_controls remoteControls {remoteCount, remotePage};
+
+// Its own screen: the bar; the wheel turns Level (Gain: Gain) a hundredth of its range a detent (it asks for a draw
+// and a block, and says its values moved), Push steps Wave, Minus / Plus are not its; Sine's K1 Level, K2 Wave, K3
+// nothing; Gain's K1 Gain.
+bool screenDraw(const void* p, const melodee_screen_frame_t* frame) {
+    auto& s = of(static_cast<const clap_plugin*>(p));
     s.main();
-    ++screenInputs;
-    screenLastKind = int(in->kind);
-    screenLastValue = in->value;
-    if (in->kind == MELODEE_SCREEN_WHEEL || in->kind == MELODEE_SCREEN_NUDGE) s.cursor = std::clamp(s.cursor + in->value, 0, 1);
-    else if (in->kind == MELODEE_SCREEN_PUSH) s.cursor = 0;
+    int bar = int(std::lround((s.instrument ? s.level : s.gain / 2) * frame->width));
+    if (!frame->redraw_all && bar == s.drawnBar) return false;
+    for (uint32_t y = 0; y < frame->height; ++y)
+        for (uint32_t x = 0; x < frame->width; ++x)
+            frame->pixels[y * frame->stride + x] = y < 10 && int(x) < bar ? frame->colour : 0x101010u;
+    s.drawnBar = bar;
+    return true;
+}
+bool screenInput(const void* p, const melodee_screen_input_t* in) {
+    auto& s = of(static_cast<const clap_plugin*>(p));
+    s.main();
+    if (in->kind == MELODEE_SCREEN_WHEEL && s.instrument) s.level = std::clamp(s.level + in->value * 0.01, 0.0, 1.0);
+    else if (in->kind == MELODEE_SCREEN_WHEEL) s.gain = std::clamp(s.gain + in->value * 0.02, 0.0, 2.0);
+    else if (in->kind == MELODEE_SCREEN_PUSH && s.instrument) s.wave = std::fmod(s.wave + 1, 3);
     else return false;
-    ++s.inputs;
-    if (in->kind == MELODEE_SCREEN_PUSH) { ++s.asked; s.host->request_process(s.host); }
-    else if (in->kind == MELODEE_SCREEN_NUDGE) {
-        ++s.asked;
-        if (s.hostParams && s.hostParams->request_flush) s.hostParams->request_flush(s.host);
-    }
+    if (auto* told = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)))
+        told->redraw(s.host, MELODEE_SCREEN_RUN);
+    if (auto* hp = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS)))
+        hp->rescan(s.host, CLAP_PARAM_RESCAN_VALUES);
     return true;
 }
-void screenKnobs(const clap_plugin* p, clap_id ids[3]) {
-    auto& s = of(p);
+void screenControls(const void* p, uint32_t ids[3]) {
+    auto& s = of(static_cast<const clap_plugin*>(p));
     s.main();
-    ids[0] = s.cursor ? 9 : 7;
-    ids[1] = s.cursor ? 7 : 9;
-    ids[2] = CLAP_INVALID_ID;
+    ids[0] = s.instrument ? 7 : 3;
+    ids[1] = s.instrument ? 9 : MELODEE_SCREEN_NO_CONTROL;
+    ids[2] = MELODEE_SCREEN_NO_CONTROL;
 }
-const clap_plugin_melodee_screen screenExt {screenPaint, screenInput, screenKnobs};
+const melodee_screen_t screen {screenDraw, screenInput, screenControls};
 
 const void* extension(const clap_plugin* p, const char* id) {
-    if (!std::strcmp(id, CLAP_EXT_MELODEE_SCREEN)) return of(p).instrument ? &screenExt : nullptr;
+    if (!std::strcmp(id, MELODEE_SCREEN_CLAP)) return &screen;
     if (!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
     if (!std::strcmp(id, CLAP_EXT_STATE)) return std::getenv("MELODEE_TEST_PARAMETER_ONLY") ? nullptr : &state;
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;
     if (!std::strcmp(id, CLAP_EXT_PRESET_LOAD)) return &presetLoad;
+    if (!std::strcmp(id, CLAP_EXT_REMOTE_CONTROLS) && of(p).instrument) return &remoteControls;
     return nullptr;
 }
 
@@ -375,8 +357,6 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     p.init = [](const clap_plugin* p) {
         auto& s = of(p);
         s.threads = static_cast<const clap_host_thread_check*>(s.host->get_extension(s.host, CLAP_EXT_THREAD_CHECK));
-        s.screen = static_cast<const clap_host_melodee_screen*>(s.host->get_extension(s.host, CLAP_EXT_MELODEE_SCREEN_HOST));
-        s.hostParams = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS));
         s.main();
         s.host->request_callback(s.host);
         return true;
@@ -389,7 +369,15 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     p.reset = [](const clap_plugin* p) { of(p).phases.clear(); };
     p.process = process;
     p.get_extension = extension;
-    p.on_main_thread = [](const clap_plugin* p) { of(p).main(); ++mainCallbacks; };
+    // Then asks to be run, as a plug-in does when its main thread has something for its audio side.
+    p.on_main_thread = [](const clap_plugin* p) {
+        auto& s = of(p);
+        s.main();
+        ++mainCallbacks;
+        s.host->request_process(s.host);
+        if (auto* remote = static_cast<const clap_host_remote_controls*>(s.host->get_extension(s.host, CLAP_EXT_REMOTE_CONTROLS)))
+            remote->changed(s.host);
+    };
     return &p;
 }
 
@@ -417,9 +405,4 @@ CLAP_EXPORT void fixture_counts(int* wrong, int* callbacks, int* initialised) {
 }
 // Preset files read through get_metadata().
 CLAP_EXPORT int fixture_preset_reads() { return presetReads; }
-// The screen: paint() calls and those that drew, input() calls, the last input's kind and value, the accent last told.
-CLAP_EXPORT void fixture_screen(int* paints, int* drawn, int* inputs, int* kind, int* value, int* accent) {
-    *paints = screenPaints; *drawn = screenDrawn; *inputs = screenInputs; *kind = screenLastKind; *value = screenLastValue;
-    *accent = screenAccent;
-}
 }
