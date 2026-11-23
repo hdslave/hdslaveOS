@@ -26,8 +26,14 @@ Melodee loads plug-ins built for the MPC's ARM processor:
   Surge XT needs its data folder: put `SurgeXTData` (the `resources/data`
   folder of Surge XT's source, for the same version) next to
   `Surge XT.clap`. Without it Surge XT has no presets or wavetables.
-- [Open MPC](https://open-mpc.github.io) plug-in folders (a VST2 `.so`
-  with a `plugin-meta.xml`).
+- MPC plug-in folders, named `Maker - VST - Name`: the folder of a
+  `-mpc-sdk.zip` (Akai's plug-in format, with a `plugin.json`), or an
+  [Open MPC](https://open-mpc.github.io) folder (a VST2 `.so` with a
+  `plugin-meta.xml`). Melodee opens the 64-bit build when the folder has
+  one, else the 32-bit build. The plug-in's data (samples, skins, presets)
+  is read from the card. Plug-ins kept in `VST2 Plugins` at the top of the
+  card, where MPC Sample 1.4 reads them, load too: press **B1** (**BACK**)
+  up to the top of the card and open `VST2 Plugins`.
 - VST2 `.so` files for 64-bit ARM (aarch64), or 32-bit ARM (armv7). 32-bit
   plug-ins run in a separate bridge process. If one crashes, only the
   bridge stops.
@@ -55,7 +61,8 @@ picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
 unzipped stays, dimmed, with **Won't unzip** (or **Card full** when the
 card has no room for it). Zips in other folders on the
-card are left as they are.
+card are left as they are. Other MPC plug-in releases install the same
+way: copy their `-mpc-sdk.zip` into `Melodee/Plugins`.
 
 To install a plug-in without moving the card, connect the MPC to a computer
 with USB-C and open **http://melodee.local** (or **http://192.168.155.1**) while Melodee runs. On

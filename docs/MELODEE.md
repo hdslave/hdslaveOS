@@ -2443,10 +2443,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 
 - **What loads.** Builds for this MPC only: a `.vst3` bundle with
   `Contents/aarch64-linux/`, an `.lv2` bundle, a `.clap` library (both
-  aarch64), an
-  [Open MPC](https://open-mpc.github.io) plug-in folder (its
+  aarch64), an MPC plug-in folder (`Maker - VST - Name/`: Akai's
+  `plugin.json`, the MPC plug-in SDK's folder in a `-mpc-sdk.zip`, its
+  builds in `file64` / `file32`, at the top or in `VST/`; or an
+  [Open MPC](https://open-mpc.github.io) folder, its
   `plugin-meta.xml` beside a VST2 `.so`), or a VST2 `.so` on its own;
-  aarch64, or 32-bit ARM (armv7) through the bridge. The
+  aarch64, or 32-bit ARM (armv7) through the bridge. A folder's aarch64
+  build is opened before its armv7 one, at 44.1 kHz (the Open MPC engine
+  contract; `plugin/rate_bridge.h` converts). Plug-ins run from a copy in
+  RAM (the card is noexec); a plug-in folder's subfolders with no library
+  in them (`samples/`, `Plugin Skins/`, `Presets/`, `Content/`) are linked
+  from the card instead of copied (`stage_copy()`). The
   picker lists the rest dimmed with the reason ("Windows and Mac builds
   only"). Most commercial plug-ins have no Linux ARM build.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,

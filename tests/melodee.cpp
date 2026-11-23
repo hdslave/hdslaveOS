@@ -7364,6 +7364,29 @@ void qlink_pages() {
     CHECK(named.size() == 5 && (named[2].params == std::vector<int> {3}));
 }
 
+// Akai's plugin.json in an MPC plug-in folder (plugin/plugin_files.h): name, instrument or effect, and the libraries
+// by build, each kept inside the folder.
+void plugin_json() {
+    // OxZygen 0.7.7's -mpc-sdk.zip (an Open MPC release in the SDK's folder): both builds at the folder's top.
+    auto ox = plugin_json_in(R"({"name": "OxZygen", "manufacturer": "oxzygen", "version": "0.7.7", "kind": "instrument",
+        "uid": "0x4f785a79", "numInputs": 0, "numOutputs": 2, "file64": "oxzygen-arm64.so", "file32": "oxzygen-arm32.so"})");
+    CHECK(ox.name == "OxZygen" && ox.instrument == 1);
+    CHECK(ox.file64 == "oxzygen-arm64.so" && ox.file32 == "oxzygen-arm32.so" && ox.file.empty());
+    // An SDK build: libraries in VST/; isInstrument wins over kind.
+    auto sdk = plugin_json_in(R"({"name": "Drive", "kind": "instrument", "isInstrument": false, "file64": "VST/drive-arm64.so"})");
+    CHECK(sdk.instrument == 0 && sdk.file64 == "VST/drive-arm64.so");
+    CHECK(plugin_json_in(R"({"kind": "Effect", "file": "x.so"})").instrument == 0);
+    CHECK(plugin_json_in(R"({"isInstrument": 1})").instrument == 1);
+    CHECK(plugin_json_in(R"({"kind": "midi"})").instrument == -1); // not said: opened once to find out
+    // Paths out of the folder are dropped; a backslash reads as a slash.
+    auto out = plugin_json_in(R"({"file64": "../other/x.so", "file32": "/usr/lib/x.so", "file": "C:\\VST\\x.so"})");
+    CHECK(out.file64.empty() && out.file32.empty() && out.file.empty());
+    CHECK(folder_path_in("VST\\x.so") == "VST/x.so" && folder_path_in("a/../x.so").empty() && folder_path_in("..").empty());
+    CHECK(folder_path_in("x..so") == "x..so" && folder_path_in("").empty());
+    // Not an object: nothing.
+    CHECK(plugin_json_in("[1]").name.empty() && plugin_json_in("{\"name\": \"cut").name.empty() && plugin_json_in("").instrument == -1);
+}
+
 // A plug-in's pages (plugin/plugin_pages.h): each page's parameters in rows of three on K1-K3, a page's last row
 // filled with -1, so no row holds two pages; groups make pages, with MAIN for the parameters outside any group.
 void plugin_page_layout() {
@@ -12030,6 +12053,7 @@ int main() {
     nam_page();
     card_plugin_paths();
     qlink_pages();
+    plugin_json();
     plugin_page_layout();
     page_files();
     synths_as_plugins();

@@ -109,8 +109,32 @@ void link_neighbours(const fs::path& from, const fs::path& to) {
     }
 }
 
-// A plug-in's files into `to`: a VST3 bundle without other machines' builds, an Open MPC folder whole, a .so alone;
-// the folders beside it linked.
+// What a plug-in may load or run, so copied off the card (mounted noexec): a library (x.so, libx.so.1), or an ARM
+// program without an extension.
+bool runs(const fs::path& path) {
+    auto name = path.filename().string();
+    for (auto& c : name) c = char(std::tolower(static_cast<unsigned char>(c)));
+    if (name.size() > 3 && name.compare(name.size() - 3, 3, ".so") == 0) return true;
+    if (name.find(".so.") != std::string::npos) return true;
+    return !path.has_extension() && arm_elf(path.string()) != 0;
+}
+
+// The folders in an MPC plug-in folder holding something that runs(), each relative to it.
+std::vector<fs::path> folders_that_run(const fs::path& from) {
+    std::vector<fs::path> out;
+    std::error_code e;
+    for (auto it = fs::recursive_directory_iterator(from, e); !e && it != fs::recursive_directory_iterator(); it.increment(e)) {
+        std::error_code f;
+        if (it->is_directory(f) || !runs(it->path())) continue;
+        for (auto dir = it->path().lexically_relative(from).parent_path(); !dir.empty(); dir = dir.parent_path())
+            if (std::find(out.begin(), out.end(), dir) == out.end()) out.push_back(dir);
+    }
+    return out;
+}
+
+// A plug-in's files into `to`: a VST3 bundle without other machines' builds, an MPC plug-in folder (its folders with
+// no library linked, so its data stays on the card: OxZygen's samples are 160 MB), a .so alone; the folders beside it
+// linked.
 bool stage_copy(const PluginFile& file, const fs::path& to, std::string& error) {
     std::error_code e;
     fs::create_directories(to, e);
@@ -123,6 +147,8 @@ bool stage_copy(const PluginFile& file, const fs::path& to, std::string& error) 
     }
     fs::path target = to / from.filename();
     fs::create_directories(target, e);
+    bool mpc_folder = file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32;
+    std::vector<fs::path> copied = mpc_folder ? folders_that_run(from) : std::vector<fs::path> {};
     for (auto it = fs::recursive_directory_iterator(from, e); !e && it != fs::recursive_directory_iterator(); it.increment(e)) {
         auto rel = fs::relative(it->path(), from, e);
         auto first = rel.begin(), second = std::next(first);
@@ -131,8 +157,16 @@ bool stage_copy(const PluginFile& file, const fs::path& to, std::string& error) 
             if (it->is_directory(e)) it.disable_recursion_pending();
             continue;
         }
-        if (it->is_directory(e)) fs::create_directories(target / rel, e);
-        else fs::copy_file(it->path(), target / rel, fs::copy_options::overwrite_existing, e);
+        if (it->is_directory(e)) {
+            if (mpc_folder && std::find(copied.begin(), copied.end(), rel) == copied.end()) {
+                fs::create_directory_symlink(it->path(), target / rel, e);
+                it.disable_recursion_pending();
+            } else {
+                fs::create_directories(target / rel, e);
+            }
+        } else {
+            fs::copy_file(it->path(), target / rel, fs::copy_options::overwrite_existing, e);
+        }
         if (e) { error = "Could not copy: " + e.message(); return false; }
     }
     return !e;
@@ -188,8 +222,8 @@ bool hidden(const juce::AudioProcessorParameter& p) {
     return !p.isAutomatable() || name.startsWith("MIDI Ch.") || name.startsWith("MIDI CC");
 }
 
-// Where a plug-in's own page file is (docs/PLUGIN_PAGES.md): in its VST3 bundle's Resources, its LV2 bundle or Open
-// MPC folder, else beside its .clap or .so as <name>.melodee-pages.json.
+// Where a plug-in's own page file is (docs/PLUGIN_PAGES.md): in its VST3 bundle's Resources, its LV2 bundle or MPC
+// plug-in folder, else beside its .clap or .so as <name>.melodee-pages.json.
 fs::path package_page_file(const PluginFile& file) {
     fs::path at(file.path);
     std::error_code e;
