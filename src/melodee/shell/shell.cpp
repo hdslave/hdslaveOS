@@ -21,6 +21,7 @@
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
+#include <type_traits>
 #include <chrono>
 #include "melodee/shell/takeover.h"
 #include "melodee/shell/mute_mode.h"
@@ -93,6 +94,7 @@ struct HitStamp {
 
 void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
+    ++context_.heavy_serial;
     context_.now = now;
     if (packet.size && packet.bytes[0] < 0xF8) last_input_ = now; // notes and controllers, not the clock: the background save waits
     HitStamp stamp(context_, packet.timestamp_ns);
@@ -101,18 +103,21 @@ void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t no
 
 void Shell::looper_ask(const LooperAsk& ask, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
+    ++context_.heavy_serial;
     context_.now = now;
     looper_remote(context_, ask);
 }
 
 void Shell::midi_panic(uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
+    ++context_.heavy_serial;
     context_.now = now;
     context_.midi_panic();
 }
 
 void Shell::midi_lost() {
     std::lock_guard<std::mutex> guard(lock);
+    ++context_.heavy_serial;
     midi_io.lost(context_);
 }
 
@@ -127,6 +132,7 @@ void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t 
 
 void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
+    ++context_.heavy_serial;
     context_.now = now;
     last_input_ = now; // a hand on the controls: the background save waits (shell/autosave.h)
     HitStamp stamp(context_, event.timestamp_ns);
@@ -818,6 +824,68 @@ FrameView Shell::zoomed_view() const {
     return {};
 }
 
+namespace {
+// A project's copy for the screen without what a frame with no control used cannot have changed: each track's kit
+// (its pads, their chains, its zone trims: nine tenths of a project's bytes), which `to` keeps from the last whole
+// copy, and the chops, which no page draws. The names stand for Project's members in their order; a member added
+// there stops this compiling until it has a line here.
+template <class T> void put(T& to, const T& from) { to = from; }
+template <class T, size_t N> void put(T (&to)[N], const T (&from)[N]) { std::copy(from, from + N, to); }
+void copy_track_light(Track& to, const Track& from) {
+    static_assert(std::is_trivially_copyable_v<Track>, "copied here in pieces, byte for byte");
+    const char* source = reinterpret_cast<const char*>(&from);
+    char* target = reinterpret_cast<char*>(&to);
+    auto place = [&](const void* member) { return size_t(reinterpret_cast<const char*>(member) - source); };
+    std::array<std::pair<size_t, size_t>, 3> kit {{{place(&from.pad_fx), sizeof from.pad_fx}, {place(&from.pads), sizeof from.pads},
+                                                   {place(&from.zone_trims), sizeof from.zone_trims}}};
+    std::sort(kit.begin(), kit.end());
+    size_t done = 0;
+    for (const auto& [at, size] : kit) { std::memcpy(target + done, source + done, at - done); done = at + size; }
+    std::memcpy(target + done, source + done, sizeof(Track) - done);
+}
+void copy_light(Project& to, const Project& from) {
+    auto& [name, tempo, seq_tempo, pattern_tempo, signature, swing, root, scale, punch_target, punch_bank, punch_depth, punch_snap, punch_tail,
+           punch_quantize, pad_fx_params, flex, tracks, knob_fx, compressor, song, buses, samples, chops, plugins, master, looper, loop_mix, loop_fx,
+           modulators, macros, scenes, scene] = to;
+    const auto& [name_, tempo_, seq_tempo_, pattern_tempo_, signature_, swing_, root_, scale_, punch_target_, punch_bank_, punch_depth_, punch_snap_,
+                 punch_tail_, punch_quantize_, pad_fx_params_, flex_, tracks_, knob_fx_, compressor_, song_, buses_, samples_, chops_, plugins_, master_,
+                 looper_, loop_mix_, loop_fx_, modulators_, macros_, scenes_, scene_] = from;
+    put(name, name_); put(tempo, tempo_); put(seq_tempo, seq_tempo_); put(pattern_tempo, pattern_tempo_); put(signature, signature_);
+    put(swing, swing_); put(root, root_); put(scale, scale_); put(punch_target, punch_target_); put(punch_bank, punch_bank_);
+    put(punch_depth, punch_depth_); put(punch_snap, punch_snap_); put(punch_tail, punch_tail_); put(punch_quantize, punch_quantize_);
+    put(pad_fx_params, pad_fx_params_); put(flex, flex_);
+    for (unsigned t = 0; t < track_count; ++t) copy_track_light(tracks[t], tracks_[t]);
+    put(knob_fx, knob_fx_); put(compressor, compressor_); put(song, song_); put(buses, buses_); put(samples, samples_);
+    (void)chops; (void)chops_; // not copied: as the whole copy leaves them
+    put(plugins, plugins_); put(master, master_); put(looper, looper_); put(loop_mix, loop_mix_); put(loop_fx, loop_fx_);
+    put(modulators, modulators_); put(macros, macros_); put(scenes, scenes_); put(scene, scene_);
+}
+bool same_kits(const Project& a, const Project& b) {
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& x = a.tracks[t];
+        const auto& y = b.tracks[t];
+        if (std::memcmp(&x.pads, &y.pads, sizeof x.pads) || std::memcmp(&x.pad_fx, &y.pad_fx, sizeof x.pad_fx)
+            || std::memcmp(&x.zone_trims, &y.zone_trims, sizeof x.zone_trims)) return false;
+    }
+    return true;
+}
+// A pattern as the lists draw it: its length, whether and what it holds, the first note of each of its first 64 sixteenths.
+void sketch_of(const Pattern& pattern, PatternSketch& sketch) {
+    sketch.length = pattern.length; sketch.keys.fill(0);
+    sketch.notes = !pattern.empty();
+    sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
+    sketch.moves = uint16_t(std::min<size_t>(pattern.motion.size(), 0xffff));
+    sketch.follows = pattern.follow.on(); // roadmap P5
+    sketch.program = pattern.program;
+    sketch.audio = pattern.audio; // freeze plan F3: an audio track's take
+    for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
+        unsigned k = e.tick / sixteenth_ticks;
+        if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
+        if (!sketch.keys[k]) sketch.keys[k] = e.key;
+    }
+}
+} // namespace
+
 void Shell::snapshot(Snapshot& out, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
@@ -825,10 +893,18 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     fader_check(context_);
     edit_loop_check(context_); // an editor's loop ends with the editor (shell/note_jobs.h)
     out.ui = ui_;
-    { // The project, without each sample's chop: no page draws one (Chop draws the slices in hand, UiState's).
+    // The kits and pattern sketches are most of what a frame copied (nine tenths of 0.8 MB) and change only with
+    // a control, a MIDI message or something told to the audio thread: Context::heavy_serial moves with each of
+    // those, and `sent` with every command to the audio thread. While neither has moved the frame is a light one,
+    // which leaves both as the last whole frame made them. Whole again at least every half second as a safety net.
+    const uint64_t serial = context_.heavy_serial + handed_.load(std::memory_order_relaxed);
+    const bool whole = !snapshot_light || out.heavy_serial != serial || out.sent_seen != context_.sent || now - out.whole_at >= 500;
+    if (whole) { // The project, without each sample's chop: no page draws one (Chop draws the slices in hand, UiState's).
         SlotTable<SampleChop> chops = std::move(project_->chops);
         out.project = *project_;
         project_->chops = std::move(chops);
+    } else {
+        copy_light(out.project, *project_);
     }
     out.audio_peaks = context_.audio_peaks; // freeze plan F3
     out.jams = context_.jam_view;           // jam capture: JAMS on Song
@@ -909,23 +985,28 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             out.history.push_back({e.what, e.track, e.at, history_kind(e)});
         }
     }
-    for (unsigned t = 0; t < track_count; ++t)
-        for (unsigned n = 0; n < pattern_count; ++n) {
-            const auto& pattern = patterns_->at[t][n];
-            auto& sketch = out.sketches[t][n];
-            sketch.length = pattern.length; sketch.keys.fill(0);
-            sketch.notes = !pattern.empty();
-            sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
-            sketch.moves = uint16_t(std::min<size_t>(pattern.motion.size(), 0xffff));
-            sketch.follows = pattern.follow.on(); // roadmap P5
-            sketch.program = pattern.program;
-            sketch.audio = pattern.audio; // freeze plan F3: an audio track's take
-            for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
-                unsigned k = e.tick / sixteenth_ticks;
-                if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
-                if (!sketch.keys[k]) sketch.keys[k] = e.key;
+    if (whole)
+        for (unsigned t = 0; t < track_count; ++t)
+            for (unsigned n = 0; n < pattern_count; ++n) sketch_of(patterns_->at[t][n], out.sketches[t][n]);
+    else if (snapshot_verify) { // the light frame against a whole one: a kit or a sketch that differs was changed with no word of it
+        bool same = same_kits(out.project, *project_);
+        for (unsigned t = 0; t < track_count && same; ++t)
+            for (unsigned n = 0; n < pattern_count && same; ++n) {
+                PatternSketch fresh = out.sketches[t][n];
+                sketch_of(patterns_->at[t][n], fresh);
+                same = std::memcmp(&fresh, &out.sketches[t][n], sizeof fresh) == 0;
+            }
+        if (!same) {
+            stale_.fetch_add(1, std::memory_order_relaxed);
+            for (unsigned t = 0; t < track_count; ++t) {
+                out.project.tracks[t] = project_->tracks[t];
+                for (unsigned n = 0; n < pattern_count; ++n) sketch_of(patterns_->at[t][n], out.sketches[t][n]);
             }
         }
+    }
+    out.whole = whole;
+    out.sent_seen = context_.sent;
+    if (whole) { out.heavy_serial = serial; out.whole_at = now; }
     out.freeze = context_.prints.freeze; // freeze plan F2c
     out.prints_kept = {};
     for (const auto& r : context_.prints.records) ++out.prints_kept[r.track % track_count];

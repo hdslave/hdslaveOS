@@ -68,7 +68,7 @@ void Context::send(const Command& command) {
     case Type::MidiAudio: case Type::Monitor: case Type::LoopMonitor: case Type::InputTaken: case Type::RecordGain:
     case Type::RecordSource: case Type::KeyedRoot: case Type::ExtSync: case Type::MtcIn: case Type::RepeatKey: case Type::ArpKey:
     case Type::PunchOn: case Type::PunchOff: break;
-    default: dirty = true;
+    default: dirty = true; ++heavy_serial;
     }
     // A note played by hand or by MIDI in plays at the frame it came in, a block late, not at the next block's start.
     switch (command.type) {
@@ -162,6 +162,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;
     patterns = bank;
+    ++heavy_serial;
     auto keep = ui.pots;
     auto settings = ui.settings; // Melodee's own: they belong to no project
     auto pads_down = ui.held_pads; // the hand on the pads stays where it is
@@ -1284,6 +1285,7 @@ void Context::sync_pattern(unsigned t, unsigned p) {
     c.data = new Pattern(played_pattern(patterns.at[t % track_count][p % pattern_count], project.tracks[t % track_count].speed)); // as it plays: its feel, its track's speed (roadmap P1)
     if (!host.send(c)) delete c.data;
     dirty = true;
+    ++heavy_serial;
 }
 
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
@@ -1315,6 +1317,7 @@ void Context::sync_motion(unsigned t, unsigned p) {
     if (motion_waiting >= 0 && motion_waiting != which) sync_pattern(unsigned(motion_waiting) >> 8, unsigned(motion_waiting) & 0xff);
     motion_waiting = which;
     dirty = true;
+    ++heavy_serial; // at the write: the pattern goes to the audio thread a little later (flush_motion())
     flush_motion();
 }
 

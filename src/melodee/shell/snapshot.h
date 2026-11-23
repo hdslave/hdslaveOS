@@ -33,6 +33,12 @@ struct PatternSketch {
 };
 
 struct Snapshot {
+    // Shell::snapshot()'s own, kept from frame to frame: what the kits and pattern sketches below were last copied
+    // at, so a frame in which neither can have changed leaves them as they are. A new Snapshot is always filled
+    // whole. `whole`: this frame was.
+    uint64_t heavy_serial = 0;
+    uint32_t sent_seen = 0, whole_at = 0;
+    bool whole = true;
     std::shared_ptr<const TakePeaks> audio_peaks; // freeze plan F3: the takes' overviews (Context::audio_peaks)
     std::shared_ptr<const JamList> jams;         // jam capture: the jams kept (Context::jam_view), for JAMS
     UiState ui;
