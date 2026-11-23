@@ -178,6 +178,7 @@ private:
     // a note event with key and channel -1 crashed Surge XT (its releaseNote() indexes by them). A burst wider
     // than one block's events waits in the queues for the next blocks, still key by key.
     std::array<std::bitset<128>, 16> heldKeys {}, playedKeys {}, chokeQueue {}, offQueue {};
+    bool anyQueued = false;    // a key waits in chokeQueue or offQueue: an empty block need not walk them
     uint32_t queuedAllOff = 0; // CC 120/123 as MIDI a full block left for the next ones: two bits a channel
     std::atomic<uint32_t> droppedCount { 0 };
 };

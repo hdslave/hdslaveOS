@@ -506,6 +506,13 @@ void ClapInstance::prepareToPlay (double newRate, int newBlock)
 {
     std::lock_guard<std::recursive_mutex> held (mainLock);
     releaseResources();
+    // It was deactivated: no voice of the old session is left to choke or release into the new one.
+    for (auto& keys : heldKeys) keys.reset();
+    for (auto& keys : playedKeys) keys.reset();
+    for (auto& keys : chokeQueue) keys.reset();
+    for (auto& keys : offQueue) keys.reset();
+    anyQueued = false;
+    queuedAllOff = 0;
     rate = newRate;
     block = std::max (newBlock, 1);
     setRateAndBufferSizeDetails (rate, block);
@@ -625,7 +632,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
             x.data[2] = 0;
         }
     }
-    if (notePort >= 0 && clapNotes)
+    if (notePort >= 0 && clapNotes && anyQueued)
     {
         // Chokes and note-offs a wider burst than one block holds left for these blocks, first and key by key.
         auto queued = [&] (std::array<std::bitset<128>, 16>& queue, uint16_t type) {
@@ -648,6 +655,9 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         };
         queued (chokeQueue, CLAP_EVENT_NOTE_CHOKE);
         queued (offQueue, CLAP_EVENT_NOTE_OFF);
+        anyQueued = false; // what a full block could not take is still waiting
+        for (int channel = 0; channel < 16 && ! anyQueued; ++channel)
+            anyQueued = chokeQueue[(size_t) channel].any() || offQueue[(size_t) channel].any();
     }
     if (notePort >= 0)
     {
@@ -682,9 +692,9 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
                         if (! keys.test ((size_t) k)) continue;
                         // A MIDI copy follows below where the port takes MIDI: its place is kept for it, so a
                         // burst queues chokes rather than crowding the controller itself out.
-                        if (midiNotes && eventCount + 1 >= maxEvents) queue.set ((size_t) k);
+                        if (midiNotes && eventCount + 1 >= maxEvents) { queue.set ((size_t) k); anyQueued = true; }
                         else if (auto* e = add()) fill (e, cut ? CLAP_EVENT_NOTE_CHOKE : CLAP_EVENT_NOTE_OFF, k, 0.0);
-                        else queue.set ((size_t) k);
+                        else { queue.set ((size_t) k); anyQueued = true; }
                     }
                     heldKeys[channel].reset();
                     if (cut) playedKeys[channel].reset();
