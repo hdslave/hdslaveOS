@@ -63,6 +63,9 @@ public:
     // be run (request_process, or its parameters' request_flush), or a value set here waits for it (a pot turned).
     // The next processBlock() takes both.
     bool wantsProcess() const override;
+    // Events a full block had no room for and could not keep for the next one (a choke or note-off burst is
+    // kept, never counted here). Any thread.
+    uint32_t droppedEvents() const { return droppedCount.load (std::memory_order_relaxed); }
 
     const juce::String getName() const override { return name; }
     void fillInPluginDescription (juce::PluginDescription&) const override;
@@ -158,7 +161,7 @@ private:
     juce::File file;
     Info info;
     juce::String name;
-    std::recursive_mutex mainLock;
+    mutable std::recursive_mutex mainLock; // mutable: getTailLengthSeconds() is const and a main-thread call
     bool active = false, processing = false;
     double rate;
     int block;
@@ -182,8 +185,11 @@ private:
     uint32_t eventCount = 0;
     // The keys this host started on each MIDI channel (audio thread): held, and played since the last all sound off.
     // All notes off (CC 123) releases each held key and all sound off (CC 120) chokes each played one, key by key:
-    // a note event with key and channel -1 crashed Surge XT (its releaseNote() indexes by them).
-    std::array<std::bitset<128>, 16> heldKeys {}, playedKeys {};
+    // a note event with key and channel -1 crashed Surge XT (its releaseNote() indexes by them). A burst wider
+    // than one block's events waits in the queues for the next blocks, still key by key.
+    std::array<std::bitset<128>, 16> heldKeys {}, playedKeys {}, chokeQueue {}, offQueue {};
+    uint32_t queuedAllOff = 0; // CC 120/123 as MIDI a full block left for the next ones: two bits a channel
+    std::atomic<uint32_t> droppedCount { 0 };
 };
 
 } // namespace melodee
