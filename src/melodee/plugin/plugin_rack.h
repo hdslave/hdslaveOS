@@ -110,18 +110,24 @@ public:
     // library; the picker starts in its Plugins folder and goes up as far as
     // the card's top, so a plug-in anywhere on the card can be picked.
     void set_card(const std::string& top);
-    void browse(const std::string& folder); // "" the Plugins folder itself
+    // "" the Plugins folder itself. With `row` (a listed plug-in's path, and its id in a bundle of several), the
+    // listing's came_from is where that row is now. A folder no longer there lists the Plugins folder.
+    void browse(const std::string& folder, const std::string& row = {}, int32_t row_id = 0);
     void browse_up();
     struct View {
         std::string root;   // the card's Melodee/Plugins folder; empty: no card
         std::string folder; // the folder listed
         bool top = true;    // the card's top: nothing above it to go back to
         bool home = true;   // the Plugins folder itself
-        int came_from = -1; // after going up: the row of the folder it came out of
+        int came_from = -1; // after going up: the row of the folder it came out of; after browse() with a row: that row
         std::vector<PluginFile> files;
     };
     View view() const;
     unsigned changes() const { return change_count.load(std::memory_order_acquire); } // the view or a status moved
+    // The web page installed, replaced or deleted something on the card (any thread). What opening a plug-in found is
+    // forgotten for one gone or changed since, and card_changes() counts up: an open picker lists again.
+    void card_changed();
+    unsigned card_changes() const { return card_count.load(std::memory_order_acquire); }
     // For `status`: each entry in use as entry:state:name:format:load (tenths of a percent), comma separated.
     std::string summary() const;
     // About (round 2): how many plug-ins are loaded and running, and their share of the audio time together.
@@ -143,6 +149,7 @@ private:
         std::string path;
         double rate = 0;
         int32_t id = 0;
+        std::string row {}; // Browse: the row to find again (browse())
     };
     void run();                                     // the rack's thread
     void load(const Job& job);
@@ -151,7 +158,7 @@ private:
     void switch_program(unsigned entry, uint32_t generation, int program);
     void find_presets(unsigned entry, uint32_t generation); // a CLAP plug-in's, once it plays
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
-    void list(const std::string& folder, int came_from);
+    void list(const std::string& folder, const std::string& row, int32_t row_id); // `row` as in browse()
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
@@ -176,7 +183,8 @@ private:
     View shown;
     // What opening a plug-in once found: its own name, instrument or effect, and every plug-in a bundle holds.
     struct Class { int32_t id = 0; std::string name; int8_t instrument = 0; };
-    struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; };
+    // `time`: the file's or the folder's own when it was opened (card_changed() forgets it once that moves).
+    struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; std::filesystem::file_time_type time {}; };
     std::vector<Known> known;
     Known probe(const PluginFile& file);            // opens it just long enough to ask
     // Page files that could not be used, by file, and what was last written of them (rack's thread only).
@@ -184,7 +192,7 @@ private:
     std::string page_problems_written;
     std::string stage_tag;
     uint32_t stage_count = 0;
-    std::atomic<unsigned> change_count {0};
+    std::atomic<unsigned> change_count {0}, card_count {0};
     std::thread thread;
     // The screen thread's: what the MIDI thread told it and the newest picture (under `screen_lock`, never held while
     // `lock` is taken); `screen_calls` held while it calls into a plug-in, so destroy() frees none meanwhile.

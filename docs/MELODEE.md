@@ -2895,11 +2895,12 @@ of zip:
   release is deleted again.
 - **Plug-ins**: a plug-in zip (a release's `-mpc-sample.zip`). It is written
   to `Melodee/Plugins` and unzipped at once (`unzip_plugins()`); the header
-  shows **Plug-in installed** and the picker lists it the next time it
-  opens. A folder of the same name is replaced. A zip that will not unzip
+  shows **Plug-in installed** and an open picker lists it at once, its
+  cursor on the same plug-in. A folder of the same name is replaced. A zip that will not unzip
   is deleted again. **Installed** below lists them and scrolls; each row's delete button
   removes that entry from `Melodee/Plugins` (`POST /plugin/delete?file=`,
-  one name straight in the folder) and the header shows **Plug-in removed**.
+  one name straight in the folder), the header shows **Plug-in removed** and
+  an open picker lists without it.
 
 Uploads need the card on the MPC (not mounted on a computer). The server
 (`web/web_server.*`) serves one request at a time and refuses a Host that is

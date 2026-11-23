@@ -367,7 +367,8 @@ public:
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;
-    bool plugin_came_back = true; // false after going up, until the cursor lands on the folder it came out of
+    unsigned plugin_card_seen = 0; // the web page's changes to the card the picker has listed again for
+    bool plugin_came_back = true; // false after going up (or a web page change), until the cursor lands on the row asked for
     // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
     // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results
     // taken in, often, from the shell's tick.

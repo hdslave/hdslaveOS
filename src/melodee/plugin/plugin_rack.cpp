@@ -1052,7 +1052,31 @@ void PluginRack::set_card(const std::string& top) {
     browse("");
 }
 
-void PluginRack::browse(const std::string& where) { push({Job::Kind::Browse, 0, 0, where, 0}); }
+void PluginRack::browse(const std::string& where, const std::string& row, int32_t row_id) {
+    Job job {Job::Kind::Browse, 0, 0, where, 0, row_id, row};
+    push(std::move(job));
+}
+
+void PluginRack::card_changed() {
+    std::vector<Known> had;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        had = known;
+    }
+    std::vector<std::string> gone; // looked at without the lock: the card may be slow
+    for (const auto& k : had) {
+        std::error_code e;
+        auto time = fs::last_write_time(k.path, e);
+        if (e || time != k.time) gone.push_back(k.path);
+    }
+    {
+        std::lock_guard<std::mutex> held(lock);
+        known.erase(std::remove_if(known.begin(), known.end(), [&](const Known& k) {
+            return std::find(gone.begin(), gone.end(), k.path) != gone.end();
+        }), known.end());
+    }
+    card_count.fetch_add(1, std::memory_order_acq_rel);
+}
 
 void PluginRack::browse_up() {
     std::string up;
@@ -1091,18 +1115,13 @@ void PluginRack::run() {
         case Job::Kind::Unload: unload(job.entry, job.generation); break;
         case Job::Kind::Sleep: sleep(job.entry, job.generation); break;
         case Job::Kind::Browse: {
-            std::string from;
+            std::string row = job.row, at;
             {
                 std::lock_guard<std::mutex> held(lock);
-                from = shown.folder;
+                if (job.entry == 1) row = shown.folder; // going up: the row of the folder it came out of
+                at = job.path.empty() ? root : job.path;
             }
-            std::string at = job.path.empty() ? root : job.path;
-            list(at, job.entry == 1 ? 0 : -1);
-            if (job.entry == 1) { // the row of the folder it came out of
-                std::lock_guard<std::mutex> held(lock);
-                for (size_t n = 0; n < shown.files.size(); ++n)
-                    if (shown.files[n].path == from) shown.came_from = int(n);
-            }
+            list(at, row, job.entry == 1 ? 0 : job.id);
             probe_listed();
             break;
         }
@@ -1114,7 +1133,7 @@ void PluginRack::run() {
     }
 }
 
-void PluginRack::list(const std::string& at, int) {
+void PluginRack::list(const std::string& at, const std::string& row, int32_t row_id) {
     std::string top, card;
     {
         std::lock_guard<std::mutex> held(lock);
@@ -1128,7 +1147,8 @@ void PluginRack::list(const std::string& at, int) {
         std::error_code e;
         auto canonical_card = fs::weakly_canonical(card, e), canonical_top = fs::weakly_canonical(top, e),
              canonical_at = fs::weakly_canonical(at.empty() ? top : at, e);
-        v.folder = (under(canonical_card, canonical_at) ? canonical_at : canonical_top).string();
+        bool there = fs::exists(canonical_at, e); // deleted from the web page while it was listed
+        v.folder = (there && under(canonical_card, canonical_at) ? canonical_at : canonical_top).string();
         v.top = v.folder == canonical_card.string();
         v.home = v.folder == canonical_top.string();
         auto here = describe_plugin(v.folder);
@@ -1164,6 +1184,9 @@ void PluginRack::list(const std::string& at, int) {
                 }), v.files.end());
         }
     }
+    if (!row.empty())
+        for (size_t n = 0; n < v.files.size(); ++n)
+            if (v.files[n].path == row && v.files[n].id == row_id) v.came_from = int(n);
     {
         std::lock_guard<std::mutex> held(lock);
         for (auto& f : v.files)
@@ -1181,6 +1204,8 @@ void PluginRack::list(const std::string& at, int) {
 PluginRack::Known PluginRack::probe(const PluginFile& file) {
     Known found;
     found.path = file.path;
+    std::error_code when;
+    found.time = fs::last_write_time(file.path, when);
     int8_t kind = -1;
     std::string error;
     fs::path stage = stage_root() / (stage_tag + "probe-" + std::to_string(++stage_count));

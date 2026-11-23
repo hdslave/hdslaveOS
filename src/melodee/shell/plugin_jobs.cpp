@@ -307,6 +307,16 @@ void Context::plugins_tick(uint32_t at) {
     split_shared_plugins();
     plugins->sync(project, plugins_asleep());
     delete_tick(*this); // the picker listed again once a plug-in is deleted (shell/delete_jobs.h)
+    // The web page installed or deleted a plug-in: an open picker lists again, its cursor on the plug-in it was on.
+    if (plugins->card_changes() != plugin_card_seen) {
+        plugin_card_seen = plugins->card_changes();
+        if (ui.page == PageId::Plugins) {
+            auto view = plugins->view();
+            const PluginFile on = ui.plugins_cursor < view.files.size() ? view.files[ui.plugins_cursor] : PluginFile {};
+            plugin_came_back = false;
+            plugins->browse(view.folder, on.path, on.id);
+        }
+    }
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
         plugin_view_seen = plugins->changes();
         auto view = plugins->view();
