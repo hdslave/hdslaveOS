@@ -717,6 +717,8 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         {
             if (i == 0 && (int) c < buffer.getNumChannels() && (int) c < getTotalNumInputChannels())
                 std::memcpy (inputPointers[at], buffer.getReadPointer ((int) c), sizeof (float) * (size_t) frames);
+            else if (c < 64) // silent, and flagged constant: zeroed once on prepareToPlay, not cleared every block
+                inBuffers[i].constant_mask |= uint64_t (1) << c;
             else
                 std::memset (inputPointers[at], 0, sizeof (float) * (size_t) frames);
         }
@@ -753,6 +755,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 double ClapInstance::getTailLengthSeconds() const
 {
     if (tail == nullptr || ! active) return 0.0;
+    std::lock_guard<std::recursive_mutex> held (mainLock); // main-thread call, as the rest here
     const uint32_t samples = tail->get (plugin);
     if (samples == UINT32_MAX) return 60.0; // "infinite"
     return samples > 1 ? (double) samples / rate : 0.0;
