@@ -40,6 +40,15 @@ def compile_and_run(test, temp, plugin, host_source, extra_objects, expected):
                      and all((OBJ / o).is_file() for o in OBJECTS + ["melodee/plugin/clap_instance.o"]),
                      "needs make's aarch64 objects")
 class PluginHostTests(unittest.TestCase):
+    def test_idle_gate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            exe = Path(temp) / "idle_gate"
+            subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(ROOT / "src"), str(ROOT / "tests/idle_gate.cpp"), "-o", str(exe)], check=True)
+            result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("idle ok", result.stdout)
+
     def test_clap_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.clap"

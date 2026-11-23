@@ -149,7 +149,7 @@ private:
     juce::File file;
     Info info;
     juce::String name;
-    std::recursive_mutex mainLock;
+    mutable std::recursive_mutex mainLock;
     bool active = false, processing = false;
     double rate;
     int block;
