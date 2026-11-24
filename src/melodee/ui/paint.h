@@ -48,7 +48,8 @@ public:
     juce::StringArray wrap(const juce::String& value, Text& style, float w, int most) const;
 
     // The fixed contour print on selected menu tiles and browser rows.
-    void contour_panel(int x, int y, int w, int h);
+    enum class ContourEdge { Highlighted, Dark };
+    void contour_panel(int x, int y, int w, int h, ContourEdge edge = ContourEdge::Highlighted);
     void label_plate(float x, float y, float w, float h, juce::Colour ink);
     void note_block(float x, float y, float w, float h, juce::Colour ink, float radius);
 
