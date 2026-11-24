@@ -100,13 +100,14 @@ you choose what it is first ([step 4](#4-load-samples-into-a-kit) makes it a
 kit). The other tracks stay empty until you choose what they are (see
 [step 7](#7-add-a-plug-in-instrument)).
 
-To see all tracks as a mixer, press **PAD FX** and **KNOB FX** together to
-open **Tracks**.
-Each cell shows a track's number, its pattern, its type and its level. Use
-**K1** to set the selected track's level, **K2** its pan and **K3** its send
-to bus A.
+To mix the tracks, press **PAD FX** and **KNOB FX** together to open the
+mixer. The selected track is the wide card in the middle; its neighbours
+sit left and right. Press a pad or turn the encoder to pick a track. The
+fader sets its level, **K1**–**K3** its sends A–C. Press **B2** for its EQ
+and **B3** for its compressor (see
+[The mixer](guide/mixer-and-effects.md#the-mixer)).
 
-![The Tracks page](images/screens/tracks.png)
+![The mixer](images/screens/mixer.png)
 
 ## 4. Load samples into a kit
 

@@ -126,8 +126,8 @@ cards.
 | Main volume | Master level, at once | |
 | Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Step Edit and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
 | Seq | The SEQUENCE hub (docs/HUBS_PLAN.md). Tap: the hub page last open on the track (Patterns, Roll or Motion; Patterns until another is opened) from anywhere; on a hub page home, Patterns; on Step Edit back to the page under it. B1-B3 PATTERNS, ROLL, MOTION on all three. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, over the page in view; again back to it |
-| Pad FX | Pad FX (the punches). Acts on its release: with Knob FX, in either order, the MIX hub on Tracks (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
-| Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the MIX hub | FX Select: the effect chains, Track → Sends → Bus → Master (at once) |
+| Pad FX | Pad FX (the punches). Acts on its release: with Knob FX, in either order, the mixer (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
+| Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the mixer | FX Select: the effect chains, Track → Bus → Master (on the mixer, the channel in hand's; at once) |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks, a pad picks one (the screen stays the page's; Pad FX + Knob FX shows the tracks); −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
@@ -290,8 +290,7 @@ beat; the meters show the mix.
   moves to the next card (PRESETS: the whole list), Shift +
   Push is Back, −/+ the octave (a kit's bank; EDIT: the rows).
   - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
-    below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **MIX →
-    SENDS → FX**. PRESETS: the plug-in's presets as a poster, the one
+    below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
     playing large with the plug-in and its format under it and the ones
     before and after small in the corners, the header n / count; the wheel
     walks them, the one turned to loading 250 ms after the last turn
@@ -305,14 +304,9 @@ beat; the meters show the mix.
     + pot sets one back to off. A plug-in with no presets: B1 says
     **PLUG-IN**, its face (name, format, the share of each block it takes).
     EDIT: its own values as a list (the wheel and −/+ the rows); on these
-    three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. MIX:
-    level, pan and the quick send into bus A; its meter carries the five
-    steps of the meter LEDs as a scale. SENDS: a track sends into each of the
-    four buses: K1 picks the bus (A–D, the one Tracks' SENDS and Bus show
-    too), K2 sets the send into it, K3 its return; the picture fans out
-    from the track to the four buses, each line as thick as its send, each
-    bus with its first effect and a bar of what it receives, the bus in view
-    on a chip in K1's shade with its line in K2's. ARP: mode (Up,
+    three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. (MIX and
+    SENDS are passed over since the mixer, docs/MIXER_PLAN.md step 6: the track's
+    level, pan and sends are the mixer's.) ARP: mode (Up,
     Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift + K1
     gate, Shift + K2 on or off, Shift + K3 hold; the header says whether it
     is on (Note Repeat is separate and does not turn it on); its picture is a keyboard along the foot with the keys
@@ -326,7 +320,7 @@ beat; the meters show the mix.
     Knob FX adds effects), all six slots drawn with their family glyphs.
   - **A kit**: Akai's pages on the last pad hit, B1 **TRIM →
     LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples; on a pad holding an instrument **ZONES → TUNE → AMP ENV**), B2 **PLAY → COLOUR → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
-    FILT ENV → KIT FILT** (SENDS the last pad's own four, K2 its send, Shift + K2 KIT SEND the track's; the pads light by
+    FILT ENV → KIT FILT** (SENDS the last pad's own four, K1 its send, no Shift row (the kit's own sends are the mixer's); the pads light by
     their send into the bus shown; the sampler pages keep the same groups, without SENDS): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
@@ -379,27 +373,25 @@ beat; the meters show the mix.
     made the other buttons wait (Play, Stop, Tap Tempo, Pad Bank + pad and
     the MENU still work); B1 CANCEL on the types selects the nearest used
     track (none in a new project).
-    Picked with a pad (Tracks, Pad Bank held, Song's lanes), the track goes
+    Picked with a pad (the mixer, Pad Bank held, Song's lanes), the track goes
     back to that page once made.
-- **Tracks** (Pad FX + Knob FX together, the MIX hub's B1): the sixteen tracks as the
-  pads sit, each cell its number, the pattern it plays, its engine as a
-  glyph and its level up the right edge (muted: a crossed speaker); the
-  track in hand as a strip on the right with its name, fader, meter, pan
-  and its four sends as bars (A–D, top to bottom). Along each cell's
-  bottom, what the track takes of a block (its engine and chain, the
-  whole width a core's whole block; green, amber from 60 %, red from
-  85 %), and the track in hand's in the header. A pad picks its track; K1 the track, K2 its level, K3 its pan;
-  Shift + K1 its playback **speed** (×½, ×¾, ×1, ×1½, ×2: its patterns
-  play that much faster or slower against the tempo, their notes and
-  motion as written, ×1½ turning sixteenths into sixteenth triplets; the
-  header names it, Patterns too; kept in TSPD);
-  the wheel or −/+ the track, Push its Stage, Shift + Push its name (the
-  Name sheet, one undo step; a name of its own stays when its sound or
-  plug-in changes, kept in TNAM); the fader is its level. The MIX
-  hub's keys, **B1 TRACKS**, **B2 SENDS**, **B3 FX** (Tracks, Sends and the
-  chains share them; FX steps track, bus, master, a kit's pad); with Shift,
-  **MOVE** and **COPY** (below). Pad Bank
-  held + pad still picks a track from any page, the same picture over it.
+- **Mixer** (Pad FX + Knob FX together; the MENU's MIXER; docs/MIXER_PLAN.md, pages/mixer_page.cpp): one channel
+  at a time. The channel in hand is a card in the middle (its name on its colour, M and S, a stereo meter, its fader,
+  its pan and one block), its neighbours narrow strips either side (number, meter, level). Pad Bank steps between two
+  rows (shell/mixer_channels.h): the sixteen tracks, and the submixes S1-S8 (pads 1-8), buses A-D (9-12), the input
+  (15) and the master (16); Basic has no submixes. Blocks: B1 **SENDS** (K1-K3 A-C; second row PAN, OUTPUT (master or
+  a submix), SEND D), B1 again **FX** (the channel's chain in the card, the lit effect on K1-K3 as its FX page's
+  cursor; Push edits it on its FX page, Push on the plus the picker and back, a Mute tap bypasses it, Erase removes
+  it, Shift + Erase copies it), B2 **EQ** (nine bands as a curve over what the channel plays, three on K1-K3, B2
+  again or + the next three), B3 **COMP** (amount, ratio, speed; key, mix, gain). A bus and the master: B1 FX alone;
+  the input: B1 **INPUT** (trim, Input Config's monitor, takes dry or wet); the master: B3 the printed Compressor.
+  The fader is the channel's level (a bus's return, the input's gain, the master's trim). The wheel and the pads pick
+  the channel; −/+ move through the lit block (a row, a group of bands, an effect); Shift + Push names a track; Mute +
+  pad mutes (Shift: solos) the row's channels; Erase + pad clears a track. Pads light in the channel's colour by its
+  meter. Shift + Knob FX opens the channel's full FX page; B1 MIXER comes back to it.
+- **Track speed** (Patterns, Shift + K3): ×½, ×¾, ×1, ×1½, ×2: the track's patterns play that much faster or slower
+  against the tempo, their notes and motion as written, ×1½ turning sixteenths into sixteenth triplets; Patterns'
+  header names it; kept in TSPD. CPU and the selected track's share are on the MENU's header.
 - **Keys** (Sample held on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
   filled in the track's colour, the pad played white; the key and scale are
@@ -898,7 +890,7 @@ hold to steer, Shift + Seq to zoom in**.
   and its targets four at a time. Settings are part of undo with the
   master's; files keep them in MODS and MACR.
 - **The mix in Motion** (roadmap P4): with Seq Record on, a track's LEVEL,
-  PAN and SEND A–D turned on Stage, Tracks or Sends write lanes of the
+  PAN and SEND A–D turned on the mixer write lanes of the
   selected track's pattern, and so do the master chain's parameters (FX
   Select's MASTER) and the buses' RETURNs: those land in the selected
   track's pattern too, and while it plays they move the master's values
@@ -1056,9 +1048,9 @@ m and CPU. On the release of Seq the prints are made and the track
 freezes with those patterns (none left: it plays live again). Patterns
 not frozen play live.
 
-**A frozen track.** Tracks shows a snowflake in place of its engine and
-its strip; the header's CPU chip is the share of each block all tracks
-take. Stage (its sound pages; MIX and SENDS stay live) shows the print of
+**A frozen track.** The MENU's header shows a snowflake on its share of
+each block, beside the CPU chip (the share all tracks take). Stage (its
+sound pages; its mix and sends stay live) shows the print of
 the pattern playing with its playhead, FREEZE and PADS PLAY LIVE, and
 what the print holds (tap, tail, bars). Cards whose values a print holds
 are dim with a snowflake on every page. The Sequence sheet marks frozen
@@ -1071,7 +1063,7 @@ plug-ins on its chain, which saves their RAM as well as the CPU. They are
 let go once the print plays and the engine has been quiet for a second
 (8 s at most). The pads play nothing and stay dark, MIDI keyboard notes
 and the arp too; a pattern without a print is silent. The glyph is the
-snowflake on a filled ice tile, on Tracks, Stage, the Sequence sheet and
+snowflake on a filled ice tile, on Stage, the MENU's header, the Sequence sheet and
 the PRINT sheet; Stage shows DEEP FREEZE and PADS OFF. Seq held + Sample
 Record does not pick patterns on a deep-frozen track. A plug-in a bus or
 the master also uses stays loaded. Built-in chain effects and a kit's
@@ -1919,7 +1911,7 @@ frame) is made the device's, so Vinyl crackles as often, Crush holds as
 long and a reverb's damping stays where it was; hiss and clicks stay as
 loud in what is heard. At 44.1 kHz they play to the bit as before.
 
-- **FX Select** (Shift + Knob FX, round Track → Sends → Bus → Master; B1 /
+- **FX Select** (Shift + Knob FX, round Track → Bus → Master; on the mixer the channel in hand's, a submix's on Rack; B1 /
   B3 walk too, named with chevrons): Stage's six-slot strip (each slot its
   family's glyph and name, empty ones dots, the next a plus) and under it
   the effect in hand, its name and family and what it does to sound drawn
@@ -1929,14 +1921,8 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   picks, Push on an effect opens its sheet: change, presets, bypass, move
   left / right, remove as cards, bypass lit (it stays open to hear the
   difference); the wheel moves, Push does it, B1 back; Push on the
-  plus opens the picker, its families each with the strip's glyph. Sends
-  (also B2 SENDS on Tracks and the chains): one bus at a time, every track's send into it as a
-  strip; K1 the selected track's send into it, K2 which bus (the one Bus
-  then shows), K3 the bus's return. On a kit B2 again shows its pads (two
-  dots on SENDS): the bank in hand as the pads sit, each with its own send
-  into the bus shown; a pad hit or the wheel picks one, K1 its send; B2
-  again goes back to the tracks. B1 from Track on a kit: the last
-  pad's chain.
+  plus opens the picker, its families each with the strip's glyph. B1 MIXER goes back to the mixer on that
+  channel.
 - **Keyed Compressor and Gate (roadmap P4).** On a track, bus, master or
   loop-track chain, a Compressor's or Gate's last row (−/+ past its
   parameters, a dot more) is KEY on K1: Off (it hears itself), a track
@@ -2048,9 +2034,9 @@ not). A bend has a wide middle, 21 of the fader's 128 places, that is no
 bend, always picks up, and springs back to the middle once no note is held
 on its track and the fader has been still for a second; the fader then picks
 it up again from the middle. Then Track Level, Track Pan and Send A–D (the track's own mix,
-as Tracks and Sends show it). Until a pot or the wheel picks, a kit takes Pad Volume
-and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
-send, Knob FX from A to B, Compressor its amount,
+as the mixer shows it). Until a pot or the wheel picks, a kit takes Pad Volume
+and a synth the mod wheel. Pages with an obvious job keep it: the mixer the channel's level,
+Knob FX from A to B, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader
 asks to erase that lane. For a moment after it moves, the K card showing
@@ -2359,7 +2345,7 @@ while following.
   in focus into the slot after it, values and bypass too, the rest moving
   along (not a plug-in, not into a full chain). Chop: the slice in hand
   onto the next empty pad (Extract).
-- **Move** (B2 with Pad Bank held, or Shift + B2 on Tracks; B3 there is
+- **Move** (B2 with Pad Bank held; B3 there is
   Copy): the track, then where it goes. It moves whole, mix strip too; a
   track already there trades places with it, so nothing is lost. The song's
   clips and punches, the Looper's sources, Knob FX's tracks and pads, the
@@ -2396,7 +2382,7 @@ while following.
 - **Text size**: nothing on screen is drawn under 11 px (`ui::type::floor`
   in `ui/tokens.h`; labels 11, body 13, lists 15, knob values 22), so the
   320 × 240 panel reads at arm's length. Text is never cut: where a page
-  runs out of room it shows fewer things at a time (Sends eight tracks,
+  runs out of room it shows fewer things at a time (the mixer seven channels,
   Song six lanes, FX chains three devices), or a long
   capitalised name turns to title case in a narrow cell.
 
@@ -2818,8 +2804,8 @@ K1-K3 cards each preview drew go into `DIR/controls.tsv` (with all pages), and
 a break prints a `MELODEE_CONTROLS` line and fails the run: BACK (or the Back
 icon) anywhere but B1; send cards out of SEND, BUS, RETURN order (Motion's
 lanes aside); a SEQ hub page (Sequences, Patterns, Roll, Motion, Mod) without
-SEQUENCES or PATTERNS / ROLL / MOTION, MOD, MACRO or none; a MIX hub page
-(Tracks, Sends, the chains) without TRACKS / SENDS or none / FX. The hub
+SEQUENCES or PATTERNS / ROLL / MOTION, MOD, MACRO or none; an effect chain page
+without MIXER / none / FX. The hub
 rows count only with nothing over them: Shift, a held key, a sheet, a
 question, a picker, the MENU, Name, Exit, a lesson, or a Looper loop's chain.
 

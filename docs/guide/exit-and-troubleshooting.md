@@ -46,7 +46,7 @@ report the problem.
 load per core, the audio dropouts and card read problems, each in amber
 with a count once it happens. Use a larger
 audio buffer in **AUDIO**, or remove effects or plug-ins from the busiest
-track (the Tracks page shows each track's load).
+track (the Menu's header shows the CPU and the selected track's load).
 
 ![About with dropouts and card read problems](../images/screens/abouttrouble.png)
 

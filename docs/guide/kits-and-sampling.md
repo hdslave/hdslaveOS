@@ -71,9 +71,9 @@ full hit, and softer hits quieter still. **SHIFT** + **K2** sets whether
 decay starts from the start or the end.
 
 **SENDS**: the last pad's own sends. **K1** sets the pad's send to the bus
-shown, **K2** selects bus A–D, **K3** the bus return, as on the mixer's
-Sends page. **SHIFT** + **K1** sets the send of the whole kit track
-(**KIT SEND**). A pad's send is taken after its
+shown, **K2** selects bus A–D, **K3** the bus return. The kit track's own
+sends are on the [mixer](mixer-and-effects.md#sends). A pad's send is taken
+after its
 Pad FX, volume and pan, and follows the kit's level, pan and mute. The pads
 light as bright as their send to the bus shown; pads that send nothing stay
 dark. With Seq Record on, turning a pad's send writes a lane of that pad.

@@ -1067,7 +1067,6 @@ const Preview previews[] {
     {"stagepluginpresets", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, true); }}, // B1: Melodee Poly's presets
     {"stagepluginface", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, false); }}, // B1, a plug-in with none
     {"stagepluginedit", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginEdit, true); }},   // B1 again: its parameters
-    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; }},
     {"keylist", [](Shell&, Snapshot& s) { // B3 just pressed on a kit's Stage: its pages by name, FILTER open
          on_stage(s, 3, StageKind::Filter); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 45; pad.resonance = 40;
@@ -1086,8 +1085,7 @@ const Preview previews[] {
          s.ui.page = PageId::Mixer; s.ui.track = 2; s.playing = true;
          s.ui.menu = menu_here_view; s.ui.menu_row = 0;
      }},
-    {"padbankheld", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; s.ui.pad_bank = true; }}, // Pad Bank held: TRACKS / MOVE / COPY over the page
-    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Sends); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
+    {"padbankheld", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Arp); s.playing = true; s.ui.pad_bank = true; }}, // Pad Bank held: TRACKS / MOVE / COPY over the page
     {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
     {"stagearpheld", [](Shell&, Snapshot& s) { // keys held: the notes it plays from them, up and down
          on_stage(s, 0, 1, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;

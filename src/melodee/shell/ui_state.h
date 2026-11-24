@@ -26,7 +26,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns,
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
                             Tracks,                            // gone with the mixer (docs/MIXER_PLAN.md step 6): opens it; kept so the numbers stay
-                            Looper,                            // LOOPER on Tracks: the four loops (docs/LOOPER.md)
+                            Looper,                            // the four loops (Loop + 16 Levels; docs/LOOPER.md)
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
                             LayersPage,                        // roadmap P3: a kit pad's four layers

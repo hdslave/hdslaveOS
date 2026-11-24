@@ -60,12 +60,11 @@ switch: what a project holds keeps playing, and Full shows it again.
 
 | Area | Basic leaves out |
 | --- | --- |
-| The MENU's **GO** | **MOTION**, **SENDS** and **LOOPER**. The other places keep their pads. |
+| The MENU's **GO** | **MOTION** and **LOOPER**. The other places keep their pads. |
 | The MENU's **HERE** | **LOOPER**, **FREEZE** and **FOLLOW TO ALL** |
 | **SEQ** | **B3** (**MOTION**, **MOD**, **MACRO**), unless the pattern holds Motion. Follow actions and **VARY**. |
-| The mixer | **B2** (**SENDS**). Tracks keeps level, pan and send A. |
+| The mixer | **EQ**, **COMP**, **FX** and the submixes. **SENDS** keeps send A, **SHIFT** + **K1** pan, and the fader the level. |
 | A kit pad's **SAMPLE** pages | **LAYERS**, **COLOUR**, **FOLLOW**, **CLOUD**, **SENDS** and **KIT FILT**. The stock app's seven pages stay: Trim, Tune, Amp Env, Play, Mix, Filter, Filt Env. |
-| Other tracks' **SAMPLE** pages | **SENDS** |
 | **LOOP** | The Looper: **LOOP** held and **LOOP** + **16 LEVELS**. A tap of **LOOP** still loops the last pad. |
 
 These still work in Basic by their own keys: every track type, Step Edit's

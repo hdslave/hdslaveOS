@@ -8,7 +8,7 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Audio tra
 | --- | --- |
 | **B1** | **PRESETS** (or **PLUG-IN**), **PANEL** (a plug-in that draws its own screen), **EDIT** |
 | **B2** | **ARP**, **CHORD** |
-| **B3** | **MIX**, **SENDS**, **FX** |
+| **B3** | **FX** |
 
 Hold **SHIFT** on a **B1** page for the plug-in's own keys:
 
@@ -44,14 +44,7 @@ knob sets one back to off.
 **EDIT**: all of the plug-in's parameters. Turn the encoder or press
 **−** / **+** to move through them. Picking a plug-in opens this page.
 
-**MIX**: **K1** level, **K2** pan, **K3** send to bus A.
-
-![MIX](../images/screens/stagemix.png)
-
-**SENDS**: **K1** sets the send to the bus shown, **K2** selects bus A–D,
-**K3** the bus return, as on the mixer's Sends page. The picture shows the four buses and each bus's first effect.
-
-![SENDS](../images/screens/stagesends.png)
+The track's level, pan and sends are on the [mixer](mixer-and-effects.md#the-mixer).
 
 **ARP**: **K1** mode (Up, Down, Up-down, Random, Order), **K2** rate (1/4 to
 1/64T), **K3** octaves (1–4). **SHIFT** + **K1** gate, **SHIFT** + **K2**
@@ -87,7 +80,7 @@ Melodee keeps the **PREVIEW** setting when you restart.
 | --- | --- |
 | **B1** | **TRIM** (**ZONES** on an instrument), **TUNE**, **AMP ENV**, **FILTER**, **FILT ENV** |
 | **B2** | **PLAY**, **ARP**, **CHORD** |
-| **B3** | **MIX**, **SENDS**, **FX** |
+| **B3** | **FX** |
 
 ![ZONES on a keygroup track](../images/screens/keygroupzones.png)
 
