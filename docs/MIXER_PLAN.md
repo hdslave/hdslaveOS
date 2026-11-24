@@ -35,6 +35,10 @@ Core step 5 (buses, input, master) built: core 3ef6a4f. Every channel of the
 mix now has its strip in the engine; flat, each sounds as before. Checked as
 step 3; on the MPC the idle render load is as before.
 
+Core step 6 (Motion) built: core d3e0218. A pattern's lanes move a track's
+strip; nothing in Melodee records or shows them yet (Melodee step 3: SEQ
+RECORD, and the Motion page's names and cards).
+
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
 the boards, `render/render.py` draws a board to a PNG.
@@ -219,10 +223,24 @@ and the Compressor. Meters are one peak a track; buses have none.
    - Meters (`strip_meter`): a bus after its return and mute; the master after
      its chain and the Compressor, before main volume, with the Compressor's
      reduction; the input after its strip.
-6. **Motion.** Lane numbers for a track's strip values. Free numbers: 206–253
-   (`model/limits.h`); a track's strip needs 17. Every switch that handles
-   160–165 gets the new cases (`move_lane`, `restore_lane`, `mod_write`,
-   `lane_own`).
+6. **Motion.** Built (core d3e0218).
+   - Sixteen lanes from 206 (`motion_strip_base`, model/strip.h): trim,
+     width, the nine bands, amount, ratio, speed, mix, gain. The two switches
+     and the key have none. `motion_strip(part)` and `strip_lane_part(lane)`
+     map between them; `is_strip_lane()`.
+   - Strip lanes are not `is_mix_lane()`: the shells read that range by
+     position (a lane from 202 on is a return in Melodee's bindings and
+     modulators, and in melodee-move). Prints drop strip lanes as they drop
+     mix lanes; `lane_own()` reads the track's strip.
+   - The engine keeps each track's strip as its commands set it
+     (`strip_set_by`). A lane moves the strip away from it, and a lane's end
+     or Stop puts it back, gliding. A modulator's swing moves it without
+     marking it moved.
+   - Files: a pattern's strip points go in MOTS, the same records as MOTK,
+     which older builds skip. They would have taken 206 and up for a kit
+     pad's values.
+   - `ChannelStrip::set()` works out the speeds again only when the speed
+     changes, so a value Motion sets often costs no sines or powers.
 7. **Freeze, export.** A print with the strip in or out, following decision 1.
    Stems (`StemRing::stem_count`), bounce. MPC export: submixes and outputs
    map to the MPC's own submixes.
