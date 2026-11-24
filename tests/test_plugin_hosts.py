@@ -101,6 +101,13 @@ class PluginHostTests(unittest.TestCase):
                 self.assertIn("written=6", result.stdout)
                 self.assertEqual(len(list(out.glob("*.png"))), 6)
 
+                result = subprocess.run([str(melodee), "--melodee-plugin-screen", str(plugin), str(out),
+                                         "strip", "png:chain", "push", "png:panel"],
+                                        capture_output=True, text=True, timeout=60, env={**os.environ, "HOME": temp})
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("chain screen=1 area=1", result.stdout)
+                self.assertIn("panel screen=1 area=0", result.stdout)
+
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"

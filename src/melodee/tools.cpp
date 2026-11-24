@@ -3081,39 +3081,20 @@ int plugin_screen_rack(const std::string& plugin, const std::string& folder, con
     if (!std::getenv("MELODEE_PLUGIN_STAGE")) // its RAM copy somewhere of its own
         setenv("MELODEE_PLUGIN_STAGE", ("/tmp/melodee-plugin-screen-" + std::to_string(::getpid())).c_str(), 1);
     std::filesystem::create_directories(folder);
-    const PluginFile info = describe_plugin(plugin);
-    const bool is_effect = info.instrument == 0;
     EngineHost host;
     host.set_render_threads(0);
     auto shell = std::make_unique<Shell>(host);
     auto rack = std::make_unique<PluginRack>(host);
     shell->set_plugins(rack.get());
-    {
-        auto& project = shell->project();
-        std::snprintf(project.plugins[0].path, sizeof(project.plugins[0].path), "%s", plugin.c_str());
-        auto& t = project.tracks[0];
-        if (is_effect) {
-            load_sound(t, EngineKind::Sampler, 0);
-            t.fx.slots[0].kind = plugin_effect_kind;
-            t.fx.slots[0].params[0] = 0;
-            t.fx.slots[0].bypass = false;
-        } else {
-            load_sound(t, EngineKind::Plugin, 0);
-            t.plugin = 0;
-        }
-        host.load(project, shell->patterns());
-        host.set_audio_format(48000, 384);
-        Command c {Command::Type::Reload};
-        c.pack = new ProjectPack(project, shell->patterns());
-        host.send(c);
-    }
+    auto& project = shell->project();
+    auto& track = project.tracks[0];
+    std::snprintf(project.plugins[0].path, sizeof(project.plugins[0].path), "%s", plugin.c_str());
+    // A bare library's kind is known only after it opens. Keep the entry referenced while the rack loads it.
+    load_sound(track, EngineKind::Plugin, 0);
+    track.plugin = 0;
+    host.set_audio_format(48000, 384);
+    rack->sync(project);
     shell->ui().track = 0;
-    if (is_effect) {
-        shell->context().open(PageId::Rack);
-        shell->ui().fx_panel = true; // default to full page unless `strip` step is requested
-    } else {
-        shell->context().open(PageId::Edit);
-    }
     uint32_t now = 1000;
     SurfaceLights lights;
     std::vector<int32_t> audio(EngineHost::block * 2);
@@ -3133,11 +3114,31 @@ int plugin_screen_rack(const std::string& plugin, const std::string& folder, con
         auto t0 = Clock::now();
         while (!done() && std::chrono::duration<double>(Clock::now() - t0).count() < seconds) tick(5);
     };
-    until([&] { auto st = rack->status(0); return st == PluginStatus::Failed || st == PluginStatus::Crashed || (st == PluginStatus::Ready && serial()); }, 20);
+    until([&] {
+        auto st = rack->status(0);
+        return st == PluginStatus::Ready || st == PluginStatus::Failed || st == PluginStatus::Crashed;
+    }, 20);
     if (rack->status(0) != PluginStatus::Ready) {
         std::printf("MELODEE_PLUGIN_SCREEN failed %s\n", rack->summary().c_str());
         return 1;
     }
+    const bool is_effect = rack->instrument(0) == 0;
+    if (is_effect) {
+        load_sound(track, EngineKind::Sampler, 0);
+        auto& slot = track.fx.slots[0];
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = 0;
+        slot.bypass = false;
+        shell->context().open(PageId::Rack);
+        shell->ui().fx_panel = true;
+    } else {
+        shell->context().open(PageId::Edit);
+    }
+    host.load(project, shell->patterns());
+    Command reload {Command::Type::Reload};
+    reload.pack = new ProjectPack(project, shell->patterns());
+    host.send(reload);
+    until([&] { return serial() != 0; }, 20);
     tick(120); // the panel's next refresh: the screen, and the knobs it names
     auto event = [&](SurfaceInput in) {
         SurfaceEvent e;
