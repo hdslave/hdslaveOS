@@ -45,6 +45,28 @@ class Mpc3Export(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout, out
 
+    def test_submix_routes(self):
+        # The mixer: a track sent to a submix plays into MPC 3's (destination 1, the submix's index; 2 is Out 1/2), that
+        # submix gets its level, pan and mute on its bus track and in the mixer's list; a drum pad goes into its program
+        # (destination 0), as MPC 3's own kits' pads.
+        with tempfile.TemporaryDirectory() as folder:
+            _, out = self.export(folder, "O:0=3", "U:2=64,-20,1")
+            _, data = read(out / "Beat.xpj")
+            drums = [t for t in data["tracks"] if t["program"]["type"] == 0]
+            self.assertTrue(drums)
+            route = drums[0]["program"]["mixable"]["audioRoute"]
+            self.assertEqual((route["destination"], route["audioRouteSubIndex"]), (1, 2))
+            pads = drums[0]["program"]["drum"]["instruments"]
+            self.assertTrue(all(p["mixable"]["audioRoute"]["destination"] == 0 for p in pads))
+            bus = next(t for t in data["tracks"] if t["name"] == "Submix 3")
+            self.assertTrue(bus["mute"] and bus["program"]["mixable"]["mute"])
+            self.assertLess(bus["program"]["mixable"]["pan"], 0.5)
+            listed = data["mixer"]["submixes"][2]["mixable"]
+            self.assertEqual(listed["volume"], bus["program"]["mixable"]["volume"])
+            self.assertLess(listed["volume"], next(t for t in data["tracks"] if t["name"] == "Submix 1")["program"]["mixable"]["volume"])
+            other = next(t for t in data["tracks"] if t["name"] == "Submix 1")
+            self.assertEqual(other["program"]["mixable"]["audioRoute"]["destination"], 2)
+
     def test_wav_slices(self):
         # A file's chop goes into the copied WAV as the MPC keeps slices ("atem" and "slic"), its key kept, and reads
         # back as the same slices.

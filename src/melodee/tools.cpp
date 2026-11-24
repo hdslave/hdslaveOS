@@ -3320,6 +3320,18 @@ static int project_export(bool live, const char* path, const char* folder, const
         int used = 0;
         unsigned bar = 0, bars = 0;
         unsigned channel = 0, program = 0;
+        unsigned out = 0, level = 0, mute = 0;
+        int pan = 0;
+        if (std::sscanf(change[c], "O:%u=%u", &t, &out) == 2 && t < track_count) { // the mixer: track t into submix `out` (0 the master)
+            project->tracks[t].mix.out = uint8_t(out <= sub_count ? out : 0);
+            continue;
+        }
+        if (std::sscanf(change[c], "U:%u=%u,%d,%u", &n, &level, &pan, &mute) == 4 && n < sub_count) { // submix n's level, pan, mute
+            project->subs[n].mix.level = uint8_t(std::min(level, 127u));
+            project->subs[n].mix.pan = int8_t(std::clamp(pan, -50, 50));
+            project->subs[n].mix.mute = mute != 0;
+            continue;
+        }
         if (std::sscanf(change[c], "M:%u=%u,%u", &t, &channel, &program) == 3 && t < track_count) {
             auto& track = project->tracks[t];
             load_sound(track, EngineKind::Midi, 0);
