@@ -86,7 +86,7 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Requirements
 
-- Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any other
+- Akai MPC Sample with firmware **1.3.0.12**, **1.4.0.7** or **1.4.0.8**. On any other
   firmware Melodee does not start and the stock app keeps running.
 - On firmware 1.4: **Developer Mode** on, in the stock app's Settings on the
   **DEV ENHANCEMENTS (BETA)** page.
