@@ -108,6 +108,17 @@ mixer's Shift + Push. The lesson "Mix a track" goes mixer, K1, pad 2, Shift
 + Knob FX, B1, Sample. Lost with Tracks: the snow on a frozen track in the
 row of tracks (the mixer's strips do not show it yet).
 
+Melodee step 7: 2244705. The guide's "Mixer and effects" is rewritten for
+the mixer (the page, its controls, SENDS, FX, EQ, COMP, the second row, mixer
+moves in Motion, pad sends on Stage only), "Tracks" points to it and gets
+Track speed; Basics, Settings (Basic and Full), Sequencing (Patterns' SPEED),
+the shortcut tables, the other chapters, QUICKSTART step 3 and MELODEE.md
+follow. New screens: mixer, mixereq, mixercomp, mixerfx, mixersub,
+mixerfxbus, mixerinput, mixermaster, mixerrouted, fxsub; tracks, sends,
+sendspads, stagemix and stagesends are gone. The tests came with each step.
+Left: core step 8 (melodee-move), Width and a track's trim on a card, the
+snow on a frozen track's strip.
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -364,7 +375,7 @@ and the Compressor. Meters are one peak a track; buses have none.
    group, the controls audit rules (`shell/controls_rules.h`), Erase and Copy
    cases (`shell/erase_copy.h`), the lesson, Basic/Full gates
    (`shell/features.h`).
-7. **Tests and docs.** `tests/melodee.cpp` (bindings, button_remap,
+7. **Tests and docs.** Built (2244705; the tests with each step). `tests/melodee.cpp` (bindings, button_remap,
    fader_and_takeover, pad_lights, erase_copy_everywhere, track_move,
    pad_sends_mix, controls_audit). Guide chapters "Mixer and effects" and
    "Tracks", the shortcut tables, QUICKSTART step 3, MELODEE.md, new screen
