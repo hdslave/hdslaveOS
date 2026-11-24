@@ -155,8 +155,9 @@ go of **SEQ**. The other patterns play live.
 **SHIFT** + **B3** (**DEEP FREEZE**) freezes every pattern with notes and
 unloads the track's plug-ins after the new prints take over to save memory. Its pads then play
 nothing. It works on the PRINT sheet and on a frozen track's Stage.
-If a clock change makes the print incompatible at the switch, the request is
-declined and the track keeps its previous playback state.
+At the switch, every print must fit its playback tempo, including when an empty
+pattern is selected. If a clock change makes a print incompatible, the request
+is declined and the track keeps its previous playback state.
 
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 

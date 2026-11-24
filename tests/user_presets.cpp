@@ -271,8 +271,11 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin,
 static void freeze_transitions(const std::string& card, const std::string& plugin, const std::string& mode) {
     constexpr unsigned rate = 48000, block = EngineHost::block;
     const bool memory = mode == "freeze-replace";
-    const bool change_tempo = mode == "deep-freeze-tempo" || mode == "deep-freeze-tempo-replace";
-    const bool deep = change_tempo || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
+    const bool pattern_tempo = mode == "deep-freeze-empty-pattern-tempo";
+    const bool empty_handoff = pattern_tempo || mode == "deep-freeze-empty-steady" || mode == "deep-freeze-empty-new-tempo";
+    const bool change_tempo = mode == "deep-freeze-tempo" || mode == "deep-freeze-tempo-replace" || mode == "deep-freeze-empty-new-tempo";
+    const bool short_bar = change_tempo || empty_handoff;
+    const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
     if (memory) {
         struct rlimit limit {};
@@ -294,8 +297,13 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     auto& c = shell->context();
     c.project_path = (fs::path(card) / (mode + ".mldp")).string();
     c.now = 1000;
-    c.project.tempo = deep && !change_tempo ? 300 : 1200;
-    c.project.signature = change_tempo ? common_time : deep ? 8 : 0; // 9/4 at 30 BPM is an 18-second bar
+    c.project.tempo = deep && !short_bar ? 300 : 1200;
+    c.project.signature = short_bar ? common_time : deep ? 8 : 0; // 9/4 at 30 BPM is an 18-second bar
+    if (pattern_tempo) {
+        c.project.seq_tempo = true;
+        c.project.pattern_tempo[0] = 1260;
+        c.project.pattern_tempo[1] = 1320;
+    }
     auto& track = c.project.tracks[0];
     load_sound(track, EngineKind::Plugin, 0);
     track.plugin = 0;
@@ -304,7 +312,7 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 13, 0}};
         track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
     }
-    const unsigned count = memory ? 24 : prior_freeze ? 2 : 1;
+    const unsigned count = memory ? 24 : prior_freeze || pattern_tempo ? 2 : 1;
     for (unsigned p = 0; p < count; ++p) {
         auto& pattern = c.patterns.at[0][p];
         pattern.length = c.project.bar_ticks();
@@ -415,14 +423,20 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         deliver();
         CHECK(!c.deep(0) && !(host->printing_tracks() & 1));
         if (change_tempo) c.set_tempo(1260); // after the audio engine has queued the 120 BPM pack
+        constexpr unsigned empty = 2;
+        if (empty_handoff) {
+            CHECK(c.patterns.at[0][empty].empty());
+            c.launch(0, empty);
+        }
 
         const uint32_t begin = c.now;
-        bool audible = false, switched = false;
+        bool audible = false, switched = false, saw_empty = false;
         unsigned windows = 0;
-        const unsigned seconds = change_tempo ? 12 : 27;
+        const unsigned seconds = short_bar ? 12 : 27;
         for (unsigned i = 0; i < seconds * rate / block; ++i) {
             const unsigned frames = i * block;
             c.now = begin + uint32_t(uint64_t(frames) * 1000 / rate);
+            if (empty_handoff && frames == 4 * rate) c.launch(0, 0);
             if (i % 8 == 0) {
                 c.plugins_tick(c.now);
                 c.print_tick();
@@ -430,15 +444,18 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
             }
             render();
             switched |= (host->printing_tracks() & 1) != 0;
-            if (!switched) CHECK(!(c.plugins_asleep() & 1) && !rack->asleep(0));
+            saw_empty |= host->pattern_of(0) == empty;
+            if (!empty_handoff && !switched) CHECK(!(c.plugins_asleep() & 1) && !rack->asleep(0));
             audible |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
             const unsigned elapsed = (frames + block) / rate;
             if (elapsed != windows) {
-                CHECK(audible);
+                // The empty pattern is intentionally silent. Check complete seconds after the filled pattern returns.
+                if (!empty_handoff || elapsed > 6) CHECK(audible);
                 audible = false;
                 windows = elapsed;
             }
         }
+        if (empty_handoff) CHECK(saw_empty && host->pattern_of(0) == 0 && !c.freeze_pending(0));
         if (change_tempo) {
             CHECK(!switched && !c.deep(0) && !rack->asleep(0));
             CHECK(host->active_freeze_serial(0) == previous);
