@@ -151,7 +151,12 @@ const clap_plugin_note_ports notePorts {noteCount, noteInfo};
 uint32_t latency(const clap_plugin* p) { return of(p).instrument ? 0 : 32; }
 const clap_plugin_latency latencyExt {latency};
 
-uint32_t tailGet(const clap_plugin* p) { of(p).main(); return uint32_t(tailSamples.load()); }
+uint32_t tailGet(const clap_plugin* p) {
+    auto& fixture = of(p);
+    fixture.main();
+    if (std::getenv("MELODEE_TEST_RING_TAIL")) return uint32_t(fixture.rate * 0.75);
+    return uint32_t(tailSamples.load());
+}
 const clap_plugin_tail tailExt {tailGet};
 Plugin* gainPlugin = nullptr; // the Test Gain made last, so fixture_set_tail() can tell its host
 

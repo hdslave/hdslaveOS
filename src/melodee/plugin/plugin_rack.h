@@ -51,7 +51,7 @@ class PluginRack {
 public:
     // `stage`: put before its plug-ins' folder names under the stage root, so two racks (the live one and a print
     // host's, shell/print_engine.h) never copy into the same folder.
-    explicit PluginRack(EngineHost& host, std::string stage = "");
+    explicit PluginRack(EngineHost& host, std::string stage = "", bool ring_print = false);
     ~PluginRack(); // after the audio has stopped: frees every plug-in
     PluginRack(const PluginRack&) = delete;
     PluginRack& operator=(const PluginRack&) = delete;
@@ -211,6 +211,7 @@ private:
     std::map<std::string, std::vector<std::string>> page_problems;
     std::string page_problems_written;
     std::string stage_tag;
+    const bool ring_print;
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0}, card_count {0};
     std::thread thread;

@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
     // a value set, and a mono plug-in heard through the rack (fixture env hooks in tests/clap_fixture.cpp).
     bool failsave = mode == "failsave", lv2wake = mode == "lv2wake", mono = mode == "mono";
+    if (mode == "ringtail") setenv("MELODEE_TEST_RING_TAIL", "1", 1);
     if (mono) setenv("MELODEE_TEST_MONO", "1", 1); // before the rack opens it: a mono main port
     const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
@@ -148,6 +149,11 @@ int main(int argc, char** argv) {
         set_control("Level", 250);
         wait([&] { return !rack->idling(entry); }); // woken for the value, no note needed
         shell->set_plugins(nullptr);
+        return 0;
+    }
+    if (mode == "ringtail") { // the real CLAP rack supplies the declared duration to the print host
+        wait([&] { return host->print_tail_seconds(0, false) == 0.75; });
+        CHECK(host->print_tail_seconds(0, true) == 0.75);
         return 0;
     }
     if (mono) { // a mono output through the rack: heard on both channels (dual mono), not the left alone

@@ -432,8 +432,8 @@ public:
 // device's through a PluginRateBridge.
 class PluginHandle final : public PluginRunner {
 public:
-    PluginHandle(std::unique_ptr<juce::AudioPluginInstance> plugin, bool is_instrument, double rate, double plugin_rate)
-        : instance(std::move(plugin)), instrument(is_instrument), sample_rate(rate), plugin_rate(plugin_rate > 0 ? plugin_rate : rate) {
+    PluginHandle(std::unique_ptr<juce::AudioPluginInstance> plugin, bool is_instrument, double rate, double plugin_rate, bool ring)
+        : instance(std::move(plugin)), instrument(is_instrument), ring_print(ring), sample_rate(rate), plugin_rate(plugin_rate > 0 ? plugin_rate : rate) {
         channels = std::max({2, instance->getTotalNumInputChannels(), instance->getTotalNumOutputChannels()});
         memory.assign(size_t(channels) * EngineHost::block, 0.0f);
         bridge.reset(unsigned(std::lround(plugin_rate)), unsigned(std::lround(rate)), is_instrument);
@@ -441,7 +441,8 @@ public:
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
-        idle.reset(is_instrument, this->plugin_rate, instance->getTailLengthSeconds());
+        declared_tail = instance->getTailLengthSeconds();
+        idle.reset(is_instrument, this->plugin_rate, declared_tail);
         clap = dynamic_cast<ClapInstance*>(instance.get());
         screen_source = dynamic_cast<ScreenSource*>(instance.get());
         has_screen = screen_source && screen_source->hasScreen();
@@ -473,6 +474,7 @@ public:
             midi(uint8_t(0xb0 | ch), 123, 0); // all notes off
         }
     }
+    double tail_seconds() const override { return declared_tail; }
     // Roadmap P4: what the plug-in reports (at its own rate, so scaled to the device's) and the rate bridge's.
     unsigned latency() const override {
         int own = std::max(instance->getLatencySamples(), 0);
@@ -507,13 +509,17 @@ public:
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         follow_clock(frames);
-        if (double tail = tail_waiting.exchange(-1, std::memory_order_acq_rel); tail >= 0) idle.setTail(tail);
+        if (double tail = tail_waiting.exchange(-1, std::memory_order_acq_rel); tail >= 0) {
+            declared_tail = tail;
+            idle.setTail(tail);
+        }
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
         // its audio side takes) or a value waiting for it (a pot turned; another format's value the rack noted,
         // note_change()): else neither reaches it until a note does.
         const bool waiting = pending_count > 0 || (screen_source && screen_source->wantsProcess()) || change_waiting.load(std::memory_order_acquire);
-        bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
+        // Ring prints can hear a delayed repeat after the live gate would sleep.
+        bool sleeping = !warming && !(ring_print && declared_tail > 0) && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
             if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
@@ -583,6 +589,8 @@ public:
     ClapInstance* clap = nullptr;        // the instance, when it is a CLAP plug-in
     ScreenSource* screen_source = nullptr; // the instance, when it is one that may draw its own screen (CLAP, VST2)
     const bool instrument;
+    const bool ring_print;
+    double declared_tail = 0;
     const double sample_rate;
     const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)
     std::vector<int> shown;              // parameter indices any page may show: not hidden, not the bypass
@@ -698,7 +706,7 @@ std::vector<uint8_t> state_now(PluginHandle* handle, const std::vector<uint8_t>&
     return {static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize()};
 }
 
-PluginRack::PluginRack(EngineHost& engine, std::string stage) : host(engine), stage_tag(std::move(stage)) {
+PluginRack::PluginRack(EngineHost& engine, std::string stage, bool ring) : host(engine), stage_tag(std::move(stage)), ring_print(ring) {
     racks.fetch_add(1);
     thread = std::thread([this] { run(); });
 }
@@ -1546,7 +1554,7 @@ void PluginRack::load(const Job& job) {
     instance->fillInPluginDescription(description);
     bool is_instrument = described_instrument(description) || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);
 
-    auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, device_rate, rate);
+    auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, device_rate, rate, ring_print);
     handle->stage = stage.string();
     handle->format = file.format;
     handle->factory_programs = named_programs(*handle->instance);

@@ -125,7 +125,7 @@ struct PrintHost {
 PrintHost open_print_host(const Project& project, const PatternBank& bank, const Track& track,
                           const std::array<const SampleData*, sample_slots>& samples,
                           const std::array<std::vector<uint8_t>, max_plugins>& states, const std::string& card_top,
-                          const std::atomic<bool>& cancelled) {
+                          const std::atomic<bool>& cancelled, bool ring = false) {
     PrintHost h;
     h.host = std::make_unique<EngineHost>(EngineHost::Lean {delay_blocks_for(track)});
     auto& host = h.host;
@@ -154,7 +154,7 @@ PrintHost open_print_host(const Project& project, const PatternBank& bank, const
     if (plugins) { // its own rack: the plug-ins opened again, staged apart from the live rack's
         start_plugin_messages(); // a thread of the live rack's, not one of the print's
         h.threads_before = task_ids();
-        h.rack = std::make_unique<PluginRack>(*host, "print-");
+        h.rack = std::make_unique<PluginRack>(*host, "print-", ring);
         h.rack->set_card(card_top);
         h.rack->set_states(states);
         h.rack->sync(project);
@@ -553,7 +553,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     }
 
     long rss0 = rss_kb();
-    PrintHost opened = open_print_host(*project, *bank, track, samples, job.states, job.card_top, cancelled);
+    PrintHost opened = open_print_host(*project, *bank, track, samples, job.states, job.card_top, cancelled, job.tail == PrintTail::Ring);
     r.error = opened.error;
     auto& host = opened.host;
     auto& rack = opened.rack;
@@ -577,9 +577,13 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
                 double ahead = double(blocks) * EngineHost::block / rate - since(r0);
                 if (ahead > 0) std::this_thread::sleep_for(std::chrono::duration<double>(ahead));
             }
-            if (blocks == 1) { // the first block placed the tempo: what the print renders, two passes for Loop, a second's tail for Ring
+            if (blocks == 1) { // the first block placed the tempo: estimate Ring from the active plug-ins, or a second for a tail with no declaration
                 uint64_t pass = host->tick_frame(std::max<uint32_t>(ticks, 1));
-                total = pass * (job.tail == PrintTail::Loop ? 2 : 1) + (job.tail == PrintTail::Ring ? uint64_t(rate) : 0);
+                total = pass * (job.tail == PrintTail::Loop ? 2 : 1);
+                if (job.tail == PrintTail::Ring) {
+                    double seconds = std::clamp(host->print_tail_seconds(t, job.tap == PrintTap::PostFx), 1.0, print_ring_limit_seconds);
+                    total += uint64_t(std::ceil(seconds * rate));
+                }
             }
             if (total && (blocks & 7) == 0) { // the sheet's progress, every eighth block
                 double rendered = double(blocks) * EngineHost::block, wall = since(r0);
