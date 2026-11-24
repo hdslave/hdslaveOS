@@ -5,9 +5,10 @@
 
 namespace melodee::ui {
 
-void Paint::contour_panel(int x, int y, int w, int h) {
+void Paint::contour_panel(int x, int y, int w, int h, ContourEdge edge) {
     // Each selected tile or browser row takes a crop of one LCD-width engraving.
-    static const juce::Image engraving = [] {
+    struct Engravings { juce::Image dark, highlighted; };
+    static const auto engravings = [] {
         juce::Image image(juce::Image::RGB, zone::width, 66, false);
         juce::Graphics press(image);
         juce::ColourGradient paper(hex(0x210B38), 6, 43, hex(0x310E43), 306, 0, false);
@@ -34,13 +35,15 @@ void Paint::contour_panel(int x, int y, int w, int h) {
         ink.addColour(0.55, hex(0x421C70));
         press.setGradientFill(ink);
         press.strokePath(lines, juce::PathStrokeType(1.35f));
-        // The exposed top edge catches a narrow second impression above the text.
+        auto dark = image.createCopy();
+        // Tiles catch a narrow second impression along the top edge.
         press.reduceClipRegion(0, 0, image.getWidth(), 2);
-        juce::ColourGradient edge(hex(0xC45DE6), 48, 0, hex(0x8E85EC), 275, 0, false);
-        press.setGradientFill(edge);
+        juce::ColourGradient highlight(hex(0xC45DE6), 48, 0, hex(0x8E85EC), 275, 0, false);
+        press.setGradientFill(highlight);
         press.strokePath(lines, juce::PathStrokeType(1.35f));
-        return image;
+        return Engravings {dark, image};
     }();
+    const auto& engraving = edge == ContourEdge::Dark ? engravings.dark : engravings.highlighted;
     g.setOpacity(1.0f);
     // A tile taller than the engraving (66 px: today's tallest, the Settings doors) gets it stretched to its height,
     // not cut short; every shorter one takes its own crop, as drawn.

@@ -21,7 +21,7 @@ float page_dots(Paint& p, float x, float cy, int count, int at, juce::Colour c, 
 void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
     if (row.current) {
         if (palette().contour_print)
-            p.contour_panel(juce::roundToInt(x), juce::roundToInt(y), juce::roundToInt(w), int(list_row_h));
+            p.contour_panel(juce::roundToInt(x), juce::roundToInt(y), juce::roundToInt(w), int(list_row_h), Paint::ContourEdge::Dark);
         else
             p.fill(x, y, w, list_row_h, colour::raised, 4);
         if (row.played >= 0) { // inside the row's rounded fill: the part heard, then its head

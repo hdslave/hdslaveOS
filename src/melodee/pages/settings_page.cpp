@@ -153,7 +153,7 @@ void rows_draw(Paint& p, const Snapshot& s) {
         float y = zone::picture_y + 1 + k * (list_row_h + list_row_gap);
         bool cursor = row == s.ui.settings_cursor;
         if (cursor) {
-            if (palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(list_row_h));
+            if (palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(list_row_h), Paint::ContourEdge::Dark);
             else p.fill(x, y, w, list_row_h, colour::raised, 3);
             p.fill(x, y, 2.5f, list_row_h, colour::text, 1);
         }
