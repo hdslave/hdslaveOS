@@ -2,7 +2,12 @@
 
 Status: design approved 2026-11-24, then eight stereo submixes added. All
 decisions made the same day (end of this file). Core step 1 (model and
-files) built: core e971012. Nothing plays or shows yet.
+files) built: core e971012. Core step 2 (the strip's sound,
+`engine/channel_strip.cpp`) built: core 99ed66f; measured on a Mac only
+(30 strips with every part on: 2.4 % of one core; three bands each and the
+compressor on half: 1.1 %). Its MPC figure is still to take:
+`--melodee-dsp-bench strips=30 strip=full` and `strip=usual`. Nothing plays
+or shows yet.
 
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
