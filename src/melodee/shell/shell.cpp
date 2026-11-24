@@ -1045,7 +1045,8 @@ std::string Shell::summary() const {
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
            " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load())) +
            " " + looper_status(host.looper()) +
-           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none")) + p4_summary(host);
+           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none")) +
+           " melodee_screens=" + (context_.plugins ? context_.plugins->screens() : std::string("none")) + p4_summary(host);
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, a pot gesture open.

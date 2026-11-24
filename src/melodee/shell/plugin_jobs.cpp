@@ -28,6 +28,7 @@
 #include "melodee/ui/tokens.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -198,6 +199,11 @@ void Context::set_plugin_param(int32_t id, int value) {
     if (!plugins) return;
     unsigned entry = plugin_binding_entry(id), shown = plugin_binding_shown(id);
     auto& panel = ui.plugin_panel;
+    if (plugin_binding_indexed(id)) { // a companion screen's own edit (plugin/companion_screen.h), by its index
+        plugins->set_param_index(entry, plugins->live_generation(entry), int(shown - plugin_index_slot), value);
+        dirty = true; // K1-K3's cards read it back at the panel's next tick
+        return;
+    }
     if (shown >= plugin_screen_slot) { // one of the three its own screen names
         unsigned k = shown - plugin_screen_slot;
         plugins->set_screen_param(entry, k, value);
@@ -282,6 +288,35 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
+void Context::pick_plugin_program(unsigned entry, int program) {
+    if (!plugins || entry >= max_plugins) return;
+    const auto programs = plugins->programs(entry);
+    for (const auto& p : programs.list) {
+        if (p.index != program) continue;
+        plugins->select_program(entry, p.index);
+        std::snprintf(project.plugins[entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(p).c_str());
+        dirty = true;
+        return;
+    }
+}
+
+// Companion screens (plugin/companion_screen.h) ask; the shell makes the change as a pot turn on the plug-in's card
+// makes it (apply(): a frozen track's question, one undo step per control) or as PRESETS picks a program. One asked of
+// a plug-in replaced since is dropped. And why a screen stopped, said once.
+void Context::companion_requests() {
+    static std::vector<ScreenRequest> asked; // the MIDI thread's, its room kept
+    asked.clear();
+    plugins->take_screen_requests(asked);
+    for (const auto& r : asked) {
+        if (r.entry >= max_plugins || r.generation != plugins->live_generation(r.entry)) continue;
+        if (r.program) { pick_plugin_program(r.entry, r.index); continue; }
+        if (r.index < 0 || unsigned(r.index) >= plugin_screen_slot - plugin_index_slot) continue;
+        Binding b {Binding::Kind::PluginParam, plugin_binding(r.entry, plugin_index_slot + unsigned(r.index)), 0, plugin_param_max, 0};
+        apply(b, int(std::lround(std::clamp(r.value, 0.0f, 1.0f) * plugin_param_max)));
+    }
+    if (const auto why = plugins->screen_notice(); !why.empty()) notice(why);
+}
+
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
 bool Context::plugin_screen_input(ScreenKey key, int value) {
     const auto at = plugin_screen_place(project, ui);
@@ -339,6 +374,7 @@ void Context::plugins_tick(uint32_t at) {
         }
         plugins->screen_view(view);
     }
+    companion_requests();
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
     plugin_panel_at = at;
     { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)

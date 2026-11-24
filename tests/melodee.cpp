@@ -149,6 +149,7 @@
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/xpl_preset.h"
 #include "melodee/plugin/page_file.h"
+#include "melodee/plugin/companion_package.h"
 #include "melodee/plugin/page_library.h"
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/preset_rows.h"
@@ -7600,6 +7601,49 @@ void plugin_page_layout() {
     CHECK(!value_in("45", false, v) && !value_in("62 %", true, v) && !value_in("Off", false, v) && !value_in("2 kHz", false, v));
 }
 
+// Companion screens' screen.json (plugin/companion_package.h): read, checked against a plug-in by its ID and every
+// parameter's name at its index, refused with a reason, and none picked when two fit.
+void companion_packages() {
+    const char* json = R"({"name": "Panel", "sdk": 1, "plugin": {"vst2": "Pft5"},
+        "params": [{"index": 0, "name": "PM Filt Env"}, {"index": 2, "name": " A Frequency ", "steps": 60}]})";
+    CompanionManifest m;
+    std::string why;
+    CHECK(read_companion_manifest(json, m, why));
+    CHECK(m.library == "screen-aarch64.so" && m.params.size() == 2 && m.params[1].name == "A Frequency" && m.params[1].steps == 60);
+    CompanionTarget t;
+    t.who.vst2 = int32_t(0x50667435); // 'Pft5'
+    t.vst2 = true;
+    t.names = {"PM Filt Env", "PM Osc B", "A Frequency"};
+    CHECK(companion_fit(m, t, why) == CompanionFit::Fits);
+    t.names[2] = "A Freq";
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong && why.find("parameter 2 is \"A Freq\"") != std::string::npos);
+    t.names.resize(1);
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong && why.find("no parameter 2") != std::string::npos);
+    t.who.vst2 = 1;
+    CHECK(companion_fit(m, t, why) == CompanionFit::Other);
+    t.who.vst2 = int32_t(0x50667435);
+    t.vst2 = false;
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong); // not a VST2: not yet
+    CHECK(read_companion_manifest(R"({"name": "x", "sdk": 1, "library": "custom.so", "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why)
+          && m.library == "custom.so");
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 2, "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why)
+          && why.find("SDK 2") != std::string::npos);
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "library": "../x.so", "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": []})", m, why));
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": [{"name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest(R"({"sdk": 1, "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest("{not json", m, why));
+    std::string many = R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": [)";
+    for (unsigned n = 0; n <= companion_params_most; ++n) many += (n ? "," : "") + std::string(R"({"index": 0, "name": "A"})");
+    CHECK(!read_companion_manifest(many + "]}", m, why) && why.find("more than") != std::string::npos);
+    CHECK(pick_companion({CompanionFit::Other, CompanionFit::Fits, CompanionFit::Wrong}).package == 1);
+    auto two = pick_companion({CompanionFit::Fits, CompanionFit::Fits});
+    CHECK(two.package == -1 && two.ambiguous);
+    CHECK(pick_companion({CompanionFit::Wrong}).package == -1 && !pick_companion({}).ambiguous);
+    CHECK(plugin_binding_indexed(plugin_binding(3, plugin_index_slot + 58)) && !plugin_binding_indexed(plugin_binding(3, plugin_screen_slot)));
+    CHECK(!plugin_binding_indexed(plugin_binding(3, 5)));
+}
+
 // Page files (plugin/page_file.h): which plug-in, its pages by names or IDs, labels, a last page of the rest,
 // pictures; files that cannot be used say why.
 void page_files() {
@@ -12265,6 +12309,7 @@ int main() {
     xpl_presets();
     plugin_page_layout();
     page_files();
+    companion_packages();
     synths_as_plugins();
     voice_taps();
     voice_heads();

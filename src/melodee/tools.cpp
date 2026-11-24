@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/companion_host.h"
+#include "melodee/plugin/companion_screen.h"
 #include "melodee/plugin/vst2_instance.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
@@ -3505,16 +3507,93 @@ namespace {
 // `path` (a CLAP library's first, or a VST2 .so) as Edit on its PLUGIN track shows it and writes the screen into
 // `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
 // k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
-int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps) {
+std::unique_ptr<juce::AudioPluginInstance> open_plugin(const char* path, juce::String& error) {
+    const juce::File file {juce::String(path)};
+    if (file.hasFileExtension("clap")) return ClapInstance::load(file, 0, 48000.0, 256, error);
+    return Vst2Instance::load(file, 48000.0, 256, error);
+}
+
+// A VST2 plug-in as a companion screen's screen.json names it (sdk/melodee-screen/melodee_companion.h).
+CompanionTarget companion_target(juce::AudioPluginInstance& plugin, bool clap) {
+    juce::PluginDescription d;
+    plugin.fillInPluginDescription(d);
+    CompanionTarget t;
+    t.who.name = d.name.toStdString();
+    t.who.vendor = d.manufacturerName.toStdString();
+    if (!clap) t.who.vst2 = d.uniqueId;
+    t.vst2 = !clap;
+    for (auto* p : plugin.getParameters()) t.names.push_back(p->getName(64).trim().toStdString());
+    return t;
+}
+
+// A companion package's folder read and checked against the plug-in: its manifest, else -1 with the reason printed.
+int check_companion(juce::AudioPluginInstance& plugin, bool clap, const std::string& package, CompanionManifest& m) {
+    std::ifstream in(std::filesystem::path(package) / "screen.json", std::ios::binary);
+    std::string json((std::istreambuf_iterator<char>(in)), {});
+    std::string why;
+    if (json.empty()) { std::printf("error=no screen.json in %s\n", package.c_str()); return -1; }
+    if (!read_companion_manifest(json, m, why)) { std::printf("error=%s\n", why.c_str()); return -1; }
+    const auto fit = companion_fit(m, companion_target(plugin, clap), why);
+    if (fit == CompanionFit::Other) { std::printf("error=screen.json names another plug-in\n"); return -1; }
+    if (fit == CompanionFit::Wrong) { std::printf("error=%s\n", why.c_str()); return -1; }
+    std::error_code e;
+    if (!std::filesystem::is_regular_file(std::filesystem::path(package) / m.library, e)) { std::printf("error=no %s\n", m.library.c_str()); return -1; }
+    return 0;
+}
+
+// The plug-in's parameters, for a companion's maker writing screen.json: index, name, value, text, default.
+int plugin_params(const char* path) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    juce::PluginDescription d;
+    plugin->fillInPluginDescription(d);
+    std::printf("name=%s\nvendor=%s\nvst2=%s\nparams=%d\nprograms=%d\n", d.name.toRawUTF8(), d.manufacturerName.toRawUTF8(),
+                vst2_code(d.uniqueId).c_str(), plugin->getParameters().size(), plugin->getNumPrograms());
+    for (auto* p : plugin->getParameters()) {
+        const float v = p->getValue();
+        const int steps = p->getNumSteps();
+        std::printf("%d\t%s\t%.4f\t%s\t%.4f\t%d\n", p->getParameterIndex(), p->getName(64).trim().toRawUTF8(), v,
+                    p->getText(v, 64).trim().toRawUTF8(), p->getDefaultValue(), steps > 1 && steps < 100000 ? steps - 1 : 0);
+    }
+    return 0;
+}
+
+int companion_check(const char* path, const std::string& package) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    CompanionManifest m;
+    if (check_companion(*plugin, juce::File(juce::String(path)).hasFileExtension("clap"), package, m) < 0) return 1;
+    std::printf("fits=%s params=%zu sdk=%ld library=%s\n", m.name.c_str(), m.params.size(), m.sdk, m.library.c_str());
+    return 0;
+}
+
+// `package`: a companion screen's folder, drawn in its own process as on the MPC (plugin/companion_screen.h), its
+// requests made on the plug-in as the shell would; else the plug-in's own screen.
+int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps, const char* package = nullptr) {
     juce::String error;
     const juce::File file {juce::String(path)};
     const bool clap = file.hasFileExtension("clap");
-    std::unique_ptr<juce::AudioPluginInstance> plugin;
-    if (clap) plugin = ClapInstance::load(file, 0, 48000.0, 256, error);
-    else plugin = Vst2Instance::load(file, 48000.0, 256, error);
+    std::unique_ptr<juce::AudioPluginInstance> plugin = open_plugin(path, error);
     if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
-    auto* screen = dynamic_cast<ScreenSource*>(plugin.get());
-    if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
+    ScreenSource* screen = nullptr;
+    std::unique_ptr<CompanionHost> helper;
+    std::unique_ptr<CompanionScreen> companion;
+    if (package) {
+        CompanionManifest m;
+        if (check_companion(*plugin, clap, package, m) < 0) return 1;
+        CompanionPackage pack;
+        pack.folder = std::filesystem::path(package).filename().string();
+        pack.library = std::filesystem::absolute(std::filesystem::path(package) / m.library).string();
+        pack.manifest = std::move(m);
+        helper = std::make_unique<CompanionHost>();
+        companion = std::make_unique<CompanionScreen>(*plugin, *helper, std::move(pack), 1);
+        screen = companion.get();
+    } else {
+        screen = dynamic_cast<ScreenSource*>(plugin.get());
+        if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
+    }
     plugin->prepareToPlay(48000.0, 256);
     std::error_code made;
     std::filesystem::create_directories(folder, made);
@@ -3526,6 +3605,10 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
     s->ui = UiState {};
     s->now = 100000;
     plugin_track(*s, PluginStatus::Ready);
+    { // Stage's PANEL, where the MPC shows a plug-in's screen (plugin_track() leaves it on EDIT)
+        const auto at = stage_find(EngineKind::Plugin, StageKind::PluginScreen);
+        on_stage(*s, 2, at.at.group, at.at.sub);
+    }
     auto& panel = s->ui.plugin_panel;
     std::snprintf(panel.name, sizeof(panel.name), "%s", plugin->getName().toRawUTF8());
     std::snprintf(panel.format, sizeof(panel.format), "%s", clap ? "CLAP" : "VST2");
@@ -3551,10 +3634,26 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         plugin->processBlock(buffer, midi);
         if (auto* c = dynamic_cast<ClapInstance*>(plugin.get())) c->idle(); // its values read again
     };
+    // A companion's requests, made on the plug-in as the shell makes them (Context::companion_requests), and said.
+    auto requests = [&] {
+        if (!companion) return;
+        std::vector<CompanionRequest> asked;
+        companion->take(asked);
+        for (const auto& r : asked) {
+            if (r.program) { plugin->setCurrentProgram(r.index); std::printf("program=%d\n", r.index); }
+            else if (r.index >= 0 && r.index < params.size()) {
+                params[r.index]->setValue(r.value);
+                std::printf("edit=%d:%.4f\n", r.index, double(params[r.index]->getValue()));
+            }
+        }
+    };
     auto shoot = [&] {
         frame.time_ms = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
         bool changed = false;
+        if (companion) companion->takeRedraw(); // reads the plug-in's values again, as the screen thread does
         screen->screenDraw(frame, changed);
+        requests();
+        if (companion && !companion->hasScreen()) { std::printf("stopped=%s\n", companion->stop_reason().c_str()); return; }
         frame.redraw_all = 0;
         auto picture = std::make_shared<ScreenPicture>();
         picture->entry = 0;
@@ -3577,12 +3676,14 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         }
         s->ui.shift = frame.shift != 0;
         s->playing = frame.playing != 0;
+        std::printf("controls=%d,%d,%d\n", controls[0], controls[1], controls[2]);
         juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
         { juce::Graphics g(image); draw(g, *s); }
         save_png(image, folder + "/" + std::to_string(written++) + ".png");
     };
     shoot();
     for (const auto& step : steps) {
+        if (companion && !companion->hasScreen()) break;
         const auto colon = step.find(':');
         const std::string word = step.substr(0, colon);
         const int value = colon == std::string::npos ? 0 : std::atoi(step.c_str() + colon + 1);
@@ -3590,6 +3691,7 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
             melodee_screen_input_t in {kind, v, frame.shift};
             bool used = false;
             screen->screenInput(in, used);
+            requests();
         };
         if (word == "wheel") send(MELODEE_SCREEN_WHEEL, value);
         else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
@@ -3602,6 +3704,12 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
             frame.pots[k] = int16_t(std::clamp(value, 0, 127));
             frame.pots_live[k] = 1;
             if (controls[k] >= 0 && controls[k] < params.size()) params[controls[k]]->setValue(float(frame.pots[k]) / 127.0f);
+        } else if (word == "param" && colon != std::string::npos) { // param:INDEX:VALUE (0..1000): set from outside (MIDI, a preset)
+            const auto second = step.find(':', colon + 1);
+            const int index = value, to = second == std::string::npos ? 0 : std::atoi(step.c_str() + second + 1);
+            if (index >= 0 && index < params.size()) params[index]->setValue(std::clamp(to, 0, 1000) / 1000.0f);
+        } else if (word == "program") { // program:N from outside
+            plugin->setCurrentProgram(value);
         } else if (word == "wait") {
             std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, value)));
             continue;
@@ -3612,13 +3720,141 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         run_block();
         shoot();
     }
+    if (companion && !companion->hasScreen()) { // the plug-in plays on without it
+        for (int n = 0; n < 20; ++n) run_block();
+        std::printf("audio=ok\n");
+    }
     plugin->releaseResources();
     std::printf("written=%u\n", written);
+    if (companion && !companion->hasScreen()) return 2;
+    if (companion) // every parameter it lists, as the plug-in has them now
+        for (const auto& p : companion->package().manifest.params)
+            std::printf("value=%d:%.4f\n", p.index, double(params[p.index]->getValue()));
     return 0;
 }
 } // namespace
 
+namespace {
+// A companion package for the tools below: read, checked and pointed at its library where it lies.
+bool companion_package(juce::AudioPluginInstance& plugin, const std::string& folder, CompanionPackage& out) {
+    CompanionManifest m;
+    if (check_companion(plugin, false, folder, m) < 0) return false;
+    out.folder = std::filesystem::path(folder).filename().string();
+    out.library = std::filesystem::absolute(std::filesystem::path(folder) / m.library).string();
+    out.manifest = std::move(m);
+    return true;
+}
+
+// Two instances of a VST2 plug-in, each with its own companion screen, sharing one process as on the MPC. Prints
+// pair=ok when: a screen's edits reach its own plug-in only, five wheel detents in a row add up, the other screen's
+// page and K1-K3 are its own, and a screen shown again starts afresh.
+int companion_pair(const char* path, const std::string& folder) {
+    juce::String error;
+    auto a = open_plugin(path, error), b = open_plugin(path, error);
+    if (!a || !b) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    CompanionPackage pack;
+    if (!companion_package(*a, folder, pack)) return 1;
+    CompanionHost helper;
+    CompanionScreen sa(*a, helper, pack, 1), sb(*b, helper, pack, 2);
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    frame.redraw_all = 1;
+    for (auto& p : frame.pots) p = -1;
+    auto draw = [&](CompanionScreen& s) { bool changed = false; s.takeRedraw(); s.screenDraw(frame, changed); };
+    auto input = [&](CompanionScreen& s, uint32_t kind, int32_t value) {
+        melodee_screen_input_t in {kind, value, 0};
+        bool used = false;
+        s.screenInput(in, used);
+    };
+    auto apply = [&](CompanionScreen& s, juce::AudioPluginInstance& p) {
+        std::vector<CompanionRequest> asked;
+        s.take(asked);
+        for (const auto& r : asked) if (!r.program) p.getParameters()[r.index]->setValue(r.value);
+        return asked.size();
+    };
+    auto controls = [](CompanionScreen& s) { std::array<int, 3> c {}; s.screenControls(c); return c; };
+    const float a_before = a->getParameters()[2]->getValue(), b_before = b->getParameters()[2]->getValue();
+    draw(sa);
+    input(sa, MELODEE_SCREEN_PUSH, 1); // edit K1, A's pitch (2)
+    for (int n = 0; n < 5; ++n) input(sa, MELODEE_SCREEN_WHEEL, 1);
+    const size_t asked = apply(sa, *a);
+    const float a_after = a->getParameters()[2]->getValue(), b_after = b->getParameters()[2]->getValue();
+    const auto a_controls = controls(sa);
+    draw(sb);
+    input(sb, MELODEE_SCREEN_STEP, 1); // B on its second row
+    draw(sb);
+    const auto b_controls = controls(sb);
+    const size_t b_asked = apply(sb, *b);
+    draw(sa); // A again: a fresh screen, its first row
+    const auto a_again = controls(sa);
+    const bool ok = asked == 1 && std::abs(a_after - (a_before + 5.0f / 60.0f)) < 0.01f && b_after == b_before && b_asked == 0
+                    && a_controls == std::array<int, 3> {2, 3, 10} && b_controls == std::array<int, 3> {27, 28, 29}
+                    && a_again == std::array<int, 3> {2, 3, 10} && sa.hasScreen() && sb.hasScreen();
+    std::printf("a=%.4f->%.4f b=%.4f->%.4f asked=%zu b_asked=%zu a=%d,%d,%d b=%d,%d,%d again=%d,%d,%d\n", a_before, a_after, b_before,
+                b_after, asked, b_asked, a_controls[0], a_controls[1], a_controls[2], b_controls[0], b_controls[1], b_controls[2],
+                a_again[0], a_again[1], a_again[2]);
+    std::printf("pair=%s\n", ok ? "ok" : "failed");
+    return ok ? 0 : 1;
+}
+
+// The plug-in's sound and state for one take (notes, 400 blocks), with a companion screen drawing and turning pages
+// all along when `folder` is given: OUT.raw (float stereo) and OUT.state, to compare with a take without one.
+int companion_render(const char* path, const std::string& out, const char* folder) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    std::unique_ptr<CompanionHost> helper;
+    std::unique_ptr<CompanionScreen> screen;
+    if (folder) {
+        CompanionPackage pack;
+        if (!companion_package(*plugin, folder, pack)) return 1;
+        helper = std::make_unique<CompanionHost>();
+        screen = std::make_unique<CompanionScreen>(*plugin, *helper, std::move(pack), 1);
+    }
+    plugin->prepareToPlay(48000.0, 256);
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    for (auto& p : frame.pots) p = -1;
+    std::ofstream raw(out + ".raw", std::ios::binary | std::ios::trunc);
+    juce::AudioBuffer<float> buffer(std::max(2, plugin->getTotalNumOutputChannels()), 256);
+    for (int block = 0; block < 400; ++block) {
+        juce::MidiBuffer midi;
+        if (block == 2) midi.addEvent(juce::MidiMessage::noteOn(1, 60, uint8_t(100)), 0);
+        if (block == 20) midi.addEvent(juce::MidiMessage::noteOn(1, 67, uint8_t(90)), 17);
+        if (block == 150) midi.addEvent(juce::MidiMessage::noteOff(1, 60), 5);
+        if (block == 160) midi.addEvent(juce::MidiMessage::noteOff(1, 67), 0);
+        buffer.clear();
+        plugin->processBlock(buffer, midi);
+        for (int f = 0; f < 256; ++f)
+            for (int c = 0; c < 2; ++c) { float v = buffer.getSample(std::min(c, buffer.getNumChannels() - 1), f); raw.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+        if (screen && block % 4 == 0) {
+            bool changed = false, used = false;
+            frame.redraw_all = block == 0;
+            screen->takeRedraw();
+            screen->screenDraw(frame, changed);
+            melodee_screen_input_t in {MELODEE_SCREEN_STEP, block % 8 ? 1 : -1, 0};
+            screen->screenInput(in, used);
+        }
+    }
+    juce::MemoryBlock state;
+    plugin->getStateInformation(state);
+    std::ofstream(out + ".state", std::ios::binary | std::ios::trunc).write(static_cast<const char*>(state.getData()), std::streamsize(state.getSize()));
+    std::printf("rendered=%s screen=%s\n", out.c_str(), screen ? (screen->hasScreen() ? "on" : "stopped") : "none");
+    return screen && !screen->hasScreen() ? 2 : 0;
+}
+} // namespace
+
 std::optional<int> run_tool(int argc, char** argv) {
+    // A companion screen's process (plugin/companion_host.h), started by Melodee itself: first, before anything else.
+    if (argc == 2 && !std::strcmp(argv[1], "--melodee-companion-helper")) return companion_helper_main();
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
         auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
         return monkey(arg(2, 1), arg(3, 12), arg(4, 3000));
@@ -3648,6 +3884,15 @@ std::optional<int> run_tool(int argc, char** argv) {
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
     if (argc >= 4 && !std::strcmp(argv[1], "--melodee-plugin-screen")) // PLUGIN (.clap or VST2 .so) DIR [STEP...]
         return plugin_screen(argv[2], argv[3], std::vector<std::string>(argv + 4, argv + argc));
+    // Companion screens (sdk/melodee-screen/melodee_companion.h): the plug-in with a package's screen, as the MPC
+    // draws it; the plug-in's parameters for writing screen.json; a package checked against the plug-in.
+    if (argc >= 5 && !std::strcmp(argv[1], "--melodee-companion-screen")) // PLUGIN PACKAGE DIR [STEP...]
+        return plugin_screen(argv[2], argv[4], std::vector<std::string>(argv + 5, argv + argc), argv[3]);
+    if (argc == 3 && !std::strcmp(argv[1], "--melodee-plugin-params")) return plugin_params(argv[2]);
+    if (argc == 4 && !std::strcmp(argv[1], "--melodee-companion-check")) return companion_check(argv[2], argv[3]);
+    if (argc == 4 && !std::strcmp(argv[1], "--melodee-companion-pair")) return companion_pair(argv[2], argv[3]);   // PLUGIN PACKAGE
+    if ((argc == 4 || argc == 5) && !std::strcmp(argv[1], "--melodee-companion-render"))                             // PLUGIN OUT [PACKAGE]
+        return companion_render(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-print-spike")) return print_spike(argc, argv);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
