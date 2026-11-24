@@ -80,6 +80,13 @@ held, Mute still mutes channels), an Erase tap takes it out and Shift +
 Erase copies it. Erase + a track's pad asks to clear the track (it did
 nothing on the mixer before).
 
+Melodee step 4: 0eab36e. The input's B1 INPUT: what it plays after its strip
+(two meters and the peak), K1 TRIM (its strip), K2 MONITOR (Input Config's),
+K3 RECORD DRY or WET (`Project::input_wet`, one undo step with the mix). The
+master's B3 is the printed Compressor: ATTACK, RELEASE, AMOUNT, Shift + K3 IN
+BOOST, Push on or off, the picture its gain reduction of late. Width and a
+track's trim still have no card (open).
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -323,7 +330,8 @@ and the Compressor. Meters are one peak a track; buses have none.
    BANK** tap for the second bank, mute mode for submixes and buses
    (`shell/mute_mode.cpp`), the fader's page job (`shell/fader_job.cpp:113`),
    encoder turn, push and **−** / **+** in the `PageSpec`.
-4. **Bus, input, master cards.** A bus's knobs are its first effect's
+4. **Bus, input, master cards.** Built (0eab36e; a bus's and the master's B1 is
+   FX since 81ea501). A bus's knobs are its first effect's
    bindings (`page_chain`). The input's are Input Config's. The master's are
    the Compressor page's.
 5. **EQ picture.** The engine hands out the selected channel's sound in a
