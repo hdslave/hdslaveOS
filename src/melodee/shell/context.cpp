@@ -636,6 +636,23 @@ void Context::apply(const Binding& b, int value) {
         record_motion(int(motion_send(bus)), t.mix.sends[bus]); // roadmap P4: the mix's lanes
         break;
     }
+    case Kind::Strip: { // the mixer (docs/MIXER_PLAN.md): one value of a strip; a track's on its Motion lane too
+        const unsigned n = unsigned(b.id) >> 8;
+        const auto part = StripPart(b.id & 0xff);
+        if (n >= strip_channels) break;
+        Strip& strip = project.strip(n);
+        strip_set(strip, part, value);
+        const int now = strip_get(strip, part);
+        send({Type::StripValue, uint8_t(n), 0, uint16_t(part), int16_t(now)});
+        if (n == ui.track % track_count) { const int lane = motion_strip(part); if (lane >= 0) record_motion(lane, now); }
+        break;
+    }
+    case Kind::TrackOut: { // the mixer: where a track plays (0 the master, out_sub(s))
+        const unsigned at = unsigned(b.id) % track_count;
+        project.tracks[at].mix.out = uint8_t(value <= int(sub_count) ? value : 0);
+        send({Type::TrackOut, uint8_t(at), 0, 0, int16_t(project.tracks[at].mix.out)});
+        break;
+    }
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout:

@@ -362,7 +362,7 @@ void Shell::press(Button b, bool pressed) {
         // Pad FX and Knob FX together, in either order: the MIX hub on Tracks (shell/mix_hub.h); alone, their own job
         // when let go. Shift + either acts as it goes down (the cases below).
         switch (fx_chord(ui, b, pressed)) {
-        case FxChord::Mix: context_.open(PageId::Tracks); end_copy_away(); return;
+        case FxChord::Mix: context_.open(PageId::Mixer); end_copy_away(); return;
         case FxChord::Wait: return;
         case FxChord::Own:
             if (pressed) break; // Shift: below, as printed
@@ -984,6 +984,11 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         host.compressor_activity(level, reduce);
         comp_trail.update(level, reduce, now);
         out.comp_trail = comp_trail.trail();
+        for (unsigned n = 0; n < strip_channels; ++n) { const auto m = host.strip_meter(n); out.strips[n] = {m.left, m.right, m.reduction}; }
+        const auto& own = out.strips[ui_.track % track_count];
+        const float peak = std::max(own.left, own.right);
+        strip_trail.update(peak > 1e-5f ? 20 * std::log10(peak) : -90.0f, own.reduction, now);
+        out.strip_trail = strip_trail.trail();
         comp_bar.update(level, reduce, out.ticks, project_->bar_ticks(), out.playing);
         out.comp_bar = comp_bar.bar(); out.comp_ghost = comp_bar.ghost(); out.comp_bar_at = comp_bar.at();
     }

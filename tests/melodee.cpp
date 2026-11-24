@@ -338,7 +338,8 @@ void pad_expression() {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
         synth(p->tracks[0], 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p, *b);
         auto tones = std::make_unique<Tones>();
         tones->offer(host, *p);
@@ -1610,7 +1611,7 @@ void button_remap() {
         encoder_press(e, 2000);
         CHECK(encoder_tick(e, 2000 + menu_hold_ms) && !encoder_tick(e, 9000)); // held: the MENU, once
         CHECK(!encoder_release(e) && !encoder_release(e)); // its release is no tap
-        CHECK(menu_tile_of(PageId::Tracks) == 8 && menu_tile_of(PageId::Scenes) == 4 && menu_tile_of(PageId::Master) == 10 && menu_tile_of(PageId::Edit) == 0);
+        CHECK(menu_tile_of(PageId::Mixer) == 8 && menu_tile_of(PageId::Scenes) == 4 && menu_tile_of(PageId::Master) == 10 && menu_tile_of(PageId::Edit) == 0);
         CHECK(menu_tile_of(PageId::Patterns) == 4 && menu_places()[4].page == PageId::Scenes && std::string(menu_places()[4].name) == "SEQUENCE"); // Seq's home
         CHECK(menu_tile_turn(12, 1) == 13 && menu_tile_turn(15, 1) == 8 && menu_tile_turn(8, -1) == 15); // across a row, then the row below
         CHECK(menu_tile_turn(12, -1) == 12 && menu_tile_turn(3, 1) == 3 && menu_tile_turn(12, 15) == 3); // clamped at both ends
@@ -1863,7 +1864,8 @@ void parity_1c() {
         auto p = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         tone_kit(*p, 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p, *bank);
         auto tone = tone_sample();
         CHECK(host.offer_sample(0, &tone));
@@ -1883,7 +1885,8 @@ void parity_1c() {
             auto bank = std::make_unique<PatternBank>();
             tone_kit(*p, 0);
             p->tracks[0].pads[1] = p->tracks[0].pads[0];
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*p, *bank);
             auto tone = tone_sample();
             host.offer_sample(0, &tone);
@@ -2381,7 +2384,8 @@ void step_edit_and_pad_motion() {
     beat = Pattern {};
     beat.write_motion(point(4, level, 0, 9));
     for (unsigned st : {0u, 8u}) beat.add({st * sixteenth_ticks, uint16_t(sixteenth_ticks), uint8_t(sampler_first_note + 9), 120, 100, 0});
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*quiet, *bank);
     CHECK(host.offer_sample(0, &data_wav));
     host.send({Command::Type::Play});
@@ -3483,7 +3487,8 @@ void performance_effects() {
     auto bank = std::make_unique<PatternBank>();
     synth(project->tracks[0], 0);
     auto energy = [&](const std::function<void(EngineHost&)>& set) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         set(host);
@@ -3517,7 +3522,8 @@ void performance_effects() {
         tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
         for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.3) * 0.5); // about 2.1 kHz
         auto hit = [&](unsigned pad, bool knobbed) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3536,7 +3542,8 @@ void performance_effects() {
         // Playing, the sequencer's ticks split the host's blocks: a pad through Knob FX (none chosen, so it passes
         // untouched) must come out frame for frame as it does dry, whole and in place, as when stopped.
         auto take = [&](bool knobbed, bool playing) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3571,7 +3578,8 @@ void performance_effects() {
 
     // Rec Input FX: the take hears Knob FX on the input (the mix here, Resample), the speakers do not.
     auto take = [&](bool rec_fx) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
@@ -3589,7 +3597,8 @@ void performance_effects() {
 
     // The master compressor: engaged at full amount it takes the loud chord down, and says by how much.
     auto loud = [&](bool on, bool color) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3614,7 +3623,8 @@ void performance_effects() {
         synth(two->tracks[2], 2);
         struct Heard { double energy; float reduction; };
         auto side = [&](bool on, bool key_plays, bool other_plays, bool key_muted) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*two, *bank);
             tones_for(host, *two);
             host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3650,7 +3660,8 @@ void performance_effects() {
         tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
         for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.05) * 0.8);
         auto hit = [&](bool keyed, bool a01, bool a02) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3677,7 +3688,8 @@ void performance_effects() {
     }
     // The page's picture: the compressor hands over its peaks, the trail keeps a column every 33 ms whatever the frame rate.
     {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3855,7 +3867,8 @@ void fader_and_takeover() {
         auto bank = std::make_unique<PatternBank>();
         ::synth(proj->tracks[0], 0);
         bank->at[0][0].write_motion(point(0, motion_bend, -64));
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*proj, *bank);
         auto tones = std::make_unique<Tones>();
         tones->offer(host, *proj);
@@ -4355,7 +4368,8 @@ void midi_and_sync() {
         project->tempo = 1200;
         put(bank->at[0][0], 4, 45, 100);
         put(bank->at[1][0], 0, 60, 90); // track 2 has no engine: a MIDI track under Empty
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5361,7 +5375,8 @@ void midi_tracks() {
         put(bank->at[0][0], 0, 60, 100, 2);
         bank->at[0][1].length = 4 * project->bar_ticks(); // pattern 2: four bars, one long note
         put(bank->at[0][1], 0, 62, 100, 64);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5459,7 +5474,8 @@ void midi_tracks() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Midi, 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5782,7 +5798,8 @@ void stage() {
         load_sound(p2->tracks[0], EngineKind::Midi, 0);
         p2->tracks[0].params[midi_track::Port] = midi_track::UsbC; p2->tracks[0].params[midi_track::Channel] = 3;
         p2->tracks[0].params[midi_track::Program] = 6; p2->tracks[0].params[midi_track::BankLsb] = 2;
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p2, *bank);
         tones_for(host, *p2);
         host.set_audio_format(44100, 384);
@@ -6875,7 +6892,8 @@ void voice_taps() {
     }
     // The host publishes the watched track's after each block, stamped with the block's end.
     {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         std::vector<int32_t> out(256);
         host.watch_taps(2);
         host.render(out.data(), 128, 1);
@@ -7877,7 +7895,8 @@ void pad_lights() {
 
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     UiState ui;
     auto& kit = project->tracks[1];
@@ -7964,7 +7983,8 @@ void pad_lights() {
         p.events.push_back(e);
         ui.levels_hit = 0; light({});
         auto stopped = looks;
-        EngineHost playing;
+        auto playing_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& playing = *playing_held;
         playing.load(*project, *bank);
         playing.send({Command::Type::Play});
         std::vector<int32_t> block(256);
@@ -8309,7 +8329,8 @@ void erase_copy_everywhere() {
 
     // The pads: a key copy and a key erase where the pads play a synth's keys, a step copy on Steps.
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     std::array<Look, 16> looks;
     PadFacts keys; keys.key_pads = true;
@@ -8439,8 +8460,9 @@ void track_move() {
     CHECK(track_key(held, 0) == TrackKey::Ended && !held.moving && !tracks_on_pads(held));
     held.copying = UiState::Copying::Pads; held.pad_bank = true;
     CHECK(track_key(held, 2) == TrackKey::Started && held.copying == UiState::Copying::Tracks && !held.moving); // a pad copy gives way
-    // The MIX hub's row (shell/mix_hub.h): TRACKS, SENDS, and FX along the chains, a kit's pads' last.
-    CHECK(mix_next(PageId::Stage, 0, false) == PageId::Tracks && mix_next(PageId::Tracks, 1, false) == PageId::Sends);
+    // The MIX hub's row (shell/mix_hub.h): MIXER, none (the page stays), and FX along the chains, a kit's pads' last.
+    CHECK(mix_next(PageId::Stage, 0, false) == PageId::Mixer && mix_next(PageId::Rack, 1, false) == PageId::Rack);
+    CHECK(mix_section(PageId::Mixer) == MixSection::Tracks && mix_next(PageId::Mixer, 2, false) == PageId::Rack);
     CHECK(mix_next(PageId::Sends, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
     CHECK(mix_next(PageId::Bus, 2, false) == PageId::Master && mix_next(PageId::Master, 2, false) == PageId::Rack);
     CHECK(mix_next(PageId::Master, 2, true) == PageId::PadFx && mix_next(PageId::PadFx, 2, true) == PageId::Rack);
@@ -8469,7 +8491,8 @@ void track_move() {
 
     // The pads: the track picked white, a move's targets in their own colour (used Dim, empty Faint), a copy's used ones red.
     using namespace pad_light;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     std::array<Look, 16> looks;
     UiState pick; pick.pad_bank = true;
@@ -8575,7 +8598,8 @@ void drum_layout() {
     // The pads light as a kit's: the drum hit last Full, the rest Dim; with the plug-in's voices, a pad without one dark.
     using namespace pad_light;
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     UiState lit; lit.track = 0; lit.page = PageId::Keys;
     t.layout = PadLayout::Drums; t.last_note = 38; t.chord = false;
@@ -8731,7 +8755,8 @@ std::vector<MidiOutEvent> played_notes(const Pattern& p, unsigned blocks, Engine
     if (engine == EngineKind::Midi) { project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 1; }
     project->tempo = 1200;
     bank->at[0][0] = p;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*project, *bank);
     host.set_audio_format(44100, 384);
     if (engine != EngineKind::Midi) host.send({Command::Type::MidiTrack, 0, 0, 1, 1}); // Pad MIDI Out: always
@@ -8986,7 +9011,8 @@ void pattern_motion() {
         MotionPoint other = point(3, Cc2, 90, 0, 6);
         CHECK(p.write_motion(a) && p.write_motion(lock) && p.write_motion(other));
         CHECK(p.lock_at(48, Cc1, 0) && !p.lock_at(5, Cc1, 0) && p.lane_value(60, Cc1, 0, -1) == 20 && p.lane_value(4, Cc1, 0, -1) == -1);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -9206,7 +9232,8 @@ void note_repeat_p1() {
             load_sound(project->tracks[0], EngineKind::Midi, 0);
             project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
             project->tempo = 1234; project->swing = uint8_t(swung);
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*project, *bank);
             host.set_audio_format(44100, 128);
             host.send({Command::Type::Repeat, 0, 0, 2, 6}); // 1/32
@@ -9242,7 +9269,8 @@ void note_repeat_p1() {
     load_sound(project->tracks[0], EngineKind::Midi, 0);
     project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
     project->tempo = 1200;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*project, *bank);
     host.set_audio_format(44100, 384);
     host.send({Command::Type::Repeat, 0, 0, 2, 4}); // 1/16
@@ -9516,7 +9544,8 @@ void track_speed() {
         project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1; project->tracks[0].speed = 4;
         project->tempo = 1200;
         put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 4, 62, 100);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -10898,7 +10927,8 @@ void pad_colours() {
 
     // The pads light in their own colours; one without stays in the track's.
     kit.pads[5].colour = 0xFF0000; kit.pads[7].colour = ui::track_shades[4][0];
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     PadFacts plays; plays.kit_pads = true;
     std::array<pad_light::Look, 16> looks;
@@ -11003,7 +11033,8 @@ void pad_sends_mix() {
     CHECK(!ui.sends_pads);
 
     ui.page = PageId::Sends; ui.sends_pads = true; kit.last_pad = 0;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     PadFacts plays; plays.kit_pads = true;
     std::array<pad_light::Look, 16> looks;
@@ -11052,7 +11083,8 @@ void pad_sends_stage() {
 
     // Pad lights on bus A: Snare (30) brighter than Hat (15), Kick (dry) dark, the last pad white.
     kit.last_pad = 0; ui.sends_bus = 0;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     PadFacts plays; plays.kit_pads = true;
     std::array<pad_light::Look, 16> looks;
@@ -11169,7 +11201,8 @@ void free_length() {
         synth(project->tracks[0], 0); synth(project->tracks[1], 0);
         project->tempo = 1200;
         bank->at[1][0].length = 4 * bar; put(bank->at[1][0], 0, 57, 100);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Play});

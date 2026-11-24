@@ -21,9 +21,10 @@ MixState mix_of(const Project& p) {
     MixState m {};
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& x = p.tracks[t].mix;
-        m.level[t] = x.level; m.pan[t] = x.pan; m.sends[t] = x.sends;
+        m.level[t] = x.level; m.pan[t] = x.pan; m.sends[t] = x.sends; m.outs[t] = x.out;
     }
     for (unsigned b = 0; b < bus_count; ++b) m.returns[b] = p.buses[b].level;
+    for (unsigned n = 0; n < strip_channels; ++n) m.strips[n] = p.strip(n);
     return m;
 }
 SoundState sound_of(const Track& t) {
@@ -53,7 +54,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     using S = UndoScope::Kind;
     switch (b.kind) {
     case Kind::Param: case Kind::ModSource: case Kind::ModDest: case Kind::ModAmount: return of(S::Sound, ui);
-    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: return of(S::Mix, ui);
+    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: case Kind::Strip: case Kind::TrackOut: return of(S::Mix, ui);
     case Kind::FxParam: case Kind::FxKey: return of(S::Chain, ui, unsigned(b.id) / 64);
     // Roadmap P4: a modulator's settings and a macro's targets, with the master's; a macro's turn and the picks are not kept.
     case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput: case Kind::ModAttack:
@@ -128,7 +129,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {
     case PageId::Song: return of(S::Song, ui);
-    case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
+    case PageId::Tracks: case PageId::Sends: case PageId::Mixer: return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: // a pad picks and plays a slice (no step; a take is one, Context::open_take, Erase + pad in it too);

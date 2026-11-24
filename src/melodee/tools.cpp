@@ -661,6 +661,29 @@ void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
 
 // The Looper's previews: L1 playing with an overdub (stretched to another tempo), L2 recording a free take,
 // L3 stopped with a change waiting, L4 armed; peaks drawn as a beat would.
+// The mixer's previews: the project's tracks with their levels, track 3 a bass with EQ and a compressor at work, its
+// sends into buses with effects, every strip's meter playing; `block` the lit one.
+void mixer_scene(Snapshot& s, unsigned block) {
+    s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.mixer_block = uint8_t(block); s.playing = true;
+    auto& bass = s.project.tracks[2];
+    if (!bass.used()) bass.engine = EngineKind::Sampler;
+    bass.set_name("Bass");
+    bass.mix.sends = {18, 32, 6, 12};
+    bass.strip.eq = {40, 60, 20, -50, -30, 0, 20, 10, -20};
+    bass.strip.comp_amount = 18; bass.strip.comp_ratio = 40;
+    s.project.buses[0].fx.slots[0].kind = uint8_t(EffectKind::Reverb);
+    s.project.buses[1].fx.slots[0].kind = uint8_t(EffectKind::Echo);
+    const float meters[][2] {{0.70f, 0.62f}, {0.30f, 0.26f}, {0.55f, 0.50f}, {0.18f, 0.21f}, {0.08f, 0.06f}, {0.4f, 0.4f}};
+    for (unsigned t = 0; t < 6; ++t) {
+        if (!s.project.tracks[t].used()) s.project.tracks[t].engine = EngineKind::Sampler;
+        s.strips[t] = {meters[t][0], meters[t][1], t == 2 ? 5.5f : 0.0f};
+    }
+    for (unsigned n = 0; n < comp_columns; ++n) {
+        const float r = n % 9 < 2 ? 0.5f : 2.0f + 4.0f * float((n * 7) % 11) / 10.0f;
+        s.strip_trail[n] = {-12.0f + float(n % 5), r};
+    }
+}
+
 void looper_scene(Snapshot& s) {
     s.ui.page = PageId::Looper; s.playing = true; s.ui.loop = 0;
     s.project.looper.on = true; s.looper_on = true; s.loop_tick = 384 * 2 + 96 * 2 + 10;
@@ -1115,6 +1138,12 @@ const Preview previews[] {
     {"stageemptyslide", [](Shell&, Snapshot& s) { // the wheel just moved: Keygroup on its way to the middle
          on_stage(s, 12, 0, 0); s.ui.new_pick = uint8_t(NewType::Keygroup); s.ui.new_pick_from = 0; s.now = 1000; s.ui.new_pick_at = 960;
      }},
+    // The mixer (docs/MIXER_PLAN.md): track 3 in the card, its neighbours' meters; SENDS, EQ (MID in hand), COMP (what
+    // it took off of late), Basic (send A alone).
+    {"mixer", [](Shell&, Snapshot& s) { mixer_scene(s, 0); }},
+    {"mixereq", [](Shell&, Snapshot& s) { mixer_scene(s, 1); s.ui.mixer_eq_group = 1; }},
+    {"mixercomp", [](Shell&, Snapshot& s) { mixer_scene(s, 2); }},
+    {"mixerbasic", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.settings.full_features = false; }},
     {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
         const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};

@@ -152,6 +152,7 @@ private:
     std::array<bool, 256> eaten_buttons {};
     std::array<bool, 128> eaten_pads {};
     CompTrail comp_trail; // the screen thread's, in snapshot(): the Compressor page's picture over time
+    CompTrail strip_trail; // and the mixer's COMP block's: the selected track's strip
     CompBar comp_bar;     // and over one bar of the song (round 2, compressor B)
     HeadTrail trail; // the screen thread's, in snapshot(): heads kept while their wakes fade
     std::atomic<float> main_volume {0.7f};

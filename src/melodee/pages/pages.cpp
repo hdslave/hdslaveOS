@@ -60,6 +60,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Print: return print_page; // freeze plan F2c
     case PageId::AutoSample: return auto_sample_page;
     case PageId::Stems: return stems_page;
+    case PageId::Mixer: return mixer_page;
     case PageId::Trim: // lives on Stage now (Context::open lands there)
     case PageId::Stage:
     default: return stage_page;

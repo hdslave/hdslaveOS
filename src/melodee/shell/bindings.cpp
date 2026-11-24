@@ -135,9 +135,24 @@ const std::array<ParamInfo, bus_count> send_infos {{{"SEND A", 0, 100, 0, Format
 const std::array<ParamInfo, bus_count> return_infos {{{"RETURN A", 0, 100, 70, Format::Percent}, {"RETURN B", 0, 100, 70, Format::Percent},
                                                        {"RETURN C", 0, 100, 70, Format::Percent}, {"RETURN D", 0, 100, 70, Format::Percent}}};
 
+// The mixer's strip lanes (model/strip.h strip_lane_parts) as Motion names them.
+const char* const strip_speed_choices[] {"FAST", "MED", "SLOW", "AUTO"};
+const std::array<ParamInfo, motion_strip_count> strip_infos {{
+    {"TRIM", -trim_range, trim_range, 0, Format::Tenths}, {"WIDTH", 0, int16_t(width_max), 100, Format::Percent},
+    {"63 Hz", -eq_range, eq_range, 0, Format::Tenths}, {"125 Hz", -eq_range, eq_range, 0, Format::Tenths},
+    {"250 Hz", -eq_range, eq_range, 0, Format::Tenths}, {"500 Hz", -eq_range, eq_range, 0, Format::Tenths},
+    {"1 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"2 kHz", -eq_range, eq_range, 0, Format::Tenths},
+    {"4 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"8 kHz", -eq_range, eq_range, 0, Format::Tenths},
+    {"16 kHz", -eq_range, eq_range, 0, Format::Tenths}, {"AMOUNT", 0, int16_t(comp_amount_max), 0, Format::Number},
+    {"RATIO", int16_t(comp_ratio_min), int16_t(comp_ratio_max), 40, Format::Tenths},
+    {"SPEED", 0, int16_t(int(CompSpeed::Count) - 1), 1, Format::Choice, strip_speed_choices}, {"MIX", 0, 100, 100, Format::Percent},
+    {"GAIN", int16_t(comp_gain_min), int16_t(comp_gain_max), 0, Format::Tenths}}};
+
 MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
+    if (is_strip_lane(unsigned(param))) // the mixer: the track's strip
+        return {&strip_infos[unsigned(param) - motion_strip_base], strip_get(track.strip, strip_lane_part(unsigned(param)))};
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? MotionParam {&bend_info, track.bend} : MotionParam {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4
@@ -189,6 +204,7 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
     if (unsigned(param) == motion_pad_mute) // issue 32: the pad's mute, as Mute + pad sets it
         return track.sampled() ? Binding {Kind::PadMute, int32_t(lane_pad(lane) % sampler_pads), 0, 1, int(track.pad_muted(lane_pad(lane)))} : Binding {};
+    if (is_strip_lane(unsigned(param))) return strip_card(t, strip_lane_part(unsigned(param)), track.strip); // the mixer
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};
@@ -281,6 +297,7 @@ int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
     if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
+    if (b.kind == Kind::Strip && (unsigned(b.id) >> 8) < track_count) { const int lane = motion_strip(StripPart(b.id & 0xff)); return lane >= 0 ? motion_lane(unsigned(lane)) : -1; }
     if (!track.sampled()) return -1;
     if (int p = card_pad_param(b); p >= 0) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads); // on the last pad hit
     return -1;
@@ -297,6 +314,29 @@ bool pad_reset_value(const Binding& b, int& value) {
 bool erase_resets(const Binding& b) {
     int value = 0;
     return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || pad_reset_value(b, value);
+}
+
+std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row) {
+    const unsigned t = ui.track % track_count;
+    const auto& track = project.tracks[t];
+    if (!track.used()) return {};
+    const Binding pan {Kind::Pan, 0, -50, 50, track.mix.pan};
+    auto send = [&](unsigned bus) { return Binding {Kind::Send, int32_t(bus), 0, 100, track.mix.sends[bus]}; };
+    if (!full_features(ui)) return shift_row ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {send(0), Binding {}, Binding {}};
+    auto strip = [&](StripPart part) { return strip_card(t, part, track.strip); };
+    switch (ui.mixer_block % 3) {
+    case 1: { // EQ: the group's three bands
+        if (shift_row) return {};
+        const unsigned g = ui.mixer_eq_group % 3;
+        return {strip(eq_part(g * 3)), strip(eq_part(g * 3 + 1)), strip(eq_part(g * 3 + 2))};
+    }
+    case 2:
+        if (shift_row) return {strip(StripPart::Key), strip(StripPart::Mix), strip(StripPart::Gain)};
+        return {strip(StripPart::Amount), strip(StripPart::Ratio), strip(StripPart::Speed)};
+    default:
+        if (shift_row) return {pan, Binding {Kind::TrackOut, int32_t(t), 0, int(sub_count), track.mix.out}, send(3)};
+        return {send(0), send(1), send(2)};
+    }
 }
 
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern) {
@@ -666,6 +706,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
+    case PageId::Mixer: return mixer_cards(project, ui, true);
     case PageId::Tracks: // Shift + K1: the strip in hand's playback speed (roadmap P1)
         if (!track.used()) return {};
         return {Binding {Kind::TrackSpeed, int(ui.track % track_count), 0, int(speed_count) - 1, track.speed % int(speed_count)}, Binding {}, Binding {}};
@@ -1137,6 +1178,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::MidiRow, int16_t(row), 0, int(count) - 1, int(midi_row_choice(ui.settings, track, row))}, Binding {}, Binding {}};
     }
     case PageId::About: return {};
+    case PageId::Mixer: return mixer_cards(project, ui, false);
     case PageId::Tracks: // the strip in hand, as Stage's MIX: K1 its level, K2 its pan, K3 its send into bus A (pads and the wheel pick the track)
         return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
                 Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};

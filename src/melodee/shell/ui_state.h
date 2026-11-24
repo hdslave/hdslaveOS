@@ -34,6 +34,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns,
                             Scenes,                            // roadmap P5: the bank's scenes (B1 again on Patterns)
                             AutoSample,                        // the AUTO SAMPLE sheet: Resample (Shift + Pad 11) on a plug-in track
                             Stems,                             // the STEMS sheet: Shift + B3 on a kit pad's TRIM (shell/stems_jobs.cpp)
+                            Mixer,                             // the mixer (docs/MIXER_PLAN.md): Pad FX + Knob FX
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -368,6 +369,9 @@ struct UiState {
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
     bool sends_pads = false;      // MIX hub SENDS on a kit: the kit's pads and their own sends (B2 again), not the tracks
+    // The mixer (docs/MIXER_PLAN.md): the block the card shows and K1-K3 turn (0 SENDS, 1 EQ, 2 COMP), and the EQ's
+    // three bands in hand (0 LOW 63-250 Hz, 1 MID 500 Hz-2 kHz, 2 HIGH 4-16 kHz). The channel is the selected track.
+    uint8_t mixer_block = 0, mixer_eq_group = 0;
     uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).

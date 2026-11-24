@@ -406,6 +406,45 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = juce::String(label) + " MUTE"; c.value = b.value ? "On" : "Off";
         break;
     }
+    case Kind::Strip: { // the mixer (docs/MIXER_PLAN.md): one value of a strip, as the mock names it
+        static const char* const bands[] {"63 Hz", "125 Hz", "250 Hz", "500 Hz", "1 kHz", "2 kHz", "4 kHz", "8 kHz", "16 kHz"};
+        static const char* const speeds[] {"FAST", "MED", "SLOW", "AUTO"};
+        const auto part = StripPart(b.id & 0xff);
+        const juce::String minus = juce::String::fromUTF8("\xe2\x88\x92");
+        auto tenths = [&](int v) { return (v > 0 ? juce::String("+") : v < 0 ? minus : juce::String()) + juce::String(std::abs(v) / 10.0, 1); }; // -5.0, +4.0
+        const unsigned p = unsigned(part);
+        if (p >= unsigned(StripPart::Eq0) && p <= unsigned(StripPart::Eq8)) {
+            c.label = bands[p - unsigned(StripPart::Eq0)]; c.value = tenths(b.value); c.unit = "dB"; c.bipolar = true;
+            break;
+        }
+        switch (part) {
+        case StripPart::Trim: c.label = "TRIM"; c.value = tenths(b.value); c.unit = "dB"; c.bipolar = true; break;
+        case StripPart::Width: c.label = "WIDTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case StripPart::Amount: c.label = "AMOUNT"; c.value = b.value ? minus + juce::String(b.value) : juce::String("OFF"); c.unit = b.value ? "dB" : ""; break;
+        case StripPart::Ratio: c.label = "RATIO"; c.value = (b.value % 10 ? juce::String(b.value / 10.0, 1) : juce::String(b.value / 10)) + ":1"; break;
+        case StripPart::Speed: c.label = "SPEED"; c.value = speeds[unsigned(b.value) % 4]; break;
+        case StripPart::Key: { // what the compressor hears: its own channel, a track, a bus, a submix
+            c.label = "KEY";
+            const unsigned k = unsigned(b.value);
+            if (!k) c.value = "OWN";
+            else if (fx_key_is_track(k)) c.value = "TRACK " + juce::String(k);
+            else if (fx_key_is_bus(k)) c.value = juce::String("BUS ") + char('A' + (k - 17));
+            else c.value = "SUB " + juce::String(k - fx_keys + 1);
+            break;
+        }
+        case StripPart::Mix: c.label = "MIX"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case StripPart::Gain: c.label = "GAIN"; c.value = tenths(b.value); c.unit = "dB"; break;
+        default: c.label = "STRIP"; c.value = juce::String(b.value); break;
+        }
+        break;
+    }
+    case Kind::TrackOut: { // where the track plays: the master or a submix, by its name when it has one
+        c.label = "OUTPUT";
+        if (!b.value) { c.value = "MASTER"; break; }
+        const auto& sub = s.project.subs[unsigned(b.value - 1) % sub_count];
+        c.value = sub.name[0] ? name_case(sub.name) : "SUB " + juce::String(b.value);
+        break;
+    }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
     case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
     case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
@@ -928,6 +967,11 @@ unsigned key_pages(const Snapshot& s, unsigned key, std::array<juce::String, 6>&
             if (here.group == key && here.sub == sub) at = n;
             names[n++] = g.groups[key].pages[sub].key;
         }
+    } else if (s.ui.page == PageId::Mixer) { // B2: the EQ's three groups (pages/mixer_page.cpp); B1, B3: one page each
+        if (key == 1 && full_features(s.ui)) {
+            names[0] = "LOW"; names[1] = "MID"; names[2] = "HIGH"; n = 3;
+            at = s.ui.mixer_eq_group % 3;
+        }
     } else if (mix_section(s.ui.page) != MixSection::None) { // SENDS: the tracks, a kit's pads; FX: along the signal
         if (key == 1 && kit) { names[0] = "TRACKS"; names[1] = "PADS"; n = 2; at = mix_sends_pads(s.ui, kit) ? 1 : 0; }
         if (key == 2) {
@@ -950,17 +994,14 @@ ui::SoftKeys mix_keys(const Snapshot& s) {
     auto here = mix_section(s.ui.page);
     std::array<PageId, 4> fx {};
     unsigned count = mix_fx_pages(kit, fx);
-    ui::SoftKeys keys {{"TRACKS", "SENDS", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)};
+    ui::SoftKeys keys {{"MIXER", "", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)}; // decision 8
     keys.dots[2] = uint8_t(count);
     keys.dot_at[2] = uint8_t(here == MixSection::Fx ? mix_fx_at(s.ui.page, kit) : 0);
-    if (kit) { keys.dots[1] = 2; keys.dot_at[1] = uint8_t(mix_sends_pads(s.ui, kit)); } // SENDS: the tracks, then the kit's pads
-    if (!sends_shown(s.ui) && here != MixSection::Sends) { keys.labels[1] = ""; keys.dots[1] = 0; } // Basic: Tracks has send A
     return keys;
 }
 void mix_soft(Context& c, int key) {
     bool kit = c.track().engine == EngineKind::Sampler;
-    if (key == 1 && !sends_shown(c.ui) && c.ui.page != PageId::Sends) return; // Basic: no SENDS key
-    if (key == 1) mix_sends_key(c.ui, kit); // B2 again on a kit's Sends: its pads (or back to the tracks)
+    if (key == 1) return; // B2: none (the mixer's SENDS block is the sends)
     PageId next = mix_next(c.ui.page, unsigned(key), kit);
     if (next == PageId::Rack) c.ui.fx_loop = -1; // the track's own chain, not a loop's
     if (next != c.ui.page) c.open(next);

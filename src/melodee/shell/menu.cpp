@@ -55,7 +55,7 @@ void go(Context& c, unsigned tile) {
         c.open(PageId::StepEdit);
         break;
     case 7: c.open(PageId::Motion); break;
-    case 8: c.open(PageId::Tracks); break;
+    case 8: c.open(PageId::Mixer); break;
     case 9: ui.sends_pads = false; c.open(PageId::Sends); break;
     case 10: ui.fx_loop = -1; c.open(PageId::Rack); break; // the selected track's chain
     case 11: c.open(PageId::Looper); break;

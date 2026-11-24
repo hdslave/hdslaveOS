@@ -122,6 +122,16 @@ void Context::restore_mix(const MixState& m) {
         if (x.pan != m.pan[t]) { x.pan = m.pan[t]; send({Type::Pan, uint8_t(t), 0, 0, int16_t(x.pan)}); }
         for (unsigned b = 0; b < bus_count; ++b)
             if (x.sends[b] != m.sends[t][b]) { x.sends[b] = m.sends[t][b]; send({Type::Send, uint8_t(t), 0, uint16_t(b), int16_t(x.sends[b])}); }
+        if (x.out != m.outs[t]) { x.out = m.outs[t]; send({Type::TrackOut, uint8_t(t), 0, 0, int16_t(x.out)}); }
+    }
+    for (unsigned n = 0; n < strip_channels; ++n) { // the mixer's strips, a value at a time
+        Strip& now = project.strip(n);
+        for (unsigned p = 0; p < unsigned(StripPart::Count); ++p) {
+            const int was = strip_get(m.strips[n], StripPart(p));
+            if (strip_get(now, StripPart(p)) == was) continue;
+            strip_set(now, StripPart(p), was);
+            send({Type::StripValue, uint8_t(n), 0, uint16_t(p), int16_t(was)});
+        }
     }
     for (unsigned b = 0; b < bus_count; ++b) if (project.buses[b].level != m.returns[b]) set_return(b, m.returns[b]);
 }

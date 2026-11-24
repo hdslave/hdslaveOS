@@ -54,12 +54,23 @@ struct TrackState {
 // Parity phase 10: the rest a pot gesture or a page's button may change.
 // Every track's mix strip (level, pan, send and its bus; mute and solo are
 // performance, left out) and the buses' returns.
+// Every strip (the mixer, by strip number) and each track's output (Mix::out) too.
+inline bool same_strip(const Strip& a, const Strip& b) {
+    for (unsigned p = 0; p < unsigned(StripPart::Count); ++p) if (strip_get(a, StripPart(p)) != strip_get(b, StripPart(p))) return false;
+    return true;
+}
 struct MixState {
     std::array<uint8_t, track_count> level {};
     std::array<std::array<uint8_t, bus_count>, track_count> sends {}; // each track's send into each bus
     std::array<int8_t, track_count> pan {};
     std::array<uint8_t, bus_count> returns {};
-    bool operator==(const MixState& o) const { return level == o.level && sends == o.sends && pan == o.pan && returns == o.returns; }
+    std::array<Strip, strip_channels> strips {};
+    std::array<uint8_t, track_count> outs {};
+    bool operator==(const MixState& o) const {
+        if (!(level == o.level && sends == o.sends && pan == o.pan && returns == o.returns && outs == o.outs)) return false;
+        for (unsigned n = 0; n < strip_channels; ++n) if (!same_strip(strips[n], o.strips[n])) return false;
+        return true;
+    }
 };
 // A track's name and whether it is one of its own (Tracks, Shift + Push): nothing else of the track changes with it.
 struct TrackName {

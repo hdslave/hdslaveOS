@@ -126,6 +126,9 @@ struct Binding {
         SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
         JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
         PadMute, // issue 32, Motion's card of a kit pad's mute lane: pad id muted (1) or not, as Mute + pad
+        // The mixer (docs/MIXER_PLAN.md): one value of a strip, id = strip number << 8 | StripPart (model/strip.h); a
+        // track's output, id the track, 0 the master or out_sub(s).
+        Strip, TrackOut,
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -184,6 +187,20 @@ std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, con
 std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row);
 // The tick a held step or note locks at and how long the lock holds; false when nothing is held.
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
+// The mixer's cards (docs/MIXER_PLAN.md): the lit block's three values of the selected track's strip (SENDS: sends A-C;
+// EQ: the band group's three; COMP: amount, ratio, speed), or `shift_row`'s (pan, output, send D; none; key, mix,
+// gain). Basic: send A alone, and pan on Shift.
+std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row);
+inline Binding strip_card(unsigned n, StripPart part, const Strip& s) {
+    static constexpr int lo[] {-trim_range, 0, 0, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range,
+                               -eq_range, -eq_range, 0, 0, int(comp_ratio_min), 0, 0, 0, comp_gain_min};
+    static constexpr int hi[] {trim_range, int(width_max), 1, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range,
+                               eq_range, eq_range, 1, int(comp_amount_max), int(comp_ratio_max), int(CompSpeed::Count) - 1,
+                               strip_key_most, 100, comp_gain_max};
+    static_assert(sizeof(lo) / sizeof(lo[0]) == size_t(StripPart::Count) && sizeof(hi) / sizeof(hi[0]) == size_t(StripPart::Count));
+    const unsigned p = unsigned(part) % unsigned(StripPart::Count);
+    return {Binding::Kind::Strip, int32_t(n << 8 | p), lo[p], hi[p], strip_get(s, part)};
+}
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
 // Patterns' K1: lengths in bars, as on the MPC; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against
