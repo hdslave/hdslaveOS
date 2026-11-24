@@ -113,7 +113,7 @@ Press **B1** (**EXPORT**):
 
 - **B2** exports. Turn the encoder first to choose what: a **MIXDOWN**
   (32-bit float, 24-bit or 16-bit WAV), **STEMS** (one WAV per track and
-  bus, plus the mix), a **MIDI FILE**, an **MPC 3** project or an Ableton
+  bus, one per submix the tracks play into, plus the mix), a **MIDI FILE**, an **MPC 3** project or an Ableton
   **LIVE SET**. The key shows the choice. Then name the export (see
   [Naming](projects-and-files.md#naming)). A **MIDI FILE**, an **MPC 3**
   project and a **LIVE SET** also work with an empty song: they take the
@@ -147,8 +147,12 @@ folder with the samples. MPC One, Live, Key, X and the MPC 3 software open it.
   **Song**, in the first free number, and MPC 3 opens on it.
 - A MIDI track becomes an MPC MIDI track on its channel, with its bank and
   program. Pick its output port on the MPC.
-- Effects, sends, the song's tempo changes and samples that are
-  not WAV files are left out. The message after the export says what was.
+- A track sent to a submix plays into the same submix in MPC 3. Each
+  submix a track plays into keeps its level, pan, mute and solo.
+- Effects, sends, the mixer's strips (trim, EQ, compressor, width), a
+  submix's name, muted buses, the song's tempo changes and samples that are
+  not WAV files are left out. The message after the export says what was
+  (*mixer settings left out* for the mixer).
 
 ### Ableton Live Set
 
@@ -177,7 +181,10 @@ to a computer and open the `.als` in Ableton Live 12.1 or later.
 - An audio track's takes become audio clips.
 - Each track keeps its level, pan, mute, solo and sends. Buses that tracks
   send to become return tracks.
-- Effects, Motion, pad filters and pad sends are left out.
+- Effects, Motion, pad filters, pad sends, the mixer's strips, the
+  submixes and muted buses are left out: a track sent to a submix plays to
+  the master. The message after the export says *mixer settings left out*
+  when the mixer had any of them.
 
 ---
 

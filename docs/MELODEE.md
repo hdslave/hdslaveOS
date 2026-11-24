@@ -985,8 +985,10 @@ hold to steer, Shift + Seq to zoom in**.
   or 16-bit (integer PCM, TPDF dithered, a step's worth: the only files
   Melodee dithers; float needs none), STEMS (`Melodee/Stems/<name>/`: the
   mix as `Mix.wav` and each track with a sound, `NN <name>.wav`, as it
-  joins the mix after its chain, level, pan and mute, and each bus a
-  track sends into, after its chain at its return; all 32-bit float,
+  leaves for the master or its submix after its chain, strip, level, pan
+  and mute, each bus a track sends into, after its chain at its return,
+  and each submix a track plays into (its name, else `Submix N`), after
+  its chain, strip, level, pan and mute; all 32-bit float,
   the same frames, in one real-time pass), a MIDI FILE
   (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
