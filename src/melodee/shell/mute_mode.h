@@ -19,11 +19,14 @@ constexpr uint32_t mute_hold_ms = 400; // longer than this, Mute was held, not t
 void mute_button(Context& c, bool pressed);
 // Whether mute mode works on kit pads here: the pads play the selected
 // track's kit (`kit_pads`), and the page is not one about tracks (Stage, Mix).
-inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Tracks; }
-// A pad pressed in mute mode: mutes (or unmutes) a kit pad or a track; with Shift, solos.
+inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Tracks && ui.page != PageId::Mixer; }
+// Whether mute mode works on the mixer's second row: its submixes and buses (shell/mixer_channels.h).
+inline bool mute_on_others(const UiState& ui) { return ui.page == PageId::Mixer && ui.mixer_bank == 1; }
+// A pad pressed in mute mode: mutes (or unmutes) a kit pad, a track, or on the mixer's second row a submix or bus;
+// with Shift, solos (a track, a submix).
 void mute_pad(Context& c, unsigned pad, bool kit_pads);
 void set_pad_mute(Context& c, unsigned track, unsigned kit, bool on);
-// Shift + Mute: every track, every solo, every kit pad of every track.
+// Shift + Mute: every track, every solo, every kit pad of every track, every submix and bus.
 void unmute_all(Context& c);
 // Issue 32: kit pad `kit` muted as heard now. While `pattern` plays at `position` (written ticks; -1 stopped), where
 // its mute lane last put it (before the lane's first point, as set); else as set (Mute + pad).

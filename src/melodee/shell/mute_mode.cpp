@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/mute_mode.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
@@ -48,6 +49,19 @@ void mute_pad(Context& c, unsigned pad, bool kit_pads) {
     auto& ui = c.ui;
     ui.mute_used = true;
     pad %= 16;
+    if (mute_on_others(ui)) { // the mixer's second row: a submix mutes and solos, a bus mutes; the input and master neither
+        const int n = pad_other(ui, pad);
+        if (n < 0) return;
+        const auto kind = channel_kind(unsigned(n));
+        if (ui.shift) {
+            ui.shift_used = true;
+            if (kind == ChannelKind::Submix) c.set_channel_solo(unsigned(n), !c.project.subs[channel_sub(unsigned(n))].mix.solo);
+            return;
+        }
+        if (kind == ChannelKind::Submix) c.set_channel_mute(unsigned(n), !c.project.subs[channel_sub(unsigned(n))].mix.mute);
+        else if (kind == ChannelKind::Bus) c.set_channel_mute(unsigned(n), !c.project.buses[channel_bus(unsigned(n))].mute);
+        return;
+    }
     if (!mute_on_kit(ui, kit_pads)) { // the tracks
         const auto& track = c.project.tracks[pad];
         const auto& mix = track.mix;
@@ -84,6 +98,11 @@ void unmute_all(Context& c) {
             c.send({Command::Type::PadMute, uint8_t(t), 0, 0xffff, 0});
         }
     }
+    for (unsigned sub = 0; sub < sub_count; ++sub) { // the mixer's submixes and buses
+        if (c.project.subs[sub].mix.mute) c.set_channel_mute(strip_sub(sub), false);
+        if (c.project.subs[sub].mix.solo) c.set_channel_solo(strip_sub(sub), false);
+    }
+    for (unsigned b = 0; b < bus_count; ++b) if (c.project.buses[b].mute) c.set_channel_mute(bus_chain(b), false);
     c.notice("Unmute all");
 }
 

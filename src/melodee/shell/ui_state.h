@@ -370,8 +370,11 @@ struct UiState {
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
     bool sends_pads = false;      // MIX hub SENDS on a kit: the kit's pads and their own sends (B2 again), not the tracks
     // The mixer (docs/MIXER_PLAN.md): the block the card shows and K1-K3 turn (0 SENDS, 1 EQ, 2 COMP), and the EQ's
-    // three bands in hand (0 LOW 63-250 Hz, 1 MID 500 Hz-2 kHz, 2 HIGH 4-16 kHz). The channel is the selected track.
+    // three bands in hand (0 LOW 63-250 Hz, 1 MID 500 Hz-2 kHz, 2 HIGH 4-16 kHz).
     uint8_t mixer_block = 0, mixer_eq_group = 0;
+    // The mixer's pad bank (shell/mixer_channels.h): 0 the tracks (the one in hand ui.track), 1 the submixes, buses,
+    // input and master, `mixer_other` the one in hand there (its place in that row).
+    uint8_t mixer_bank = 0, mixer_other = 0;
     uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).

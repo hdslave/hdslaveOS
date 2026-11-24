@@ -3,6 +3,7 @@
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/pad_job.h"
@@ -39,6 +40,14 @@
 namespace melodee {
 
 juce::Colour colour_of(const Snapshot& s) { return ui::track_colour(s.ui.track); }
+juce::Colour channel_shade(unsigned strip, unsigned knob) {
+    switch (channel_kind(strip)) {
+    case ChannelKind::Track: return ui::knob_shade(strip, knob);
+    case ChannelKind::Submix: return ui::sub_shade(channel_sub(strip), knob);
+    case ChannelKind::Bus: return ui::loop_shade(channel_bus(strip), knob);
+    default: return knob % 3 == 1 ? ui::colour::sec : knob % 3 == 2 ? ui::colour::mid : channel_kind(strip) == ChannelKind::Input ? ui::colour::ice : ui::colour::text;
+    }
+}
 juce::Colour load_colour(float load) { return load >= 0.85f ? ui::colour::rec : load >= 0.6f ? ui::colour::amber : ui::colour::play; }
 
 ui::Header header_of(const Snapshot& s) {
@@ -164,6 +173,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         c.knob_fx = b.kind == Binding::Kind::KnobParam; // Knob FX owns the pot: white, never the track's colours
         c.shade = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
         c.track = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
+        if (s.ui.page == PageId::Mixer && s.ui.mixer_bank == 1) { // the mixer's second row: the channel in hand's colours
+            c.shade = channel_shade(mixer_strip(s.ui), n);
+            c.track = channel_shade(mixer_strip(s.ui), 0);
+        }
         c.fill = b.fraction();
         c.frozen = print_covers(s.freeze, freeze_scope(s.project, s.ui, b)); // freeze plan F2c
         const auto& pot = s.ui.pots[n];
@@ -436,6 +449,17 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         case StripPart::Gain: c.label = "GAIN"; c.value = tenths(b.value); c.unit = "dB"; break;
         default: c.label = "STRIP"; c.value = juce::String(b.value); break;
         }
+        break;
+    }
+    case Kind::SubMix: { // a submix's level, pan or send (engine/command.h SubPart)
+        const unsigned part = unsigned(b.id) & 0xff;
+        if (part == Command::SubPan) {
+            c.label = "PAN"; c.bipolar = true;
+            c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+        } else if (part >= Command::SubSend0) {
+            c.label = juce::String("SEND ") + char('A' + (part - Command::SubSend0) % bus_count);
+            c.value = juce::String(b.value); c.unit = "%";
+        } else { c.label = "LEVEL"; c.value = juce::String(b.value); }
         break;
     }
     case Kind::TrackOut: { // where the track plays: the master or a submix, by its name when it has one

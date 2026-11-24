@@ -209,6 +209,9 @@ public:
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
+    // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
+    void set_channel_mute(unsigned strip, bool on);
+    void set_channel_solo(unsigned strip, bool on);
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
     // The pattern's notes changed in the model: the audio thread gets a copy to play.

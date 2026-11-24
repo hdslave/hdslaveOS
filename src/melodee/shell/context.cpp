@@ -5,6 +5,7 @@
 #include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/follow_tempo.h"
 #include "melodee/shell/mute_mode.h"
@@ -653,6 +654,16 @@ void Context::apply(const Binding& b, int value) {
         send({Type::TrackOut, uint8_t(at), 0, 0, int16_t(project.tracks[at].mix.out)});
         break;
     }
+    case Kind::SubMix: { // the mixer: a submix's level, pan or send (no Motion lanes: decision 7)
+        const unsigned sub = (unsigned(b.id) >> 8) % sub_count, part = unsigned(b.id) & 0xff;
+        auto& mix = project.subs[sub].mix;
+        if (part == Command::SubLevel) mix.level = uint8_t(std::clamp(value, 0, 127));
+        else if (part == Command::SubPan) mix.pan = int8_t(std::clamp(value, -50, 50));
+        else if (part >= Command::SubSend0 && part < Command::SubSend0 + bus_count) mix.sends[part - Command::SubSend0] = uint8_t(std::clamp(value, 0, 100));
+        else break;
+        send({Type::SubMix, uint8_t(sub), 0, uint16_t(part), int16_t(value)});
+        break;
+    }
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout:
@@ -1283,6 +1294,22 @@ void Context::set_mute(unsigned t, bool on) {
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
     send({Type::Solo, uint8_t(t), 0, 0, int16_t(on)});
+}
+
+void Context::set_channel_mute(unsigned n, bool on) {
+    switch (channel_kind(n)) {
+    case ChannelKind::Track: set_mute(n, on); break;
+    case ChannelKind::Submix: project.subs[channel_sub(n)].mix.mute = on; send({Type::SubMix, uint8_t(channel_sub(n)), 0, Command::SubMute, int16_t(on)}); break;
+    case ChannelKind::Bus: project.buses[channel_bus(n)].mute = on; send({Type::BusMute, 0, 0, uint16_t(channel_bus(n)), int16_t(on)}); break;
+    default: break;
+    }
+}
+void Context::set_channel_solo(unsigned n, bool on) {
+    switch (channel_kind(n)) {
+    case ChannelKind::Track: set_solo(n, on); break;
+    case ChannelKind::Submix: project.subs[channel_sub(n)].mix.solo = on; send({Type::SubMix, uint8_t(channel_sub(n)), 0, Command::SubSolo, int16_t(on)}); break;
+    default: break;
+    }
 }
 
 void Context::set_step(unsigned t, unsigned at, const Step& value) {

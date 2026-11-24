@@ -93,6 +93,7 @@
 #include "melodee/model/fader.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/history.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
@@ -8463,6 +8464,47 @@ void track_move() {
     // The MIX hub's row (shell/mix_hub.h): MIXER, none (the page stays), and FX along the chains, a kit's pads' last.
     CHECK(mix_next(PageId::Stage, 0, false) == PageId::Mixer && mix_next(PageId::Rack, 1, false) == PageId::Rack);
     CHECK(mix_section(PageId::Mixer) == MixSection::Tracks && mix_next(PageId::Mixer, 2, false) == PageId::Rack);
+    {   // The mixer's second row (shell/mixer_channels.h): submixes on pads 1-8, buses 9-12, the input 15, the master 16.
+        UiState m; m.settings.full_features = true; m.page = PageId::Mixer;
+        CHECK(pad_other(m, 0) == int(strip_sub(0)) && pad_other(m, 7) == int(strip_sub(7)) && pad_other(m, 8) == int(bus_chain(0)));
+        CHECK(pad_other(m, 12) < 0 && pad_other(m, 13) < 0 && pad_other(m, 14) == int(strip_input) && pad_other(m, 15) == int(master_chain));
+        for (unsigned pad = 0; pad < 16; ++pad) if (const int n = pad_other(m, pad); n >= 0) CHECK(other_pad(unsigned(n)) == int(pad));
+        CHECK(mixer_strip(m) == m.track % track_count && mixer_row_count(m) == track_count);
+        m.mixer_bank = 1;
+        CHECK(mixer_strip(m) == strip_sub(0) && mixer_row_count(m) == 14 && mixer_row_at(m) == 0);
+        pick_other(m, master_chain);
+        CHECK(mixer_strip(m) == master_chain && mixer_row_at(m) == 13 && mixer_row_strip(m, 12) == strip_input);
+        // What each channel's keys reach: a bus, the input and the master have no SENDS yet (their EQ shows), the master no COMP.
+        m.mixer_block = 0;
+        CHECK(mixer_block_of(m, ChannelKind::Bus) == 1 && mixer_block_of(m, ChannelKind::Submix) == 0 && mixer_block_of(m, ChannelKind::Track) == 0);
+        m.mixer_block = 2;
+        CHECK(mixer_block_of(m, ChannelKind::Master) == 1 && mixer_block_of(m, ChannelKind::Input) == 2);
+        CHECK(mute_on_others(m) && !mute_on_kit(m, true)); // Mute + pad: the channels, never the kit's pads
+        // Basic (decision 3): no submixes; the second row starts at the buses.
+        UiState b = m; b.settings.full_features = false; b.mixer_other = 0;
+        CHECK(pad_other(b, 0) < 0 && pad_other(b, 8) == int(bus_chain(0)) && mixer_strip(b) == bus_chain(0) && mixer_row_count(b) == 6);
+        // Cards and fader: a submix's sends, pan and level; a bus's return; the input's gain; the master's trim.
+        auto project = std::make_unique<Project>();
+        project->subs[2].mix.sends[1] = 40; project->subs[2].mix.level = 90; project->buses[1].level = 55;
+        m.mixer_block = 0; pick_other(m, strip_sub(2));
+        auto cards = mixer_cards(*project, m, false);
+        CHECK(cards[1].kind == Binding::Kind::SubMix && cards[1].id == int(2 << 8 | (Command::SubSend0 + 1)) && cards[1].value == 40);
+        auto second = mixer_cards(*project, m, true);
+        CHECK(second[0].id == int(2 << 8 | Command::SubPan) && !second[1].bound()); // a submix plays to the master: no OUTPUT
+        auto fj = fader_job(*project, m);
+        CHECK(fj.binding.kind == Binding::Kind::SubMix && fj.binding.value == 90);
+        pick_other(m, bus_chain(1));
+        CHECK(fader_job(*project, m).binding.kind == Binding::Kind::BusReturn && fader_job(*project, m).binding.value == 55);
+        CHECK(mixer_cards(*project, m, false)[0].kind == Binding::Kind::Strip); // its EQ
+        pick_other(m, strip_input);
+        CHECK(fader_job(*project, m).binding.kind == Binding::Kind::RecGain);
+        pick_other(m, master_chain);
+        CHECK(fader_job(*project, m).binding.id == int(master_chain << 8 | unsigned(StripPart::Trim)));
+        // Undo keeps the submixes' level, pan and sends.
+        auto before = mix_of(*project);
+        project->subs[2].mix.pan = -20;
+        CHECK(!(mix_of(*project) == before));
+    }
     CHECK(mix_next(PageId::Sends, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
     CHECK(mix_next(PageId::Bus, 2, false) == PageId::Master && mix_next(PageId::Master, 2, false) == PageId::Rack);
     CHECK(mix_next(PageId::Master, 2, true) == PageId::PadFx && mix_next(PageId::PadFx, 2, true) == PageId::Rack);

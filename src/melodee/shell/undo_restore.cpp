@@ -134,6 +134,14 @@ void Context::restore_mix(const MixState& m) {
         }
     }
     for (unsigned b = 0; b < bus_count; ++b) if (project.buses[b].level != m.returns[b]) set_return(b, m.returns[b]);
+    for (unsigned sub = 0; sub < sub_count; ++sub) {
+        auto& x = project.subs[sub].mix;
+        auto put = [&](unsigned part, int v) { send({Type::SubMix, uint8_t(sub), 0, uint16_t(part), int16_t(v)}); };
+        if (x.level != m.sub_level[sub]) { x.level = m.sub_level[sub]; put(Command::SubLevel, x.level); }
+        if (x.pan != m.sub_pan[sub]) { x.pan = m.sub_pan[sub]; put(Command::SubPan, x.pan); }
+        for (unsigned b = 0; b < bus_count; ++b)
+            if (x.sends[b] != m.sub_sends[sub][b]) { x.sends[b] = m.sub_sends[sub][b]; put(Command::SubSend0 + b, x.sends[b]); }
+    }
 }
 
 void Context::restore_sound(unsigned t, const SoundState& s) {

@@ -54,7 +54,7 @@ struct TrackState {
 // Parity phase 10: the rest a pot gesture or a page's button may change.
 // Every track's mix strip (level, pan, send and its bus; mute and solo are
 // performance, left out) and the buses' returns.
-// Every strip (the mixer, by strip number) and each track's output (Mix::out) too.
+// Every strip (the mixer, by strip number), each track's output (Mix::out) and the submixes' mix too.
 inline bool same_strip(const Strip& a, const Strip& b) {
     for (unsigned p = 0; p < unsigned(StripPart::Count); ++p) if (strip_get(a, StripPart(p)) != strip_get(b, StripPart(p))) return false;
     return true;
@@ -66,8 +66,13 @@ struct MixState {
     std::array<uint8_t, bus_count> returns {};
     std::array<Strip, strip_channels> strips {};
     std::array<uint8_t, track_count> outs {};
+    // The submixes' level, pan and sends (their mute and solo are performance, as a track's).
+    std::array<uint8_t, sub_count> sub_level {};
+    std::array<int8_t, sub_count> sub_pan {};
+    std::array<std::array<uint8_t, bus_count>, sub_count> sub_sends {};
     bool operator==(const MixState& o) const {
         if (!(level == o.level && sends == o.sends && pan == o.pan && returns == o.returns && outs == o.outs)) return false;
+        if (!(sub_level == o.sub_level && sub_pan == o.sub_pan && sub_sends == o.sub_sends)) return false;
         for (unsigned n = 0; n < strip_channels; ++n) if (!same_strip(strips[n], o.strips[n])) return false;
         return true;
     }

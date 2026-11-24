@@ -31,6 +31,7 @@
 #include "melodee/shell/note_jobs.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/sample_mode.h"
@@ -985,7 +986,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         comp_trail.update(level, reduce, now);
         out.comp_trail = comp_trail.trail();
         for (unsigned n = 0; n < strip_channels; ++n) { const auto m = host.strip_meter(n); out.strips[n] = {m.left, m.right, m.reduction}; }
-        const auto& own = out.strips[ui_.track % track_count];
+        const auto& own = out.strips[mixer_strip(ui_)]; // the mixer's channel in hand (its COMP block)
         const float peak = std::max(own.left, own.right);
         strip_trail.update(peak > 1e-5f ? 20 * std::log10(peak) : -90.0f, own.reduction, now);
         out.strip_trail = strip_trail.trail();

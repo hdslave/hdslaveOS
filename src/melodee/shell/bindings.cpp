@@ -5,6 +5,8 @@
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
+#include "melodee/engine/command.h"
 #include "melodee/model/note_edits.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/midi_config_rows.h"
@@ -317,14 +319,28 @@ bool erase_resets(const Binding& b) {
 }
 
 std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row) {
-    const unsigned t = ui.track % track_count;
-    const auto& track = project.tracks[t];
-    if (!track.used()) return {};
-    const Binding pan {Kind::Pan, 0, -50, 50, track.mix.pan};
-    auto send = [&](unsigned bus) { return Binding {Kind::Send, int32_t(bus), 0, 100, track.mix.sends[bus]}; };
-    if (!full_features(ui)) return shift_row ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {send(0), Binding {}, Binding {}};
-    auto strip = [&](StripPart part) { return strip_card(t, part, track.strip); };
-    switch (ui.mixer_block % 3) {
+    const unsigned n = mixer_strip(ui);
+    const ChannelKind kind = channel_kind(n);
+    if (kind == ChannelKind::Track && !project.tracks[n].used()) return {};
+    auto strip = [&](StripPart part) { return strip_card(n, part, project.strip(n)); };
+    // SENDS: a track's or a submix's sends, pan and (a track's) output.
+    Binding pan, out;
+    std::array<Binding, bus_count> sends;
+    if (kind == ChannelKind::Track) {
+        const auto& mix = project.tracks[n].mix;
+        pan = {Kind::Pan, 0, -50, 50, mix.pan};
+        out = {Kind::TrackOut, int32_t(n), 0, int(sub_count), mix.out};
+        for (unsigned b = 0; b < bus_count; ++b) sends[b] = {Kind::Send, int32_t(b), 0, 100, mix.sends[b]};
+    } else if (kind == ChannelKind::Submix) {
+        const unsigned sub = channel_sub(n);
+        const auto& mix = project.subs[sub].mix;
+        auto part = [&](unsigned p) { return int32_t(sub << 8 | p); };
+        pan = {Kind::SubMix, part(Command::SubPan), -50, 50, mix.pan};
+        for (unsigned b = 0; b < bus_count; ++b) sends[b] = {Kind::SubMix, part(Command::SubSend0 + b), 0, 100, mix.sends[b]};
+    }
+    const unsigned block = mixer_block_of(ui, kind);
+    if (!full_features(ui)) return shift_row ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {sends[0], Binding {}, Binding {}};
+    switch (block) {
     case 1: { // EQ: the group's three bands
         if (shift_row) return {};
         const unsigned g = ui.mixer_eq_group % 3;
@@ -334,8 +350,8 @@ std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bo
         if (shift_row) return {strip(StripPart::Key), strip(StripPart::Mix), strip(StripPart::Gain)};
         return {strip(StripPart::Amount), strip(StripPart::Ratio), strip(StripPart::Speed)};
     default:
-        if (shift_row) return {pan, Binding {Kind::TrackOut, int32_t(t), 0, int(sub_count), track.mix.out}, send(3)};
-        return {send(0), send(1), send(2)};
+        if (shift_row) return {pan, out, sends[3]};
+        return {sends[0], sends[1], sends[2]};
     }
 }
 

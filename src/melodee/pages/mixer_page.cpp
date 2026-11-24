@@ -5,11 +5,13 @@
 // and its fader, and one block, the one B1-B3 light: SENDS (four sends and what each bus holds), EQ (nine bands as a
 // curve, the three in hand lit; B2 again steps LOW, MID, HIGH) or COMP (its curve and what it took off of late).
 // K1-K3 turn the lit block (Shift: its second row), the fader the level. A pad, the wheel or Minus / Plus pick the
-// channel; Push turns the lit block's EQ or compressor on or off.
+// channel; Push turns the lit block's EQ or compressor on or off. Pad Bank steps between the tracks and the second
+// row: submixes, buses, the input and the master (shell/mixer_channels.h).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/erase_copy.h"
 #include "melodee/shell/features.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/new_track.h"
 #include <cmath>
 #include <complex>
@@ -37,10 +39,10 @@ void segments(Paint& p, float x, float y, float w, float h, float fill, juce::Co
     }
 }
 
-// A level's fader: the groove and the cap where the level sits (0..127, as the cards count it).
-void fader(Paint& p, float x, float y, float h, int level, juce::Colour c) {
+// A level's fader: the groove and the cap where the level sits (0..1 of its travel).
+void fader(Paint& p, float x, float y, float h, float level, juce::Colour c) {
     p.fill(x, y, 2, h, colour::line, 1);
-    const float at = y + h * (1 - std::clamp(level / 127.0f, 0.0f, 1.0f));
+    const float at = y + h * (1 - std::clamp(level, 0.0f, 1.0f));
     p.fill(x, at, 2, y + h - at, c, 1);
     p.fill(x - 3, at - 2, 8, 4, colour::text, 1);
 }
@@ -50,21 +52,73 @@ juce::String track_title(const Track& track) {
     return track.used() ? engine_word(track.engine) : juce::String("Empty");
 }
 
+// A channel as the row and the card show it (shell/mixer_channels.h): its strip number, kind, short number and name,
+// colour, where its fader sits and its mute, solo and pan.
+struct Channel {
+    unsigned n = 0;
+    ChannelKind kind = ChannelKind::Track;
+    juce::String number, name;
+    juce::Colour colour;
+    bool used = true;     // a track with something on it; every other channel is always there
+    float level = 0;      // the fader's place, 0..1
+    bool mute = false, solo = false;
+    int pan = 0;
+};
+
+Channel channel_of(const Snapshot& s, unsigned n) {
+    Channel ch;
+    ch.n = n; ch.kind = channel_kind(n);
+    switch (ch.kind) {
+    case ChannelKind::Track: {
+        const auto& t = s.project.tracks[n];
+        ch.number = juce::String(n + 1); ch.name = track_title(t); ch.colour = track_colour(n); ch.used = t.used();
+        ch.level = t.mix.level / 127.0f; ch.mute = t.mix.mute; ch.solo = t.mix.solo; ch.pan = t.mix.pan;
+        break;
+    }
+    case ChannelKind::Submix: {
+        const unsigned sub = channel_sub(n);
+        const auto& x = s.project.subs[sub];
+        ch.number = "S" + juce::String(sub + 1); ch.name = x.name[0] ? name_case(x.name) : juce::String("Submix");
+        ch.colour = sub_colour(sub);
+        ch.level = x.mix.level / 127.0f; ch.mute = x.mix.mute; ch.solo = x.mix.solo; ch.pan = x.mix.pan;
+        break;
+    }
+    case ChannelKind::Bus: { // named after what it holds first, as the SENDS block names it
+        const unsigned b = channel_bus(n);
+        const auto& x = s.project.buses[b];
+        const auto& first = x.fx.slots[0];
+        ch.number = juce::String::charToString(juce::juce_wchar('A' + b));
+        ch.name = first.used() ? name_case(effect_info(EffectKind(first.kind)).name) : juce::String("Return");
+        ch.colour = loop_colour(b); ch.level = x.level / 100.0f; ch.mute = x.mute;
+        break;
+    }
+    case ChannelKind::Input: // its fader is Input Config's gain, -12..24 dB
+        ch.number = "IN"; ch.name = "Input"; ch.colour = colour::ice;
+        ch.level = float(s.ui.settings.input.gain + 12) / 36.0f;
+        break;
+    case ChannelKind::Master: // no level of its own: its fader is its strip's trim
+        ch.number = "MST"; ch.name = "Master"; ch.colour = colour::text;
+        ch.level = float(s.project.master_strip.trim + trim_range) / float(2 * trim_range);
+        break;
+    }
+    return ch;
+}
+
+// The knobs' shades on the channel's colour (pages/common.h channel_shade).
+juce::Colour shade(const Channel& ch, unsigned knob) { return channel_shade(ch.n, knob); }
+
 // A neighbour: its number on its colour, its stereo meter and where its level sits.
-void strip(Paint& p, const Snapshot& s, unsigned t, float x) {
-    const auto& track = s.project.tracks[t];
-    const auto c = track_colour(t);
-    const bool used = track.used();
+void strip(Paint& p, const Snapshot& s, const Channel& ch, float x) {
     p.fill(x, top, strip_w, bottom - top, colour::panel, 3);
-    p.fill(x, top, strip_w, 2, used ? c : colour::line, 1);
-    p.text(juce::String(t + 1), x, top + 2, strip_w, head_h - 2, plain(used ? c : colour::dim, type::body, Weight::Bold), juce::Justification::centred);
-    if (!used) return;
-    const auto& m = s.strips[t];
+    p.fill(x, top, strip_w, 2, ch.used ? ch.colour : colour::line, 1);
+    auto style = plain(ch.used ? ch.colour : colour::dim, type::body, Weight::Bold);
+    p.text(ch.number, x, top + 2, strip_w, head_h - 2, p.fit(ch.number, style, strip_w - 2, type::floor), juce::Justification::centred);
+    if (!ch.used) return;
+    const auto& m = s.strips[ch.n];
     const float my = top + head_h + 4, mh = bottom - my - 4;
-    const bool muted = track.mix.mute;
-    segments(p, x + 5, my, 4, mh, muted ? 0 : meter_fraction(m.left), c);
-    segments(p, x + 10, my, 4, mh, muted ? 0 : meter_fraction(m.right), c);
-    const float at = my + mh * (1 - std::clamp(track.mix.level / 127.0f, 0.0f, 1.0f));
+    segments(p, x + 5, my, 4, mh, ch.mute ? 0 : meter_fraction(m.left), ch.colour);
+    segments(p, x + 10, my, 4, mh, ch.mute ? 0 : meter_fraction(m.right), ch.colour);
+    const float at = my + mh * (1 - std::clamp(ch.level, 0.0f, 1.0f));
     p.fill(x + 17, my, 1, mh, colour::line);
     p.fill(x + 15, at - 1.5f, 6, 3, colour::text, 1);
 }
@@ -86,16 +140,16 @@ float eq_db(const Strip& strip, float hz) {
     return float(20 * std::log10(std::max(std::abs(h), 1e-9)));
 }
 
-// SENDS: four columns, A-D: how much goes into each bus, and what the bus holds first.
-void sends_block(Paint& p, const Snapshot& s, unsigned t) {
-    const auto& track = s.project.tracks[t];
+// SENDS: four columns, A-D: how much goes into each bus, and what the bus holds first. A track's or a submix's.
+void sends_block(Paint& p, const Snapshot& s, const Channel& ch) {
+    const auto& sends = ch.kind == ChannelKind::Submix ? s.project.subs[channel_sub(ch.n)].mix.sends : s.project.tracks[ch.n % track_count].mix.sends;
     const bool basic = !full_features(s.ui);
     const unsigned shown = basic ? 1 : bus_count;
     const float col = block_w / float(bus_count), bar_y = block_y + 22, bar_h = block_h - 56;
     for (unsigned b = 0; b < shown; ++b) {
         const float cx = block_x + col * (float(b) + 0.5f);
-        const auto sc = b < 3 ? knob_shade(t, b) : colour::mid;
-        const int amount = track.mix.sends[b];
+        const auto sc = b < 3 ? shade(ch, b) : colour::mid;
+        const int amount = sends[b];
         p.text(juce::String(amount), cx - col / 2, block_y + 4, col, 16, plain(colour::text, type::body, Weight::SemiBold), juce::Justification::centred);
         p.fill(cx - 4, bar_y, 8, bar_h, colour::line, 4);
         const float fill = bar_h * amount / 100.0f;
@@ -117,15 +171,15 @@ void sends_block(Paint& p, const Snapshot& s, unsigned t) {
 }
 
 // EQ: the nine bands as a curve over 40 Hz - 20 kHz, the group in hand shaded and its three dots in the knobs' shades.
-void eq_block(Paint& p, const Snapshot& s, unsigned t) {
-    const auto& strip = s.project.tracks[t].strip;
+void eq_block(Paint& p, const Snapshot& s, const Channel& ch) {
+    const auto& strip = s.project.strip(ch.n);
     const float x = block_x + 3, y = block_y + 4, w = block_w - 6, h = block_h - 20;
     const float lo = std::log10(40.0f), hi = std::log10(20000.0f);
     auto x_of = [&](float hz) { return x + w * (std::log10(hz) - lo) / (hi - lo); };
     auto y_of = [&](float db) { return y + h / 2 - std::clamp(db, -15.0f, 15.0f) / 15.0f * (h / 2); };
     const unsigned g = s.ui.mixer_eq_group % 3;
     const float gx0 = x_of(eq_band_hz[g * 3] / 1.414f), gx1 = x_of(eq_band_hz[g * 3 + 2] * 1.414f);
-    p.fill(gx0, y, gx1 - gx0, h, knob_shade(t, 0).withAlpha(0.14f), 3);
+    p.fill(gx0, y, gx1 - gx0, h, shade(ch, 0).withAlpha(0.14f), 3);
     p.fill(x, y + h / 2, w, 1, colour::line);
     juce::Path curve;
     for (unsigned n = 0; n <= 96; ++n) {
@@ -139,7 +193,7 @@ void eq_block(Paint& p, const Snapshot& s, unsigned t) {
         const float px = x_of(eq_band_hz[n]), py = y_of(eq_db(strip, eq_band_hz[n]));
         const bool hand = n / 3 == g;
         if (hand) {
-            const auto c = knob_shade(t, n % 3);
+            const auto c = shade(ch, n % 3);
             p.fill(px - 0.5f, std::min(py, y + h / 2), 1, std::fabs(py - (y + h / 2)), c);
             p.circle(px, py, 3.2f, c);
         } else {
@@ -155,10 +209,10 @@ void eq_block(Paint& p, const Snapshot& s, unsigned t) {
 }
 
 // COMP: its curve (in against out, the knee where AMOUNT sets it) and what it took off of late, bars hanging down.
-void comp_block(Paint& p, const Snapshot& s, unsigned t) {
-    const auto& strip = s.project.tracks[t].strip;
+void comp_block(Paint& p, const Snapshot& s, const Channel& ch) {
+    const auto& strip = s.project.strip(ch.n);
     const auto& trail = s.strip_trail;
-    const float reduce = s.strips[t].reduction;
+    const float reduce = s.strips[ch.n].reduction;
     const bool on = strip.comp_on && strip.comp_amount;
     p.text("GR", block_x + 4, block_y + 2, 30, 14, caps_text(colour::mid));
     const juce::String value = (reduce >= 0.05f ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(reduce, 1);
@@ -178,7 +232,7 @@ void comp_block(Paint& p, const Snapshot& s, unsigned t) {
         const float px = cx + cs * (in + 48) / 48, py = cy + cs * (1 - (out + 48) / 48);
         if (n == 0) curve.startNewSubPath(px, py); else curve.lineTo(px, py);
     }
-    p.g.setColour(on ? knob_shade(t, 0) : colour::dim);
+    p.g.setColour(on ? shade(ch, 0) : colour::dim);
     p.g.strokePath(curve, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     const float heard = std::clamp(trail.back().level, -48.0f, 0.0f);
     if (on && trail.back().level > -90) p.circle(cx + cs * (heard + 48) / 48, cy + cs * (1 - (out_of(heard) + 48) / 48), 2.6f, colour::text);
@@ -194,90 +248,119 @@ void comp_block(Paint& p, const Snapshot& s, unsigned t) {
     if (!on) p.text(strip.comp_on ? "AMOUNT 0" : "OFF", hx, cy + hh / 2 - 7, hw, 14, caps_text(colour::dim), juce::Justification::centred);
 }
 
-// The selected channel's card: its name on its colour with M and S, its meter and fader, its pan, the lit block.
-void card(Paint& p, const Snapshot& s, unsigned t) {
-    const auto& track = s.project.tracks[t];
-    const auto c = track_colour(t);
-    const bool used = track.used();
+// The channel in hand's card: its name on its colour with M and S (those it has) and, for a track played into a
+// submix, that submix's number in its colour; its meter and fader, its pan, the lit block.
+void card(Paint& p, const Snapshot& s, const Channel& ch) {
     p.fill(card_x, top, card_w, bottom - top + 5, colour::panel, 4);
-    p.fill(card_x, top, card_w, head_h, used ? c : colour::raised, 4);
-    p.fill(card_x, top + head_h - 4, card_w, 4, used ? c : colour::raised);
-    const juce::String title = juce::String(t + 1) + "  " + track_title(track);
-    auto head = plain(used ? colour::bg : colour::dim, type::body, Weight::Bold);
-    const float pills = used ? 36 : 0;
-    p.text(title, card_x + 6, top, card_w - 12 - pills, head_h, p.fit(title, head, card_w - 12 - pills, type::floor));
-    if (!used) {
+    p.fill(card_x, top, card_w, head_h, ch.used ? ch.colour : colour::raised, 4);
+    p.fill(card_x, top + head_h - 4, card_w, 4, ch.used ? ch.colour : colour::raised);
+    const bool numbered = ch.kind != ChannelKind::Input && ch.kind != ChannelKind::Master;
+    const juce::String title = numbered ? ch.number + "  " + ch.name : ch.name;
+    auto head = plain(ch.used ? colour::bg : colour::dim, type::body, Weight::Bold);
+    const bool mutes = ch.used && channel_mutes(ch.kind), solos = ch.used && channel_solos(ch.kind);
+    const unsigned to = ch.kind == ChannelKind::Track && ch.used ? s.project.tracks[ch.n].mix.out : out_master;
+    const float right = (mutes ? 16.0f : 0) + (solos ? 16.0f : 0) + (to != out_master ? 22.0f : 0) + (mutes || solos || to != out_master ? 2.0f : 0);
+    p.text(title, card_x + 6, top, card_w - 12 - right, head_h, p.fit(title, head, card_w - 12 - right, type::floor));
+    if (!ch.used) {
         p.text("Empty", card_x, top + head_h, card_w, bottom - top - head_h, plain(colour::dim, type::body, Weight::Medium), juce::Justification::centred);
         return;
     }
     // M and S: lit red and amber when on, as the MUTE key and Shift + pad set them.
-    auto pill_at = [&](float x, const char* letter, bool lit, juce::Colour on) {
-        p.fill(x, top + 3, 14, 12, lit ? on : colour::bg.withAlpha(0.25f), 2);
-        p.text(letter, x, top + 3, 14, 12, plain(lit ? colour::bg : colour::bg.withAlpha(0.8f), type::small, Weight::Bold), juce::Justification::centred);
+    float px = card_x + card_w - 18;
+    auto pill_at = [&](const char* letter, bool lit, juce::Colour on) {
+        p.fill(px, top + 3, 14, 12, lit ? on : colour::bg.withAlpha(0.25f), 2);
+        p.text(letter, px, top + 3, 14, 12, plain(lit ? colour::bg : colour::bg.withAlpha(0.8f), type::small, Weight::Bold), juce::Justification::centred);
+        px -= 16;
     };
-    pill_at(card_x + card_w - 34, "M", track.mix.mute, colour::rec);
-    pill_at(card_x + card_w - 18, "S", track.mix.solo, colour::amber);
-    const auto& m = s.strips[t];
+    if (solos) pill_at("S", ch.solo, colour::amber);
+    if (mutes) pill_at("M", ch.mute, colour::rec);
+    if (to != out_master) { // the submix it plays into, on that submix's colour
+        const unsigned sub = (to - 1u) % sub_count;
+        px -= 6;
+        p.fill(px, top + 3, 20, 12, sub_colour(sub), 2);
+        p.text("S" + juce::String(sub + 1), px, top + 3, 20, 12, plain(colour::bg, type::small, Weight::Bold), juce::Justification::centred);
+    }
+    const auto& m = s.strips[ch.n];
     const float my = top + head_h + 5, mh = bottom - my - 10;
-    segments(p, card_x + 4, my, 4, mh, track.mix.mute ? 0 : meter_fraction(m.left), c);
-    segments(p, card_x + 9, my, 4, mh, track.mix.mute ? 0 : meter_fraction(m.right), c);
-    fader(p, card_x + 19, my, mh, track.mix.level, c);
-    // Pan: a short line under them, the dot where it points.
-    const float py = bottom - 3, px0 = card_x + 4, pw = 22;
-    p.fill(px0, py - 0.5f, pw, 1, colour::line);
-    p.circle(px0 + pw * (track.mix.pan + 50) / 100.0f, py, 2.2f, colour::text);
+    segments(p, card_x + 4, my, 4, mh, ch.mute ? 0 : meter_fraction(m.left), ch.colour);
+    segments(p, card_x + 9, my, 4, mh, ch.mute ? 0 : meter_fraction(m.right), ch.colour);
+    fader(p, card_x + 19, my, mh, ch.level, ch.colour);
+    if (channel_sends(ch.kind)) { // pan: a short line under them, the dot where it points
+        const float py = bottom - 3, px0 = card_x + 4, pw = 22;
+        p.fill(px0, py - 0.5f, pw, 1, colour::line);
+        p.circle(px0 + pw * (ch.pan + 50) / 100.0f, py, 2.2f, colour::text);
+    }
+    const bool full = full_features(s.ui);
+    if (!full && !channel_sends(ch.kind)) return; // Basic: SENDS only, and this channel has none
     p.fill(block_x, block_y, block_w, block_h, colour::surf, 3);
-    if (!full_features(s.ui)) { sends_block(p, s, t); return; }
-    switch (s.ui.mixer_block % 3) {
-    case 1: eq_block(p, s, t); break;
-    case 2: comp_block(p, s, t); break;
-    default: sends_block(p, s, t); break;
+    switch (mixer_block_of(s.ui, ch.kind)) {
+    case 1: eq_block(p, s, ch); break;
+    case 2: comp_block(p, s, ch); break;
+    default: sends_block(p, s, ch); break;
     }
 }
 
 void draw(Paint& p, const Snapshot& s) {
-    const unsigned t = s.ui.track % track_count;
-    Header h = header_of(s);
-    h.left.push_back(chip(Icon::Pads, "SELECT", colour_of(s)));
-    h.right.push_back(label("TRACKS"));
+    const Channel ch = channel_of(s, mixer_strip(s.ui));
     const bool basic = !full_features(s.ui);
+    Header h = header_of(s);
+    const juce::Colour own = s.ui.mixer_bank == 0 ? colour_of(s) : ch.colour; // the second row: the channel's colour
+    h.left.push_back(chip(Icon::Pads, "SELECT", own));
+    h.right.push_back(label(s.ui.mixer_bank == 0 ? "TRACKS" : basic ? "BUSES" : "SUBMIXES, BUSES"));
     static const char* const groups[] {"EQ LOW", "EQ MID", "EQ HIGH"};
-    const unsigned block = basic ? 0 : s.ui.mixer_block % 3;
-    SoftKeys keys {{"SENDS", basic ? "" : block == 1 ? groups[s.ui.mixer_eq_group % 3] : "EQ", basic ? "" : "COMP"}, int(block), colour_of(s)};
+    const unsigned block = mixer_block_of(s.ui, ch.kind);
+    const bool sends = channel_sends(ch.kind);
+    SoftKeys keys {{sends ? "SENDS" : "", basic ? "" : block == 1 ? groups[s.ui.mixer_eq_group % 3] : "EQ", basic || !channel_comp(ch.kind) ? "" : "COMP"},
+                   basic && !sends ? -1 : int(block), own};
     if (!basic) { keys.dots[1] = 3; keys.dot_at[1] = uint8_t(s.ui.mixer_eq_group % 3); }
     frame(p, s, keys, h);
-    // The neighbours, three a side, nearest the card first; then the card over them.
+    // The neighbours in the row in view, three a side, nearest the card first; then the card over them.
+    const int at = int(mixer_row_at(s.ui)), count = int(mixer_row_count(s.ui));
     for (int k = 1; k <= 3; ++k) {
-        if (int(t) - k >= 0) strip(p, s, unsigned(int(t) - k), card_x - float(k) * (strip_w + gap));
-        if (t + unsigned(k) < track_count) strip(p, s, t + unsigned(k), card_x + card_w + gap + float(k - 1) * (strip_w + gap));
+        if (at - k >= 0) strip(p, s, channel_of(s, mixer_row_strip(s.ui, unsigned(at - k))), card_x - float(k) * (strip_w + gap));
+        if (at + k < count) strip(p, s, channel_of(s, mixer_row_strip(s.ui, unsigned(at + k))), card_x + card_w + gap + float(k - 1) * (strip_w + gap));
     }
-    card(p, s, t);
+    card(p, s, ch);
 }
 
+// A pad: its track, or on the second row its submix, bus, the input or the master (pads 13 and 14 hold none).
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
+    if (c.ui.mixer_bank == 1) {
+        if (const int n = pad_other(c.ui, pad); n >= 0) pick_other(c.ui, unsigned(n));
+        return;
+    }
     c.select_track(pad % track_count);
     if (c.ui.erase) erase_tap(c); // Erase + pad: that track cleared, once B3 says so (as on Tracks)
     else offer_new_track(c);      // an empty one: its doors, then back here
 }
 
-void wheel(Context& c, int delta) { c.select_track(unsigned(std::clamp(int(c.ui.track) + delta, 0, int(track_count) - 1))); }
+// The wheel and Minus / Plus: the next channel of the row in view comes to the middle.
+void wheel(Context& c, int delta) {
+    const int at = std::clamp(int(mixer_row_at(c.ui)) + delta, 0, int(mixer_row_count(c.ui)) - 1);
+    if (c.ui.mixer_bank == 0) c.select_track(unsigned(at));
+    else c.ui.mixer_other = uint8_t(other_first(c.ui) + unsigned(at));
+}
 
 // Push: the lit block's on and off (EQ, the compressor); SENDS has none.
 void push(Context& c) {
-    if (!c.track().used()) { offer_new_track(c); return; }
-    const unsigned t = c.ui.track % track_count;
-    const unsigned block = c.ui.mixer_block % 3;
-    if (block == 0 || !full_features(c.ui)) return;
+    const unsigned n = mixer_strip(c.ui);
+    const auto kind = channel_kind(n);
+    if (kind == ChannelKind::Track && !c.track().used()) { offer_new_track(c); return; }
+    const unsigned block = mixer_block_of(c.ui, kind);
+    if (block == 0) return;
     const auto part = block == 1 ? StripPart::EqOn : StripPart::CompOn;
-    c.apply(strip_card(t, part, c.track().strip), strip_get(c.track().strip, part) ? 0 : 1);
+    const Strip& strip = c.project.strip(n);
+    c.apply(strip_card(n, part, strip), strip_get(strip, part) ? 0 : 1);
 }
 
-// B1 SENDS, B2 EQ (again: the next three bands), B3 COMP.
+// B1 SENDS, B2 EQ (again: the next three bands), B3 COMP; a key the channel in hand has no block for does nothing.
 void soft(Context& c, int key) {
     if (!full_features(c.ui)) { c.ui.mixer_block = 0; return; }
     const unsigned k = unsigned(key) % 3;
-    if (k == 1 && c.ui.mixer_block == 1) c.ui.mixer_eq_group = uint8_t((c.ui.mixer_eq_group + 1) % 3);
+    const auto kind = channel_kind(mixer_strip(c.ui));
+    if ((k == 0 && !channel_sends(kind)) || (k == 2 && !channel_comp(kind))) return;
+    if (k == 1 && mixer_block_of(c.ui, kind) == 1) c.ui.mixer_eq_group = uint8_t((c.ui.mixer_eq_group + 1) % 3);
     c.ui.mixer_block = uint8_t(k);
 }
 } // namespace

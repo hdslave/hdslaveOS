@@ -127,8 +127,9 @@ struct Binding {
         JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
         PadMute, // issue 32, Motion's card of a kit pad's mute lane: pad id muted (1) or not, as Mute + pad
         // The mixer (docs/MIXER_PLAN.md): one value of a strip, id = strip number << 8 | StripPart (model/strip.h); a
-        // track's output, id the track, 0 the master or out_sub(s).
-        Strip, TrackOut,
+        // track's output, id the track, 0 the master or out_sub(s); a submix's level, pan or send, id = submix << 8 |
+        // Command::SubPart (engine/command.h).
+        Strip, TrackOut, SubMix,
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

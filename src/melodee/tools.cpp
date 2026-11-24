@@ -6,6 +6,7 @@
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
 #include "melodee/shell/controls_rules.h"
@@ -684,6 +685,22 @@ void mixer_scene(Snapshot& s, unsigned block) {
     }
 }
 
+// The mixer's second row (Pad Bank): submixes, buses, the input and the master, with the bass routed to submix 2.
+void mixer_other_scene(Snapshot& s, unsigned strip, unsigned block) {
+    mixer_scene(s, block);
+    s.ui.mixer_bank = 1; s.ui.mixer_other = uint8_t(other_place(strip));
+    s.project.tracks[2].mix.out = out_sub(1);
+    auto& sub = s.project.subs[1];
+    std::snprintf(sub.name, sizeof(sub.name), "%s", "DRUMS");
+    sub.mix.sends = {24, 0, 10, 0}; sub.mix.level = 96; sub.mix.pan = -8;
+    sub.strip.eq = {30, 10, 0, -20, 0, 10, 30, 20, 0};
+    s.project.buses[1].strip.eq = {-60, -30, 0, 0, 0, 0, 0, -20, -40}; s.project.buses[1].level = 64;
+    s.project.subs[3].mix.mute = true;
+    const float meters[][2] {{0.2f, 0.18f}, {0.62f, 0.58f}, {0.1f, 0.12f}, {0.0f, 0.0f}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
+                             {0.35f, 0.3f}, {0.42f, 0.4f}, {0.05f, 0.04f}, {0, 0}, {0.15f, 0.12f}, {0.72f, 0.7f}};
+    for (unsigned n = 0; n < other_count; ++n) s.strips[other_row[n]] = {meters[n][0], meters[n][1], 0.0f};
+}
+
 void looper_scene(Snapshot& s) {
     s.ui.page = PageId::Looper; s.playing = true; s.ui.loop = 0;
     s.project.looper.on = true; s.looper_on = true; s.loop_tick = 384 * 2 + 96 * 2 + 10;
@@ -1144,6 +1161,10 @@ const Preview previews[] {
     {"mixereq", [](Shell&, Snapshot& s) { mixer_scene(s, 1); s.ui.mixer_eq_group = 1; }},
     {"mixercomp", [](Shell&, Snapshot& s) { mixer_scene(s, 2); }},
     {"mixerbasic", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.settings.full_features = false; }},
+    {"mixersub", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_sub(1), 0); }},
+    {"mixerbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(1), 0); }},
+    {"mixermaster", [](Shell&, Snapshot& s) { mixer_other_scene(s, master_chain, 2); }},
+    {"mixerrouted", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.project.tracks[2].mix.out = out_sub(1); }},
     {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
         const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};
