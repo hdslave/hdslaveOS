@@ -11554,8 +11554,8 @@ void controls_audit() {
     CHECK(controls_breaks(row(PageId::ModPage, {"SEQUENCES", "ROLL", "MACRO"})).empty());
     auto mod = controls_breaks(row(PageId::ModPage, {"MOD", "MACRO", "ADD"}));
     CHECK(mod.size() == 1 && mod[0] == "seq: MOD / MACRO / ADD");
-    CHECK(controls_breaks(row(PageId::Rack, {"TRACKS", "", "FX"})).empty()); // Basic: no SENDS
-    CHECK(controls_breaks(row(PageId::Bus, {"TRACKS", "FX", "SENDS"})).size() == 1);
+    CHECK(controls_breaks(row(PageId::Rack, {"MIXER", "", "FX"})).empty());
+    CHECK(controls_breaks(row(PageId::Bus, {"MIXER", "SENDS", "FX"})).size() == 1);
     // Over the row: Shift held, a sheet; a loop's chain; a frame with no key row.
     UiState ui; ui.page = PageId::ModPage; ui.shift = true;
     auto shifted = controls_row(ui); shifted.keys = {"", "", "ADD"};

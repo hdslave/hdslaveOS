@@ -6,7 +6,7 @@
 // screen's own requests (Edit, Program, Redraw) arrive among the answers, each naming the session it belongs to, so
 // a late one never reaches a plug-in that replaced the one it was for. No JUCE here.
 #pragma once
-#include "melodee_companion.h"
+#include <melodee_companion.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
