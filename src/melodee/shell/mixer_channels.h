@@ -124,13 +124,27 @@ struct MixerViewHold {
     uint32_t at = 0;
 };
 inline void mixer_view_press(MixerViewHold& h, int way, uint32_t now) { h = MixerViewHold {true, false, way, now}; }
+// How far the mixer is drawn toward the card at `now` (0 the strips, 1 the card): on the way, an ease-out over
+// mixer_view_ms from where it stood when Plus or Minus turned it.
+constexpr uint32_t mixer_view_ms = 180;
+inline float mixer_card_shown(const UiState& ui, uint32_t now) {
+    const float to = ui.mixer_card ? 1.0f : 0.0f;
+    const uint32_t gone = now - ui.mixer_card_at;
+    if (!ui.mixer_card_at || gone >= mixer_view_ms) return to;
+    const float t = 1 - float(gone) / float(mixer_view_ms);
+    return to + (ui.mixer_card_from - to) * t * t * t; // 1 - (1 - x)^3 of the way
+}
 // Each pass while it is down: the card or the strips once it has been held long enough. Off the mixer (a page opened
 // while it was down), it is let go.
 inline void mixer_view_tick(MixerViewHold& h, UiState& ui, uint32_t now) {
     if (h.down && ui.page != PageId::Mixer) h.down = false;
     if (!h.down || h.fired || now - h.at < mixer_view_hold_ms) return;
     h.fired = true;
-    ui.mixer_card = h.way > 0;
+    if (const bool card = h.way > 0; card != ui.mixer_card) {
+        ui.mixer_card_from = mixer_card_shown(ui, now);
+        ui.mixer_card = card;
+        ui.mixer_card_at = now ? now : 1;
+    }
 }
 // Its button let go: the way to move when it was a tap, else 0.
 inline int mixer_view_release(MixerViewHold& h) {

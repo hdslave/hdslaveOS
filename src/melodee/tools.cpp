@@ -1168,6 +1168,9 @@ const Preview previews[] {
         mixer_scene(s, 0); s.ui.mixer_card = false; s.project.tracks[3].mix.mute = true; s.project.tracks[5].mix.solo = true;
     }},
     {"mixercard", [](Shell&, Snapshot& s) { mixer_scene(s, 0); }},                        // Plus held: track 3's card
+    {"mixerslide", [](Shell&, Snapshot& s) { // on the way from the strips to the card, 100 ms in: the card fading in
+        mixer_scene(s, 0); s.ui.mixer_card_from = 0; s.ui.mixer_card_at = s.now - 100;
+    }},
     {"mixereq", [](Shell&, Snapshot& s) { mixer_scene(s, 1); s.ui.mixer_eq_group = 1; }},
     {"mixercomp", [](Shell&, Snapshot& s) { mixer_scene(s, 2); }},
     {"mixerbasic", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.settings.full_features = false; }},

@@ -381,6 +381,8 @@ struct UiState {
     // The mixer's view: every channel of the row as a strip as Melodee starts; the channel in hand's card (its
     // block, the neighbours narrow) once Plus is held, until Minus held (shell/mixer_channels.h MixerViewHold).
     bool mixer_card = false;
+    float mixer_card_from = 0;   // the view on its way from here (0 the strips, 1 the card) ...
+    uint32_t mixer_card_at = 0;  // ... since then, ms (0: still)
     uint8_t sends_bus = 0;        // the bus in view on Bus (its chain page), and on a kit's Stage SENDS
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).

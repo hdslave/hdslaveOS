@@ -8513,6 +8513,8 @@ void track_move() {
         mixer_view_press(h, 1, 2000);
         mixer_view_tick(h, m, 2000 + mixer_view_hold_ms);
         CHECK(m.mixer_card && mixer_view_release(h) == 0); // held: the card, the release does nothing more
+        const uint32_t from = 2000 + mixer_view_hold_ms; // on the way there over mixer_view_ms, eased out
+        CHECK(mixer_card_shown(m, from) == 0 && mixer_card_shown(m, from + mixer_view_ms / 2) > 0.5f && mixer_card_shown(m, from + mixer_view_ms) == 1);
         mixer_view_press(h, -1, 3000);
         mixer_view_tick(h, m, 3000 + mixer_view_hold_ms);
         CHECK(!m.mixer_card && mixer_view_release(h) == 0);
