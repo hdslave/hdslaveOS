@@ -225,6 +225,24 @@ until it reaches its value. **K1**–**K3** turn the three parameters it names.
 
 Plug-in makers: [Plug-in screens](../PLUGIN_SCREENS.md).
 
+### A screen installed apart from the plug-in
+
+A companion screen gives a VST2 plug-in a page of its own without changing
+the plug-in. Copy the screen's folder into `Melodee/Plugin Screens/` on the
+card; the plug-in stays in `Melodee/Plugins/` as it is.
+
+- It shows on **PANEL** as a plug-in's own screen does, when the plug-in
+  has none of its own.
+- Melodee checks that the screen is for that plug-in and that every
+  parameter it uses is where it expects. When one is not, Melodee shows its
+  own pages and says why in `Melodee/Plugin Screens/problems.txt`.
+- A screen that stops working is closed: Melodee's pages come back with a
+  notice, and the plug-in plays on.
+- Delete the screen's folder to go back to Melodee's pages. Projects never
+  need the screen.
+
+Screen makers: [Companion screens](../PLUGIN_COMPANIONS.md).
+
 ## Neural Amp Modeler
 
 Melodee's own amp sim is the **Amp sim** effect in the Dirt family. For amp

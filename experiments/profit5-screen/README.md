@@ -1,7 +1,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 # Profit-5 / Melodee screen experiment
 
-**Local experiment only. Do not merge, push, publish or open a pull request.**
+The companion screen example ([docs/PLUGIN_COMPANIONS.md](../../docs/PLUGIN_COMPANIONS.md)).
+The embedded build further down (`build.py`) links Profit-5's GPL source into
+its library: it stays a local comparison, never published.
 
 A native 320 × 218 Profit-5 panel using the **Melodee screen SDK**
 (`melodee.screen/1`), for Melodee on the MPC Sample. Six sections, 22 rows,
