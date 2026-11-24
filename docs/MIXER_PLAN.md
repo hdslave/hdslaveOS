@@ -43,6 +43,13 @@ Core step 7 (freeze, export) built: core a1e01dd and 94b74cb. Prints, stems
 and the MPC 3 export's routes and submixes are done. The exports carry no
 strips yet and say so.
 
+Melodee steps 1 and 2 (page, knobs) built: 50d160b. Pad FX + Knob FX, the
+Menu's MIXER tile and B1 of an effect chain open the mixer: the tracks in a
+carousel, the selected track's card with SENDS, EQ (B2 again: LOW, MID,
+HIGH) and COMP on K1-K3 and Shift + K1-K3. Pads select. Not yet: the second
+bank (submixes, buses, input, master), pad lights by level, the spectrum;
+the old Tracks and Sends pages are still in.
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -271,13 +278,13 @@ and the Compressor. Meters are one peak a track; buses have none.
 
 ### Melodee
 
-1. **Page.** `PageId::Mixer` (`shell/ui_state.h`, a name in
+1. **Page.** Built (50d160b). `PageId::Mixer` (`shell/ui_state.h`, a name in
    `shell/usage_log.h`), a `PageSpec` in `pages/mixer_page.cpp`, state for
    bank, channel, block and EQ group. The opener in `shell/shell.cpp`
    (`fx_chord`) opens it. Draw the row, the card and the five block pictures
    with the widgets in `ui/`. Previews in `tools.cpp` for each state in the
    mock.
-2. **Knobs.** New `Binding` kinds for the strip values, output and width
+2. **Knobs.** Built (50d160b). New `Binding` kinds for the strip values, output and width
    (`shell/bindings.h`); the page's rows in `base_bindings` and
    `shift_bindings`; labels in `describe_card`; commands in
    `Context::apply`; the Mix undo scope. Pickup works as on every page.
