@@ -64,8 +64,15 @@ Effect chains from the mixer: b31604f. Shift + Knob FX opens the chain of
 the channel in hand (a track's, a submix's, a bus's, the master's; the
 input's page, Input Config, as it has none). Submix chains open on the
 effect page (`UiState::fx_sub`), with the picker and plug-ins; B1 MIXER goes
-back to that channel. Kerem then asked why the chain is not a page of the
-mixer itself: open.
+back to that channel.
+
+FX in the mixer: 81ea501 (Kerem's picks: B1 again, in the card, the canvas's
+option A). B1 again shows the channel's chain in the card; a bus and the
+master have B1 FX alone. K1-K3 turn the lit effect (its FX page's cursor and
+row), Push switches it on or off, Push on the plus opens the picker and
+comes back to the mixer once an effect or plug-in is in. Minus / Plus now
+move through the lit block on every block (Kerem: change it for everything);
+the wheel and the pads pick the channel.
 
 ## What it is
 
@@ -122,16 +129,16 @@ The EQ and the compressor each have an on/off.
 | Pads | Select the channel, no sound. A pad is lit in its channel's colour, as bright as its level. |
 | **PAD BANK** | Pads and screen: tracks 1–16, or submixes (pads 1–8), buses A–D (9–12), input (15), master (16). |
 | Fader | Level of the selected channel, always. |
-| Encoder | Turn: the next channel comes to the centre. Push: the lit block on or off. Held: the Menu. |
-| **−** / **+** | Previous / next channel. **SHIFT**: undo / redo. |
-| **B1** | **SENDS** on a track or submix. On a bus or the master: the name of its first effect. On the input: **INPUT**. |
+| Encoder | Turn: the next channel comes to the centre. Push: the lit block on or off (on FX the lit effect; on its plus, the picker). Held: the Menu. |
+| **−** / **+** | Through the lit block: SENDS and COMP their first and second row, EQ its three groups, FX the chain's effects and the plus. **SHIFT**: undo / redo. |
+| **B1** | **SENDS** on a track or submix; again: **FX**, the channel's chain in the card. On a bus or the master: **FX** alone. On the input: **INPUT**. |
 | **B2** | **EQ**. Again: the next three bands (LOW, MID, HIGH). |
 | **B3** | **COMP**. On the master: the Compressor (**SHIFT** + **Pad 5**), same settings. |
 | **K1**–**K3** | The lit block. **SHIFT**: its second row. |
 | **MUTE** | As printed. Held or latched: a pad mutes its channel, **SHIFT** + pad solos. **SHIFT** + **MUTE**: unmute all. |
 | **ERASE** | Held + a knob or the fader: that value back. Alone: the lit block flat. **SHIFT** + **ERASE**: copy the block; pads paste. |
 | **SEQ RECORD** | On: knob, fader and mute moves are recorded. |
-| **SHIFT** + **KNOB FX** | The channel's effect chain, as today. |
+| **SHIFT** + **KNOB FX** | The channel's full effect page (built b31604f): every row of an effect, a plug-in's own screen. B1 **MIXER** back. |
 
 Knobs by block:
 
@@ -140,7 +147,7 @@ Knobs by block:
 | SENDS | Send A | Send B | Send C | Pan | Output | Send D |
 | EQ (per group) | band 1 | band 2 | band 3 | – | – | – |
 | COMP | Amount | Ratio | Speed | Key | Mix | Gain |
-| Bus, master: effect | its first row | | | its second row | | |
+| FX (the lit effect) | its first row | | | its second row | | |
 | INPUT | Trim | Monitor | Record | – | – | – |
 | Master COMP | Attack | Release | Amount | – | – | In Boost |
 
