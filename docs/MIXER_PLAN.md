@@ -26,6 +26,11 @@ tests, melodee-move's sources compile as before, the build runs on the MPC
 with a project loaded (no xruns). Owed: old projects with effects on a track
 heard by ear (the chain no longer hears the level and pan).
 
+Core step 4 (submixes) built: core cd52b2b. A project's submixes and track
+outputs play as the file has them; nothing in Melodee sets them yet. Checked
+as step 3, plus a test of delay compensation through a late plug-in on a
+submix chain.
+
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
 the boards, `render/render.py` draws a board to a PNG.
@@ -164,12 +169,35 @@ and the Compressor. Meters are one peak a track; buses have none.
    key goes through `plan_keys` like an effect's (a track keyed by another
    waits for it). `EngineHost::strip_meter(n)`: each side's peak and the gain
    reduction, falling as `meter()` does.
-4. **Submixes.** A buffer pair each. In the summing loop a track goes to its
-   submix in place of the master. Then each submix: strip, chain, level, pan,
-   mute, its sends into the buses, into the master. They run on the workers
-   as the bus chains do. Delay compensation: eight more lines in
-   `engine/compensation.h`, and tracks that go straight to the master wait
-   for the slowest submix. Solo rule. Key sources (20 bits used of 32 today).
+4. **Submixes.** Built (core cd52b2b).
+   - A track whose output is a submix is summed into the submix's buffers in
+     place of the master. A change of output crosses over in one block.
+   - Each submix that plays or still sounds runs, after the Looper's mix: its
+     chain, strip, level and pan. With two or more, they run on the workers.
+     Then mute, its sends into the buses, and into the master, all before the
+     buses' run.
+   - Commands: `SubMix` (index `SubLevel`, `SubPan`, `SubMute`, `SubSolo`,
+     `SubSend0` + bus) and `TrackOut`.
+   - Solo: a submix's solo solos its tracks. It counts only while a track that
+     plays something goes into it. A track's own solo keeps its submix heard.
+   - Chains: submix chains are 25-32 (`sub_chain`, `mix_chain_count`); kit pad
+     chains moved to start at 33. `chain_count` stays 25 for melodee-move.
+   - Keys: a submix is key 21-28 (`fx_key_sub`). Files and the engine take keys
+     below `fx_key_count`. `fx_keys` (21) stays the pickers' range until a
+     page offers submixes.
+   - A bus or master chain hears a submix in the same block; a track or submix
+     hears it a block late. A submix's strip or chain hears a track in the same
+     block.
+   - Delay compensation: no new lines. A track's latency counts its submix
+     chain's, so a track going straight to the master waits for the slowest
+     submix through its own line. Left: a routed track's own sends and its Knob
+     FX share are that submix chain's latency early.
+   - The master Sidechain's key track, sent to a submix, goes through it and is
+     ducked with it.
+   - Owed in Melodee, when a page edits submix chains: shell code that takes
+     `n >= chain_count` for a kit pad's chain (`context.cpp` keys,
+     `bindings.cpp` KEY row, `plugin_jobs.cpp`, `plugin/plugin_sleep.h`,
+     `track_copy.cpp`, `track_swap.h`) has to count chains 25-32 as submixes.
 5. **Buses, input, master.** A bus's strip with its chain. The input's strip
    where the monitor joins the master, and RECORD dry or wet where a take is
    written. The master's strip (no compressor) before the master chain.
