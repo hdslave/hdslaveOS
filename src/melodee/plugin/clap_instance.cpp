@@ -3,6 +3,7 @@
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/host_time.h"
 #include "melodee/plugin/plugin_files.h"
+#include "melodee/plugin/preset_rows.h"
 
 #include <clap/clap.h>
 #include <melodee_screen.h>
@@ -999,7 +1000,8 @@ std::vector<ClapInstance::Preset> ClapInstance::findPresets (const File& cache) 
             const size_t at = locationNames.size();
             auto shown = String (location.name);
             if (shown.startsWithIgnoreCase (name + " ")) shown = shown.substring (name.length() + 1); // "Surge XT Factory Presets"
-            locationNames.push_back ((shown.isEmpty() ? String ("Presets") : shown).replaceCharacter ('/', '-').toStdString());
+            const auto folder = preset_location_folder (shown.toStdString()); // "PPG/Factory": PPG, then Factory
+            locationNames.push_back (folder.empty() ? std::string ("Presets") : folder);
 
             Receiver receiver (info.id);
             if (location.inside)

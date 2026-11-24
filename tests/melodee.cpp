@@ -7270,6 +7270,17 @@ void preset_folders() {
     CHECK(preset_folder_name("Factory/Basses") == "Basses" && preset_folder_name("User") == "User");
     CHECK(preset_row_of_folder(list, "Factory/Keys", -1) == 1 && preset_row_of_folder(list, "User", -1) == 1);
 
+    // A CLAP location's name as its folder: "/" a level (Melodee Modules: a synth, then its Factory and SysEx files).
+    CHECK(preset_location_folder(" PPG / 2.2 factory ") == "PPG/2.2 factory" && preset_location_folder("/a//b/") == "a/b");
+    CHECK(preset_location_folder("Factory Presets") == "Factory Presets" && preset_location_folder(" / ").empty());
+    PluginProgramList synths({{0, "INIT", preset_location_folder("PPG/Factory")}, {1, "PROGRAM 00", "PPG/2.2 factory"},
+                              {2, "FAT BASS", preset_location_folder("TRIO")}});
+    auto by_synth = preset_rows(synths, "", 2);
+    CHECK(by_synth.size() == 2 && by_synth[0].name == "PPG" && by_synth[0].count == 2 && by_synth[1].name == "TRIO" &&
+          by_synth[1].current);
+    auto ppg = preset_rows(synths, "PPG", 2);
+    CHECK(ppg.size() == 2 && ppg[0].folder && ppg[0].name == "Factory" && ppg[1].name == "2.2 factory");
+
     PluginProgramList flat({{0, "One", ""}, {3, "Four", ""}}); // a VST3's programs: no folders
     auto rows = preset_rows(flat, "", 3);
     CHECK(rows.size() == 2 && !rows[0].folder && rows[1].name == "Four" && rows[1].current && rows[1].at == 1);
