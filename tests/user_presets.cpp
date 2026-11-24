@@ -280,7 +280,8 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const bool reject = change_tempo || stale_launch || mode == "deep-freeze-lead-playing-clock-mismatch";
     const bool active_lead = mode == "deep-freeze-active-lead";
     const bool reload_fails = mode == "deep-freeze-active-reload-fails";
-    const bool active_clock = active_lead || reload_fails || mode == "deep-freeze-active-tempo";
+    const bool clock_reverts = mode == "deep-freeze-active-clock-reverts";
+    const bool active_clock = active_lead || reload_fails || clock_reverts || mode == "deep-freeze-active-tempo";
     const bool short_bar = change_tempo || empty_handoff || other_lead || active_clock;
     const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
@@ -334,7 +335,7 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const unsigned count = memory ? 24 : prior_freeze || pattern_tempo ? 2 : 1;
     for (unsigned p = 0; p < count; ++p) {
         auto& pattern = c.patterns.at[0][p];
-        pattern.length = c.project.bar_ticks();
+        pattern.length = c.project.bar_ticks() * (clock_reverts ? 4 : 1);
         const unsigned steps = deep ? pattern.length / sixteenth_ticks : 1;
         for (unsigned i = 0; i < steps; ++i) {
             Step note;
@@ -498,6 +499,32 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
             CHECK(std::string(shell->ui().notice).find("clock changed") != std::string::npos);
         } else {
             CHECK(switched && c.deep(0) && (c.plugins_asleep() & 1) && rack->asleep(0));
+        }
+        if (clock_reverts) {
+            CHECK(rack->status(0) == PluginStatus::None && (host->printing_tracks() & 1));
+            // Drive the pager from the test thread and leave the rack asleep until after the tempo reversal.
+            host->streams().stop();
+            const uint32_t since = c.now;
+            c.set_tempo(600);
+            for (unsigned n = 0; n < 7 * rate / block; ++n) {
+                c.now = since + uint32_t(uint64_t(n) * block * 1000 / rate);
+                while (host->streams().pump()) {}
+                c.print_tick();
+                render();
+            }
+            CHECK(host->tempo_now() == 600 && c.deep(0) && (c.thawing & 1) && rack->asleep(0));
+            CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+            c.set_tempo(1200);
+            for (unsigned n = 0; n < 32; ++n) {
+                if (n >= 6) while (host->streams().pump()) {} // no new pins for the first 16 ms
+                c.print_tick();
+                render();
+                CHECK(std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; }));
+            }
+            CHECK(host->tempo_now() == 1200 && c.deep(0) && rack->asleep(0));
+            CHECK(host->printing_tracks() & 1);
+            CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+            return;
         }
         if (active_clock) {
             CHECK(rack->status(0) == PluginStatus::None && (host->printing_tracks() & 1));

@@ -145,6 +145,9 @@ class PluginHostTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_freeze_transition(mode)
 
+    def test_deep_freeze_keeps_playback_when_tempo_returns_during_thaw(self):
+        self.run_freeze_transition("deep-freeze-active-clock-reverts")
+
     def test_deep_freeze_remains_audible_when_returning_from_an_empty_pattern(self):
         for mode in ("deep-freeze-empty-new-tempo", "deep-freeze-empty-steady", "deep-freeze-empty-pattern-tempo"):
             with self.subTest(mode=mode):

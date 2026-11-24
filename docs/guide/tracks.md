@@ -135,7 +135,8 @@ If a later tempo change makes the active print incompatible, its original
 audio keeps playing at the recorded speed while the track reloads its plug-ins.
 Once they're ready, the track plays live from its next pattern pass at the new
 tempo. If a plug-in fails to open, the print keeps playing and a notice explains
-what happened.
+what happened. If the tempo returns to the print's tempo during thaw, playback
+keeps running and rejoins the sequencer at a pattern start when its audio is ready.
 
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 
