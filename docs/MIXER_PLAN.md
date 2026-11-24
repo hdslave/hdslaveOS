@@ -60,6 +60,13 @@ and the master show their EQ and compressor (the master no compressor);
 their B1 block is step 4. Not yet: the spectrum; the old Tracks and Sends
 pages are still in.
 
+Effect chains from the mixer: b31604f. Shift + Knob FX opens the chain of
+the channel in hand (a track's, a submix's, a bus's, the master's; the
+input's page, Input Config, as it has none). Submix chains open on the
+effect page (`UiState::fx_sub`), with the picker and plug-ins; B1 MIXER goes
+back to that channel. Kerem then asked why the chain is not a page of the
+mixer itself: open.
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
