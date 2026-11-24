@@ -291,19 +291,17 @@ struct UiState {
     bool scene_capture = false;  // Scenes' Shift + B2 CAPTURE: the next pad picks the scene the playing patterns go to
     PluginTarget plugin_target = PluginTarget::Instrument;
     uint8_t plugin_chain = 0, plugin_slot = 0;  // Effect: where it goes
-    PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
-    PageId plugin_from = PageId::Stage;          // the page it opened over: B1 at the top while the track is not PLUGIN yet
+    PageId plugin_back = PageId::Stage;          // where a load goes, and an effect's B1 (CANCEL) at the top
+    PageId plugin_from = PageId::Stage;          // the page it opened over: an instrument's B1 (CANCEL) at the top
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
-    // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it), and
-    // Edit showing Melodee's pages of a plug-in that has a screen (Shift + B3 swaps them).
+    // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it).
     bool fx_panel = false;
-    bool plugin_own_pages = false;
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
     // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.
     uint8_t presets_entry = no_plugin;
     uint16_t presets_cursor = 0;
-    PageId presets_back = PageId::Edit;
+    PageId presets_back = PageId::Stage;
     std::array<char, 192> presets_folder {}; // PRESETS: the folder in view, "" the top (plugin/preset_rows.h)
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell

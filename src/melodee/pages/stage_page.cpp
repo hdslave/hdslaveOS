@@ -8,7 +8,8 @@
 // where it goes. A kit: B1 Trim / Layers / Tune / Amp Env, B2 Play / Colour /
 // Follow / Cloud, B3 Mix / Sends / Filter / Filt Env / Kit filter, on the last pad hit;
 // a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins): B1 its
-// presets (or its face when it has none) and its parameters, B2 arp and chord,
+// presets (or its face when it has none), its own screen and its parameters,
+// where Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT; B2 arp and chord,
 // B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
 // chord, B3 EDIT (the Edit page); an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESETS: walks the presets; EDIT: the rows; an empty track: walks its list), Push moves to the next card
@@ -1062,6 +1063,15 @@ bool plugin_ready(const Snapshot& s) {
     return panel.entry == s.track().plugin && panel.status == PluginStatus::Ready;
 }
 bool plugin_has_presets(const Snapshot& s) { return plugin_ready(s) && s.ui.plugin_panel.programs > 0; } // B1's name: PRESETS
+// Shift on the plug-in's B1 pages: B1 another plug-in from the card, B2 its presets, B3 TRANSPORT (it hears Play and
+// Stop: its LED).
+ui::SoftKeys plugin_shift_keys(const Snapshot& s) {
+    const auto& t = s.track();
+    const bool chosen = t.plugin < max_plugins;
+    ui::SoftKeys keys {{"PLUG-INS", plugin_has_presets(s) ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, colour_of(s)};
+    if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[t.plugin].transport ? 4 : 0; }
+    return keys;
+}
 bool plugin_presets(const Snapshot& s) { return plugin_has_presets(s) && !s.presets.list.empty(); }          // and the list to show
 // PRESETS: the preset in view, while turning the one under the cursor, else the one it plays (-1: none yet).
 int plugin_preset_at(const Snapshot& s) {
@@ -1154,7 +1164,7 @@ void draw(Paint& p, const Snapshot& s) {
     } else if (page.kind == StageKind::PluginSound && plugin_presets(s)) { // which preset of how many
         int at = plugin_preset_at(s);
         h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String::fromUTF8("\xe2\x80\x93")) + " / " + juce::String(int(s.presets.list.size()))));
-    } else if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
+    } else if ((page.kind == StageKind::PluginEdit || page.kind == StageKind::PluginScreen) && plugin_ready(s)) { // the share of each audio block it takes
         const auto& panel = s.ui.plugin_panel;
         h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
     } else if (t.is_audio() && t.used()) { // freeze plan F3: the pattern in hand and its bars; red armed, filled recording
@@ -1194,6 +1204,7 @@ void draw(Paint& p, const Snapshot& s) {
             if (stems) keys.glyphs[2] = Icon::Layers;
         }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
+    if (s.ui.shift && !frozen && t.engine == EngineKind::Plugin && stage_plugin_page(page.kind)) keys = plugin_shift_keys(s);
     if (!t.used()) { // what it becomes: B1 BACK to the types, or CANCEL to the nearest track that is not empty
         bool any = s.ui.new_sources;
         for (const auto& other : s.project.tracks) any |= other.used();
@@ -1231,6 +1242,25 @@ void draw(Paint& p, const Snapshot& s) {
     }
 }
 
+// A PLUGIN track's rows of parameters (the panel knows how many).
+void plugin_rows(Context& c, int delta) {
+    unsigned entry = c.track().plugin;
+    if (entry >= max_plugins || c.ui.plugin_panel.entry != entry || !c.ui.plugin_panel.rows) return;
+    auto& row = c.ui.plugin_row[entry];
+    row = uint16_t(std::clamp<int>(row + delta, 0, c.ui.plugin_panel.rows - 1));
+    c.ui.plugin_panel.row = row;
+    c.plugin_panel_at = 0; // its cards again at once
+}
+
+// Minus / Plus on a plug-in's page: the first row of the page after, or of the page before.
+void plugin_page_step(Context& c, int way) {
+    unsigned entry = c.track().plugin;
+    const auto& panel = c.ui.plugin_panel;
+    if (entry >= max_plugins || panel.entry != entry || !panel.rows) return;
+    unsigned to = way > 0 ? panel.next_page : panel.prev_page;
+    plugin_rows(c, int(to) - int(panel.row));
+}
+
 void soft(Context& c, int key) {
     const bool zones = stage_instrument(c.project, c.track()); // ZONES: no Trim jobs, no LAYERS
     const auto& page = stage_page_now(c.ui, c.track(), stage_skip(c.project, c.ui, c.track()));
@@ -1251,6 +1281,14 @@ void soft(Context& c, int key) {
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
+    if (c.ui.shift && c.track().engine == EngineKind::Plugin && stage_plugin_page(page.kind)) { // the plug-in's own jobs
+        const auto& t = c.track();
+        const bool open = t.plugin < max_plugins && c.ui.plugin_panel.entry == t.plugin;
+        if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument); // Shift + B1 PLUG-INS: another from the card
+        if (key == 1 && open && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(t.plugin); // Shift + B2 PRESETS
+        if (key == 2) c.toggle_plugin_transport(t.plugin); // Shift + B3 TRANSPORT
+        return;
+    }
     if (!c.track().used()) { // B1 BACK: the types; CANCEL: the nearest track that is not empty, on the page this one was picked on
         if (key == 0) { if (c.ui.new_sources) new_track_types(c); else cancel_new_track(c); }
         return;

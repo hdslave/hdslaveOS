@@ -104,7 +104,6 @@ void draw_plugin_page(ui::Paint& p, const Snapshot& s, unsigned entry, const ui:
 // draws nothing over but its MENU, notices and questions.
 bool plugin_screen_shown(const Snapshot& s, uint8_t area = 0); // area 1: an effect's strip under its chain's slots
 void draw_screen_picture(ui::Paint& p, const ScreenPicture& picture, float x, float y);
-void plugin_page_step(Context& c, int way); // Minus / Plus: the first row of the page before or after
 // An effect plug-in in a chain (pages/fx_drawing.cpp): its page line and its sound as it plays, from x, y over w x h.
 void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 // An effect's skin strip (docs/PLUGIN_PAGES.md, Skins) under the chain row, at x, y (320 x 92), where it has one and
@@ -112,7 +111,6 @@ void draw_plugin_sound(ui::Paint& p, const Snapshot& s, float x, float y, float 
 bool plugin_strip_shown(const Snapshot& s, unsigned entry);
 void draw_plugin_strip(ui::Paint& p, const Snapshot& s, float x, float y);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
-void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);

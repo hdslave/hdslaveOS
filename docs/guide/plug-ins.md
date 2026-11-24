@@ -101,12 +101,11 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 **SPACE** on every plug-in (see
 [Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
 
-**Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
-on Stage (**EDIT**) to see the same parameters there. A plug-in that draws its
-own screen shows that instead (see
-[A plug-in's own screen](#a-plug-ins-own-screen)).
+**EDIT**: once you pick a plug-in, Stage opens on **EDIT**, the third page
+under **B1**. A plug-in that draws its own screen shows it on **PANEL**, the
+page before (see [A plug-in's own screen](#a-plug-ins-own-screen)).
 
-![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
+![EDIT: a plug-in's parameters](../images/screens/pluginedit.png)
 
 - The page shows the plug-in's parameters in rows of three, each over its
   pot: **K1**, **K2**, **K3**. The row the pots turn is raised, in their
@@ -132,22 +131,24 @@ own screen shows that instead (see
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
-- **B1** (**PLUG-INS**) opens the picker. **B2** (**PRESETS**) opens the
-  plug-in's presets, when it has some. Picking another plug-in there asks
+- Hold **SHIFT** on **PRESETS**, **PANEL** or **EDIT** for the plug-in's
+  own keys. **SHIFT** + **B1** (**PLUG-INS**) opens the picker, as **SAMPLE
+  SELECT** does. **SHIFT** + **B2** (**PRESETS**) opens the plug-in's
+  presets, when it has some. Picking another plug-in in the picker asks
   "Replace Surge XT?" first. The old plug-in's sound and settings go;
   **SHIFT** + **−** (undo) brings it back with its settings. The same
   question comes on an effect slot.
 - Every plug-in hears Melodee's Play and Stop, the tempo and the place in
   the song, so its own sequencer plays only while Melodee plays.
-  **B3** (**TRANSPORT**) sets whether the plug-in hears Play and Stop. Its
-  light is on by default. Turn it off for a plug-in with its own sequencer
+  **SHIFT** + **B3** (**TRANSPORT**) sets whether the plug-in hears Play and
+  Stop. Its light is on by default. Turn it off for a plug-in with its own sequencer
   or arpeggiator, so that only the track's notes play it. It still follows
   the tempo.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **K1**–**K3** still set
-the three parameters shown on Edit. **B1** goes back. Push the encoder on
-Stage's **PRESETS** page to open the same list.
+the three parameters shown on **EDIT**. **B1** goes back. Push the encoder on
+Stage's **PRESETS** page, or press **SHIFT** + **B2**, to open the same list.
 
 ![Plug-in presets](../images/screens/pluginpresets.png)
 
@@ -190,8 +191,8 @@ loop chains take plug-ins.
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 
 Push the encoder on a plug-in effect's slot to open its sheet.
-**PRESETS** opens its presets, when it has some. **TRANSPORT** works as on a
-plug-in track's Edit page. A kit pad's own chain and Knob FX take no
+**PRESETS** opens its presets, when it has some. **TRANSPORT** works as
+**SHIFT** + **B3** on a plug-in track's Stage. A kit pad's own chain and Knob FX take no
 plug-ins.
 
 A plug-in effect that draws its own screen draws under the slots instead (see
@@ -205,10 +206,9 @@ Some plug-ins draw their own page on the MPC Sample. Melodee keeps **B1**–**B3
 and draws nothing over the plug-in's knobs: the plug-in shows where a pot sits
 until it reaches its value. **K1**–**K3** turn the three parameters it names.
 
-- **On a plug-in track**: Edit shows the plug-in's page. On Stage, **B1** goes
-  **PRESETS**, **PANEL** (its page), **EDIT** (Melodee's pages of its
-  parameters). On its page the encoder, its push and **−** / **+** are the
-  plug-in's. **SHIFT** + **B3** on Edit swaps its page and Melodee's.
+- **On a plug-in track**: on Stage, **B1** goes **PRESETS**, **PANEL** (its
+  page), **EDIT** (Melodee's pages of its parameters). On its page the
+  encoder, its push and **−** / **+** are the plug-in's.
 
 ![PANEL: a plug-in's own page](../images/screens/stagepluginpanel.png)
 

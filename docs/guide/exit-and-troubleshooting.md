@@ -53,7 +53,7 @@ track (the Tracks page shows each track's load).
 **A plug-in does not load.** The picker shows the reason, for example
 "Windows and Mac builds only". Melodee runs only Linux ARM builds. A
 plug-in that loads but cannot open shows **WON'T OPEN** or **MISSING
-LIBRARY** on its Edit page. If a 32-bit plug-in crashes, its page says
+LIBRARY** on Stage's **EDIT** page. If a 32-bit plug-in crashes, its page says
 **STOPPED**: pick it again to reopen it.
 
 **An instrument or a long sample loads slowly.** An instrument's FLAC,

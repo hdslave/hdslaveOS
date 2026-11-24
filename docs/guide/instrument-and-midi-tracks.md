@@ -10,6 +10,14 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Audio tra
 | **B2** | **ARP**, **CHORD** |
 | **B3** | **MIX**, **SENDS**, **FX** |
 
+Hold **SHIFT** on a **B1** page for the plug-in's own keys:
+
+| Key | With **SHIFT** |
+| --- | --- |
+| **B1** | **PLUG-INS**: the plug-in picker |
+| **B2** | **PRESETS**: the whole preset list |
+| **B3** | **TRANSPORT**: whether the plug-in hears Play and Stop |
+
 **PRESETS**: the plug-in's presets. The name of the one playing is large,
 with the ones before and after it in the corners. Turn the encoder to load
 the next one; it loads when you stop turning. Push the encoder for the whole
@@ -33,8 +41,8 @@ knob sets one back to off.
 **PANEL**: the plug-in's own page, when it draws one (see
 [A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)).
 
-**EDIT**: all of the plug-in's parameters, as on the Edit page. Turn the
-encoder or press **−** / **+** to move through them.
+**EDIT**: all of the plug-in's parameters. Turn the encoder or press
+**−** / **+** to move through them. Picking a plug-in opens this page.
 
 **MIX**: **K1** level, **K2** pan, **K3** send to bus A.
 

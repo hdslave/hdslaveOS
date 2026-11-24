@@ -304,7 +304,8 @@ beat; the meters show the mix.
     is turned back. They are saved with the track and record as motion; Erase
     + pot sets one back to off. A plug-in with no presets: B1 says
     **PLUG-IN**, its face (name, format, the share of each block it takes).
-    EDIT: its own values, as Edit's list (the wheel and −/+ the rows). MIX:
+    EDIT: its own values as a list (the wheel and −/+ the rows); on these
+    three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. MIX:
     level, pan and the quick send into bus A; its meter carries the five
     steps of the meter LEDs as a scale. SENDS: a track sends into each of the
     four buses: K1 picks the bus (A–D, the one Tracks' SENDS and Bus show
@@ -442,9 +443,9 @@ beat; the meters show the mix.
   own for the engine, names in Title Case, the loaded one with a check at
   its right edge; K1 jumps (as on every list), the wheel walks, Push loads;
   FAVOURITES lists the starred (Shift + Sample Select). A synth's sounds are
-  its plug-in's own presets (PRESETS on Edit, below, "Plug-ins").
+  its plug-in's own presets (Stage's PRESETS, below, "Plug-ins").
 - **Edit** (a MIDI track's Stage B3 EDIT; a PLUGIN track's parameters are Stage's B1 EDIT): the engine's pages: a MIDI track's DEVICE and
-  PROGRAM; a synth's, its plug-in's own values (below, "Plug-ins"). No title
+  PROGRAM. No title
   row: the page is the header's chip, and its curve fills the picture with
   every parameter named at the point it moves, in its knob's colour while
   on the row the pots hold, dim otherwise; the rest are listed small at the
@@ -2463,8 +2464,10 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   CANCEL there; autorun and sample-base not listed), so a plug-in anywhere
   on the card loads. Release zips are unzipped only inside Melodee/Plugins;
   elsewhere a zip is not listed.
-  Sample Select on a PLUGIN track opens the picker again. Stage's B1 EDIT
-  (or Edit) shows the plug-in: the share of each audio block it takes in the
+  Sample Select on a PLUGIN track opens the picker again (Shift + B1
+  PLUG-INS on Stage's B1 pages too); CANCEL goes back where it came from,
+  and a plug-in picked lands on Stage's B1 EDIT. Stage's B1 EDIT shows the
+  plug-in: the share of each audio block it takes in the
   header, and its parameters as a list, each name on one full line with its
   number: the three on K1–K3 raised and ticked in their colours (their
   values on the cards, which carry their names: capitals, else mixed case,
@@ -2519,8 +2522,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   folder for the slot; on the chain pages K1–K3 hold its parameters and
   Minus / Plus its rows. Track, bus, master and loop-track chains take
   plug-ins; a kit pad's own chain does not.
-- **Presets.** A plug-in's own programs, those with a name: B2 PRESETS on
-  a PLUGIN track's Edit, or Presets on a plug-in effect's sheet (Push on the
+- **Presets.** A plug-in's own programs, those with a name: Push on a
+  PLUGIN track's Stage PRESETS (or Shift + B2 on its B1 pages), or Presets
+  on a plug-in effect's sheet (Push on the
   slot; the row shows only when it has some). The wheel or Minus / Plus
   move, Push loads one and stays, so the next is heard straight after (the
   pads play the track); the one picked says LOADED, B1 goes back. Picking
@@ -2548,7 +2552,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   engine host's clock at the block's start (`EffectClock`). VST3 and LV2
   read it through JUCE; the VST2 host, the armv7 bridge and the CLAP host
   pass it on as `VstTimeInfo` and the CLAP transport event
-  (`plugin/host_time.h`). TRANSPORT, B3 on a PLUGIN track's Edit and a card
+  (`plugin/host_time.h`). TRANSPORT, Shift + B3 on a PLUGIN track's Stage B1 pages and a card
   after Bypass on a plug-in effect's sheet, turns Play off for that entry
   (`PluginRef::transport`, kept in PLUG): it is always told the song is
   stopped, still with the tempo and the place, so a plug-in with its own

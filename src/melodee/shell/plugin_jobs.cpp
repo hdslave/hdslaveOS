@@ -81,7 +81,7 @@ void Context::open_plugin_picker(UiState::PluginTarget target, unsigned chain, u
     ui.plugin_target = target;
     ui.plugin_chain = uint8_t(chain);
     ui.plugin_slot = uint8_t(slot);
-    ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Edit : ui.page;
+    ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Stage : ui.page; // an instrument: Stage's B1 EDIT once loaded
     plugins->browse(plugins->view().folder); // where the picker was left, listed afresh, on the row it was on
     if (ui.page != PageId::Plugins) ui.plugin_from = ui.page;
     open(PageId::Plugins);
@@ -175,6 +175,7 @@ void Context::choose_plugin(const PluginFile& file) {
     dirty = true;
     plugins->sync(project, plugins_asleep());
     notice("Loading " + file.name);
+    if (instrument && ui.plugin_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit); // its parameters
     open(ui.plugin_back);
 }
 
@@ -290,7 +291,6 @@ bool Context::plugin_screen_input(ScreenKey key, int value) {
 int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
-    if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
     if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
     if (fx_chain_page(ui.page) && !ui.picker_open) {
         unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];

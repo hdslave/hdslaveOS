@@ -832,10 +832,11 @@ void skin_panel(Snapshot& s) {
     }
 }
 
-void plugin_track(Snapshot& s, PluginStatus status, int page = 0) {
-    s.ui.page = PageId::Edit; s.ui.track = 2;
+void plugin_track(Snapshot& s, PluginStatus status, int page = 0) { // on Stage's B1 EDIT
     auto& t = s.project.tracks[2];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
+    auto edit = stage_find(EngineKind::Plugin, StageKind::PluginEdit);
+    on_stage(s, 2, edit.at.group, edit.at.sub);
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Bass Synth");
     plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status, page);
 }
@@ -942,7 +943,7 @@ void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
 // PRESETS for Surge XT, a CLAP plug-in whose presets are files in folders (plugin/preset_rows.h): Factory Presets'
 // folders as Surge XT ships them, with their counts, the first Leads by name, and Third Party Presets beside it.
 void surge_presets(Snapshot& s) {
-    s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Edit; s.ui.presets_entry = 0;
+    s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Stage; s.ui.presets_entry = 0;
     auto& t = s.project.tracks[0];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("SURGE XT");
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Surge XT/Surge XT.clap");
@@ -1190,7 +1191,6 @@ const Preview previews[] {
          s.ui.settings.toggle_favourite(engine, 1); s.ui.settings.toggle_favourite(engine, 4);
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"edit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Edit; s.playing = true; }}, // a synth plug-in's own values
     {"stepeditsteps", [](Shell&, Snapshot& s) { // Step Edit's pads on the steps (Shift + B1 PADS), step 7 held: its locks
          s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
@@ -1228,7 +1228,7 @@ const Preview previews[] {
          s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = uint8_t(master_chain); s.ui.plugin_slot = 1;
          plugin_listing(s); s.ui.plugins_cursor = 5;
      }},
-    {"pluginedit", [](Shell&, Snapshot& s) { // Edit on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
+    {"pluginedit", [](Shell&, Snapshot& s) { // Stage's EDIT on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
          plugin_track(s, PluginStatus::Ready); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve

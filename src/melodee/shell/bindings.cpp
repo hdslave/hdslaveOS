@@ -857,7 +857,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::PluginPresets: return plugin_cards(ui, ui.presets_entry); // its row on K1-K3 while presets are heard
     case PageId::Edit: {
-        if (track.engine == EngineKind::Plugin) return plugin_cards(ui, track.plugin);
         const auto& info = engine_info(track.engine);
         if (!info.page_count) return {};
         if (is_mod_page(info, ui.edit_page[ui.track])) {

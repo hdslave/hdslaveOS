@@ -1813,6 +1813,21 @@ void button_remap() {
     CHECK(button_has_job(*project, l, B::Loop, true, false) && !button_has_job(*project, l, B::Chop, true, false)); // the last pad is empty
     project->tracks[1].pads[0].sample = 0;
     CHECK(button_has_job(*project, l, B::Chop, true, false));
+    { // a PLUGIN track's B1 pages on Stage light Shift + B1 PLUG-INS, B2 PRESETS (when it has some), B3 TRANSPORT
+        auto plug = std::make_unique<Project>();
+        plug->tracks[0].engine = EngineKind::Plugin; // none picked yet
+        UiState u; u.page = PageId::Stage; u.track = 0;
+        CHECK(stage_plugin_page(stage_page_now(u, plug->tracks[0], stage_skip(*plug, u, plug->tracks[0])).kind));
+        CHECK(button_has_shift_job(*plug, u, B::TopLeft, false) && !button_has_shift_job(*plug, u, B::TopMiddle, false)
+              && !button_has_shift_job(*plug, u, B::TopRight, false));
+        plug->tracks[0].plugin = 0;
+        CHECK(button_has_shift_job(*plug, u, B::TopRight, false) && !button_has_shift_job(*plug, u, B::TopMiddle, false)); // no presets yet
+        u.plugin_panel.entry = 0; u.plugin_panel.programs = 12;
+        CHECK(button_has_shift_job(*plug, u, B::TopMiddle, false));
+        CHECK(stage_go(u, EngineKind::Plugin, StageKind::PluginEdit) && button_has_shift_job(*plug, u, B::TopLeft, false));
+        CHECK(stage_go(u, EngineKind::Plugin, StageKind::Mix)); // B3 MIX: Shift + B1-B3 do nothing there
+        CHECK(!button_has_shift_job(*plug, u, B::TopLeft, false) && !button_has_shift_job(*plug, u, B::TopRight, false));
+    }
     l.exit_open = true;
     CHECK(!button_has_job(*project, l, B::Play, true, false));
 }

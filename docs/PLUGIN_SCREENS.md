@@ -26,15 +26,13 @@ a page file and a skin: [Plug-in page files](PLUGIN_PAGES.md).
 
 | Where | What the plug-in draws |
 |-------|------------------------|
-| A PLUGIN track's Edit page | its page: everything under B1-B3, 320 × 218 |
-| Stage, B1 **PANEL** (between PRESETS and EDIT) | its page |
+| Stage, B1 **PANEL** (between PRESETS and EDIT) on a PLUGIN track | its page: everything under B1-B3, 320 × 218 |
 | An effect in a track, bus or master chain | its strip: everything under the chain's slots, 320 × 144 |
 | Push on that effect | its page |
 
 - Melodee keeps **B1**–**B3**, its MENU, notices and questions, drawn over
   the page. It draws nothing over the plug-in's own controls.
-- **SHIFT** + **B3** on Edit swaps the plug-in's page and Melodee's own pages
-  of its parameters; Stage's **EDIT** is always Melodee's pages.
+- Stage's **EDIT** is always Melodee's pages of its parameters.
 - Settings > SCREEN > **Plug-in screens** off: Melodee's own pages for every
   plug-in.
 

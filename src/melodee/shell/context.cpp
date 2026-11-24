@@ -295,6 +295,10 @@ void Context::open(PageId page) {
     if (page != PageId::Scenes) ui.scene_capture = false; // CAPTURE waits for a pad on Scenes only
     // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
     if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
+    if (page == PageId::Edit && track().engine == EngineKind::Plugin) { // a plug-in's parameters live on Stage's B1 EDIT
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        page = PageId::Stage;
+    }
     if (page == PageId::Trim) { // Trim lives on Stage now: a kit's B1 TRIM (the sampler pages' B1 and Chop come here)
         if (track().engine == EngineKind::Sampler) stage_go(ui, 0, 0);
         page = PageId::Stage;
@@ -351,6 +355,7 @@ void Context::select_track(unsigned t) {
     ui.track = uint8_t(t % track_count);
     ui.held_step = -1;
     if (ui.page == PageId::Sounds) ui.sounds_cursor = track().preset;
+    if (ui.page == PageId::Edit && track().engine == EngineKind::Plugin) open(PageId::Edit); // to Stage's B1 EDIT
 }
 
 void Context::note(unsigned t, int key, int velocity) {
