@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <future>
 
 using namespace melodee;
 
@@ -254,6 +255,32 @@ int main(int argc, char** argv) {
         std::array<int, 3> controls {};
         CHECK(sine->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1); // Level, Wave
         run(*sine);
+        // The audio thread has taken Level's queued event but the plug-in has not consumed it yet.
+        // A main-thread rescan at that exact point must keep showing the new Level.
+        auto beforeEvents = reinterpret_cast<void (*)(void (*)(void*), void*)>(dlsym(fixture, "fixture_before_events"));
+        CHECK(beforeEvents);
+        if (beforeEvents) {
+            struct Pause { std::promise<void> entered, resume; } pause;
+            beforeEvents([](void* data) {
+                auto& p = *static_cast<Pause*>(data);
+                p.entered.set_value();
+                p.resume.get_future().wait();
+            }, &pause);
+            const float nextWave = std::fmod(wave->getValue() * 2.0f + 1.0f, 3.0f) * 0.5f;
+            melodee_screen_input_t push {MELODEE_SCREEN_PUSH, 0, 0};
+            CHECK(sine->screenInput(push, used) && used); // changes Wave and requests a value rescan
+            level->setValue(0.25f);
+            auto blockDone = std::async(std::launch::async, [&] { run(*sine); });
+            pause.entered.get_future().wait();
+            sine->idle();
+            CHECK(level->getValue() == 0.25f);
+            pause.resume.set_value();
+            blockDone.get();
+            beforeEvents(nullptr, nullptr);
+            sine->idle();
+            CHECK(level->getValue() == 0.25f);
+            CHECK(wave->getValue() == nextWave); // the rescan still picks up the plug-in's other change
+        }
         sine->releaseResources();
     }
 

@@ -214,8 +214,7 @@ public:
     Parameter (ClapInstance& owner, const clap_param_info& info, double current)
         : owner (owner), id (info.id), cookie (info.cookie), flags (info.flags),
           minimum (info.min_value), maximum (info.max_value), initial (normalise (info.default_value)),
-          label (text (info.name)), module (moduleOf (info.module)), value ((float) normalise (current)),
-          wanted ((float) normalise (current)) {}
+          label (text (info.name)), module (moduleOf (info.module)), value (Value { (float) normalise (current), 0 }) {}
 
     // clap_param_info.module as a path, "/" between levels, without empty levels ("" none).
     static std::string moduleOf (const char* m)
@@ -238,18 +237,19 @@ public:
         return (flags & CLAP_PARAM_IS_STEPPED) != 0 ? std::round (v) : v;
     }
 
-    float getValue() const override
-    {
-        // A value of ours still to go is the value, even where a refresh has since stored the plug-in's older one.
-        return pending.load (std::memory_order_acquire) ? wanted.load (std::memory_order_relaxed)
-                                                         : value.load (std::memory_order_relaxed);
-    }
+    // Publish the value and its revision together. An odd revision is a host edit queued for the next block.
+    struct Value {
+        float normalised;
+        uint32_t revision;
+        bool queued() const { return (revision & 1u) != 0; }
+    };
+    static_assert (sizeof (Value) == 8 && std::atomic<Value>::is_always_lock_free);
+    float getValue() const override { return value.load (std::memory_order_relaxed).normalised; }
     void setValue (float v) override
     {
-        generation.fetch_add (1, std::memory_order_acq_rel); // first: a refresh reading the plug-in now stands down
-        wanted.store (v, std::memory_order_relaxed);
-        value.store (v, std::memory_order_relaxed);
-        pending.store (true, std::memory_order_release);
+        auto previous = value.load (std::memory_order_relaxed);
+        while (! value.compare_exchange_weak (previous, { v, (previous.revision + 2u) | 1u },
+                                               std::memory_order_release, std::memory_order_relaxed)) {}
         owner.anyPending.store (true, std::memory_order_release);
     }
     float getDefaultValue() const override { return (float) initial; }
@@ -294,10 +294,7 @@ public:
     const double minimum, maximum, initial;
     const String label;
     const std::string module;
-    std::atomic<float> value;  // the plug-in's last word (or ours, from setValue)
-    std::atomic<float> wanted; // ours alone: what the pending event sends, whatever a refresh stored meanwhile
-    std::atomic<uint32_t> generation { 0 }; // setValue's count: a refresh that began before one does not store
-    std::atomic<bool> pending { false };
+    std::atomic<Value> value;
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -444,15 +441,18 @@ void ClapInstance::refreshValues()
     if (params == nullptr) return;
     for (auto* p : parameters)
     {
-        const uint32_t generation = p->generation.load (std::memory_order_acquire);
-        if (p->pending.load (std::memory_order_acquire)) continue; // one of ours still to go: that is the value
+        auto previous = p->value.load (std::memory_order_acquire);
+        if (previous.queued()) continue;
+        // The audio thread can have taken an edit from the queue without its plug-in having consumed it yet.
+        if (applyingParams.load (std::memory_order_acquire)) {
+            host->rescan.store (true, std::memory_order_release);
+            return;
+        }
         double v = 0;
         if (! params->get_value (plugin, p->id, &v)) continue;
-        // A setValue that landed while the plug-in was being read wins: its generation moved (it is bumped
-        // before the value is stored), and the event it queues sends `wanted` in any case.
-        if (p->generation.load (std::memory_order_acquire) != generation
-            || p->pending.load (std::memory_order_acquire)) continue;
-        p->value.store ((float) p->normalise (v), std::memory_order_relaxed);
+        // Any edit or plug-in output since the read wins, including a move away and back to the same value.
+        p->value.compare_exchange_strong (previous, { (float) p->normalise (v), previous.revision + 2u },
+                                          std::memory_order_release, std::memory_order_relaxed);
     }
 }
 
@@ -615,8 +615,10 @@ bool ClapInstance::pushOut (const clap_output_events* list, const clap_event_hea
     if (it != self->byId.end() && it->first == v.param_id)
     {
         auto* p = self->parameters[(size_t) it->second];
-        if (! p->pending.load (std::memory_order_acquire))
-            p->value.store ((float) p->normalise (v.value), std::memory_order_relaxed);
+        auto previous = p->value.load (std::memory_order_acquire);
+        if (! previous.queued() && ! p->value.compare_exchange_strong (previous,
+                { (float) p->normalise (v.value), previous.revision + 2u }, std::memory_order_release, std::memory_order_relaxed))
+            self->host->rescan.store (true, std::memory_order_release);
     }
     return true;
 }
@@ -652,26 +654,31 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         t.tsig_num = (uint16_t) time.numerator;
         t.tsig_denom = (uint16_t) time.denominator;
     }
-    if (anyPending.exchange (false, std::memory_order_acq_rel))
+    const bool edits = anyPending.exchange (false, std::memory_order_acq_rel);
+    if (edits)
+    {
+        applyingParams.store (true, std::memory_order_release);
         for (auto* p : parameters)
-            if (p->pending.exchange (false, std::memory_order_acq_rel))
+        {
+            auto edit = p->value.load (std::memory_order_acquire);
+            if (! edit.queued()) continue;
+            if (auto* e = add())
             {
-                if (auto* e = add())
-                {
-                    auto& v = e->param;
-                    v = {};
-                    v.header = { sizeof (clap_event_param_value), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
-                    v.param_id = p->id;
-                    v.cookie = p->cookie;
-                    v.note_id = -1; v.port_index = -1; v.channel = -1; v.key = -1;
-                    v.value = p->plain (p->wanted.load (std::memory_order_relaxed));
-                }
-                else // no room this block: still to go in the next one, not lost
-                {
-                    p->pending.store (true, std::memory_order_release);
-                    anyPending.store (true, std::memory_order_release);
-                }
+                auto& v = e->param;
+                v = {};
+                v.header = { sizeof (clap_event_param_value), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+                v.param_id = p->id;
+                v.cookie = p->cookie;
+                v.note_id = -1; v.port_index = -1; v.channel = -1; v.key = -1;
+                v.value = p->plain (edit.normalised);
+                // If another edit arrived it keeps its place for the next block.
+                p->value.compare_exchange_strong (edit, { edit.normalised, edit.revision + 1u },
+                                                  std::memory_order_release, std::memory_order_relaxed);
             }
+            else // no room this block: still queued
+                anyPending.store (true, std::memory_order_release);
+        }
+    }
     if (notePort >= 0 && midiNotes && queuedAllOff != 0)
     {
         // All sound/notes off as MIDI that a full block left for these ones, before anything newer.
@@ -833,6 +840,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
     process.in_events = &in;
     process.out_events = &out;
     const auto status = plugin->process (plugin, &process);
+    if (edits) applyingParams.store (false, std::memory_order_release);
 
     const int mainOut = outCount > 0 ? (int) outputPorts[0].channels : 0;
     for (int c = 0; c < buffer.getNumChannels(); ++c)

@@ -25,6 +25,20 @@ FLAGS = ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", *["-I" + str(ROOT /
          "-isystem", str(ROOT / LV2_SDK / "lv2"), *DEFINES]  # the LV2 headers as JUCE ships them: their warnings are not ours
 
 
+def build_clap(path):
+    subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                    str(ROOT / "tests/clap_fixture.cpp"), "-o", str(path)], check=True)
+
+
+def build_lv2(bundle):
+    bundle.mkdir()
+    for name in ("manifest.ttl", "tone.ttl", "presets.ttl"):
+        shutil.copy(ROOT / "tests/lv2_fixture" / name, bundle / name)
+    # The LV2 atom macros, expanded in the fixture's own code, trigger -Wparentheses.
+    subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-Wno-parentheses", "-shared", "-fPIC",
+                    str(ROOT / "tests/lv2_fixture/tone.cpp"), "-o", str(bundle / "tone.so")], check=True)
+
+
 def compile_and_run(test, temp, plugin, host_source, extra_objects, expected):
     cxx = os.environ.get("CXX", "g++")
     host = Path(temp) / "host"
@@ -52,8 +66,7 @@ class PluginHostTests(unittest.TestCase):
     def test_clap_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.clap"
-            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
-                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            build_clap(plugin)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
 
     def test_user_preset_across_projects_and_sampler_shortcuts(self):
@@ -62,11 +75,24 @@ class PluginHostTests(unittest.TestCase):
             card = Path(temp) / "card"
             plugin = card / "Melodee/Plugins/Test.clap"
             plugin.parent.mkdir(parents=True)
-            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
-                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            build_clap(plugin)
             for mode in ("save", "load", "fxsave", "fxload"):
                 subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                                check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
+    def test_rack_level_behaviours(self):
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugins = card / "Melodee/Plugins"
+            plugins.mkdir(parents=True)
+            clap, lv2 = plugins / "Test.clap", plugins / "Tone.lv2"
+            build_clap(clap)
+            build_lv2(lv2)
+            for plugin, mode in ((clap, "failsave"), (clap, "mono"), (lv2, "lv2wake")):
+                with self.subTest(mode=mode):
+                    subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
+                                   check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -111,12 +137,7 @@ class PluginHostTests(unittest.TestCase):
     def test_lv2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             bundle = Path(temp) / "Tone.lv2"
-            bundle.mkdir()
-            for name in ("manifest.ttl", "tone.ttl", "presets.ttl"):
-                shutil.copy(ROOT / "tests/lv2_fixture" / name, bundle / name)
-            # -Wno-parentheses: LV2's atom macros, expanded in the fixture's own code.
-            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-Wno-parentheses", "-shared", "-fPIC",
-                            str(ROOT / "tests/lv2_fixture/tone.cpp"), "-o", str(bundle / "tone.so")], check=True)
+            build_lv2(bundle)
             compile_and_run(self, temp, bundle, "tests/lv2_host.cpp", [], "lv2 ok")
 
 

@@ -181,6 +181,7 @@ private:
     std::vector<Parameter*> parameters;              // owned by the AudioProcessor
     std::vector<std::pair<uint32_t, int>> byId;      // clap_id to index in `parameters`, sorted
     std::atomic<bool> anyPending { false };
+    std::atomic<bool> applyingParams { false }; // queued edits being delivered in the current audio block
     Parameter* bypass = nullptr;
 
     struct Event;                   // room for any event this host sends

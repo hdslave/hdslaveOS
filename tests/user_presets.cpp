@@ -22,7 +22,11 @@ int main(int argc, char** argv) {
     const std::string card = argv[1], plugin = argv[2], mode = argv[3];
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
-    const unsigned entry = fx ? 2 : saving ? 0 : 4;
+    // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
+    // a value set, and a mono plug-in heard through the rack (fixture env hooks in tests/clap_fixture.cpp).
+    bool failsave = mode == "failsave", lv2wake = mode == "lv2wake", mono = mode == "mono";
+    if (mono) setenv("MELODEE_TEST_MONO", "1", 1); // before the rack opens it: a mono main port
+    const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
     auto rack = std::make_unique<PluginRack>(*host);
@@ -50,6 +54,12 @@ int main(int argc, char** argv) {
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
+    }
+    if (mono) { // a held A from the pattern's first step, so the mono sine sounds once it plays
+        Step step;
+        step.notes[0] = {69, 100};
+        step.length = 16;
+        shell->patterns().at[0][0].set_step(0, step);
     }
     host->load(project, shell->patterns());
     host->set_audio_format(48000, 384);
@@ -97,10 +107,69 @@ int main(int argc, char** argv) {
         return values;
     };
     wait([&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding; });
+    // Rack slots follow each fixture's remote-controls page, which can differ from its parameter order.
+    auto set_control = [&](const char* name, int value) {
+        PluginPanel panel;
+        rack->panel(entry, 0, panel);
+        for (unsigned k = 0; k < panel.window.size(); ++k) {
+            const auto& control = panel.window[k];
+            if (control.used && std::strcmp(control.name, name) == 0) {
+                rack->set_param(entry, panel.window_first + k, value);
+                return;
+            }
+        }
+        throw std::runtime_error(std::string("missing fixture control: ") + name);
+    };
+    if (failsave) { // the rack keeps its good state when the plug-in's save fails (state_now), at rack level
+        CHECK(rack->instrument(entry) == 1);
+        set_control("Level", 750);
+        wait([&] { return state()[0] == 0.75; });
+        const uint32_t before = rack->preset_generation(entry);
+        CHECK(before != 0);
+        rack->reload(entry); // takes what it is now as the kept state, and reopens with it
+        wait([&] {
+            uint32_t gen = rack->preset_generation(entry);
+            return gen != 0 && gen != before && !rack->programs(entry).finding && state()[0] == 0.75;
+        });
+        auto good = rack->state(entry);
+        CHECK(good.size() == 4 + 3 * sizeof(double) && rack->states()[entry] == good);
+        set_control("Level", 250); // the live plug-in moves on; the kept state is the 0.75 one
+        wait([&] { return state()[0] == 0.25; });
+        setenv("MELODEE_TEST_FAIL_SAVES", "1", 1);
+        CHECK(rack->state(entry) == good); // a failed save gives the kept state, never an empty or part one
+        CHECK(rack->states()[entry] == good);
+        unsetenv("MELODEE_TEST_FAIL_SAVES");
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    if (lv2wake) { // a sleeping non-CLAP plug-in runs a block for a value the rack sets (note_change)
+        CHECK(rack->instrument(entry) == 1);
+        wait([&] { return rack->idling(entry); }); // silent, no key, stopped: it sleeps
+        set_control("Level", 250);
+        wait([&] { return !rack->idling(entry); }); // woken for the value, no note needed
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    if (mono) { // a mono output through the rack: heard on both channels (dual mono), not the left alone
+        CHECK(rack->instrument(entry) == 1);
+        host->send({Command::Type::Play});
+        int64_t peakL = 0, peakR = 0;
+        for (int n = 0; n < 600; ++n) {
+            tick();
+            for (unsigned f = 0; f < EngineHost::block; ++f) {
+                peakL = std::max(peakL, int64_t(std::llabs(int64_t(audio[2 * f]))));
+                peakR = std::max(peakR, int64_t(std::llabs(int64_t(audio[2 * f + 1]))));
+            }
+        }
+        CHECK(peakL > 1000000);                            // it sounded
+        CHECK(peakR > peakL * 9 / 10 && peakL > peakR * 9 / 10); // as much right as left
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     if (fx) { // an effect's user presets: saved and loaded by the rack as an instrument's are
         CHECK(rack->instrument(entry) == 0);
         if (saving) {
-            rack->set_param(entry, 0, 250); // Gain 0.5 of 0..2
+            set_control("Gain", 250); // Gain 0.5 of 0..2
             wait([&] { return state()[2] == 0.5; });
             // Save a first preset from the selected effect, before PRESETS has any rows.
             CHECK(rack->programs(entry).list.empty());
@@ -126,9 +195,8 @@ int main(int argc, char** argv) {
     }
     if (saving) {
         wait([&] { return rack->status(1) == PluginStatus::Ready && !rack->programs(1).finding; });
-        // Test Sine's CLAP remote-controls page puts Wave (id 9) at slot 0 and Level (id 7) at slot 1.
-        rack->set_param(entry, 1, 750);
-        rack->set_param(entry, 0, 1000);
+        set_control("Level", 750);
+        set_control("Wave", 1000);
         wait([&] { return state()[0] == 0.75 && state()[1] == 2; });
         chord();
         CHECK(ui.name.target == NameTarget::PluginPreset);
@@ -137,7 +205,7 @@ int main(int argc, char** argv) {
         chord();
         tap(SurfaceButton::TopRight);
         wait([&] { return has_patch(entry) && has_patch(1) && std::string(ref.preset) == "/user/My Patch"; });
-        rack->set_param(entry, 1, 250);
+        set_control("Level", 250);
         wait([&] { return state()[0] == 0.25; });
         chord();
         tap(SurfaceButton::TopRight);
