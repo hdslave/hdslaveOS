@@ -126,7 +126,8 @@ chain. This saves CPU. The pads still play the sound live.
    **Pre FX** prints the sound alone, and the chain runs live.
 5. **K2** (**TAIL**): **Loop** (the end wraps into the start), **Ring** (one
    pass and its tail) or **Cut** (one pass). Ring waits for repeats from built-in delays on pads and track inserts,
-   including tempo-synced Echo. It also follows the tail each plug-in reports at the selected tap. A kit's recorded pad sends can ring out even when its track insert is silent.
+   including tempo-synced Echo. When Echo feeds Spring, Ring waits through both delays so the reverb reaches the WAV.
+   It also follows the tail each plug-in reports at the selected tap. A kit's recorded pad sends can ring out even when its track insert is silent.
    Ring keeps 200 ms of trailing silence, up to ten seconds total after the pattern ends.
 6. Press **B3** (**FREEZE**).
 

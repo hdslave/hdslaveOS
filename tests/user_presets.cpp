@@ -7,6 +7,7 @@
 #include "melodee/shell/print_engine.h"
 #include "runtime/controller.h"
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <stdexcept>
@@ -16,11 +17,11 @@ using namespace melodee;
 namespace fs = std::filesystem;
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (false)
 
-// The last step feeds a fully wet quarter-note Echo. Adding an empty bar gives the same repeat
-// inside the pattern, so its saved WAV is an independent reference for the shorter Ring print.
+// The last step feeds a fully wet quarter-note Echo. Empty bars let the same note and its
+// effects decay inside the pattern, independently of the shorter print's Ring cutoff.
 static void native_ring_wav(const std::string& card, const std::string& plugin) {
     PrintEngine printer(nullptr);
-    auto print = [&](unsigned bars) {
+    auto print = [&](unsigned bars, bool spring) {
         PrintJob job;
         job.card_top = card;
         job.project_path = (fs::path(card) / (std::to_string(bars) + ".mldp")).string();
@@ -34,6 +35,7 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         track.plugin = 0;
         std::snprintf(job.project->plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
         track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 9, 0}};
+        if (spring) track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
         auto& pattern = job.bank->at[0][0];
         pattern.length = bars * 16 * sixteenth_ticks;
         Step step;
@@ -50,14 +52,18 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         CHECK(read_wav((fs::path(folder) / result.record.file).string(), wav).empty());
         return wav;
     };
-    const auto reference = print(2);
-    const auto ring = print(1);
-    const size_t repeat = size_t(2.375 * dsp::sample_rate()); // step 16 at 1.875 s, then one quarter at 120 BPM
-    CHECK(ring.frames > repeat && ring.frames < reference.frames);
-    CHECK(*std::max_element(ring.left.begin() + repeat, ring.left.end()) > 0.4f);
-    CHECK(std::equal(ring.left.begin(), ring.left.end(), reference.left.begin()));
-    CHECK(std::equal(ring.right.begin(), ring.right.end(), reference.right.begin()));
-    CHECK(std::all_of(reference.left.begin() + ring.frames, reference.left.end(), [](float v) { return v == 0; }));
+    for (bool spring : {false, true}) {
+        const auto reference = print(spring ? 4 : 2, spring);
+        const auto ring = print(1, spring);
+        const size_t repeat = size_t((2.375 + (spring ? 0.250 : 0.0)) * dsp::sample_rate());
+        CHECK(ring.frames > repeat && ring.frames < reference.frames);
+        CHECK(*std::max_element(ring.left.begin() + repeat, ring.left.end()) > 0.4f);
+        CHECK(std::equal(ring.left.begin(), ring.left.end(), reference.left.begin()));
+        CHECK(std::equal(ring.right.begin(), ring.right.end(), reference.right.begin()));
+        auto quiet = [spring](float v) { return spring ? std::fabs(v) < 0.000316f : v == 0; };
+        CHECK(std::all_of(reference.left.begin() + ring.frames, reference.left.end(), quiet));
+        CHECK(std::all_of(reference.right.begin() + ring.frames, reference.right.end(), quiet));
+    }
 }
 
 // A separate invocation starts a fresh project and a new plug-in instance.
