@@ -827,6 +827,10 @@ void Context::apply(const Binding& b, int value) {
         record_pad_motion(PadParam(unsigned(PadParam::SendA) + bus), pad().sends[bus]); // its lane on the pad
         break;
     }
+    case Kind::PadOut: // the pad into the kit, or into a submix (MPC 3's pad output)
+        pad().out = uint8_t(std::clamp(value, 0, int(sub_count)));
+        send_pad(ui.track, t.last_pad);
+        break;
     case Kind::PadCloud: { // the pad's cloud: on or off, or a value Motion records as a lane of the pad
         if (!b.id) { pad().cloud = value != 0; send_pad(ui.track, t.last_pad); break; }
         auto which = PadParam(int(PadParam::CloudPosition) + std::clamp(b.id, 1, 5) - 1);

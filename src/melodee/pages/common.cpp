@@ -247,6 +247,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PadSend: c.label = juce::String("SEND ") + char('A' + unsigned(b.id) % bus_count); c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadOut: c.label = "OUTPUT"; c.value = b.value ? "SUB " + juce::String(b.value) : juce::String("KIT"); break;
     case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
     case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
     case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;

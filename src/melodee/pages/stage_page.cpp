@@ -232,6 +232,11 @@ void sends_picture(Paint& p, const Snapshot& s) {
     juce::String title = pad_view ? pad_name(s, t.last_pad % sampler_pads, false) : name_case(juce::String(t.name));
     if (pad_view && title.isEmpty()) { char label[4]; pad_label(t.last_pad % sampler_pads, label); title = label; } // an empty pad: its place
     p.text(title, px, top + 4, 140, 20, p.fit(title, plain(colour::text, type::list, Weight::SemiBold), 140, type::floor));
+    if (pad_view && pad.used() && pad.out) { // sent to a submix (Shift + K2): its name in its colour
+        const auto& sub = s.project.subs[(pad.out - 1) % sub_count];
+        juce::String to = juce::String::fromUTF8("\xe2\x86\x92 ") + (sub.name[0] ? juce::String(sub.name) : "SUB " + juce::String(pad.out));
+        p.text(to, px, top + 21, 140, 14, p.fit(to, plain(sub_colour((pad.out - 1) % sub_count), type::body, Weight::Bold), 140, type::floor));
+    }
     float mx = px + 4, my = top + 36, mh = zone::picture_h - 44;
     p.fill(mx, my, 6, mh, colour::line, 3);
     float meter = s.meters[s.ui.track % track_count];

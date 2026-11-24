@@ -133,6 +133,7 @@ struct Binding {
         // The mixer's input (its B1 INPUT): Input Config's monitor (0 Off, 1 Auto, 2 On) and what takes record, 0 the
         // input dry, 1 after its strip (Project::input_wet).
         InputMonitor, InputWet,
+        PadOut, // Stage's SENDS on a kit, Shift + K2: the last pad's output (PadSound::out), 0 the kit, 1-8 a submix
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

@@ -633,9 +633,11 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
                 Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
     }
     case SK::Sends: { // a kit's only, since the mixer (step 6): K1 the last pad's own send, K2 the bus (A-D), K3 its return
-        if (shift_row || track.engine != EngineKind::Sampler) return {};
+        if (track.engine != EngineKind::Sampler) return {};
         unsigned bus = ui.sends_bus % bus_count;
         const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (shift_row) // Shift + K2: the last pad's output, the kit or a submix (MPC 3's pad output)
+            return {Binding {}, pad.used() ? Binding {Kind::PadOut, 0, 0, int(sub_count), int(pad.out)} : Binding {}, Binding {}};
         return {pad.used() ? Binding {Kind::PadSend, int(bus), 0, 100, pad.sends[bus]} : Binding {},
                 Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};

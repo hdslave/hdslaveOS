@@ -246,6 +246,25 @@ Loading an MPC drum program (`.xpm` or `.xty`) as a kit brings its pads'
 Send 1–4 as their sends to buses A–D, and the program's own Send 1–4 as
 the kit track's sends. Stock MPC Sample projects (`.xpj`) bring no sends.
 
+## Pad outputs
+
+On a kit, each pad can play into a submix instead of the kit, as on MPC 3.
+On the kit's Stage **SENDS** page, hit the pad, hold **SHIFT** and turn
+**K2** (**OUTPUT**): **KIT** (the default) or **SUB 1** to **SUB 8**. The
+page shows the submix under the pad's name, in the submix's colour.
+
+![A pad sent to submix 3](../images/screens/stagekitsends.png)
+
+- The pad goes to the submix after its own effects, volume and pan, at the
+  kit track's level, pan and mute, where its pad sends are taken. The kit
+  track's effects and strip are not on it.
+- Soloing the submix keeps the kit heard.
+- **STEMS** writes the pad in the submix's WAV, not the kit's. An **MPC 3**
+  export sends it to the same submix in MPC 3. A **LIVE SET** plays it in
+  the kit and says *mixer settings left out*.
+- A kit with pads sent to submixes cannot be frozen: set them to **KIT**
+  first.
+
 ## Effect chains
 
 Each track, submix and bus, and the master, has an effect chain. In the

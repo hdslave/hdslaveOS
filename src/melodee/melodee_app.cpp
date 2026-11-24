@@ -139,6 +139,7 @@ void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
     usb_full = shell.usb_full_volume();
     const bool direct = shell.usb_direct_on();
     host.set_usb_direct(direct);
+    host.set_usb_submixes(shell.usb_submixes_on());
     host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames),
                 usb_full ? usb_block.data() : nullptr);
     // Settings' USB-C in Direct: what a computer plays goes straight to the jacks, dry, while something here would

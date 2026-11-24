@@ -11128,7 +11128,7 @@ void pad_sends_stage() {
     auto cards = page_bindings(*project, ui, none, false);
     CHECK(cards[1].kind == K::SendBus && cards[0].kind == K::PadSend && cards[0].id == 0 && cards[0].value == 30 && cards[2].kind == K::BusReturn);
     auto shift = shift_bindings(*project, ui, none);
-    CHECK(!shift[0].bound() && !shift[1].bound() && !shift[2].bound());
+    CHECK(!shift[0].bound() && shift[1].kind == K::PadOut && shift[1].value == 0 && shift[1].max == int(sub_count) && !shift[2].bound()); // Shift + K2: OUTPUT
     ui.sends_bus = 1;
     CHECK(page_bindings(*project, ui, none, false)[0].value == 0 && page_bindings(*project, ui, none, false)[0].id == 1);
     kit.last_pad = 2;

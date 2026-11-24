@@ -2228,7 +2228,10 @@ while following.
   is heard sooner) and USB volume (Full, Knob: what a computer records over
   USB-C on channels 1 and 2, at full main volume with the knob left out, or
   following the knob as the jacks do; kept as `usb_volume=`, Full unless the
-  file says Knob); the header says what the device runs at now and, in
+  file says Knob) and USB out (Tracks, Submixes: channels 3 to 18 hold
+  tracks 1-16 mono, or submixes 1-8 as stereo pairs as they join the
+  master, `EngineHost::set_usb_submixes`; the gadget stays at 18 channels;
+  kept as `usb_out=`); the header says what the device runs at now and, in
   amber, its dropouts since start. **SAMPLING**: Recall grab (Last Phrase, First Sound, Whole 25 s), Recall
   gap (0.5, 1, 2, 4 s), Recall trim end (On, Off), Take auto end (Off,
   Synths & Resample, All Sources: a Free take ends on its own), Auto end
