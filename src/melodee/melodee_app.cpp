@@ -179,6 +179,14 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     while (remote_looper.pop(looper_ask)) shell.looper_ask(looper_ask, now_ms());
     melodee::Context::PrintAsk print_ask;
     while (remote_print.pop(print_ask)) shell.print(print_ask);
+    std::array<char, 40> stems_name {};
+    while (remote_stems.pop(stems_name)) { // the song's stems, named, as Song's export makes them
+        auto& context = shell.context();
+        const uint8_t kind = context.ui.export_kind;
+        context.ui.export_kind = melodee::export_kinds::stems;
+        context.mixdown(stems_name.data());
+        context.ui.export_kind = kind;
+    }
     Remote remote;
     while (presses.pop(remote)) {
         if (remote.kind == 1) { // the wheel
@@ -258,6 +266,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
         return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
+    }
+    if (action == "melodee-stems") { // melodee-stems NAME: the song's stems into Melodee/Stems/NAME (Song's export)
+        if (argument.empty()) return "ERR melodee-stems NAME";
+        std::array<char, 40> name {};
+        std::snprintf(name.data(), name.size(), "%s", argument.c_str());
+        return remote_stems.push(name) ? "OK melodee-stems " + argument : "ERR busy";
     }
     if (action == "melodee-unfreeze") { // freeze plan F2b: the track plays live again at once (its prints are kept)
         int track = std::atoi(argument.c_str());

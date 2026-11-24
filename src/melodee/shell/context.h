@@ -669,6 +669,15 @@ public:
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;
     uint32_t render_since = 0;
+    // Pad stems (shell/render.cpp): STEMS writes each kit pad the song plays apart too, in a folder of its kit's. The
+    // pads past what one pass of the song can write wait for later passes: `stem_pass` of `stem_passes` (0: no stems).
+    struct PadStem { uint8_t track = 0, pad = 0; std::array<char, 72> path {}; };
+    std::vector<PadStem> stem_pads;
+    unsigned stem_pads_taken = 0, stem_pass = 0, stem_passes = 0;
+    std::string stem_name;
+    void song_pad_stems();
+    unsigned stems_a_pass() const; // the stems one pass of the song writes, the mix counted
+    bool next_stem_pass(uint32_t now);
     // Song -> new pattern (parity phase 6, shell/song_export.cpp): the song's clips as one long pattern on every track, one undo.
     void song_to_pattern();
     void song_export_soft(int key);                       // the export sheet's B1 Cancel, B2 Audio mixdown, B3 New pattern

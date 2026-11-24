@@ -988,8 +988,17 @@ hold to steer, Shift + Seq to zoom in**.
   leaves for the master or its submix after its chain, strip, level, pan
   and mute, each bus a track sends into, after its chain at its return,
   and each submix a track plays into (its name, else `Submix N`), after
-  its chain, strip, level, pan and mute; all 32-bit float,
-  the same frames, in one real-time pass), a MIDI FILE
+  its chain, strip, level, pan and mute; and each kit pad the song's clips
+  hit (with the pads they link to; not a frozen kit's) as
+  `NN <kit> pads/A01 <sample>.wav`, taken from the pad's lane after its own
+  chain and pan, at the kit's level, pan and mute (StemRing pad rows,
+  engine/bounce.h), put late by the kit's chain and compensation, a silent
+  one removed; all 32-bit float, written by shell/stem_writer.h in 512 kB
+  chunks a file (up to 640 MB queued while the card catches up); past 48
+  stems a pass at 44.1 kHz (fewer at a higher rate) the rest of the pads
+  come in more passes of the song, its chance, S&H and the kits' random
+  picks reseeded at each; every file the same frames, each pass in real
+  time), a MIDI FILE
   (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
   song each track's pattern once; a kit's pads as notes 36 on, on channel
