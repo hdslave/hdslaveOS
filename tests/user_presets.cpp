@@ -274,7 +274,11 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const bool pattern_tempo = mode == "deep-freeze-empty-pattern-tempo";
     const bool empty_handoff = pattern_tempo || mode == "deep-freeze-empty-steady" || mode == "deep-freeze-empty-new-tempo";
     const bool change_tempo = mode == "deep-freeze-tempo" || mode == "deep-freeze-tempo-replace" || mode == "deep-freeze-empty-new-tempo";
-    const bool short_bar = change_tempo || empty_handoff;
+    const bool other_lead = mode.rfind("deep-freeze-lead-", 0) == 0;
+    const bool switched_off = mode == "deep-freeze-lead-off-stale" || mode == "deep-freeze-lead-off-compatible";
+    const bool stale_launch = mode == "deep-freeze-lead-playing-stale" || mode == "deep-freeze-lead-off-stale";
+    const bool reject = change_tempo || stale_launch || mode == "deep-freeze-lead-playing-clock-mismatch";
+    const bool short_bar = change_tempo || empty_handoff || other_lead;
     const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
     if (memory) {
@@ -289,10 +293,10 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     host->set_render_threads(0);
     auto rack = std::make_unique<PluginRack>(*host);
     rack->set_card(card);
-    PrintEngine printer(nullptr);
-    printer.set_pager(&host->streams());
+    auto printer = std::make_unique<PrintEngine>(nullptr);
+    printer->set_pager(&host->streams());
     auto shell = std::make_unique<Shell>(*host);
-    shell->set_printer(&printer);
+    shell->set_printer(printer.get());
     if (deep) shell->set_plugins(rack.get());
     auto& c = shell->context();
     c.project_path = (fs::path(card) / (mode + ".mldp")).string();
@@ -303,6 +307,12 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         c.project.seq_tempo = true;
         c.project.pattern_tempo[0] = 1260;
         c.project.pattern_tempo[1] = 1320;
+    }
+    if (other_lead) {
+        c.project.seq_tempo = true;
+        c.project.pattern_tempo[0] = stale_launch ? 1200 : 1260;
+        c.project.pattern_tempo[1] = 1200;
+        load_sound(c.project.tracks[1], EngineKind::Sampler, 0); // quiet track that can take the tempo lead
     }
     auto& track = c.project.tracks[0];
     load_sound(track, EngineKind::Plugin, 0);
@@ -338,9 +348,9 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         CHECK(sheet.printing);
         c.print_tick();
         auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-        while (printer.busy() && std::chrono::steady_clock::now() < until)
+        while (printer->busy() && std::chrono::steady_clock::now() < until)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        CHECK(!printer.busy());
+        CHECK(!printer->busy());
     };
     auto deliver = [&] { c.print_tick(); render(); };
     auto selected = [&](uint64_t mask) {
@@ -391,12 +401,17 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         deliver();
         selected(smaller); // 24 independent heads cannot fit even with reuse
         CHECK(std::string(shell->ui().notice).find("kept: cannot hold") != std::string::npos);
+        // Finish disposing of retired packs before driving the pager on this thread. The
+        // accelerated render can then test the lock limit independently of host scheduling.
+        shell->set_printer(nullptr);
+        printer.reset();
+        host->streams().stop();
         CHECK(host->send({Command::Type::Play}));
         bool sounded = false;
         // This fully wet Echo/Spring fixture first sounds several pattern passes later.
         for (unsigned i = 0; i < 8 * rate / block; ++i) {
+            while (host->streams().pump()) {}
             render();
-            if (i % 8 == 0) std::this_thread::sleep_for(std::chrono::microseconds(350));
             sounded |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
         }
         CHECK(host->printing_tracks() & 1);
@@ -422,7 +437,11 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         prepare(1, true);
         deliver();
         CHECK(!c.deep(0) && !(host->printing_tracks() & 1));
-        if (change_tempo) c.set_tempo(1260); // after the audio engine has queued the 120 BPM pack
+        if (change_tempo || stale_launch) c.set_tempo(1260); // after the audio engine has queued the 120 BPM pack
+        if (other_lead) {
+            if (switched_off) c.track_off(0);
+            c.launch(1, 1); // another track leads the handoff bar at 120 BPM
+        }
         constexpr unsigned empty = 2;
         if (empty_handoff) {
             CHECK(c.patterns.at[0][empty].empty());
@@ -430,13 +449,13 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         }
 
         const uint32_t begin = c.now;
-        bool audible = false, switched = false, saw_empty = false;
+        bool audible = false, switched = false, saw_empty = false, saw_other_lead = false;
         unsigned windows = 0;
         const unsigned seconds = short_bar ? 12 : 27;
         for (unsigned i = 0; i < seconds * rate / block; ++i) {
             const unsigned frames = i * block;
             c.now = begin + uint32_t(uint64_t(frames) * 1000 / rate);
-            if (empty_handoff && frames == 4 * rate) c.launch(0, 0);
+            if ((empty_handoff || other_lead) && frames == 4 * rate) c.launch(0, 0);
             if (i % 8 == 0) {
                 c.plugins_tick(c.now);
                 c.print_tick();
@@ -445,18 +464,24 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
             render();
             switched |= (host->printing_tracks() & 1) != 0;
             saw_empty |= host->pattern_of(0) == empty;
-            if (!empty_handoff && !switched) CHECK(!(c.plugins_asleep() & 1) && !rack->asleep(0));
+            if (other_lead && frames < 4 * rate && host->pattern_of(1) == 1 && host->tempo_now() == 1200)
+                saw_other_lead |= bool(host->stopped_tracks() & 1) == switched_off;
+            if (!empty_handoff && !switched_off && !switched) CHECK(!(c.plugins_asleep() & 1) && !rack->asleep(0));
             audible |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
             const unsigned elapsed = (frames + block) / rate;
             if (elapsed != windows) {
-                // The empty pattern is intentionally silent. Check complete seconds after the filled pattern returns.
-                if (!empty_handoff || elapsed > 6) CHECK(audible);
+                // For an empty or switched-off handoff, check complete seconds after the filled pattern returns.
+                if ((!empty_handoff && !switched_off) || elapsed > 6) CHECK(audible);
                 audible = false;
                 windows = elapsed;
             }
         }
         if (empty_handoff) CHECK(saw_empty && host->pattern_of(0) == 0 && !c.freeze_pending(0));
-        if (change_tempo) {
+        if (other_lead) {
+            CHECK(saw_other_lead && host->pattern_of(0) == 0 && host->tempo_now() == 1260);
+            CHECK(!(host->stopped_tracks() & 1) && !c.freeze_pending(0));
+        }
+        if (reject) {
             CHECK(!switched && !c.deep(0) && !rack->asleep(0));
             CHECK(host->active_freeze_serial(0) == previous);
             CHECK(c.frozen(0) == prior_freeze && bool(host->frozen_tracks() & 1) == prior_freeze);

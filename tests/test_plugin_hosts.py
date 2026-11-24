@@ -134,6 +134,12 @@ class PluginHostTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_freeze_transition(mode)
 
+    def test_deep_freeze_remains_audible_when_another_track_leads_the_handoff(self):
+        for mode in ("deep-freeze-lead-playing-stale", "deep-freeze-lead-off-stale",
+                     "deep-freeze-lead-playing-clock-mismatch", "deep-freeze-lead-off-compatible"):
+            with self.subTest(mode=mode):
+                self.run_freeze_transition(mode)
+
     def test_recording_cannot_change_a_pending_freeze_snapshot(self):
         self.run_freeze_transition("freeze-recording")
 
