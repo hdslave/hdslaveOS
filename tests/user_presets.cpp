@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
     shell->set_plugins(rack.get());
     std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
     if (fx) {
+        load_sound(tr, EngineKind::Sampler, 0);
         ref.id = clap_id_hash("org.melodee.test.gain");
         auto& slot = project.chain(master_chain).slots[0]; // the master's chain: mixed (so run) even in silence
         slot.kind = plugin_effect_kind;
@@ -101,10 +102,19 @@ int main(int argc, char** argv) {
         if (saving) {
             rack->set_param(entry, 0, 250); // Gain 0.5 of 0..2
             wait([&] { return state()[2] == 0.5; });
-            uint32_t generation = rack->preset_generation(entry);
-            CHECK(generation != 0);
-            rack->save_user_preset(entry, generation, "My Patch");
+            // Save a first preset from the selected effect, before PRESETS has any rows.
+            CHECK(rack->programs(entry).list.empty());
+            c.open(PageId::Master);
+            chord();
+            CHECK(ui.name.target == NameTarget::PluginPreset);
+            tap(SurfaceButton::TopRight);
             wait([&] { return has_patch(entry); });
+            // With a sampler track selected, the shortcut inside PRESETS must still name this effect.
+            c.open_plugin_presets(entry);
+            CHECK(ui.page == PageId::PluginPresets);
+            chord();
+            CHECK(ui.name.target == NameTarget::PluginPreset);
+            tap(SurfaceButton::TopLeft);
         } else {
             CHECK(has_patch(entry));
             CHECK(state()[2] == 1.0);

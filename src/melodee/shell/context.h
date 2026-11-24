@@ -358,7 +358,7 @@ public:
     void set_plugin_param(int32_t id, int value);
     unsigned name_preset_entry = no_plugin;
     uint32_t name_preset_generation = 0;
-    void name_plugin_preset();
+    void name_plugin_preset(unsigned entry);
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)

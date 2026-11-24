@@ -476,8 +476,9 @@ void Shell::press(Button b, bool pressed) {
         if (ui.shift) { // by engine: on Sounds a star; on Samples Save Bank; a kit: Save Sample; a synth: Save sound
             if (ui.page == PageId::Sounds) context_.toggle_favourite();
             else if (ui.page == PageId::Samples && context_.track().engine == EngineKind::Sampler) context_.save_bank();
+            else if (int entry = context_.plugin_in_focus(); entry >= 0) context_.name_plugin_preset(unsigned(entry));
             else if (context_.track().engine == EngineKind::Sampler) context_.save_sample();
-            else if (context_.track().engine == EngineKind::Plugin || ui.page == PageId::PluginPresets) context_.name_plugin_preset();
+            else if (context_.track().engine == EngineKind::Plugin) context_.name_plugin_preset(context_.track().plugin);
             else context_.save_sound();
             break;
         }
