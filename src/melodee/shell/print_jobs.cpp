@@ -48,6 +48,7 @@ bool Context::freeze(const PrintAsk& ask) {
     if (!printer) return false;
     const unsigned t = ask.track % track_count;
     const auto& tr = project.tracks[t];
+    if (clock_thawing & (1u << t)) { notice("Thawing track " + std::to_string(t + 1)); return false; }
     if (project_path.empty()) { printer->note("save the project first: its prints go beside its file"); return false; }
     if (!tr.used() || tr.engine == EngineKind::Midi) { printer->note("track " + std::to_string(t + 1) + " has no sound to freeze"); return false; }
     if (tr.engine == EngineKind::Sampler) // a print holds the kit, not pads sent to submixes
@@ -76,6 +77,8 @@ void Context::request_freeze(unsigned t, const TrackFreeze& selection) {
     freeze_waiting |= bit;
     unfreeze_waiting &= ~bit;
     thawing &= ~bit;
+    clock_thawing &= ~bit;
+    clock_live_waiting &= ~bit;
 }
 
 void Context::finish_freeze_sheet(unsigned t) {
@@ -161,7 +164,9 @@ void Context::unfreeze(unsigned track) {
     const unsigned t = track % track_count;
     const uint32_t bit = 1u << t;
     const std::string name = "Track " + std::to_string(t + 1);
+    if (clock_live_waiting & bit) return; // the ready plug-ins are already waiting for their first live pass
     cancel_freeze_request(t);
+    clock_thawing &= ~bit;
     // A sleeping plug-in reloads beside its prints and goes live once ready (thaw_tick).
     if (deep(t) && !(deep_hold & bit)) {
         if (!(thawing & bit)) { thawing |= bit; thaw_since[t] = now ? now : 1; thaw_ready[t] = 0; }
@@ -175,19 +180,24 @@ void Context::unfreeze(unsigned track) {
 }
 
 bool Context::go_live(unsigned t) {
-    bool was = frozen(t);
-    if ((was || freeze_submitted_serial[t]) && !host.send({Command::Type::Freeze, uint8_t(t)})) return false;
+    if ((frozen(t) || freeze_submitted_serial[t]) && !host.send({Command::Type::Freeze, uint8_t(t)})) return false;
+    finish_unfreeze(t);
+    return true;
+}
+
+void Context::finish_unfreeze(unsigned t) {
     clear_submitted_freeze(t);
     const uint32_t bit = 1u << t;
     deep_hold &= ~bit;
     thawing &= ~bit;
+    clock_thawing &= ~bit;
+    clock_live_waiting &= ~bit;
     freeze_restoring &= ~bit;
     unfreeze_waiting &= ~bit;
     deep_serial[t] = deep_active_at[t] = 0;
+    dirty |= frozen(t);
     prints.freeze[t] = {};
     print_peaks[t].clear();
-    if (was) dirty = true;
-    return true;
 }
 
 void Context::print_tick() {
@@ -215,6 +225,14 @@ void Context::print_tick() {
         if (freeze_submitted_serial[t] && freeze_submitted_serial[t] == host.active_freeze_serial(t)) confirm_freeze(t);
         if (((unfreeze_waiting >> t) & 1) && go_live(t))
             notice("Track " + std::to_string(t + 1) + " live");
+        const uint32_t bit = 1u << t;
+        const uint32_t clock = host.freeze_clock_changed(t);
+        if (clock && clock != clock_thaw_seen[t] && clock == host.active_freeze_serial(t) &&
+            deep(t) && !freeze_pending(t) && !((thawing | unfreeze_waiting) & bit)) {
+            clock_thaw_seen[t] = clock;
+            unfreeze(t);
+            clock_thawing |= thawing & bit;
+        }
     }
     bool delivery_blocked = false;
     FreezeReady ready;
@@ -302,12 +320,21 @@ void Context::print_tick() {
 // Freeze plan F2d: each thawing track goes live once every plug-in it uses (its own and its chain's) has been open
 // for 1.5 s (the audio thread has taken it, and work a plug-in does in the background after loading its state, such
 // as TONE3000 preparing its models, is done before it plays: done while it played, it cost xruns on the MPC); one
-// that fails to open, or 30 s without, goes live anyway and says so.
+// that fails to open, or 30 s without, an automatic clock thaw keeps the print. An explicit unfreeze goes live.
 void Context::thaw_tick() {
     for (unsigned t = 0; t < track_count; ++t) {
         const uint32_t bit = 1u << t;
         if (!(thawing & bit)) continue;
-        if (!deep(t)) { thawing &= ~bit; continue; }
+        const std::string name = "Track " + std::to_string(t + 1);
+        if (clock_live_waiting & bit) {
+            if (!host.active_freeze_serial(t)) {
+                finish_unfreeze(t);
+                thaw_took = now - thaw_since[t];
+                notice(name + " live");
+            }
+            continue;
+        }
+        if (!deep(t)) { thawing &= ~bit; clock_thawing &= ~bit; continue; }
         bool ready = true, failed = false;
         if (plugins) {
             auto check = [&](unsigned entry) {
@@ -320,15 +347,22 @@ void Context::thaw_tick() {
             if (tr.engine == EngineKind::Plugin) check(tr.plugin);
             for (const auto& slot : tr.fx.slots) if (slot.kind == plugin_effect_kind) check(unsigned(slot.params[0]));
         }
-        const std::string name = "Track " + std::to_string(t + 1);
         if (failed || now - thaw_since[t] > 30000) {
+            if (clock_thawing & bit) {
+                thawing &= ~bit;
+                clock_thawing &= ~bit;
+                notice(name + " kept: plug-in offline");
+                continue;
+            }
             if (go_live(t)) notice(name + " live: a plug-in did not open");
             continue;
         }
         if (!ready) { thaw_ready[t] = 0; continue; }
         if (!thaw_ready[t]) { thaw_ready[t] = now ? now : 1; continue; }
         if (now - thaw_ready[t] < 1500) continue;
-        if (go_live(t)) {
+        if (clock_thawing & bit) {
+            if (host.send({Command::Type::Freeze, uint8_t(t), 0, 0, 1})) clock_live_waiting |= bit;
+        } else if (go_live(t)) {
             thaw_took = now - thaw_since[t];
             notice(name + " live");
         }

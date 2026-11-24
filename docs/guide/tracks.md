@@ -131,6 +131,11 @@ At the switch, every print must fit its pattern's launch tempo, including when
 an empty pattern is selected. A print that starts playing at the switch must
 also fit the tempo leading at that moment. If a print is incompatible, the
 request is declined and the track keeps its previous playback state.
+If a later tempo change makes the active print incompatible, its original
+audio keeps playing at the recorded speed while the track reloads its plug-ins.
+Once they're ready, the track plays live from its next pattern pass at the new
+tempo. If a plug-in fails to open, the print keeps playing and a notice explains
+what happened.
 
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 

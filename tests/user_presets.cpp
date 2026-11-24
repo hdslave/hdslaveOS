@@ -278,7 +278,10 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const bool switched_off = mode == "deep-freeze-lead-off-stale" || mode == "deep-freeze-lead-off-compatible";
     const bool stale_launch = mode == "deep-freeze-lead-playing-stale" || mode == "deep-freeze-lead-off-stale";
     const bool reject = change_tempo || stale_launch || mode == "deep-freeze-lead-playing-clock-mismatch";
-    const bool short_bar = change_tempo || empty_handoff || other_lead;
+    const bool active_lead = mode == "deep-freeze-active-lead";
+    const bool reload_fails = mode == "deep-freeze-active-reload-fails";
+    const bool active_clock = active_lead || reload_fails || mode == "deep-freeze-active-tempo";
+    const bool short_bar = change_tempo || empty_handoff || other_lead || active_clock;
     const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
     if (memory) {
@@ -314,6 +317,12 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         c.project.pattern_tempo[1] = 1200;
         load_sound(c.project.tracks[1], EngineKind::Sampler, 0); // quiet track that can take the tempo lead
     }
+    if (active_lead) {
+        c.project.seq_tempo = true;
+        c.project.pattern_tempo[0] = 1200;
+        c.project.pattern_tempo[1] = 1140;
+        load_sound(c.project.tracks[1], EngineKind::Sampler, 0);
+    }
     auto& track = c.project.tracks[0];
     load_sound(track, EngineKind::Plugin, 0);
     track.plugin = 0;
@@ -343,7 +352,7 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         c.open_print_sheet();
         auto& sheet = shell->ui().print_sheet;
         sheet.picks[0] = picks;
-        sheet.tail = memory ? PrintTail::Ring : PrintTail::Loop;
+        sheet.tail = memory || active_lead ? PrintTail::Ring : PrintTail::Loop;
         c.print_sheet_go(unload);
         CHECK(sheet.printing);
         c.print_tick();
@@ -489,6 +498,50 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
             CHECK(std::string(shell->ui().notice).find("clock changed") != std::string::npos);
         } else {
             CHECK(switched && c.deep(0) && (c.plugins_asleep() & 1) && rack->asleep(0));
+        }
+        if (active_clock) {
+            CHECK(rack->status(0) == PluginStatus::None && (host->printing_tracks() & 1));
+            if (reload_fails) fs::rename(plugin, plugin + ".unavailable");
+            const unsigned target = active_lead ? 1140 : 1260;
+            if (active_lead) c.launch(1, 1);
+            else c.set_tempo(int(target));
+
+            const uint32_t since = c.now;
+            bool saw_thaw = false, saw_live = false;
+            for (unsigned sec = 0; sec < 12; ++sec) {
+                bool sounded = false;
+                for (unsigned i = 0; i < rate / block; ++i) {
+                    c.now = since + 1000 * sec + uint32_t(uint64_t(i) * block * 1000 / rate);
+                    if (i % 8 == 0) {
+                        // Leave the rack asleep for three seconds to exercise the print on its own at the new clock.
+                        if (sec >= 3) c.plugins_tick(c.now);
+                        c.print_tick();
+                        saw_thaw |= (c.thawing & 1) != 0;
+                        std::this_thread::sleep_for(std::chrono::microseconds(350));
+                    }
+                    render();
+                    sounded |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
+                    if (!saw_live && !(host->frozen_tracks() & 1)) {
+                        CHECK(!reload_fails && rack->status(0) == PluginStatus::Ready);
+                        CHECK(host->position_of(0) >= 0 && host->position_of(0) <= 2); // the live pattern starts on its own boundary
+                        saw_live = true;
+                    }
+                }
+                CHECK(sounded);
+                if (sec == 2) {
+                    CHECK(host->tempo_now() == target && saw_thaw && c.deep(0) && rack->asleep(0));
+                    CHECK(host->printing_tracks() & 1);
+                }
+            }
+            CHECK(saw_thaw && host->tempo_now() == target);
+            CHECK(!(c.thawing & 1));
+            if (reload_fails) {
+                CHECK(!saw_live && c.deep(0) && (host->printing_tracks() & 1));
+                CHECK(std::string(shell->ui().notice) == "Track 1 kept: plug-in offline");
+            } else {
+                CHECK(saw_live && !c.frozen(0) && !rack->asleep(0));
+                CHECK(!(host->printing_tracks() & 1));
+            }
         }
         CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
     } else {

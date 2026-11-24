@@ -481,14 +481,16 @@ public:
     // `thawing` tracks reload their plug-ins with the state they were let go with, the prints playing meanwhile, and go
     // live once every one is open (thaw_tick()). plugins_asleep(): the tracks whose plug-ins are let go now.
     bool deep(unsigned track) const { return prints.freeze[track % track_count].state == FreezeState::Deep; }
-    uint32_t deep_hold = 0, thawing = 0;
+    uint32_t deep_hold = 0, thawing = 0, clock_thawing = 0, clock_live_waiting = 0;
     std::array<uint32_t, track_count> deep_serial {}, deep_active_at {}, thaw_since {}, thaw_ready {};
+    std::array<uint32_t, track_count> clock_thaw_seen {}; // one automatic reload attempt per accepted print
     uint32_t thaw_took = 0; // ms, the last thaw's
     // For `melodee-freeze status` (any thread): the deep-frozen tracks, the thawing ones, the last thaw's ms.
     std::atomic<uint32_t> deep_now {0}, thawing_now {0}, thaw_took_now {0};
     uint32_t plugins_asleep() const;
     void thaw_tick();
     bool go_live(unsigned track); // false if the audio queue is full, leaving the accepted freeze in place
+    void finish_unfreeze(unsigned track);
     // Freeze plan F2c (shell/print_sheet.cpp). The PRINT sheet: opened by Sample Record on a PLUGIN or MIDI track (B3
     // PRINT on a kit's Record), its pads the patterns of the bank in view (a tap lights or leaves one out, B2 ALL), B3
     // FREEZE prints and freezes them, B1 CANCEL closes it or calls the prints off with nothing changed.

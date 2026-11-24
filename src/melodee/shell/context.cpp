@@ -150,9 +150,10 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     freeze_requested = {};
     for (unsigned t = 0; t < track_count; ++t) clear_submitted_freeze(t);
     freeze_waiting = freeze_restoring = unfreeze_waiting = 0;
-    deep_hold = thawing = 0; // saved deep freezes keep their plug-ins asleep while their prints are checked
+    deep_hold = thawing = clock_thawing = clock_live_waiting = 0; // saved deep freezes stay asleep while checked
     deep_serial.fill(0);
     deep_active_at.fill(0);
+    clock_thaw_seen.fill(0);
     for (unsigned t = 0; t < track_count; ++t) {
         if (!frozen(t)) continue;
         freeze_restoring |= 1u << t;

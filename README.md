@@ -132,6 +132,8 @@ page and control, read the [user guide](docs/GUIDE.md).
   across successive passes of a frozen pattern. Changing the selection keeps the previous freeze
   playable if the new selection exceeds the memory available. Deep Freeze preserves
   playback if a new print is incompatible with the handoff or relaunch tempo.
+  A later tempo change automatically reloads the plug-ins while the original
+  print plays, then returns the track to live playback on its next pattern pass.
 - **Sync**: MIDI clock and MTC in and out, and CV clock out.
 - **The Menu**: hold the encoder on any page for the page's jobs with their
   shortcuts, and the 16 places laid out as the pads. Four short **lessons**
@@ -229,10 +231,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.8.1-hdslave.1 ./build.sh
+MELODEE_VERSION=v0.8.1-hdslave.2 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.8.1-hdslave.1
+python3 tools/package_unsigned.py v0.8.1-hdslave.2
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.
