@@ -96,6 +96,18 @@ and falling 36 dB a second (`shell/spectrum_view.h`). The EQ block draws them
 behind the curve, -72 dB at its floor. MPC: draw 4.4 ms on SENDS, 4.9 ms on
 EQ; no xruns, render load as before. Not yet seen on the MPC with sound.
 
+Melodee step 6: f8cc0d6. Tracks and Sends are gone (`PageId::Tracks` and
+`Sends` stay in the enum, so saved numbers hold, and open the mixer). Stage
+passes over MIX on every track and SENDS on all but a kit (the skip mask in
+`shell/features.h`; core's Stage groups, shared with Move, are unchanged);
+a kit's SENDS keeps the pads' own sends without Shift + K1 KIT SEND. Track
+speed moved to Patterns, Shift + K3 (Kerem's pick; the click level stays on
+Tempo). CPU and the selected track's share are on the Menu's header (CPU in
+place of the GO pill). The Menu's SENDS tile is free; NAME TRACK is the
+mixer's Shift + Push. The lesson "Mix a track" goes mixer, K1, pad 2, Shift
++ Knob FX, B1, Sample. Lost with Tracks: the snow on a frozen track in the
+row of tracks (the mixer's strips do not show it yet).
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -345,7 +357,7 @@ and the Compressor. Meters are one peak a track; buses have none.
    the Compressor page's.
 5. **EQ picture.** Built (core 297dab1, adfb2d0). The engine hands out the selected channel's sound in a
    ring; the screen thread makes the spectrum.
-6. **Take out the old.** Tracks and Sends pages and their previews, Stage's
+6. **Take out the old.** Built (f8cc0d6). Tracks and Sends pages and their previews, Stage's
    MIX page and its SENDS page on every track but a kit (`stage_page.cpp`,
    `bindings.cpp` 550-566), the mixer
    row, the Menu tiles, the pad chip and lights of Tracks, the page-stack
