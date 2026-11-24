@@ -145,6 +145,15 @@ void Context::mixdown(const std::string& name) {
             mask |= 1u << (track_count + b);
             std::snprintf(job.stem_names[track_count + b].data(), 24, "Bus %c", char('A' + b));
         }
+        for (unsigned n = 0; n < sub_count; ++n) { // the mixer: a submix a used track plays into
+            bool fed = false;
+            for (const auto& tr : project.tracks) fed |= tr.used() && tr.mix.out == out_sub(n);
+            if (!fed) continue;
+            const unsigned stem = track_count + bus_count + n;
+            mask |= 1u << stem;
+            const auto& sub = project.subs[n];
+            std::snprintf(job.stem_names[stem].data(), 24, "%s", sub.name[0] ? sub.name : ("Submix " + std::to_string(n + 1)).c_str());
+        }
         StemRing* ring = library->stem_ring();
         ring->arm(mask);
         host.set_stems(ring);

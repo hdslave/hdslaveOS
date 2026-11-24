@@ -39,6 +39,10 @@ Core step 6 (Motion) built: core d3e0218. A pattern's lanes move a track's
 strip; nothing in Melodee records or shows them yet (Melodee step 3: SEQ
 RECORD, and the Motion page's names and cards).
 
+Core step 7 (freeze, export) in part: core a1e01dd. Prints and stems are done.
+The exports carry no mixer settings yet and say so. MPC 3 routing waits for one
+MPC 3 save with a track sent to a submix (below).
+
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
 the boards, `render/render.py` draws a board to a PNG.
@@ -241,9 +245,26 @@ and the Compressor. Meters are one peak a track; buses have none.
      pad's values.
    - `ChannelStrip::set()` works out the speeds again only when the speed
      changes, so a value Motion sets often costs no sines or powers.
-7. **Freeze, export.** A print with the strip in or out, following decision 1.
-   Stems (`StemRing::stem_count`), bounce. MPC export: submixes and outputs
-   map to the MPC's own submixes.
+7. **Freeze, export.** In part (core a1e01dd).
+   - Prints: never with the strip (decision 1, done in step 3): a frozen track
+     keeps its strip, level and pan live.
+   - Stems: 28 (`StemRing::stem_count`). Tracks 0-15 as they leave for the
+     master or their submix, buses 16-19, submixes 20-27 as they join the
+     master. Melodee's mixdown with stems adds a submix a used track plays
+     into, named after it (else "Submix N"). A routed track's stem and its
+     submix's both hold it: each is that point of the mix. The bounce is the
+     master and needs nothing.
+   - Exports (MPC 3, Live) carry no strip, submix or bus mute yet. They count
+     what they leave out (`mixer_left_out()`, `report.mixer`), and Melodee's
+     export notice adds "mixer settings left out".
+   - Open: MPC 3's own submixes. MPC 3 routes a channel with
+     `mixable.audioRoute` {destination, audioRouteSubIndex}. Every file here
+     (Mac, MPC, card) holds only destinations 0-2 with index 0, so the number
+     for "Submix n" is not known. Needs one MPC 3 save with a track's output
+     set to Submix 1. Then: a track's output to its submix, the eight
+     submixes' level, pan, mute and names, and bus mutes.
+   - Open: Live (group tracks), and the strips in either export (MPC 3 and
+     Live inserts), both later.
 8. **melodee-move.** Its mixer (`src/app/screens/mixer.cpp`) reads `Mix`. It
    must build and behave as before after each core step.
 
