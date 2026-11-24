@@ -116,7 +116,6 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
     FaderJob job;
     auto page = [&](Binding b) { job.source = FaderJob::Source::Page; job.binding = b; };
     switch (ui.page) {
-    case PageId::Tracks: page({Kind::Level, 0, 0, 127, track.mix.level}); return job;
     case PageId::Mixer: { // the mixer: always the level of the channel in hand (shell/mixer_channels.h)
         const unsigned n = mixer_strip(ui);
         switch (channel_kind(n)) {
@@ -128,7 +127,6 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
         }
         return job;
     }
-    case PageId::Sends: page({Kind::Send, int(ui.sends_bus % bus_count), 0, 100, track.mix.sends[ui.sends_bus % bus_count]}); return job;
     case PageId::Compressor: page({Kind::CompAmount, 0, 0, 100, project.compressor.amount}); return job;
     case PageId::FlexBeat: page({Kind::FlexMix, 0, 0, 100, project.flex.mix}); return job;
     case PageId::KnobFx: // Knob FX C: A to B (no effect loaded: the track's target)

@@ -302,7 +302,6 @@ Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {
 bool sends_lit(const PadScene& s) {
     const auto& t = selected(s);
     if (t.engine != EngineKind::Sampler || levels_on(t)) return false;
-    if (mix_sends_pads(s.ui, true)) return true; // the MIX hub's SENDS, on the kit's pads
     return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, stage_skip(s.project, s.ui, t)).kind == StageKind::Sends;
 }
 Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
@@ -856,7 +855,6 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         case PadContext::Page:
             switch (ui.page) {
             case PageId::Looper: look = loop_look(s, pad, false); break;
-            case PageId::Tracks: look = tracks_look(s, pad); break;
             case PageId::Mixer: look = mixer_look(s, pad, false); break;
             case PageId::Song: look = song_look(s, pad); break;
             case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5

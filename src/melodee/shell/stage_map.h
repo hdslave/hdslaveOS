@@ -61,7 +61,10 @@ inline StageAt stage_at(const UiState& ui, const Track& t, StageSkip instrument)
     unsigned track = ui.track % track_count, group = ui.stage_group[track] % 3;
     if (!stage_has(g, group) || stage_opens_edit(t, group)) group = 0; // left on a button with no Stage pages under it
     unsigned sub = ui.stage_sub[track] % stage_count(g, group);
-    if (stage_skips(g, group, sub, instrument)) sub = 0; // left on LAYERS: an instrument pad shows ZONES, a sample pad LAYERS again (or on a page Basic leaves out)
+    if (stage_skips(g, group, sub, instrument)) { // left on LAYERS: an instrument pad shows ZONES, a sample pad LAYERS again (or on a page Basic leaves out)
+        sub = 0; // the first page shown (MIX, first on B3, is passed over since the mixer)
+        while (sub + 1 < stage_count(g, group) && stage_skips(g, group, sub, instrument)) ++sub;
+    }
     return {group, sub};
 }
 

@@ -79,7 +79,7 @@ struct Binding {
         // Generators (roadmap P1): Steps' EUCLID row on a kit (the last pad's lane: hits, steps, rotation) and the VARY
         // sheet's amount (percent).
         EuclidHits, EuclidSteps, EuclidRotate, VaryAmount,
-        TrackSpeed, // Tracks, Shift + K1: the strip in hand's playback speed (roadmap P1), id the track, an index of speeds
+        TrackSpeed, // Patterns, Shift + K3: the track's playback speed (roadmap P1), id the track, an index of speeds
         LoopSource, // the Looper's loop sheet, K1: the loop's source, an index into loop_sources() (shell/loop_sheet.h), id the loop
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).

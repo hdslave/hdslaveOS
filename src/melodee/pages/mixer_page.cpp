@@ -426,7 +426,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
         return;
     }
     c.select_track(pad % track_count);
-    if (c.ui.erase) ask_clear_track(c); // Erase + pad: that track cleared, once B3 says so (as on Tracks)
+    if (c.ui.erase) ask_clear_track(c); // Erase + pad: that track cleared, once B3 says so
     else offer_new_track(c);      // an empty one: its doors, then back here
 }
 
@@ -444,6 +444,7 @@ void push(Context& c) {
     const unsigned n = mixer_strip(c.ui);
     const auto kind = channel_kind(n);
     if (kind == ChannelKind::Track && !c.track().used()) { offer_new_track(c); return; }
+    if (c.ui.shift && kind == ChannelKind::Track) { c.ui.shift_used = true; c.name_track(c.ui.track); return; } // Shift + Push: its name
     const unsigned block = mixer_block_of(c.ui, kind);
     if (block == block_sends || block == block_input) return;
     if (block == block_comp && kind == ChannelKind::Master) { c.set_compressor(0, !c.project.compressor.on); return; } // the printed Compressor on or off

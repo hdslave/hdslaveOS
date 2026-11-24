@@ -12,7 +12,7 @@
 // own keys. Pure, for the pages, the shell and the tests.
 namespace melodee {
 
-enum class MixSection : uint8_t { Tracks, Sends, Fx, None };
+enum class MixSection : uint8_t { Tracks, Fx, None }; // Tracks: the mixer
 
 // The FX cycle on a track (a kit has its pads' chain too), and how many.
 inline unsigned mix_fx_pages(bool kit, std::array<PageId, 4>& out) {
@@ -22,8 +22,7 @@ inline unsigned mix_fx_pages(bool kit, std::array<PageId, 4>& out) {
 // Which section a page is (None: not the MIX hub's), and its place in the FX cycle.
 inline MixSection mix_section(PageId page) {
     switch (page) {
-    case PageId::Tracks: case PageId::Mixer: return MixSection::Tracks;
-    case PageId::Sends: return MixSection::Sends;
+    case PageId::Mixer: return MixSection::Tracks;
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return MixSection::Fx;
     default: return MixSection::None;
     }
@@ -42,13 +41,6 @@ inline PageId mix_next(PageId page, unsigned key, bool kit) {
     unsigned count = mix_fx_pages(kit, pages);
     if (mix_section(page) != MixSection::Fx) return pages[0];
     return pages[(mix_fx_at(page, kit) + 1) % count];
-}
-
-// SENDS shows the kit's pads instead of the tracks: B2 again on a kit's Sends; any other track the tracks.
-inline bool mix_sends_pads(const UiState& ui, bool kit) { return kit && ui.sends_pads && ui.page == PageId::Sends; }
-// B2 on Sends of a kit steps Tracks -> Pads -> Tracks; opened from elsewhere it starts on the tracks.
-inline void mix_sends_key(UiState& ui, bool kit) {
-    ui.sends_pads = kit && ui.page == PageId::Sends && !ui.sends_pads;
 }
 
 // Pad FX and Knob FX: alone, each does its own job when let go (Pad FX the punches, Knob FX its mode on or off);

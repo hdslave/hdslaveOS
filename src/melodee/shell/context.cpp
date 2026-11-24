@@ -306,7 +306,7 @@ void Context::open(PageId page) {
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     if (page != ui.page && ui.page == PageId::Chop) for (unsigned n = 0; n < 16; ++n) slice_release(n); // and a slice hit held (issue 24)
-    if (page != ui.page && page == PageId::Sends) ui.sends_pads = false; // SENDS opens on the tracks (B2 again: a kit's pads)
+    if (page == PageId::Tracks || page == PageId::Sends) page = PageId::Mixer; // gone with the mixer (docs/MIXER_PLAN.md step 6)
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
     if (page != PageId::Samples) ui.new_kit = -1;

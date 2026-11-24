@@ -56,7 +56,6 @@ void go(Context& c, unsigned tile) {
         break;
     case 7: c.open(PageId::Motion); break;
     case 8: c.open(PageId::Mixer); break;
-    case 9: ui.sends_pads = false; c.open(PageId::Sends); break;
     case 10: ui.fx_loop = -1; ui.fx_sub = -1; c.open(PageId::Rack); break; // the selected track's chain
     case 11: c.open(PageId::Looper); break;
     case 12: c.open(PageId::Song); break;

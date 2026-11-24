@@ -37,7 +37,6 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
     if (ui.seq_held) return CopyHere::Patterns;
     const auto& t = project.tracks[ui.track % track_count];
     switch (ui.page) {
-    case PageId::Tracks: return CopyHere::Tracks;
     case PageId::Patterns: return CopyHere::Patterns;
     case PageId::StepEdit: return !t.used() ? CopyHere::None : ui.step_pads ? CopyHere::Steps : CopyHere::Keys; // the bar's steps, or keys
     case PageId::Roll: return t.used() ? CopyHere::Keys : CopyHere::None;
@@ -67,7 +66,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 inline bool erase_tap_page(const UiState& ui) {
     switch (ui.page) {
     case PageId::Mixer: return mixer_fx_lit(ui); // its FX block: the lit effect
-    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes: case PageId::Tracks:
+    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes:
     case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
     case PageId::Chop: case PageId::LayersPage: case PageId::ModPage:
     case PageId::Samples: case PageId::Plugins:

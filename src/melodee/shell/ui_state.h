@@ -18,13 +18,14 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
+// Sends and Tracks are gone with the mixer (docs/MIXER_PLAN.md step 6): opening either opens it; kept so the numbers stay.
 enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
-                            Tracks,                            // Sample's second stop: the sixteen tracks and the strip in hand
+                            Tracks,                            // gone with the mixer (docs/MIXER_PLAN.md step 6): opens it; kept so the numbers stay
                             Looper,                            // LOOPER on Tracks: the four loops (docs/LOOPER.md)
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
@@ -368,7 +369,6 @@ struct UiState {
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
-    bool sends_pads = false;      // MIX hub SENDS on a kit: the kit's pads and their own sends (B2 again), not the tracks
     // The mixer (docs/MIXER_PLAN.md): the block the card shows and K1-K3 turn (0 SENDS, 1 EQ, 2 COMP), and the EQ's
     // three bands in hand (0 LOW 63-250 Hz, 1 MID 500 Hz-2 kHz, 2 HIGH 4-16 kHz).
     uint8_t mixer_block = 0, mixer_eq_group = 0;
@@ -378,7 +378,7 @@ struct UiState {
     // B1's two pages on a track or submix (0 SENDS, 1 FX: its chain in the card), and the row − / + put SENDS and
     // COMP on (0 the first, 1 the second, as Shift shows it).
     uint8_t mixer_b1 = 0, mixer_row = 0;
-    uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
+    uint8_t sends_bus = 0;        // the bus in view on Bus (its chain page), and on a kit's Stage SENDS
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
     uint8_t mod_view = 0, mod_index = 0, mod_target = 0, macro_index = 0, macro_target = 0;

@@ -142,7 +142,6 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
         if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui))));
         if (mixer_master_comp(ui)) return of(S::Master, ui);
         return of(S::Mix, ui);
-    case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: // a pad picks and plays a slice (no step; a take is one, Context::open_take, Erase + pad in it too);

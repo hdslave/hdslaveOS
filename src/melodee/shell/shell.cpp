@@ -563,7 +563,7 @@ void Shell::press(Button b, bool pressed) {
         else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && project_folder_up(context_)) {
             // up a folder, done
         }
-        else if (ui.shift && ui.page == PageId::Tracks && context_.track().used()) page.push(context_); // the Name sheet (pages/tracks_page.cpp)
+        else if (ui.shift && ui.page == PageId::Mixer && ui.mixer_bank == 0 && context_.track().used()) page.push(context_); // the Name sheet (pages/mixer_page.cpp)
         else if (ui.shift) context_.back();
         else encoder_press(enc, context_.now); // its job waits for the release: held, it opens the MENU (shell/menu.h)
         break;

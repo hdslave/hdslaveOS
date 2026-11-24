@@ -1010,8 +1010,7 @@ unsigned key_pages(const Snapshot& s, unsigned key, std::array<juce::String, 6>&
             names[0] = "LOW"; names[1] = "MID"; names[2] = "HIGH"; n = 3;
             at = s.ui.mixer_eq_group % 3;
         }
-    } else if (mix_section(s.ui.page) != MixSection::None) { // SENDS: the tracks, a kit's pads; FX: along the signal
-        if (key == 1 && kit) { names[0] = "TRACKS"; names[1] = "PADS"; n = 2; at = mix_sends_pads(s.ui, kit) ? 1 : 0; }
+    } else if (mix_section(s.ui.page) != MixSection::None) { // FX: along the signal
         if (key == 2) {
             std::array<PageId, 4> fx {};
             unsigned count = mix_fx_pages(kit, fx);

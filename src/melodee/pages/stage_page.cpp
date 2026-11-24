@@ -218,68 +218,15 @@ void lfo_picture(Paint& p, const Snapshot& s, const StagePage& page, float y0 = 
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded)); // the cards hold the numbers
 }
 
-// MIX: what the cards cannot say. The track's meter with its level marked, where it sits between left and right,
-// and where it goes: the master, and its send (as thick as it is) into its bus, named by the bus's first effect.
-void mix_picture(Paint& p, const Snapshot& s) {
-    const auto& t = s.track();
-    const auto& m = t.mix;
-    auto c = colour_of(s);
-    float mx = px + 4, my = top + 8, mh = zone::picture_h - 16;
-    p.fill(mx, my, 7, mh, colour::line, 3);
-    float meter = s.meters[s.ui.track % track_count];
-    auto place = [](float db) { return std::clamp((db + 48) / 48, 0.0f, 1.0f); };
-    float heard = meter > 0 && !m.mute ? place(20 * std::log10(meter)) : 0;
-    if (heard > 0) p.fill(mx, my + mh * (1 - heard), 7, mh * heard, c, 3);
-    for (float db : meter_steps_db) p.fill(mx + 10, my + mh * (1 - place(db)) - 0.5f, 4, 1, colour::dim); // the LEDs' five steps as a scale
-    p.fill(mx - 3, my + mh * (1 - m.level / 127.0f) - 0.75f, 13, 1.5f, colour::text); // the level
-    // The pan: a half dial, its needle where the track sits.
-    float cx = px + 108, cy = top + 92, r = 32;
-    juce::Path dial;
-    dial.addCentredArc(cx, cy, r, r, 0, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
-    p.g.setColour(colour::line);
-    p.g.strokePath(dial, juce::PathStrokeType(5, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    float a = std::clamp(m.pan / 50.0f, -1.0f, 1.0f) * juce::MathConstants<float>::halfPi;
-    p.g.setColour(knob_shade(s.ui.track, 1));
-    p.g.drawLine(cx, cy, cx + (r - 3) * std::sin(a), cy - (r - 3) * std::cos(a), 2.5f);
-    p.circle(cx, cy, 4, knob_shade(s.ui.track, 1));
-    p.text("L", cx - r - 8, cy + 6, 16, 14, caps_text(colour::dim), juce::Justification::centred);
-    p.text("R", cx + r - 8, cy + 6, 16, 14, caps_text(colour::dim), juce::Justification::centred);
-    p.fill(mx + 12, cy - 1, cx - r - 10 - mx - 12, 2.5f, c, 1);
-    // Where it goes: the master, and the bus its send feeds.
-    float bx = px + pw - 98, from = cx + r + 6;
-    auto box = [&](float y, Icon glyph, juce::Colour gc, const juce::String& name, const juce::String& under) {
-        p.fill(bx, y, 98, 36, colour::surf, 4);
-        icon(p, glyph, bx + 8, y + 9, 18, gc, 1.5f);
-        p.text(name, bx + 32, y + (under.isEmpty() ? 11 : 4), 62, 14, caps_text(colour::text));
-        if (under.isNotEmpty()) p.text(under, bx + 32, y + 18, 62, 14, p.fit(under, plain(colour::mid, type::small), 62, type::floor));
-    };
-    juce::Path to_master, to_bus;
-    to_master.startNewSubPath(from, cy - 4); to_master.cubicTo(from + 30, cy - 4, bx - 30, top + 30, bx, top + 30);
-    p.g.setColour(c);
-    p.g.strokePath(to_master, juce::PathStrokeType(3, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    box(top + 12, Icon::Speaker, colour::text, "MASTER", {});
-    // The quick send (K3) into bus A, as thick as it is; the other three are SENDS' (B1 again).
-    const auto& bus = s.project.buses[0];
-    const auto& first = effect_info(EffectKind(bus.fx.slots[0].kind));
-    float by = top + 100, send = m.sends[0] / 100.0f;
-    if (m.sends[0] > 0) {
-        to_bus.startNewSubPath(from, cy + 4); to_bus.cubicTo(from + 30, cy + 4, bx - 30, by + 18, bx, by + 18);
-        p.g.setColour(knob_shade(s.ui.track, 2));
-        p.g.strokePath(to_bus, juce::PathStrokeType(1 + 4 * send, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    box(by, bus.fx.slots[0].used() ? family_icon(first.family) : Icon::Ring, m.sends[0] > 0 ? knob_shade(s.ui.track, 2) : colour::dim,
-        "BUS A", bus.fx.slots[0].used() ? juce::String(first.name) : juce::String());
-}
-
 // SENDS: the track's level on the left, a line from it to each of the four buses as thick as its send, each bus
 // with its first effect's glyph and name and a bar of what it receives. The bus in view (K2) wears its letter on a
-// chip in K2's shade, its line and bar in K1's (the send); the other three grey. On a kit the last pad's own sends,
-// under its name; Shift held, the whole kit's (KIT SEND, Shift + K1) under the track's.
+// chip in K2's shade, its line and bar in K1's (the send); the other three grey. Only a kit has it since the mixer
+// (docs/MIXER_PLAN.md step 6): the last pad's own sends, under its name (the kit's own send is the mixer's).
 void sends_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& m = t.mix;
     auto c = colour_of(s);
-    const bool pad_view = t.engine == EngineKind::Sampler && !s.ui.shift;
+    const bool pad_view = t.engine == EngineKind::Sampler;
     const auto& pad = t.pads[t.last_pad % sampler_pads];
     auto send_of = [&](unsigned b) { return pad_view ? (pad.used() ? pad.sends[b] : 0) : m.sends[b]; };
     juce::String title = pad_view ? pad_name(s, t.last_pad % sampler_pads, false) : name_case(juce::String(t.name));
@@ -1047,6 +994,7 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
     for (unsigned n = 0; n < 3; ++n) {
         if (!stage_has(g, n)) continue; // no pages: a blank key
         unsigned sub = n == at.group ? at.sub : 0;
+        while (n != at.group && sub + 1 < stage_count(g, n) && stage_skips(g, n, sub, skip)) ++sub; // its first page shown (B3: FX, MIX passed over)
         keys.labels[n] = stage_page_at(t, n, sub).key;
         if (stage_page_at(t, n, sub).kind == StageKind::PluginSound && !plugin_has_presets(s)) keys.labels[n] = "PLUG-IN"; // its face
         if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument) keys.labels[n] = "ZONES"; // round 3 "instrument C"
@@ -1224,7 +1172,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Envelope: envelope_picture(p, s, page); break;
     case StagePicture::Lfo: lfo_picture(p, s, page); break;
     case StagePicture::ShiftRows: case StagePicture::Bars: bars_picture(p, s, page, page.picture == StagePicture::ShiftRows); break;
-    case StagePicture::Mix: mix_picture(p, s); break;
+    case StagePicture::Mix: break; // MIX: gone with the mixer (step 6), Stage passes over it
     case StagePicture::Sends: sends_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
     case StagePicture::Chord: chord_picture(p, s); break;

@@ -42,7 +42,7 @@ inline bool controls_seq_hub(PageId page) {
     return page == PageId::Scenes || page == PageId::Patterns || page == PageId::Roll || page == PageId::Motion || page == PageId::ModPage;
 }
 inline bool controls_mix_hub(PageId page) {
-    return page == PageId::Tracks || page == PageId::Sends || page == PageId::Rack || page == PageId::Bus || page == PageId::Master
+    return page == PageId::Rack || page == PageId::Bus || page == PageId::Master
         || page == PageId::PadFx;
 }
 

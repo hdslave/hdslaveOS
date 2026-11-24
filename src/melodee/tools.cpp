@@ -1080,9 +1080,10 @@ const Preview previews[] {
     {"menugo", [](Shell&, Snapshot& s) { // B3 GO: the sixteen places as the pads sit, the wheel on MIXER
          s.ui.page = PageId::Scenes; s.ui.track = 2; s.playing = true;
          s.ui.menu = menu_go_view; s.ui.menu_tile = 8;
+         s.machine.render_load = 0.31f; s.machine.track_load[2] = 0.08f; // CPU and the track's share (since the mixer)
      }},
     {"menumixer", [](Shell&, Snapshot& s) { // HERE on the mixer: the track's jobs
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.playing = true;
          s.ui.menu = menu_here_view; s.ui.menu_row = 0;
      }},
     {"padbankheld", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; s.ui.pad_bank = true; }}, // Pad Bank held: TRACKS / MOVE / COPY over the page
@@ -1192,11 +1193,6 @@ const Preview previews[] {
         fx.slots[0].kind = uint8_t(EffectKind::Compressor); fx.slots[1].kind = uint8_t(EffectKind::Reverb);
         for (unsigned q = 0; q < effect_params; ++q) { fx.slots[0].params[q] = effect_info(EffectKind::Compressor).params[q].initial; fx.slots[1].params[q] = effect_info(EffectKind::Reverb).params[q].initial; }
     }},
-    {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
-        s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
-        const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};
-        for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
-    }},
     // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
     {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"loopermix", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.looper_view = 1; s.ui.loop = 2; }},
@@ -1221,7 +1217,6 @@ const Preview previews[] {
          looper_scene(s); s.ui.page = PageId::Rack; s.ui.fx_loop = 1;
          s.project.loop_fx[1].slots[0].kind = uint8_t(EffectKind::Echo);
      }},
-    {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.playing = true; s.project.tracks[2].mix.mute = true; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
@@ -1577,13 +1572,6 @@ const Preview previews[] {
          s.ui.page = PageId::Stage;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
      }},
-    {"tracksfrozen", [](Shell&, Snapshot& s) {
-         frozen_scene(s);
-         s.ui.page = PageId::Tracks;
-         const float loads[] {0.04f, 0.11f, 0.004f, 0.02f, 0.16f, 0.09f, 0.03f, 0.05f};
-         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
-         s.machine.render_load = 0.41f;
-     }},
     {"stagefrozen", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); }}, // the print of P2 playing; the sound's cards dim
     {"stagefrozenshift", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); s.ui.shift = true; }}, // Shift + B3: DEEP FREEZE
     {"askunfreeze", [](Shell&, Snapshot& s) { // a sound card turned on a frozen track
@@ -1595,15 +1583,6 @@ const Preview previews[] {
     {"printdeep", [](Shell&, Snapshot& s) { print_scene(s); s.ui.shift = true; }},
     {"deepfreeze", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); }},
     {"thawing", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); s.thawing = 1u << 2; }},
-    {"tracksdeep", [](Shell&, Snapshot& s) { // track 3 deep frozen, track 5 frozen
-         deep_scene(s);
-         s.ui.page = PageId::Tracks;
-         auto& five = s.freeze[4];
-         five.state = FreezeState::Frozen; five.set(0, true);
-         const float loads[] {0.04f, 0.11f, 0.002f, 0.02f, 0.006f, 0.09f, 0.03f, 0.05f};
-         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
-         s.machine.render_load = 0.33f;
-     }},
     {"seqdeep", [](Shell&, Snapshot& s) { deep_scene(s); s.ui.page = PageId::Stage; s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; }},
     {"askreplace", [](Shell&, Snapshot& s) { // another plug-in picked over Surge XT on track 4
          s.ui.page = PageId::Plugins; s.ui.track = 3; s.ui.plugin_target = UiState::PluginTarget::Instrument;
@@ -1648,7 +1627,7 @@ const Preview previews[] {
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
      }},
     {"seqclear", [](Shell&, Snapshot& s) { // Seq held + Erase + pad 2: B1 Cancel, B3 Do it
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.ui.erase = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.erase = true;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
          s.ui.ask = UiState::Ask::ClearPattern; s.ui.ask_target = 1;
      }},
@@ -1711,22 +1690,6 @@ const Preview previews[] {
     {"rack", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"sends", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Sends; s.ui.track = 2; s.playing = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"sendspads", [](Shell&, Snapshot& s) { // a kit's SENDS, B2 again: its pads' own sends into bus A
-         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.playing = true; s.sample = break_sample();
-         auto& t = s.project.tracks[3];
-         const uint8_t sends[16] {0, 30, 15, 15, 20, 30, 10, 10, 0, 0, 25, 25, 0, 0, 40, 60};
-         for (unsigned n = 0; n < 16; ++n) t.pads[n].sends[0] = sends[n];
-         t.pads[14].sends[1] = 35;
-     }},
-    {"sendspadsb", [](Shell&, Snapshot& s) { // bus B: the pads that send there
-         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.ui.sends_bus = 1; s.playing = true; s.sample = break_sample();
-         auto& t = s.project.tracks[3];
-         t.pads[5].sends[1] = 20; t.pads[11].sends[1] = 10; t.pads[14].sends[1] = 35; t.last_pad = 14;
      }},
     {"bus", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
@@ -1811,9 +1774,6 @@ const Preview previews[] {
     {"movetrack", [](Shell&, Snapshot& s) { // Pad Bank held, B2 MOVE, track 2 picked: where does it go (B1 back)
          s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
          s.ui.copying = UiState::Copying::Tracks; s.ui.moving = true; s.ui.copy_from = 1;
-     }},
-    {"tracksshift", [](Shell&, Snapshot& s) { // Tracks with Shift held: MOVE and COPY on B2 and B3
-         s.ui.page = PageId::Tracks; s.ui.track = 1; s.ui.shift = true;
      }},
     {"cleartrack", [](Shell&, Snapshot& s) { // Pad Bank held + Erase + pad 1: B1 Cancel, B3 Clear
          s.ui.page = PageId::Stage; s.ui.track = 0; s.ui.pad_bank = true; s.ui.erase = true;
@@ -2570,7 +2530,7 @@ const Preview previews[] {
          t.fader_on = false; t.wheel = 70;
      }},
     {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level, on K2's card
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.playing = true;
          s.ui.fader = {90, true, 1}; s.ui.fader_moved_at = s.now;
          s.project.tracks[2].mix.level = 90;
          const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};
@@ -2969,10 +2929,6 @@ const Preview previews[] {
     {"patternsvary", [](Shell& shell, Snapshot& s) { // Shift + B3 on Patterns: VARY, Busier picked, amount 30 %
          step_edit_kit(shell, s);
          s.ui.page = PageId::Patterns; s.ui.sheet_open = true; s.ui.sheet_row = 1;
-     }},
-    {"tracksspeed", [](Shell&, Snapshot& s) { // Shift on Tracks: track 3 plays its patterns at x1 1/2
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; s.project.tracks[2].speed = 3;
-         s.ui.shift = true;
      }},
     {"repeatrates", [](Shell&, Snapshot& s) { // Note Repeat on the kit's Pads at 1/64: B3 pressed again (dots under B1 and B3)
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true;

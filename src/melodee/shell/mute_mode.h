@@ -21,7 +21,7 @@ void mute_button(Context& c, bool pressed);
 bool mute_effect(Context& c);
 // Whether mute mode works on kit pads here: the pads play the selected
 // track's kit (`kit_pads`), and the page is not one about tracks (Stage, Mix).
-inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Tracks && ui.page != PageId::Mixer; }
+inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Mixer; }
 // Whether mute mode works on the mixer's second row: its submixes and buses (shell/mixer_channels.h).
 inline bool mute_on_others(const UiState& ui) { return ui.page == PageId::Mixer && ui.mixer_bank == 1; }
 // A pad pressed in mute mode: mutes (or unmutes) a kit pad, a track, or on the mixer's second row a submix or bus;

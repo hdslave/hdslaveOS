@@ -82,7 +82,6 @@ bool erase_tap(Context& c) {
         return true;
     }
     case PageId::Scenes: c.clear_scene(c.project.scene % pattern_count); return true; // the sequence in hand (one undo)
-    case PageId::Tracks: ask_clear_track(c); return true;
     case PageId::Mixer: return mixer_fx_lit(ui) && chain_erase(c); // its FX block: the lit effect out
     case PageId::Looper: {
         unsigned loop = ui.loop % loop_tracks;
