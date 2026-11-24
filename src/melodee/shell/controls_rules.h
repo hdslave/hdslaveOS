@@ -23,7 +23,7 @@ namespace melodee {
 struct ControlsRow {
     PageId page = PageId::Stage;
     bool overlay = false; // controls_overlay(): a held key, Shift, a sheet, a question or the MENU over the page
-    bool loop_chain = false; // a Looper loop's chain on the Rack page, not the MIX hub's
+    bool loop_chain = false; // a Looper loop's chain (or a mixer submix's) on the Rack page, not the MIX hub's
     bool keys_drawn = true;  // the frame drew a soft-key row (a full-screen sheet may not): the hub rules need one
     std::array<std::string, 3> keys, knobs;
     std::array<bool, 3> back {};
@@ -51,7 +51,7 @@ inline ControlsRow controls_row(const UiState& ui) {
     ControlsRow row;
     row.page = ui.page;
     row.overlay = controls_overlay(ui);
-    row.loop_chain = ui.page == PageId::Rack && ui.fx_loop >= 0;
+    row.loop_chain = ui.page == PageId::Rack && (ui.fx_loop >= 0 || ui.fx_sub >= 0);
     return row;
 }
 

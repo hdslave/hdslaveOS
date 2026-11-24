@@ -1165,6 +1165,13 @@ const Preview previews[] {
     {"mixerbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(1), 0); }},
     {"mixermaster", [](Shell&, Snapshot& s) { mixer_other_scene(s, master_chain, 2); }},
     {"mixerrouted", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.project.tracks[2].mix.out = out_sub(1); }},
+    {"fxsub", [](Shell&, Snapshot& s) { // Shift + Knob FX on submix 2: its chain
+        mixer_other_scene(s, strip_sub(1), 0);
+        s.ui.page = PageId::Rack; s.ui.fx_sub = 1;
+        auto& fx = s.project.subs[1].fx;
+        fx.slots[0].kind = uint8_t(EffectKind::Compressor); fx.slots[1].kind = uint8_t(EffectKind::Reverb);
+        for (unsigned q = 0; q < effect_params; ++q) { fx.slots[0].params[q] = effect_info(EffectKind::Compressor).params[q].initial; fx.slots[1].params[q] = effect_info(EffectKind::Reverb).params[q].initial; }
+    }},
     {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
         const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};

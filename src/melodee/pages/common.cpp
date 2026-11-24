@@ -173,6 +173,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         c.knob_fx = b.kind == Binding::Kind::KnobParam; // Knob FX owns the pot: white, never the track's colours
         c.shade = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
         c.track = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
+        if (s.ui.page == PageId::Rack && s.ui.fx_sub >= 0) { // a submix's chain: its colours
+            c.shade = channel_shade(strip_sub(unsigned(s.ui.fx_sub)), n);
+            c.track = channel_shade(strip_sub(unsigned(s.ui.fx_sub)), 0);
+        }
         if (s.ui.page == PageId::Mixer && s.ui.mixer_bank == 1) { // the mixer's second row: the channel in hand's colours
             c.shade = channel_shade(mixer_strip(s.ui), n);
             c.track = channel_shade(mixer_strip(s.ui), 0);
@@ -1027,7 +1031,12 @@ void mix_soft(Context& c, int key) {
     bool kit = c.track().engine == EngineKind::Sampler;
     if (key == 1) return; // B2: none (the mixer's SENDS block is the sends)
     PageId next = mix_next(c.ui.page, unsigned(key), kit);
-    if (next == PageId::Rack) c.ui.fx_loop = -1; // the track's own chain, not a loop's
+    if (next == PageId::Rack) { c.ui.fx_loop = -1; c.ui.fx_sub = -1; } // the track's own chain, not a loop's or a submix's
+    if (next == PageId::Mixer) { // B1 MIXER: the mixer on the channel whose chain this is
+        if (c.ui.page == PageId::Bus) pick_other(c.ui, bus_chain(c.ui.sends_bus % bus_count));
+        else if (c.ui.page == PageId::Master) pick_other(c.ui, master_chain);
+        else if (c.ui.page == PageId::Rack || c.ui.page == PageId::PadFx) c.ui.mixer_bank = 0;
+    }
     if (next != c.ui.page) c.open(next);
 }
 

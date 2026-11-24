@@ -8504,6 +8504,18 @@ void track_move() {
         auto before = mix_of(*project);
         project->subs[2].mix.pan = -20;
         CHECK(!(mix_of(*project) == before));
+        // A submix's chain (25-32) on the effect page: Rack with fx_sub, a cursor of its own (the kit pads' share the
+        // last), its Compressor's KEY row; keys on it and on the strips follow a track swap.
+        UiState r; r.page = PageId::Rack; r.fx_sub = 2;
+        CHECK(page_chain(*project, r) == sub_chain(2) && UiState::cursor_of(sub_chain(7)) == sub_chain(7));
+        CHECK(UiState::cursor_of(pad_chain(0, 0)) == mix_chain_count);
+        EffectSlot comp {}; comp.kind = uint8_t(EffectKind::Compressor);
+        CHECK(effect_rows(comp, sub_chain(2)) == effect_rows(comp, 0) && effect_rows(comp, pad_chain(0, 0)) == effect_rows(comp, 0) - 1);
+        auto swap_bank = std::make_unique<PatternBank>();
+        project->buses[0].strip.comp_key = fx_key_track(3);
+        project->subs[1].fx.slots[0] = comp; project->subs[1].fx.slots[0].key = fx_key_track(3);
+        auto swapped = swap_tracks(*project, *swap_bank, 3, 5);
+        CHECK(project->buses[0].strip.comp_key == fx_key_track(5) && project->subs[1].fx.slots[0].key == fx_key_track(5) && swapped.fx_keys);
     }
     CHECK(mix_next(PageId::Sends, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
     CHECK(mix_next(PageId::Bus, 2, false) == PageId::Master && mix_next(PageId::Master, 2, false) == PageId::Rack);

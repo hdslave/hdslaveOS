@@ -315,7 +315,10 @@ void Context::open(PageId page) {
     ui.map_open = false;
     ui.loop_sheet = false;
     ui.layer_load = -1; // Layers' LOAD sets it after opening Samples
-    ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
+    // FX Select on a loop track is set by its caller after this, and on a submix (Shift + Knob FX on the mixer). The
+    // chain's own side pages (the plug-in picker, a plug-in's presets) keep it, so coming back lands on that chain.
+    auto chain_side = [](PageId p) { return p == PageId::Rack || p == PageId::Plugins || p == PageId::PluginPresets; };
+    if (!(chain_side(page) && chain_side(ui.page))) { ui.fx_loop = -1; ui.fx_sub = -1; }
     ui.picker_open = false;
     ui.fx_panel = false; // an effect's full page closes with the page
     ui.song_export = false;
@@ -2125,7 +2128,7 @@ void Context::set_effect_param(unsigned n, unsigned slot, unsigned param, int va
 
 void Context::set_effect_key(unsigned n, unsigned slot, unsigned key) {
     auto& chain = project.chain(n);
-    if (n >= chain_count || slot >= chain.size || !fx_keyable(chain.slots[slot].kind)) return;
+    if (n >= mix_chain_count || slot >= chain.size || !fx_keyable(chain.slots[slot].kind)) return;
     if (key >= fx_keys || (fx_key_is_track(key) && n < track_count && key - 1 == n)) key = 0; // a track keyed by itself hears itself
     chain.slots[slot].key = uint8_t(key);
     send({Type::FxKey, uint8_t(n), 0, uint16_t(slot), int16_t(key)});
@@ -2165,7 +2168,7 @@ void Context::sync_chain(unsigned n) {
         send_fx(Type::FxKind, n, k, 0, int16_t(s.kind));
         for (unsigned q = 0; q < effect_params; ++q) send_fx(Type::FxParam, n, k, q, s.params[q]);
         send_fx(Type::FxBypass, n, k, 0, int16_t(s.bypass));
-        if (n < chain_count) send({Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(s.key)}); // roadmap P4
+        if (n < mix_chain_count) send({Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(s.key)}); // roadmap P4
     }
 }
 

@@ -276,8 +276,8 @@ struct UiState {
     int8_t audio_rec_track = -1;
     bool audio_rec_running = false;
     // Per chain: the slot (or + ADD) and parameter row; the pad chains share the last entry (cursor_of()).
-    std::array<uint8_t, chain_count + 1> fx_cursor {}, fx_row {};
-    static unsigned cursor_of(unsigned chain) { return chain < chain_count ? chain : chain_count; }
+    std::array<uint8_t, mix_chain_count + 1> fx_cursor {}, fx_row {};
+    static unsigned cursor_of(unsigned chain) { return chain < mix_chain_count ? chain : mix_chain_count; } // the pads' chains share the last
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
@@ -472,6 +472,7 @@ struct UiState {
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;
+    int8_t fx_sub = -1; // the effect page (Rack) on a mixer submix's chain (Shift + Knob FX on the mixer), -1 none
     // SD card access (shell/card_access.h): the card as the service thread
     // last saw it, copied in on the MIDI thread.
     CardView card;

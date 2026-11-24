@@ -67,7 +67,7 @@ void Context::split_shared_plugins() {
         tr.plugin = uint8_t(copy);
         send({Type::TrackPlugin, uint8_t(t), 0, 0, int16_t(copy)});
     }
-    for (unsigned n = 0; n < chain_count; ++n)
+    for (unsigned n = 0; n < mix_chain_count; ++n) // every chain but the kit pads' (no plug-ins there)
         for (unsigned k = 0; k < project.chain(n).size; ++k) {
             const auto& s = project.chain(n).slots[k];
             if (s.kind != plugin_effect_kind) continue;
@@ -102,7 +102,7 @@ void Context::choose_plugin(const PluginFile& file) {
         const auto& t = track();
         if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) entry = t.plugin;
     } else {
-        if (n >= chain_count || k >= project.chain(n).size) return;
+        if (n >= mix_chain_count || k >= project.chain(n).size) return;
         const auto& s = project.chain(n).slots[k];
         if (s.kind == plugin_effect_kind && unsigned(s.params[0]) < max_plugins) entry = s.params[0];
     }
