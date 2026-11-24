@@ -15,8 +15,7 @@
 //   sends: the cards go SEND, BUS, RETURN from K1 (a kit's KIT SEND counts as SEND); not on Motion, whose cards
 //          are the lanes it holds, in lane order.
 //   seq:   a page of the SEQ hub keeps its row: B1 SEQUENCES or PATTERNS, B2 ROLL, B3 MOTION, MOD, MACRO or none.
-//   mix:   a page of the MIX hub keeps its row: B1 TRACKS, B2 SENDS or none (Basic), B3 FX (a loop's chain, reached
-//          from the Looper, has LOOPER instead).
+//   mix:   a page of the MIX hub keeps its row: B1 MIXER, B2 empty, B3 FX. Loop and submix chains have their own row.
 // The hub rows count only when nothing is over the page's own row (controls_overlay).
 namespace melodee {
 
@@ -77,7 +76,7 @@ inline std::vector<std::string> controls_breaks(const ControlsRow& row) {
         && !(is(row.keys[0], {"SEQUENCES", "PATTERNS"}) && row.keys[1] == "ROLL" && is(row.keys[2], {"MOTION", "MOD", "MACRO", ""})))
         out.push_back("seq: " + row.keys[0] + " / " + row.keys[1] + " / " + row.keys[2]);
     if (!row.overlay && row.keys_drawn && !row.loop_chain && controls_mix_hub(row.page)
-        && !(row.keys[0] == "TRACKS" && is(row.keys[1], {"SENDS", ""}) && row.keys[2] == "FX"))
+        && !(row.keys[0] == "MIXER" && row.keys[1].empty() && row.keys[2] == "FX"))
         out.push_back("mix: " + row.keys[0] + " / " + row.keys[1] + " / " + row.keys[2]);
     return out;
 }
