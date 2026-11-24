@@ -138,8 +138,15 @@ knob 7 is its OUTPUT (MAIN, S1-S8), knob 8 its width. Strip moves on a
 track are Motion lanes; a submix's are not. The EQ and COMP pictures are
 `ui/mix_widgets` drawn from the strip's values, shared with the mockups
 (`docs/ui/mixer.png`). mixer-tests 210 of 210 (EQ, COMP, a submix muted
-and heard, saved and opened again); `./build.sh full` passes. Not checked
-on a Move.
+and heard, saved and opened again); `./build.sh full` passes. Checked on
+the Move (2026-11-24, installed as the Schwung tool, driven with `--ctl`
+presses, the screen read from the USB web page): EQ bands and the ring,
+COMP taking 20 dB off a kit pad, the track item's OUT to S2 (`>S2`), S2's
+meter moving with that track, Mute + step 2, S2's chain. Two pictures were
+wrong there and are fixed in melodee-move 25cff04: EQ off looked solid
+(the dotted 0 dB line filled the curve's gaps; now dotted, the bands
+kept), and COMP at amount 0 said OFF while it was on (now a straight
+line).
 
 
 ## What it is
