@@ -203,16 +203,11 @@ loop chains take plug-ins.
 
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 
-Push the encoder on a plug-in effect's slot to open its sheet.
-For effects with a custom screen, such as **hdslave Cortex Filter**, turn the
-encoder to **PANEL** and push it. The wheel, encoder push, **− / +** and
-**K1–K3** control the panel. **B1** (**BACK**) returns to the same slot.
-**PRESETS** opens its presets, when it has some. **TRANSPORT** works as on a
-plug-in track's Edit page. A kit pad's own chain and Knob FX take no
-plug-ins.
+Select an effect with a custom screen, such as **hdslave Cortex Filter**, to see its compact view below the slots. Push the encoder to open its full page. **B3** or **SHIFT + Push** returns to the same slot.
 
-A plug-in effect that draws its own screen draws under the slots instead (see
-[A plug-in's own screen](#a-plug-ins-own-screen)).
+**SHIFT + B3** opens the slot sheet. **PRESETS** opens the preset list, and **TRANSPORT** works as on a plug-in track's Edit page. With a plug-in effect selected in the chain or its preset list open, **Shift + Sample Select** saves its current settings as a user preset. You can save the first preset directly from the chain.
+
+A kit pad's own chain and Knob FX take no plug-ins.
 
 ![A plug-in effect's sheet](../images/screens/rackpluginsheet.png)
 

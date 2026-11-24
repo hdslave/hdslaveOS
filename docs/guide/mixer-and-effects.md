@@ -148,12 +148,12 @@ for the bus, the master and, on a kit, the pad's chain, as **B3** does.
 - Turn the encoder to select a slot.
 - Push the encoder on the **+** to open the effect picker. Choose a family,
   then an effect.
-- Push the encoder on an effect to open its sheet: change, presets, bypass,
-  move and remove as cards, with bypass picked. Turn the encoder to pick one
-  and push it. **B1** closes it. For an effect with its own screen, choose
-  **PANEL**. **B1** (**BACK**) returns to the slot. A plug-in effect's sheet also has
-  **TRANSPORT**: whether the plug-in hears **PLAY** and **STOP** (see
-  [Plug-in effects](plug-ins.md#plug-in-effects)).
+- Push the encoder on an effect with a custom screen to open its full panel.
+  **B3** or **SHIFT + Push** returns to the slot. **SHIFT + B3** opens the
+  slot sheet on any effect. Push on an effect without a custom screen also
+  opens its sheet. Turn and push the encoder to choose a card. **B1** closes
+  the sheet. A plug-in's **TRANSPORT** card controls whether it hears
+  **PLAY** and **STOP**. See [Plug-in effects](plug-ins.md#plug-in-effects).
 - **ERASE** pressed alone removes the selected effect. **SHIFT** +
   **ERASE** copies it, placed after itself.
 - **K1**–**K3** set the effect's values. **−** / **+** show its second row.
