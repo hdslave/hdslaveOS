@@ -104,6 +104,7 @@ void soft(Context& c, int key) {
     if (key != 0 || !c.plugins) return;
     if (c.plugins->view().top) { // CANCEL: an instrument leaves the track as it was, on the page it came from
         c.open(c.ui.plugin_target == UiState::PluginTarget::Instrument ? c.ui.plugin_from : c.ui.plugin_back);
+        if (c.ui.plugin_target != UiState::PluginTarget::Instrument) c.picker_done(); // from the mixer's plus: back there
         return;
     }
     c.plugin_came_back = false; // the cursor lands on the folder it came out of

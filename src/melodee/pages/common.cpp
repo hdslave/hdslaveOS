@@ -995,7 +995,11 @@ unsigned key_pages(const Snapshot& s, unsigned key, std::array<juce::String, 6>&
             if (here.group == key && here.sub == sub) at = n;
             names[n++] = g.groups[key].pages[sub].key;
         }
-    } else if (s.ui.page == PageId::Mixer) { // B2: the EQ's three groups (pages/mixer_page.cpp); B1, B3: one page each
+    } else if (s.ui.page == PageId::Mixer) { // B1: SENDS and FX on a track or submix; B2: the EQ's three groups (pages/mixer_page.cpp)
+        if (key == 0 && full_features(s.ui) && channel_sends(channel_kind(mixer_strip(s.ui)))) {
+            names[0] = "SENDS"; names[1] = "FX"; n = 2;
+            at = s.ui.mixer_b1 ? 1 : 0;
+        }
         if (key == 1 && full_features(s.ui)) {
             names[0] = "LOW"; names[1] = "MID"; names[2] = "HIGH"; n = 3;
             at = s.ui.mixer_eq_group % 3;

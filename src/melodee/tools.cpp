@@ -1165,6 +1165,19 @@ const Preview previews[] {
     {"mixerbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(1), 0); }},
     {"mixermaster", [](Shell&, Snapshot& s) { mixer_other_scene(s, master_chain, 2); }},
     {"mixerrouted", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.project.tracks[2].mix.out = out_sub(1); }},
+    {"mixerfx", [](Shell&, Snapshot& s) { // B1 again: FX, the bass's chain in the card, Chorus lit
+        mixer_scene(s, 0); s.ui.mixer_b1 = 1;
+        auto& fx = s.project.tracks[2].fx;
+        const EffectKind kinds[] {EffectKind::Drive, EffectKind::Chorus, EffectKind::Echo};
+        for (unsigned k = 0; k < 3; ++k) {
+            fx.slots[k].kind = uint8_t(kinds[k]);
+            for (unsigned q = 0; q < effect_params; ++q) fx.slots[k].params[q] = effect_info(kinds[k]).params[q].initial;
+        }
+        fx.slots[2].bypass = true;
+        s.ui.fx_cursor[UiState::cursor_of(2)] = 1;
+    }},
+    {"mixerfxbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(0), 0); }}, // a bus: B1 is FX alone
+    {"mixerrow", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.mixer_row = 1; }},   // + on SENDS: its second row
     {"fxsub", [](Shell&, Snapshot& s) { // Shift + Knob FX on submix 2: its chain
         mixer_other_scene(s, strip_sub(1), 0);
         s.ui.page = PageId::Rack; s.ui.fx_sub = 1;

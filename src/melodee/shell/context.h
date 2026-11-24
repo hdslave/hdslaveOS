@@ -212,6 +212,11 @@ public:
     // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
     void set_channel_mute(unsigned strip, bool on);
     void set_channel_solo(unsigned strip, bool on);
+    // The mixer's channel in hand's effect chain page (Shift + Knob FX there; Push on its FX block's plus with
+    // `picker`: the picker open on the chain's free slot). The input's: Input Config, it has no chain.
+    void open_mixer_chain(bool picker);
+    // The effect picker closed (an effect added, a plug-in picked or backed out of): from the mixer's plus, the mixer.
+    void picker_done();
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
     // The pattern's notes changed in the model: the audio thread gets a copy to play.

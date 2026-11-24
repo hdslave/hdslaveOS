@@ -81,15 +81,36 @@ constexpr bool channel_mutes(ChannelKind k) { return k == ChannelKind::Track || 
 constexpr bool channel_solos(ChannelKind k) { return k == ChannelKind::Track || k == ChannelKind::Submix; }
 // The master's compressor is the printed Compressor (Melodee step 4), never its strip's.
 constexpr bool channel_comp(ChannelKind k) { return k != ChannelKind::Master; }
+// A channel's effect chain by its number (model/project.h), or -1: the input has none.
+constexpr int channel_chain(unsigned strip) {
+    switch (channel_kind(strip)) {
+    case ChannelKind::Track: return int(strip % track_count);
+    case ChannelKind::Bus: return int(bus_chain(channel_bus(strip)));
+    case ChannelKind::Master: return int(master_chain);
+    case ChannelKind::Submix: return int(sub_chain(channel_sub(strip)));
+    default: return -1;
+    }
+}
+// B1 on a channel: a track or submix has two pages (SENDS, FX); a bus or the master only FX; the input none yet
+// (its INPUT block comes with Melodee step 4).
+constexpr bool channel_fx(ChannelKind k) { return k != ChannelKind::Input; }
 
-// The block the card shows and K1-K3 turn for the channel in hand: the one lit, unless the channel has none of it
-// (a bus, the input and the master have no SENDS yet: their B1 comes with Melodee step 4; the master no COMP), then
-// its EQ. Basic: SENDS only.
+// The mixer's blocks: what the card shows and K1-K3 turn.
+enum : unsigned { block_sends = 0, block_eq = 1, block_comp = 2, block_fx = 3 };
+// The block for the channel in hand: B1 lit is SENDS or FX (as `mixer_b1` left it; a bus or the master FX alone),
+// B2 EQ, B3 COMP. A key the channel has nothing for shows its EQ (the input's B1, the master's B3 until step 4).
+// Basic: SENDS only.
 inline unsigned mixer_block_of(const UiState& ui, ChannelKind k) {
-    if (!full_features(ui)) return 0;
+    if (!full_features(ui)) return block_sends;
     const unsigned b = ui.mixer_block % 3;
-    if ((b == 0 && !channel_sends(k)) || (b == 2 && !channel_comp(k))) return 1;
+    if (b == 0) {
+        if (channel_sends(k)) return ui.mixer_b1 ? block_fx : block_sends;
+        return channel_fx(k) ? block_fx : block_eq;
+    }
+    if (b == 2 && !channel_comp(k)) return block_eq;
     return b;
 }
+// The FX block lit, on the channel in hand.
+inline bool mixer_fx_lit(const UiState& ui) { return ui.page == PageId::Mixer && mixer_block_of(ui, channel_kind(mixer_strip(ui))) == block_fx; }
 
 } // namespace melodee

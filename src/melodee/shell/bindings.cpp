@@ -319,6 +319,11 @@ bool erase_resets(const Binding& b) {
     return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || pad_reset_value(b, value);
 }
 
+namespace {
+std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row);
+std::array<Binding, 3> plugin_cards(const UiState& ui, unsigned entry);
+} // namespace
+
 std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row) {
     const unsigned n = mixer_strip(ui);
     const ChannelKind kind = channel_kind(n);
@@ -340,7 +345,18 @@ std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bo
         for (unsigned b = 0; b < bus_count; ++b) sends[b] = {Kind::SubMix, part(Command::SubSend0 + b), 0, 100, mix.sends[b]};
     }
     const unsigned block = mixer_block_of(ui, kind);
-    if (!full_features(ui)) return shift_row ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {sends[0], Binding {}, Binding {}};
+    const bool second = shift_row != (ui.mixer_row != 0); // − / + left SENDS or COMP on its second row: Shift shows the first
+    if (!full_features(ui)) return second ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {sends[0], Binding {}, Binding {}};
+    if (block == block_fx) { // the lit effect of the channel's chain, as its FX page has it (the same cursor and row)
+        const int chain = channel_chain(n);
+        if (chain < 0) return {};
+        const auto& c = project.chain(unsigned(chain));
+        const unsigned at = UiState::cursor_of(unsigned(chain)), slot = ui.fx_cursor[at];
+        if (slot >= c.count()) return {}; // the plus
+        if (c.slots[slot].kind == plugin_effect_kind) return shift_row ? std::array<Binding, 3> {} : plugin_cards(ui, unsigned(c.slots[slot].params[0]));
+        return effect_row(unsigned(chain) * 64 + slot * 8, c.slots[slot], shift_row ? 1 - ui.fx_row[at] % 2 : ui.fx_row[at]);
+    }
+    shift_row = second;
     switch (block) {
     case 1: { // EQ: the group's three bands
         if (shift_row) return {};

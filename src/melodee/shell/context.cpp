@@ -318,7 +318,7 @@ void Context::open(PageId page) {
     // FX Select on a loop track is set by its caller after this, and on a submix (Shift + Knob FX on the mixer). The
     // chain's own side pages (the plug-in picker, a plug-in's presets) keep it, so coming back lands on that chain.
     auto chain_side = [](PageId p) { return p == PageId::Rack || p == PageId::Plugins || p == PageId::PluginPresets; };
-    if (!(chain_side(page) && chain_side(ui.page))) { ui.fx_loop = -1; ui.fx_sub = -1; }
+    if (!(chain_side(page) && chain_side(ui.page))) { ui.fx_loop = -1; ui.fx_sub = -1; ui.mixer_picker = false; }
     ui.picker_open = false;
     ui.fx_panel = false; // an effect's full page closes with the page
     ui.song_export = false;
@@ -1313,6 +1313,28 @@ void Context::set_channel_solo(unsigned n, bool on) {
     case ChannelKind::Submix: project.subs[channel_sub(n)].mix.solo = on; send({Type::SubMix, uint8_t(channel_sub(n)), 0, Command::SubSolo, int16_t(on)}); break;
     default: break;
     }
+}
+
+void Context::open_mixer_chain(bool picker) {
+    const unsigned n = mixer_strip(ui);
+    switch (channel_kind(n)) {
+    case ChannelKind::Submix: open(PageId::Rack); ui.fx_sub = int8_t(channel_sub(n)); break;
+    case ChannelKind::Bus: open(PageId::Bus); ui.sends_bus = uint8_t(channel_bus(n)); break;
+    case ChannelKind::Master: open(PageId::Master); break;
+    case ChannelKind::Input: open(PageId::InputConfig); return;
+    default: open(PageId::Rack); break;
+    }
+    const unsigned chain = unsigned(channel_chain(n));
+    if (!picker || project.chain(chain).count() >= project.chain(chain).size) return;
+    ui.fx_cursor[UiState::cursor_of(chain)] = uint8_t(project.chain(chain).count()); // the plus
+    ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = false;
+    ui.mixer_picker = true;
+}
+
+void Context::picker_done() {
+    if (!ui.mixer_picker) return;
+    ui.mixer_picker = false;
+    open(PageId::Mixer); // the channel and its FX block, as they were
 }
 
 void Context::set_step(unsigned t, unsigned at, const Step& value) {

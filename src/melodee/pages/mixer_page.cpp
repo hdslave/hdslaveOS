@@ -4,8 +4,9 @@
 // its neighbours narrow strips either side (number, stereo meter, level). The card: name, mute and solo, a slim meter
 // and its fader, and one block, the one B1-B3 light: SENDS (four sends and what each bus holds), EQ (nine bands as a
 // curve, the three in hand lit; B2 again steps LOW, MID, HIGH) or COMP (its curve and what it took off of late).
-// K1-K3 turn the lit block (Shift: its second row), the fader the level. A pad, the wheel or Minus / Plus pick the
-// channel; Push turns the lit block's EQ or compressor on or off. Pad Bank steps between the tracks and the second
+// K1-K3 turn the lit block (Shift: its second row), the fader the level. A pad or the wheel pick the channel; Minus /
+// Plus move through the lit block (a row, a group of bands, an effect); Push turns the lit block's EQ, compressor or
+// effect on or off. B1 again: FX, the channel's chain in the card. Pad Bank steps between the tracks and the second
 // row: submixes, buses, the input and the master (shell/mixer_channels.h).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -248,6 +249,31 @@ void comp_block(Paint& p, const Snapshot& s, const Channel& ch) {
     if (!on) p.text(strip.comp_on ? "AMOUNT 0" : "OFF", hx, cy + hh / 2 - 7, hw, 14, caps_text(colour::dim), juce::Justification::centred);
 }
 
+// FX: the channel's chain, an effect a row (its family's glyph and name; one switched off dim), then the plus while
+// there is room. The lit row is the effect K1-K3 turn (its FX page's cursor: − / + move it); a long chain scrolls.
+void fx_block(Paint& p, const Snapshot& s, const Channel& ch) {
+    const int n = channel_chain(ch.n);
+    if (n < 0) return;
+    const auto& chain = s.project.chain(unsigned(n));
+    const unsigned count = chain.count(), rows = count + (count < chain.size ? 1u : 0u);
+    const unsigned lit = std::min<unsigned>(s.ui.fx_cursor[UiState::cursor_of(unsigned(n))], rows - 1);
+    constexpr float row_h = 18;
+    const unsigned fits = unsigned((block_h - 4) / row_h), first = lit >= fits ? lit - fits + 1 : 0;
+    for (unsigned r = first; r < rows && r < first + fits; ++r) {
+        const float y = block_y + 3 + float(r - first) * row_h, x = block_x + 3, w = block_w - 6;
+        const bool here = r == lit;
+        if (here) p.fill(x, y, w, row_h - 2, shade(ch, 0).withAlpha(0.22f), 3);
+        if (r == count) { icon(p, Icon::Plus, x + 6, y + 3, 10, here ? colour::text : colour::mid, 1.6f); continue; } // the plus
+        const auto& slot = chain.slots[r];
+        const auto& info = effect_info(EffectKind(slot.kind));
+        const bool off = slot.bypass;
+        const juce::String name = slot.kind == plugin_effect_kind ? plugin_name(s, unsigned(slot.params[0])) : name_case(info.name);
+        icon(p, family_icon(info.family), x + 5, y + 3, 10, off ? colour::dim : here ? shade(ch, 0) : colour::mid, 1.4f);
+        auto style = plain(off ? colour::dim : here ? colour::text : colour::sec, type::body, Weight::Medium);
+        p.text(name, x + 22, y, w - 26, row_h - 2, p.fit(name, style, w - 26, type::floor));
+    }
+}
+
 // The channel in hand's card: its name on its colour with M and S (those it has) and, for a track played into a
 // submix, that submix's number in its colour; its meter and fader, its pan, the lit block.
 void card(Paint& p, const Snapshot& s, const Channel& ch) {
@@ -294,8 +320,9 @@ void card(Paint& p, const Snapshot& s, const Channel& ch) {
     if (!full && !channel_sends(ch.kind)) return; // Basic: SENDS only, and this channel has none
     p.fill(block_x, block_y, block_w, block_h, colour::surf, 3);
     switch (mixer_block_of(s.ui, ch.kind)) {
-    case 1: eq_block(p, s, ch); break;
-    case 2: comp_block(p, s, ch); break;
+    case block_eq: eq_block(p, s, ch); break;
+    case block_comp: comp_block(p, s, ch); break;
+    case block_fx: fx_block(p, s, ch); break;
     default: sends_block(p, s, ch); break;
     }
 }
@@ -309,10 +336,13 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(label(s.ui.mixer_bank == 0 ? "TRACKS" : basic ? "BUSES" : "SUBMIXES, BUSES"));
     static const char* const groups[] {"EQ LOW", "EQ MID", "EQ HIGH"};
     const unsigned block = mixer_block_of(s.ui, ch.kind);
-    const bool sends = channel_sends(ch.kind);
-    SoftKeys keys {{sends ? "SENDS" : "", basic ? "" : block == 1 ? groups[s.ui.mixer_eq_group % 3] : "EQ", basic || !channel_comp(ch.kind) ? "" : "COMP"},
-                   basic && !sends ? -1 : int(block), own};
+    const bool sends = channel_sends(ch.kind), fx = !basic && channel_fx(ch.kind);
+    // B1: SENDS, again FX (a bus or the master FX alone); B2 EQ, again the next bands; B3 COMP.
+    const char* b1 = block == block_fx || (!sends && fx) ? "FX" : sends ? "SENDS" : "";
+    SoftKeys keys {{b1, basic ? "" : block == block_eq ? groups[s.ui.mixer_eq_group % 3] : "EQ", basic || !channel_comp(ch.kind) ? "" : "COMP"},
+                   basic && !sends ? -1 : block == block_fx ? 0 : int(block), own};
     if (!basic) { keys.dots[1] = 3; keys.dot_at[1] = uint8_t(s.ui.mixer_eq_group % 3); }
+    if (sends && fx) { keys.dots[0] = 2; keys.dot_at[0] = uint8_t(block == block_fx ? 1 : 0); }
     frame(p, s, keys, h);
     // The neighbours in the row in view, three a side, nearest the card first; then the card over them.
     const int at = int(mixer_row_at(s.ui)), count = int(mixer_row_count(s.ui));
@@ -342,29 +372,62 @@ void wheel(Context& c, int delta) {
     else c.ui.mixer_other = uint8_t(other_first(c.ui) + unsigned(at));
 }
 
-// Push: the lit block's on and off (EQ, the compressor); SENDS has none.
+// Push: the lit block's on and off (EQ, the compressor, the lit effect); on FX's plus the picker (effects and
+// plug-ins), back here once one is in. SENDS has none.
 void push(Context& c) {
     const unsigned n = mixer_strip(c.ui);
     const auto kind = channel_kind(n);
     if (kind == ChannelKind::Track && !c.track().used()) { offer_new_track(c); return; }
     const unsigned block = mixer_block_of(c.ui, kind);
-    if (block == 0) return;
+    if (block == block_sends) return;
+    if (block == block_fx) {
+        const int chain = channel_chain(n);
+        if (chain < 0) return;
+        const auto& fx = c.project.chain(unsigned(chain));
+        const unsigned slot = c.ui.fx_cursor[UiState::cursor_of(unsigned(chain))];
+        if (slot < fx.count()) c.toggle_bypass(unsigned(chain), slot);
+        else c.open_mixer_chain(true);
+        return;
+    }
     const auto part = block == 1 ? StripPart::EqOn : StripPart::CompOn;
     const Strip& strip = c.project.strip(n);
     c.apply(strip_card(n, part, strip), strip_get(strip, part) ? 0 : 1);
 }
 
-// B1 SENDS, B2 EQ (again: the next three bands), B3 COMP; a key the channel in hand has no block for does nothing.
+// B1 SENDS (again: FX, the chain; a bus or the master FX alone), B2 EQ (again: the next three bands), B3 COMP; a key
+// the channel in hand has no block for does nothing. A key pressed puts SENDS and COMP back on their first row.
 void soft(Context& c, int key) {
     if (!full_features(c.ui)) { c.ui.mixer_block = 0; return; }
     const unsigned k = unsigned(key) % 3;
     const auto kind = channel_kind(mixer_strip(c.ui));
-    if ((k == 0 && !channel_sends(kind)) || (k == 2 && !channel_comp(kind))) return;
-    if (k == 1 && mixer_block_of(c.ui, kind) == 1) c.ui.mixer_eq_group = uint8_t((c.ui.mixer_eq_group + 1) % 3);
+    if ((k == 0 && !channel_fx(kind)) || (k == 2 && !channel_comp(kind))) return;
+    const unsigned now = mixer_block_of(c.ui, kind);
+    if (k == 0 && channel_sends(kind) && (now == block_sends || now == block_fx)) c.ui.mixer_b1 = c.ui.mixer_b1 ? 0 : 1;
+    if (k == 1 && now == block_eq) c.ui.mixer_eq_group = uint8_t((c.ui.mixer_eq_group + 1) % 3);
     c.ui.mixer_block = uint8_t(k);
+    c.ui.mixer_row = 0;
+}
+
+// Minus / Plus: through what the lit block holds. SENDS and COMP their two rows (−: the first, +: the second, as
+// Shift shows it), EQ its three groups, FX the chain's effects and its plus. The wheel and the pads pick the channel.
+void nudge(Context& c, int way) {
+    const unsigned n = mixer_strip(c.ui);
+    switch (mixer_block_of(c.ui, channel_kind(n))) {
+    case block_eq: c.ui.mixer_eq_group = uint8_t(std::clamp(int(c.ui.mixer_eq_group % 3) + way, 0, 2)); break;
+    case block_fx: {
+        const int chain = channel_chain(n);
+        if (chain < 0) break;
+        const auto& fx = c.project.chain(unsigned(chain));
+        const unsigned at = UiState::cursor_of(unsigned(chain)), last = std::min<unsigned>(fx.count(), fx.size - 1);
+        c.ui.fx_cursor[at] = uint8_t(std::clamp(int(std::min<unsigned>(c.ui.fx_cursor[at], last)) + way, 0, int(last)));
+        c.ui.fx_row[at] = 0;
+        break;
+    }
+    default: c.ui.mixer_row = way > 0 ? 1 : 0; break;
+    }
 }
 } // namespace
 
-const PageSpec mixer_page {draw, pad, wheel, push, soft, wheel}; // Minus / Plus: the channel, as the wheel
+const PageSpec mixer_page {draw, pad, wheel, push, soft, nudge};
 
 } // namespace melodee

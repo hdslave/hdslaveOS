@@ -375,6 +375,9 @@ struct UiState {
     // The mixer's pad bank (shell/mixer_channels.h): 0 the tracks (the one in hand ui.track), 1 the submixes, buses,
     // input and master, `mixer_other` the one in hand there (its place in that row).
     uint8_t mixer_bank = 0, mixer_other = 0;
+    // B1's two pages on a track or submix (0 SENDS, 1 FX: its chain in the card), and the row − / + put SENDS and
+    // COMP on (0 the first, 1 the second, as Shift shows it).
+    uint8_t mixer_b1 = 0, mixer_row = 0;
     uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
@@ -473,6 +476,7 @@ struct UiState {
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;
     int8_t fx_sub = -1; // the effect page (Rack) on a mixer submix's chain (Shift + Knob FX on the mixer), -1 none
+    bool mixer_picker = false; // the effect picker came from the mixer's FX block (its plus): done or backed out, back there
     // SD card access (shell/card_access.h): the card as the service thread
     // last saw it, copied in on the MIDI thread.
     CardView card;

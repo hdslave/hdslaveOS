@@ -459,17 +459,7 @@ void Shell::press(Button b, bool pressed) {
         // Shift + Knob FX (FX SELECT): the effect chains, the same cycle as MIX's B3 FX (track, bus, master,
         // a kit's pad); on the Looper the selected loop track's chain
         if (ui.page == PageId::Looper && context_.project.looper.on) { int8_t l = int8_t(ui.loop % loop_tracks); context_.open(PageId::Rack); ui.fx_loop = l; break; }
-        if (ui.page == PageId::Mixer) { // the mixer: the chain of the channel in hand (shell/mixer_channels.h); B1 MIXER back
-            const unsigned n = mixer_strip(ui);
-            switch (channel_kind(n)) {
-            case ChannelKind::Submix: context_.open(PageId::Rack); ui.fx_sub = int8_t(channel_sub(n)); break;
-            case ChannelKind::Bus: context_.open(PageId::Bus); ui.sends_bus = uint8_t(channel_bus(n)); break;
-            case ChannelKind::Master: context_.open(PageId::Master); break;
-            case ChannelKind::Input: context_.open(PageId::InputConfig); break; // no chain: its gain, monitor and Rec Input FX
-            default: context_.open(PageId::Rack); break;
-            }
-            break;
-        }
+        if (ui.page == PageId::Mixer) { context_.open_mixer_chain(false); break; } // the channel in hand's chain; B1 MIXER back
         {
             bool kit = context_.track().engine == EngineKind::Sampler;
             bool own_chain = mix_section(ui.page) == MixSection::Fx && !(ui.page == PageId::Rack && ui.fx_loop >= 0);

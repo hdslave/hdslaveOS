@@ -11,6 +11,7 @@
 // track or slot that already has one keeps its entry for the new plug-in; a
 // new one takes an entry nothing uses. The rack loads what is used and lets go
 // of the rest, so undo, a project switch or a removed effect need nothing more.
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
@@ -177,6 +178,7 @@ void Context::choose_plugin(const PluginFile& file) {
     notice("Loading " + file.name);
     if (instrument && ui.plugin_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit); // its parameters
     open(ui.plugin_back);
+    if (!instrument) picker_done(); // from the mixer's plus: back there
 }
 
 void Context::swap_plugin(Edit& e, bool after) {
@@ -292,8 +294,9 @@ int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
     if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
-    if (fx_chain_page(ui.page) && !ui.picker_open) {
-        unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
+    const bool mixer_fx = mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0; // the mixer's FX block: its lit effect
+    if ((fx_chain_page(ui.page) && !ui.picker_open) || mixer_fx) {
+        unsigned n = mixer_fx ? unsigned(channel_chain(mixer_strip(ui))) : page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
         const auto& chain = project.chain(n);
         if (k < chain.count() && chain.slots[k].kind == plugin_effect_kind && unsigned(chain.slots[k].params[0]) < max_plugins)
             return chain.slots[k].params[0];

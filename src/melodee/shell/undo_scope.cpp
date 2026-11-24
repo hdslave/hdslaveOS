@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/undo_scope.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/stage_map.h"
 
@@ -134,7 +135,10 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {
     case PageId::Song: return of(S::Song, ui);
-    case PageId::Tracks: case PageId::Sends: case PageId::Mixer: return of(S::Mix, ui);
+    case PageId::Mixer: // its FX block edits the channel's chain (Push: an effect on or off)
+        if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui))));
+        return of(S::Mix, ui);
+    case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: // a pad picks and plays a slice (no step; a take is one, Context::open_take, Erase + pad in it too);

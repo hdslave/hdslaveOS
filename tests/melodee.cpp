@@ -8474,11 +8474,18 @@ void track_move() {
         CHECK(mixer_strip(m) == strip_sub(0) && mixer_row_count(m) == 14 && mixer_row_at(m) == 0);
         pick_other(m, master_chain);
         CHECK(mixer_strip(m) == master_chain && mixer_row_at(m) == 13 && mixer_row_strip(m, 12) == strip_input);
-        // What each channel's keys reach: a bus, the input and the master have no SENDS yet (their EQ shows), the master no COMP.
+        // What each channel's keys reach: B1 SENDS, again FX (a bus or the master FX alone; the input none yet: its
+        // EQ); the master no COMP.
         m.mixer_block = 0;
-        CHECK(mixer_block_of(m, ChannelKind::Bus) == 1 && mixer_block_of(m, ChannelKind::Submix) == 0 && mixer_block_of(m, ChannelKind::Track) == 0);
+        CHECK(mixer_block_of(m, ChannelKind::Bus) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_sends);
+        CHECK(mixer_block_of(m, ChannelKind::Track) == block_sends && mixer_block_of(m, ChannelKind::Input) == block_eq);
+        m.mixer_b1 = 1;
+        CHECK(mixer_block_of(m, ChannelKind::Track) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_fx);
+        m.mixer_b1 = 0;
         m.mixer_block = 2;
-        CHECK(mixer_block_of(m, ChannelKind::Master) == 1 && mixer_block_of(m, ChannelKind::Input) == 2);
+        CHECK(mixer_block_of(m, ChannelKind::Master) == block_eq && mixer_block_of(m, ChannelKind::Input) == block_comp);
+        CHECK(channel_chain(strip_sub(3)) == int(sub_chain(3)) && channel_chain(bus_chain(2)) == int(bus_chain(2))
+              && channel_chain(master_chain) == int(master_chain) && channel_chain(5) == 5 && channel_chain(strip_input) < 0);
         CHECK(mute_on_others(m) && !mute_on_kit(m, true)); // Mute + pad: the channels, never the kit's pads
         // Basic (decision 3): no submixes; the second row starts at the buses.
         UiState b = m; b.settings.full_features = false; b.mixer_other = 0;
@@ -8495,11 +8502,27 @@ void track_move() {
         CHECK(fj.binding.kind == Binding::Kind::SubMix && fj.binding.value == 90);
         pick_other(m, bus_chain(1));
         CHECK(fader_job(*project, m).binding.kind == Binding::Kind::BusReturn && fader_job(*project, m).binding.value == 55);
-        CHECK(mixer_cards(*project, m, false)[0].kind == Binding::Kind::Strip); // its EQ
+        CHECK(!mixer_cards(*project, m, false)[0].bound()); // B1: its FX, an empty chain (the plus)
+        m.mixer_block = 1;
+        CHECK(mixer_cards(*project, m, false)[0].kind == Binding::Kind::Strip); // B2: its EQ
+        m.mixer_block = 0;
         pick_other(m, strip_input);
         CHECK(fader_job(*project, m).binding.kind == Binding::Kind::RecGain);
         pick_other(m, master_chain);
         CHECK(fader_job(*project, m).binding.id == int(master_chain << 8 | unsigned(StripPart::Trim)));
+        // FX on B1: the lit effect of the channel's chain on K1-K3 (its FX page's cursor), Shift its other row; − / +
+        // left SENDS on its second row: K1 PAN, Shift the first row again.
+        project->tracks[4].engine = EngineKind::Sampler;
+        project->tracks[4].fx.slots[0].kind = uint8_t(EffectKind::Drive);
+        project->tracks[4].fx.slots[1].kind = uint8_t(EffectKind::Chorus);
+        UiState f = m; f.mixer_bank = 0; f.track = 4; f.mixer_block = 0; f.mixer_b1 = 1; f.page = PageId::Mixer;
+        f.fx_cursor[UiState::cursor_of(4)] = 1;
+        auto fxc = mixer_cards(*project, f, false);
+        CHECK(fxc[0].kind == Binding::Kind::FxParam && fxc[0].id == int(4 * 64 + 1 * 8 + 0) && mixer_fx_lit(f));
+        f.fx_cursor[UiState::cursor_of(4)] = 2; // the plus: no cards
+        CHECK(!mixer_cards(*project, f, false)[0].bound());
+        f.mixer_b1 = 0; f.mixer_row = 1;
+        CHECK(mixer_cards(*project, f, false)[0].kind == Binding::Kind::Pan && mixer_cards(*project, f, true)[0].kind == Binding::Kind::Send);
         // Undo keeps the submixes' level, pan and sends.
         auto before = mix_of(*project);
         project->subs[2].mix.pan = -20;
