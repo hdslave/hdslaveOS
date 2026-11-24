@@ -5657,7 +5657,6 @@ void stage() {
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit) && !cards(false)[0].bound());
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
     ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.params[0].used = true;
-    ui.plugin_panel.knob = {0, 1, 2}; // row 0's three, as the rack fills them
     { // PRESETS: the three performance knobs, whatever the plug-in (engine/macros.h); a slot's kind 0 is its default
         auto knobs = cards(false);
         CHECK(knobs[0].kind == K::Param && knobs[0].id == plugin_track::Macro1 && knobs[0].min == -100 && knobs[0].max == 100);
