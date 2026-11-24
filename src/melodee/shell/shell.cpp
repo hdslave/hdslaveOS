@@ -77,6 +77,10 @@ Shell::Shell(EngineHost& host)
     context_.updates = &update_link;
 }
 
+void Shell::load_engine() {
+    host.load(*project_, *patterns_);
+}
+
 void Shell::start_settings(const std::string& text) {
     ui_.settings.read(text);
     want_audio_format();
@@ -902,8 +906,9 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     // a control, a MIDI message or something told to the audio thread: Context::heavy_serial moves with each of
     // those, and `sent` with every command to the audio thread. While neither has moved the frame is a light one,
     // which leaves both as the last whole frame made them. Whole again at least every half second as a safety net.
-    const uint64_t serial = context_.heavy_serial + handed_.load(std::memory_order_relaxed);
-    const bool whole = !snapshot_light || out.heavy_serial != serial || out.sent_seen != context_.sent || now - out.whole_at >= 500;
+    const uint64_t serial = context_.heavy_serial;
+    const bool whole = !snapshot_light || preview_editable_.load(std::memory_order_relaxed)
+                    || out.heavy_serial != serial || out.sent_seen != context_.sent || now - out.whole_at >= 500;
     if (whole) { // The project, without each sample's chop: no page draws one (Chop draws the slices in hand, UiState's).
         SlotTable<SampleChop> chops = std::move(project_->chops);
         out.project = *project_;

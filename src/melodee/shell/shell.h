@@ -43,6 +43,7 @@ class Shell {
 public:
     // Starts with starting_project(); the engine host is loaded from it before audio runs.
     explicit Shell(EngineHost& host);
+    void load_engine(); // load the starting state before audio runs
 
     // MIDI thread.
     void surface(const SurfaceEvent& event, uint32_t now_ms);
@@ -88,10 +89,10 @@ public:
     // Screen thread: a copy of what the page needs, taken under a short lock.
     void snapshot(Snapshot& out, uint32_t now_ms);
 
-    // Host previews: the state to draw from, without the hardware. Whoever takes one may write through it, so the
-    // next snapshot is taken whole.
-    Project& project() { handed_.fetch_add(1, std::memory_order_relaxed); return *project_; }
-    PatternBank& patterns() { handed_.fetch_add(1, std::memory_order_relaxed); return *patterns_; }
+    // Preview writers must serialize their edits with snapshots. They can keep either reference between frames.
+    // From then on this shell takes whole snapshots. The live app loads its engine without borrowing either.
+    Project& project() { preview_editable_.store(true, std::memory_order_relaxed); return *project_; }
+    PatternBank& patterns() { preview_editable_.store(true, std::memory_order_relaxed); return *patterns_; }
     // The screen's snapshot: snapshot_light off forces every snapshot whole. snapshot_verify (monkey, tests)
     // checks every light snapshot against a whole one, counting any drift in snapshot_stale() and repairing it.
     static inline bool snapshot_light = true, snapshot_verify = false;
@@ -159,7 +160,7 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
-    std::atomic<uint64_t> handed_ {0}; // project() or patterns() given out (any thread)
+    std::atomic<bool> preview_editable_ {false};
     std::atomic<unsigned> stale_ {0};  // snapshot_stale()
     // Presses the Loading sheet took (ui.loading): their releases are taken too, even after it has gone.
     std::array<bool, 256> eaten_buttons {};

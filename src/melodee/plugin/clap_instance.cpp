@@ -109,6 +109,7 @@ struct ClapInstance::Host
     clap_host host {};
     ClapInstance* owner = nullptr;
     std::atomic<bool> callback { false }, rescan { false }, latencyChanged { false };
+    std::atomic<bool> tailChanged { false };
     std::atomic<bool> remoteChanged { false }; // remote-controls changed(): its pages to be read again
     std::atomic<bool> process { false }; // request_process or request_flush: run the next block even if it sleeps
     std::atomic<bool> redraw { false };  // its screen asked to be drawn (sdk/melodee-screen/melodee_screen.h)
@@ -149,7 +150,7 @@ struct ClapInstance::Host
             [] (const clap_host* h) { of (h).process.store (true, std::memory_order_release); },
         };
         static const clap_host_latency latency { [] (const clap_host* h) { of (h).latencyChanged = true; } };
-        static const clap_host_tail tail { [] (const clap_host*) {} };
+        static const clap_host_tail tail { [] (const clap_host* h) { of (h).tailChanged.store (true, std::memory_order_release); } };
         static const clap_host_state state { [] (const clap_host*) {} };
         static const clap_host_audio_ports audioPorts {
             [] (const clap_host*, uint32_t) { return false; },
@@ -754,10 +755,24 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 
 double ClapInstance::getTailLengthSeconds() const
 {
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    return readTailSeconds();
+}
+
+bool ClapInstance::takeTailChange (double& seconds)
+{
+    if (! host->tailChanged.load (std::memory_order_acquire)) return false;
+    host->tailChanged.exchange (false, std::memory_order_acq_rel);
+    AudioScope audioThread;
+    seconds = readTailSeconds();
+    return true;
+}
+
+double ClapInstance::readTailSeconds() const
+{
     if (tail == nullptr || ! active) return 0.0;
-    std::lock_guard<std::recursive_mutex> held (mainLock); // main-thread call, as the rest here
     const uint32_t samples = tail->get (plugin);
-    if (samples == UINT32_MAX) return 60.0; // "infinite"
+    if (samples >= INT32_MAX) return 60.0; // "infinite"
     return samples > 1 ? (double) samples / rate : 0.0;
 }
 
@@ -1117,6 +1132,7 @@ void ClapInstance::setCurrentProgram (int index)
     {
         currentPreset = index;
         refreshValues();
+        host->process.store (true, std::memory_order_release); // apply the preset even if the rack was asleep
     }
 }
 

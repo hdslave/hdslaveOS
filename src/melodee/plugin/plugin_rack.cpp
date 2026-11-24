@@ -503,6 +503,8 @@ public:
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
         // its audio side takes) or a value waiting for it (a pot turned): else neither reaches it until a note does.
+        double tail_seconds;
+        if (!instrument && clap && clap->takeTailChange(tail_seconds)) idle.set_tail(plugin_rate, tail_seconds);
         const bool waiting = pending_count > 0 || (waker && waker->wantsProcess()) || poked.exchange(false, std::memory_order_acq_rel);
         bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);

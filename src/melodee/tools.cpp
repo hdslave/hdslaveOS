@@ -3150,7 +3150,7 @@ int sound(const std::string& path) {
     EngineHost host;
     Shell shell(host);
     starter_project(shell.project(), shell.patterns());
-    host.load(shell.project(), shell.patterns());
+    shell.load_engine();
     std::array<SampleData, 3> drums;
     uint32_t seed = 1;
     auto noise = [&] { seed = seed * 1664525u + 1013904223u; return int32_t(seed) * (1.0f / 2147483648.0f); };
