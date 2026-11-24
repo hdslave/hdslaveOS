@@ -3,13 +3,22 @@
 Status: design approved 2026-11-24, then eight stereo submixes added. All
 decisions made the same day (end of this file). Core step 1 (model and
 files) built: core e971012. Core step 2 (the strip's sound,
-`engine/channel_strip.cpp`) built: core 99ed66f. Measured on the MPC
-(2026-11-24, 48 kHz, 128-frame blocks, `--melodee-dsp-bench strips=30
-strip=full` / `strip=usual`, one thread at FIFO 30 beside the running app):
-30 strips with all nine bands, the compressor, trim, width and gain on:
-731 µs a block, 27.4 % of one core (0.91 % a strip); three bands each and the
-compressor on every other: 176 µs, 6.6 % (0.22 % a strip). The Mac runs the
-same 11 times faster. Nothing plays or shows yet.
+`engine/channel_strip.cpp`) built: core 99ed66f, then written for the A55
+with NEON: core 84ff289. Measured on the MPC (2026-11-24, 48 kHz, 128-frame
+blocks, `--melodee-dsp-bench strips=30 strip=full` / `strip=usual`, one
+thread at FIFO 30 beside the running app), 99ed66f then 84ff289:
+
+| 30 strips | 99ed66f | 84ff289 |
+|---|---|---|
+| all nine bands, compressor, trim, width, gain | 731 µs a block, 27.4 % of one core | 256 µs, 9.6 % (0.32 % a strip) |
+| three bands each, compressor on every other | 176 µs, 6.6 % | 94 µs, 3.5 % (0.12 % a strip) |
+
+By part, 30 strips at 84ff289: nine bands 5.7 %, three bands 2.1 %, one band
+1.4 %, compressor 3.3 %, trim 0.9 %, width 0.9 % (99ed66f: 18.2 %, 3.7 %,
+1.8 %, 6.4 %, 2.0 %, 2.1 %). A band at 0 dB costs nothing. What the A55
+needed (measured): a multiply by one lane of a register issues once a cycle,
+by a whole register twice; a 128-bit load takes two cycles. Nothing plays or
+shows yet.
 
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
