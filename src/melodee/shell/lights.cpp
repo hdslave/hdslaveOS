@@ -494,7 +494,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
-            for (const auto& ref : project_->samples) used += ref.used();
+            for (size_t n = 0, span = project_->samples.span(); n < span; ++n) used += project_->samples[n].used();
             bool taking = chop_take_playing(*project_, ui_, now); // Manual's take still playing (shell/zoom_view.h)
             chop_bits.store((uint32_t(ui_.chop_mode) & 3) | (uint32_t(ui_.chop_mode) >> 2 & 1) << 4 | uint32_t(chop_armed(ui_)) << 2 | uint32_t(taking) << 3 | uint32_t(ui_.slices.count & 0xff) << 8
                             | uint32_t(ui_.chop_slice) << 16 | uint32_t(used) << 24, std::memory_order_relaxed);

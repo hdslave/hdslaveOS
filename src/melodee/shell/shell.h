@@ -43,6 +43,7 @@ class Shell {
 public:
     // Starts with starting_project(); the engine host is loaded from it before audio runs.
     explicit Shell(EngineHost& host);
+    void load_engine(); // load the starting state before audio runs
 
     // MIDI thread.
     void surface(const SurfaceEvent& event, uint32_t now_ms);
@@ -88,9 +89,14 @@ public:
     // Screen thread: a copy of what the page needs, taken under a short lock.
     void snapshot(Snapshot& out, uint32_t now_ms);
 
-    // Host previews: the state to draw from, without the hardware.
-    Project& project() { return *project_; }
-    PatternBank& patterns() { return *patterns_; }
+    // Preview writers must serialize their edits with snapshots. They can keep either reference between frames.
+    // From then on this shell takes whole snapshots. The live app loads its engine without borrowing either.
+    Project& project() { preview_editable_.store(true, std::memory_order_relaxed); return *project_; }
+    PatternBank& patterns() { preview_editable_.store(true, std::memory_order_relaxed); return *patterns_; }
+    // The screen's snapshot: snapshot_light off forces every snapshot whole. snapshot_verify (monkey, tests)
+    // checks every light snapshot against a whole one, counting any drift in snapshot_stale() and repairing it.
+    static inline bool snapshot_light = true, snapshot_verify = false;
+    unsigned snapshot_stale() const { return stale_.load(std::memory_order_relaxed); }
     UiState& ui() { return ui_; }
     Context& context() { return context_; }
     // The app's sample library (service thread); the shell follows its changes.
@@ -99,7 +105,11 @@ public:
     void set_input(InputRoute* input) { input_ = input; context_.input = input; }
     void set_plugins(PluginRack* plugins) { context_.plugins = plugins; } // the app's plug-in rack (plugin/plugin_rack.h)
     void set_printer(PrintEngine* printer) { context_.printer = printer; } // the app's print engine (shell/print_engine.h)
-    void print(const Context::PrintAsk& ask) { context_.print(ask); }     // MIDI thread: `melodee-print`
+    void print(const Context::PrintAsk& ask) { // MIDI thread: `melodee-print`
+        std::lock_guard<std::mutex> guard(lock);
+        ++context_.heavy_serial;
+        context_.print(ask);
+    }
     // SD card access (parity phase 10b): the MIDI thread asks, the service thread lends.
     CardLink& card() { return card_link; }
     // Updates from the card (shell/update.h): written by the service thread, read by the MIDI thread.
@@ -150,6 +160,8 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
+    std::atomic<bool> preview_editable_ {false};
+    std::atomic<unsigned> stale_ {0};  // snapshot_stale()
     // Presses the Loading sheet took (ui.loading): their releases are taken too, even after it has gone.
     std::array<bool, 256> eaten_buttons {};
     std::array<bool, 128> eaten_pads {};

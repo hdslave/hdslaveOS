@@ -449,7 +449,7 @@ public:
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
-        idle.reset(is_instrument, this->plugin_rate);
+        idle.reset(is_instrument, this->plugin_rate, instance->getTailLengthSeconds());
         clap = dynamic_cast<ClapInstance*>(instance.get());
         screen_source = waker = dynamic_cast<ScreenSource*>(instance.get());
         has_screen = screen_source && screen_source->hasScreen();
@@ -499,11 +499,12 @@ public:
     void render(float* left, float* right, unsigned frames) override {
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
-        auto t0 = std::chrono::steady_clock::now();
         follow_clock(frames);
         // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
         // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
         // its audio side takes) or a value waiting for it (a pot turned): else neither reaches it until a note does.
+        double tail_seconds;
+        if (!instrument && clap && clap->takeTailChange(tail_seconds)) idle.set_tail(plugin_rate, tail_seconds);
         const bool waiting = pending_count > 0 || (waker && waker->wantsProcess()) || poked.exchange(false, std::memory_order_acq_rel);
         bool sleeping = !warming && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
@@ -517,11 +518,17 @@ public:
             load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
             return;
         }
+        // Sample load 1 block in 16 instead of taking two clock reads per plug-in on every block.
+        const bool sample_load = (++load_tick & 15) == 0;
+        std::chrono::steady_clock::time_point t0;
+        if (sample_load) t0 = std::chrono::steady_clock::now();
         if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
         else run(left, right, frames, instrument);
-        double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-        float share = float(took / (frames / sample_rate));
-        load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
+        if (sample_load) {
+            double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            float share = float(took / (frames / sample_rate));
+            load.store(load.load(std::memory_order_relaxed) * 0.8f + share * 0.2f, std::memory_order_relaxed);
+        }
     }
     // One processBlock of `frames`: an effect's input in left/right; the output added there (`add`) or in their place.
     void run(float* left, float* right, unsigned frames, bool add) {
@@ -552,11 +559,23 @@ public:
         }
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
-        idle.heard(l, r, frames);
         if (watching) measure(l, r, frames, false);
         auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
-        if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
-        else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
+        float peak = 0; // taken while passing the samples by: avoids walking the output buffer a second time
+        if (add) {
+            for (unsigned f = 0; f < frames; ++f) {
+                const float sl = safe(l[f]), sr = safe(r[f]);
+                peak = std::max({peak, std::fabs(sl), std::fabs(sr)});
+                left[f] += sl; right[f] += sr;
+            }
+        } else {
+            for (unsigned f = 0; f < frames; ++f) {
+                const float sl = safe(l[f]), sr = safe(r[f]);
+                peak = std::max({peak, std::fabs(sl), std::fabs(sr)});
+                left[f] = sl; right[f] = sr;
+            }
+        }
+        idle.heardPeak(peak, frames);
     }
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
@@ -586,6 +605,7 @@ public:
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
+    unsigned load_tick = 0;              // renders run, for 1-in-16 load sampling (audio thread)
     // Its sound as the page in view shows it (plugin_panel.h `scope`): written by the audio thread only while
     // `watched` (the panel's plug-in), a block's lowest and highest sample per entry, and peak levels in and out.
     std::atomic<bool> watched {false};
