@@ -74,6 +74,12 @@ comes back to the mixer once an effect or plug-in is in. Minus / Plus now
 move through the lit block on every block (Kerem: change it for everything);
 the wheel and the pads pick the channel.
 
+FX controls on Kerem's word: 0a6e1d2. On FX, Push opens the lit effect
+on its FX page to edit, a Mute tap switches it off or on (one undo step;
+held, Mute still mutes channels), an Erase tap takes it out and Shift +
+Erase copies it. Erase + a track's pad asks to clear the track (it did
+nothing on the mixer before).
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -129,14 +135,14 @@ The EQ and the compressor each have an on/off.
 | Pads | Select the channel, no sound. A pad is lit in its channel's colour, as bright as its level. |
 | **PAD BANK** | Pads and screen: tracks 1–16, or submixes (pads 1–8), buses A–D (9–12), input (15), master (16). |
 | Fader | Level of the selected channel, always. |
-| Encoder | Turn: the next channel comes to the centre. Push: the lit block on or off (on FX the lit effect; on its plus, the picker). Held: the Menu. |
+| Encoder | Turn: the next channel comes to the centre. Push: EQ or COMP on or off; on FX the lit effect to edit (its FX page), on the plus the picker. Held: the Menu. |
 | **−** / **+** | Through the lit block: SENDS and COMP their first and second row, EQ its three groups, FX the chain's effects and the plus. **SHIFT**: undo / redo. |
 | **B1** | **SENDS** on a track or submix; again: **FX**, the channel's chain in the card. On a bus or the master: **FX** alone. On the input: **INPUT**. |
 | **B2** | **EQ**. Again: the next three bands (LOW, MID, HIGH). |
 | **B3** | **COMP**. On the master: the Compressor (**SHIFT** + **Pad 5**), same settings. |
 | **K1**–**K3** | The lit block. **SHIFT**: its second row. |
-| **MUTE** | As printed. Held or latched: a pad mutes its channel, **SHIFT** + pad solos. **SHIFT** + **MUTE**: unmute all. |
-| **ERASE** | Held + a knob or the fader: that value back. Alone: the lit block flat. **SHIFT** + **ERASE**: copy the block; pads paste. |
+| **MUTE** | As printed. Held or latched: a pad mutes its channel, **SHIFT** + pad solos. **SHIFT** + **MUTE**: unmute all. On FX, a tap: the lit effect off or on. |
+| **ERASE** | Held + a knob or the fader: that value back. Alone: the lit block flat; on FX the lit effect out (**SHIFT** + **ERASE**: a copy after it). Held + a track's pad: clear that track. |
 | **SEQ RECORD** | On: knob, fader and mute moves are recorded. |
 | **SHIFT** + **KNOB FX** | The channel's full effect page (built b31604f): every row of an effect, a plug-in's own screen. B1 **MIXER** back. |
 
