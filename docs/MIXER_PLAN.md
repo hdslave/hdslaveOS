@@ -17,8 +17,14 @@ By part, 30 strips at 84ff289: nine bands 5.7 %, three bands 2.1 %, one band
 1.4 %, compressor 3.3 %, trim 0.9 %, width 0.9 % (99ed66f: 18.2 %, 3.7 %,
 1.8 %, 6.4 %, 2.0 %, 2.1 %). A band at 0 dB costs nothing. What the A55
 needed (measured): a multiply by one lane of a register issues once a cycle,
-by a whole register twice; a 128-bit load takes two cycles. Nothing plays or
-shows yet.
+by a whole register twice; a 128-bit load takes two cycles.
+
+Core step 3 (tracks) built: core dc021e9. Every track plays through its strip
+and sounds as before while the strip is flat; nothing sets a strip yet but a
+project file (the page is Melodee step 1). Checked: core and Melodee host
+tests, melodee-move's sources compile as before, the build runs on the MPC
+with a project loaded (no xruns). Owed: old projects with effects on a track
+heard by ear (the chain no longer hears the level and pan).
 
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
@@ -145,14 +151,19 @@ and the Compressor. Meters are one peak a track; buses have none.
    effect, width, trim, with eases against clicks. Measure it on the MPC with
    `dsp_bench` before going on: 30 channels with every band and the
    compressor on, and the usual case (a few bands a channel).
-3. **Tracks.** Run the strip in the track's job (`chain_of`), after
-   `run_chain` and the post-FX print, so a print never holds it. Today level
-   and pan are applied before the chain (`chain_of`, engine_host.cpp
-   3173-3189); they move after the strip, which changes how an overdriven
-   chain hears a turned-down track. Check old projects by ear. Commands for
-   each value, key source through the existing key routing (`plan_keys`,
-   `key_sources`). Stereo peak and gain reduction per channel as atomics, as
-   `meters[]` today.
+3. **Tracks.** Built (core dc021e9). A track is now: engine, chain, Post
+   FX print, strip, punches, Pad FX, delay compensation, then level and pan
+   last. Before, level and pan came first, so an overdriven chain hears a
+   turned-down track differently now. A print is taken before the level and
+   pan and `print_mix()` is unity and centred for every track: a print holds
+   neither, and its project hashes as before except for a track with effects
+   (it kept its level and pan before), whose prints are printed again the
+   first time it is frozen or loaded. The Track input source (post) is the
+   track as heard (after level and pan). Commands: `StripValue` (track = strip
+   number, index = `StripPart`, model/strip.h `strip_set` clamps). A strip's
+   key goes through `plan_keys` like an effect's (a track keyed by another
+   waits for it). `EngineHost::strip_meter(n)`: each side's peak and the gain
+   reduction, falling as `meter()` does.
 4. **Submixes.** A buffer pair each. In the summing loop a track goes to its
    submix in place of the master. Then each submix: strip, chain, level, pan,
    mute, its sends into the buses, into the master. They run on the workers
