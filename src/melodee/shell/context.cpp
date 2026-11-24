@@ -292,8 +292,37 @@ void Context::reload_tick() {
 #endif
 }
 
+// The sample browser's place for a kind of track: 0 a kit, 1 a keygroup, 2 an audio track, 3 anything else.
+unsigned Context::browse_kind() const {
+    switch (project.tracks[ui.track % track_count].engine) {
+    case EngineKind::Sampler: return 0;
+    case EngineKind::Keygroup: return 1;
+    case EngineKind::Audio: return 2;
+    default: return 3;
+    }
+}
+
+// Samples opened for the selected track: opened last for the same kind of track, as it was left; for another, that
+// one's place kept and this kind's taken up, where it was left, else the card's top.
+void Context::browse_for_track() {
+    if (!library) return;
+    const unsigned kind = browse_kind();
+    if (files_kind == int(kind)) return;
+    if (files_kind >= 0) {
+        files_places[unsigned(files_kind)][ui.files_drive % 2] = {library->folder(), ui.files_cursor, true};
+        files_drives[unsigned(files_kind)] = uint8_t(ui.files_drive % 2);
+    }
+    files_kind = int(kind);
+    const uint8_t drive = uint8_t(files_drives[kind] % 2);
+    const auto& back = files_places[kind][drive];
+    files_row_wanted = back.set ? back.row : -1;
+    ui.files_drive = drive;
+    library->browse(Drive(drive), back.set ? back.folder : std::string());
+}
+
 void Context::open(PageId page) {
     if (page != PageId::Scenes) ui.scene_capture = false; // CAPTURE waits for a pad on Scenes only
+    if (page == PageId::Samples) browse_for_track();
     // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
     if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
     if (page == PageId::Edit && track().engine == EngineKind::Plugin) { // a plug-in's parameters live on Stage's B1 EDIT

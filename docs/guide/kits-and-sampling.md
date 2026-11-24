@@ -134,6 +134,10 @@ Press **SAMPLE SELECT** on a kit to open the sample browser. Press it again
 to close it. The header shows the pad a file loads onto (→ A09), the last pad
 you hit.
 
+The browser opens at the top of the card the first time. After that it opens
+where you left it. Kits, keygroups, audio tracks and the rest each keep their
+own folder.
+
 ![The sample browser](../images/screens/samples.png)
 
 | Control | Action |

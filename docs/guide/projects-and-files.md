@@ -65,7 +65,8 @@ In the list:
   **Autosave**, and the factory **Demos** and **Kits**. It is read only:
   its projects have Load and Load kit.
 - The list opens on the open project the first time, then where you left
-  it. Each drive keeps its own folder and row.
+  it. A project not yet saved on the card opens it at the card's top. Each
+  drive keeps its own folder and row.
 - Push the encoder or press **B3** on a project to open its sheet. Its jobs
   are cards. The open project has Save, Save as new, Rename, Duplicate,
   Move to folder, New folder here, Open at start and Delete. Another

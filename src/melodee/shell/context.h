@@ -516,7 +516,15 @@ public:
     // The browsers keep their place: each drive's folder and row (Samples by Drive; Project 0 the card, 1 internal),
     // so B2 there and back, or leaving and coming back, lands where it was.
     struct BrowserPlace { std::string folder; uint16_t row = 0; bool set = false; };
-    std::array<BrowserPlace, 2> files_places {}, project_places {};
+    // The sample browser's places: where it was left for each kind of track it is opened for (a kit, a keygroup, an
+    // audio track, anything else) on each drive, and the drive; one never browsed for starts at the card's top.
+    static constexpr unsigned browse_kinds = 4;
+    std::array<std::array<BrowserPlace, 2>, browse_kinds> files_places {};
+    std::array<uint8_t, browse_kinds> files_drives {};
+    int files_kind = -1;             // whose place the browser shows; -1 none yet
+    unsigned browse_kind() const;    // the selected track's
+    void browse_for_track();         // Samples opened: the selected track's kind's place
+    std::array<BrowserPlace, 2> project_places {};
     int files_row_wanted = -1;        // Samples: the row to land on once the folder asked for lists
     std::string project_row_path;     // Project: the entry to land on once the folder lists (the open project, at first)
     std::string delete_path;          // Erase in a browser (shell/delete_jobs.h): what the question on screen would delete
