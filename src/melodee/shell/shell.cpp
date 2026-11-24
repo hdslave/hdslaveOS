@@ -680,7 +680,7 @@ void Shell::wheel(int delta) {
         return;
     }
     if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll && ui_.page != PageId::Chop
-        && ui_.page != PageId::StepEdit) { // Patterns: locates by Q; Roll: marks notes; Chop: hit to hit; Step Edit: bar to bar
+        && ui_.page != PageId::StepEdit && ui_.page != PageId::Scenes) { // these pages own Shift + wheel
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);

@@ -40,6 +40,15 @@ int main() {
     wheel(-1); expect("the wheel alone, a step back", 52);
     knob(SurfaceControl::K2, 90); // a knob touched: elsewhere Shift + the wheel would now fine-edit it
     button(B::Shift, true); wheel(-1); expect("Shift + the wheel after K2 was turned", 36); button(B::Shift, false);
+    shell->context().open(PageId::Scenes);
+    knob(SurfaceControl::K1, 80);
+    auto& scene = shell->project().scenes[shell->project().scene];
+    scene.colour = 2;
+    const auto tempo = scene.tempo;
+    button(B::Shift, true); wheel(1); button(B::Shift, false);
+    const bool colour_changed = scene.colour == 3 && scene.tempo == tempo;
+    std::printf("Scenes Shift + wheel after K1 changes colour: %s\n", colour_changed ? "ok" : "WRONG");
+    bad += !colour_changed;
     std::printf("%s\n", bad ? "FAULT" : "all as expected");
     return bad != 0;
 }
