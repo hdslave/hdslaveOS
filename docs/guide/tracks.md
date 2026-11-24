@@ -126,8 +126,9 @@ chain. This saves CPU. The pads still play the sound live.
    **Pre FX** prints the sound alone, and the chain runs live.
 5. **K2** (**TAIL**): **Loop** (the end wraps into the start), **Ring** (one
    pass and its tail) or **Cut** (one pass). Ring listens for delayed repeats through the tail
-   reported by the plug-ins at the selected tap, up to ten seconds after the
-   pattern ends. It keeps 200 ms of trailing silence.
+   reported by the plug-ins at the selected tap, including changes they report while
+   printing. A kit's recorded pad sends can ring out even when its track insert is silent.
+   Ring keeps 200 ms of trailing silence, up to ten seconds total after the pattern ends.
 6. Press **B3** (**FREEZE**).
 
 ![The PRINT sheet](../images/screens/print.png)

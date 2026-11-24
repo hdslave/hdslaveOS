@@ -53,6 +53,9 @@ struct Plugin {
     std::map<int, double> phases; // key: phase of its sine
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
     int pulse = 0;                // Sine's SC Key: frames of its pulse still to play
+    bool dynamicRing = false;
+    int repeatIn = -1;
+    std::atomic<uint32_t> ringTail {0};
     int drawnBar = -1;            // its screen's bar as last drawn, pixels
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
@@ -153,6 +156,10 @@ const clap_plugin_latency latencyExt {latency};
 
 uint32_t tailGet(const clap_plugin* p) {
     auto& fixture = of(p);
+    if (fixture.dynamicRing) {
+        if (fixture.threads && !fixture.threads->is_main_thread(fixture.host) && !fixture.threads->is_audio_thread(fixture.host)) ++wrongThread;
+        return fixture.ringTail.load();
+    }
     fixture.main();
     if (std::getenv("MELODEE_TEST_RING_TAIL")) return uint32_t(fixture.rate * 0.75);
     return uint32_t(tailSamples.load());
@@ -255,6 +262,12 @@ void event(Plugin& s, const clap_event_header* e) {
     } else if (e->type == CLAP_EVENT_NOTE_ON) {
         s.phases[reinterpret_cast<const clap_event_note*>(e)->key] = 0;
         s.pulse = 16;
+        if (s.dynamicRing) {
+            s.repeatIn = int(s.rate * 0.52);
+            s.ringTail = uint32_t(s.rate * 0.8);
+            auto* tail = static_cast<const clap_host_tail*>(s.host->get_extension(s.host, CLAP_EXT_TAIL));
+            tail->changed(s.host);
+        }
     } else if (e->type == CLAP_EVENT_NOTE_OFF) {
         s.phases.erase(reinterpret_cast<const clap_event_note*>(e)->key);
     } else if (e->type == CLAP_EVENT_NOTE_CHOKE) {
@@ -290,6 +303,10 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
             for (auto& [key, phase] : s.phases) {
                 x += float(s.level * std::sin(phase));
                 phase += 2 * M_PI * 440.0 * std::pow(2.0, (key - 69) / 12.0) / s.rate;
+            }
+            if (s.dynamicRing) {
+                x = s.repeatIn == 0 ? 0.75f : 0.0f;
+                if (s.repeatIn >= 0) --s.repeatIn;
             }
             out[0][f] = x;
             if (outCh > 1) out[1][f] = x;
@@ -378,6 +395,7 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     auto* s = new Plugin;
     s->host = host;
     s->instrument = instrument;
+    s->dynamicRing = instrument && std::getenv("MELODEE_TEST_DYNAMIC_TAIL");
     if (!instrument) gainPlugin = s;
     auto& p = s->plugin;
     p.desc = instrument ? &sineDescriptor : &gainDescriptor;

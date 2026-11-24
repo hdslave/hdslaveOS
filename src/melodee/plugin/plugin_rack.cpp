@@ -541,6 +541,8 @@ public:
             run(left, right, frames, instrument);
             if (key_source) key_frames = std::min(frames, unsigned(std::max(key_source->keyFrames(), 0)));
         }
+        // The offline host may render many seconds before the rack worker next wakes.
+        if (ring_print && clap && clap->readChangedAudioTail(declared_tail)) idle.setTail(declared_tail);
         if (measure_load) {
             double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             float share = float(took / (frames / sample_rate));
@@ -1762,7 +1764,7 @@ void PluginRack::idle_plugins() {
     bool moved = false;
     for (auto* h : clap) {
         h->clap->idle();
-        if (h->clap->takeTailChanged()) h->note_tail(h->clap->getTailLengthSeconds()); // its gate's span follows the new tail
+        if (!ring_print && h->clap->takeTailChanged()) h->note_tail(h->clap->getTailLengthSeconds()); // its gate's span follows the new tail
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
         auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown, h->file_pages));
         std::lock_guard<std::mutex> held(lock);

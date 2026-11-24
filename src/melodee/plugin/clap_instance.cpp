@@ -862,8 +862,21 @@ const float* ClapInstance::keyChannel (int channel) const
 
 double ClapInstance::getTailLengthSeconds() const
 {
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    return readTailSeconds();
+}
+
+bool ClapInstance::readChangedAudioTail (double& seconds)
+{
+    if (! takeTailChanged()) return false;
+    AudioScope audioThread;
+    seconds = readTailSeconds();
+    return true;
+}
+
+double ClapInstance::readTailSeconds() const
+{
     if (tail == nullptr || ! active) return 0.0;
-    std::lock_guard<std::recursive_mutex> held (mainLock); // a main-thread call, as the rest here
     const uint32_t samples = tail->get (plugin);
     if (samples == UINT32_MAX) return 60.0; // "infinite"
     return samples > 1 ? (double) samples / rate : 0.0;

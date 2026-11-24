@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#include "melodee/engine/engine_host.h"
+#include "melodee/engine/print_render.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
@@ -25,12 +25,14 @@ int main(int argc, char** argv) {
     // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
     // a value set, and a mono plug-in heard through the rack (fixture env hooks in tests/clap_fixture.cpp).
     bool failsave = mode == "failsave", lv2wake = mode == "lv2wake", mono = mode == "mono";
+    const bool dynamicRing = mode == "dynamic-ring";
+    if (dynamicRing) setenv("MELODEE_TEST_DYNAMIC_TAIL", "1", 1);
     if (mode == "ringtail") setenv("MELODEE_TEST_RING_TAIL", "1", 1);
     if (mono) setenv("MELODEE_TEST_MONO", "1", 1); // before the rack opens it: a mono main port
     const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
-    auto rack = std::make_unique<PluginRack>(*host);
+    auto rack = std::make_unique<PluginRack>(*host, dynamicRing ? "print-" : "", dynamicRing);
     auto shell = std::make_unique<Shell>(*host);
     auto& c = shell->context();
     auto& ui = shell->ui();
@@ -56,11 +58,13 @@ int main(int argc, char** argv) {
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
     }
-    if (mono) { // a held A from the pattern's first step, so the mono sine sounds once it plays
+    if (mono || dynamicRing) {
         Step step;
         step.notes[0] = {69, 100};
         step.length = 16;
-        shell->patterns().at[0][0].set_step(0, step);
+        auto& pattern = shell->patterns().at[0][0];
+        if (dynamicRing) pattern.length = sixteenth_ticks;
+        pattern.set_step(0, step);
     }
     host->load(project, shell->patterns());
     host->set_audio_format(48000, 384);
@@ -149,6 +153,15 @@ int main(int argc, char** argv) {
         set_control("Level", 250);
         wait([&] { return !rack->idling(entry); }); // woken for the value, no note needed
         shell->set_plugins(nullptr);
+        return 0;
+    }
+    if (dynamicRing) {
+        CHECK(host->print_tail_seconds(0, true) == 0);
+        const auto made = render_print(*host, 0, sixteenth_ticks, PrintTap::PostFx, PrintTail::Ring);
+        CHECK(made.error.empty() && made.pass == 6000);
+        CHECK(made.left.size() > 24960 && made.left[24960] > 0.7f); // the repeat at 520 ms, after the old quiet cutoff
+        CHECK(host->print_tail_seconds(0, true) == 0.8);
+        CHECK(made.left.size() == 24961 + 9600); // one pulse plus the usual 200 ms of quiet
         return 0;
     }
     if (mode == "ringtail") { // the real CLAP rack supplies the declared duration to the print host
