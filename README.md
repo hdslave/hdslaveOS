@@ -4,7 +4,7 @@
 hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.7.1.</p>
 
 <p align="center">
-  <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE dark purple flare theme across Palette, Tracks, Step Edit, and Audio settings" width="760">
+  <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Tracks, Step Edit, and Deep Freeze screens" width="760">
 </p>
 
 ## What hdslaveOS adds over stock Melodee
