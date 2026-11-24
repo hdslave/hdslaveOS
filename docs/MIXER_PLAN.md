@@ -87,6 +87,15 @@ master's B3 is the printed Compressor: ATTACK, RELEASE, AMOUNT, Shift + K3 IN
 BOOST, Push on or off, the picture its gain reduction of late. Width and a
 track's trim still have no card (open).
 
+Melodee step 5: core 297dab1, adfb2d0. While a channel's EQ is in view the
+engine copies its sound after its strip into a ring (`ScopeRing`,
+`EngineHost::set_spectrum_tap`; none tapped otherwise). The draw thread
+takes the newest 2048 frames, a Hann window and an FFT (engine/fft.h), and
+keeps 54 bands a sixth of an octave wide over 40 Hz - 20 kHz, rising at once
+and falling 36 dB a second (`shell/spectrum_view.h`). The EQ block draws them
+behind the curve, -72 dB at its floor. MPC: draw 4.4 ms on SENDS, 4.9 ms on
+EQ; no xruns, render load as before. Not yet seen on the MPC with sound.
+
 ## What it is
 
 One page, opened with **PAD FX** + **KNOB FX**. It replaces Tracks, Sends and
@@ -334,7 +343,7 @@ and the Compressor. Meters are one peak a track; buses have none.
    FX since 81ea501). A bus's knobs are its first effect's
    bindings (`page_chain`). The input's are Input Config's. The master's are
    the Compressor page's.
-5. **EQ picture.** The engine hands out the selected channel's sound in a
+5. **EQ picture.** Built (core 297dab1, adfb2d0). The engine hands out the selected channel's sound in a
    ring; the screen thread makes the spectrum.
 6. **Take out the old.** Tracks and Sends pages and their previews, Stage's
    MIX page and its SENDS page on every track but a kit (`stage_page.cpp`,
