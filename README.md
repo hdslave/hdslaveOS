@@ -1,7 +1,7 @@
 <h1 align="center">hdslaveOS</h1>
 
 <p align="center"><strong>A performance-tuned 16-track groovebox OS for the Akai MPC Sample</strong><br>
-hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.7.1.</p>
+hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.8.1.</p>
 
 <p align="center">
   <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE dark purple flare theme across Palette, Tracks, Step Edit, and Audio settings" width="760">
@@ -148,7 +148,7 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Requirements
 
-- Akai MPC Sample with firmware **1.3.0.12** or **1.4.0.7**. On any other
+- Akai MPC Sample with firmware **1.3.0.12**, **1.4.0.7** or **1.4.0.8**. On any other
   firmware Melodee does not start and the stock app keeps running.
 - On firmware 1.4: **Developer Mode** on, in the stock app's Settings on the
   **DEV ENHANCEMENTS (BETA)** page.
@@ -229,10 +229,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.7.1-hdslave.8 ./build.sh
+MELODEE_VERSION=v0.8.1-hdslave.1 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.7.1-hdslave.8
+python3 tools/package_unsigned.py v0.8.1-hdslave.1
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.

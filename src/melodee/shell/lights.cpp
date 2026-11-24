@@ -522,7 +522,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
-            for (size_t n = 0, span = project_->samples.span(); n < span; ++n) used += project_->samples[n].used(); // not all 8192 slots, every tick
+            for (size_t n = 0, span = project_->samples.span(); n < span; ++n) used += project_->samples[n].used();
             bool taking = chop_take_playing(*project_, ui_, now); // Manual's take still playing (shell/zoom_view.h)
             chop_bits.store((uint32_t(ui_.chop_mode) & 3) | (uint32_t(ui_.chop_mode) >> 2 & 1) << 4 | uint32_t(chop_armed(ui_)) << 2 | uint32_t(taking) << 3 | uint32_t(ui_.slices.count & 0xff) << 8
                             | uint32_t(ui_.chop_slice) << 16 | uint32_t(used) << 24, std::memory_order_relaxed);
@@ -704,7 +704,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     unsigned beat = project.beat_ticks();
     on(B::TapTempo, ui.settings.tap_light && playing && ticks % beat < beat / 3); // Settings > LIGHTS > Tap Tempo light
     on(B::Mute, ui.mute_mode());           // bright while mute mode is on, latched or held
-    on(B::PadBank, tracks_on_pads(ui) || ui.page == PageId::Tracks); // held, a track copy under way, or the mixer's Tracks: the pads pick tracks
+    on(B::PadBank, tracks_on_pads(ui) || ui.page == PageId::Mixer); // held, a track copy under way, or the mixer: the pads pick tracks
     on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying
     button_levels.store(levels, std::memory_order_relaxed);
 }

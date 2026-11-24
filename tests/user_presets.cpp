@@ -757,7 +757,10 @@ int main(int argc, char** argv) {
         CHECK(has_patch(entry));
         CHECK(state()[0] == 0.5);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs; });
+        CHECK(ui.page == PageId::Stage); // Edit opens the plug-in's controls on Stage
+        button(SurfaceButton::Shift, true);
         tap(SurfaceButton::TopMiddle);
+        button(SurfaceButton::Shift, false);
         CHECK(ui.page == PageId::PluginPresets);
         auto programs = rack->programs(entry);
         auto rows = preset_rows(programs.list, "", programs.current);

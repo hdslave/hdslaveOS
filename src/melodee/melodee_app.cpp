@@ -75,7 +75,7 @@ MelodeeApp::MelodeeApp()
     const std::string projects = melodee::ProjectStore::projects_root(Platform().storage());
     if (!projects.empty()) melodee::crash_log::set_folder(std::filesystem::path(projects).parent_path().string() + "/Crashes");
     shell.start_settings(melodee::ProjectStore::read_settings_file(projects).settings);
-    host.load(shell.project(), shell.patterns());
+    shell.load_engine();
     // The tracks render on several cores (roadmap P2). Floating: a worker for each core beside the audio thread, every
     // one free to run anywhere. Pinned: the audio thread on core 1 and two workers on cores 2 and 3, the rest of Melodee
     // kept on core 0 (keep_rest_off()). $MELODEE_RENDER_THREADS: "pinned", or how many floating workers.
@@ -139,6 +139,7 @@ void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
     usb_full = shell.usb_full_volume();
     const bool direct = shell.usb_direct_on();
     host.set_usb_direct(direct);
+    host.set_usb_submixes(shell.usb_submixes_on());
     host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames),
                 usb_full ? usb_block.data() : nullptr);
     // Settings' USB-C in Direct: what a computer plays goes straight to the jacks, dry, while something here would
@@ -179,6 +180,14 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     while (remote_looper.pop(looper_ask)) shell.looper_ask(looper_ask, now_ms());
     melodee::Context::PrintAsk print_ask;
     while (remote_print.pop(print_ask)) shell.print(print_ask);
+    std::array<char, 40> stems_name {};
+    while (remote_stems.pop(stems_name)) { // the song's stems, named, as Song's export makes them
+        auto& context = shell.context();
+        const uint8_t kind = context.ui.export_kind;
+        context.ui.export_kind = melodee::export_kinds::stems;
+        context.mixdown(stems_name.data());
+        context.ui.export_kind = kind;
+    }
     Remote remote;
     while (presses.pop(remote)) {
         if (remote.kind == 1) { // the wheel
@@ -258,6 +267,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
         return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
+    }
+    if (action == "melodee-stems") { // melodee-stems NAME: the song's stems into Melodee/Stems/NAME (Song's export)
+        if (argument.empty()) return "ERR melodee-stems NAME";
+        std::array<char, 40> name {};
+        std::snprintf(name.data(), name.size(), "%s", argument.c_str());
+        return remote_stems.push(name) ? "OK melodee-stems " + argument : "ERR busy";
     }
     if (action == "melodee-unfreeze") { // freeze plan F2b: the track plays live again at once (its prints are kept)
         int track = std::atoi(argument.c_str());

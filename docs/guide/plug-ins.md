@@ -101,12 +101,11 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 **SPACE** on every plug-in (see
 [Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
 
-**Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
-on Stage (**EDIT**) to see the same parameters there. A plug-in that draws its
-own screen shows that instead (see
-[A plug-in's own screen](#a-plug-ins-own-screen)).
+**EDIT**: once you pick a plug-in, Stage opens on **EDIT**, the third page
+under **B1**. A plug-in that draws its own screen shows it on **PANEL**, the
+page before (see [A plug-in's own screen](#a-plug-ins-own-screen)).
 
-![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
+![EDIT: a plug-in's parameters](../images/screens/pluginedit.png)
 
 - The page shows the plug-in's parameters in rows of three, each over its
   pot: **K1**, **K2**, **K3**. The row the pots turn is raised, in their
@@ -132,15 +131,17 @@ own screen shows that instead (see
 - **SHIFT** + encoder steps the parameter turned last by one of its own
   values.
 - **ERASE** + a pot sets its parameter back to the plug-in's default.
-- **B1** (**PLUG-INS**) opens the picker. **B2** (**PRESETS**) opens the
-  plug-in's presets, when it has some. Picking another plug-in there asks
+- Hold **SHIFT** on **PRESETS**, **PANEL** or **EDIT** for the plug-in's
+  own keys. **SHIFT** + **B1** (**PLUG-INS**) opens the picker, as **SAMPLE
+  SELECT** does. **SHIFT** + **B2** (**PRESETS**) opens the plug-in's
+  presets, when it has some. Picking another plug-in in the picker asks
   "Replace Surge XT?" first. The old plug-in's sound and settings go;
   **SHIFT** + **−** (undo) brings it back with its settings. The same
   question comes on an effect slot.
 - Every plug-in hears Melodee's Play and Stop, the tempo and the place in
   the song, so its own sequencer plays only while Melodee plays.
-  **B3** (**TRANSPORT**) sets whether the plug-in hears Play and Stop. Its
-  light is on by default. Turn it off for a plug-in with its own sequencer
+  **SHIFT** + **B3** (**TRANSPORT**) sets whether the plug-in hears Play and
+  Stop. Its light is on by default. Turn it off for a plug-in with its own sequencer
   or arpeggiator, so that only the track's notes play it. It still follows
   the tempo.
 - In hdslaveOS a CLAP plug-in made for it (the hdslave synths, drum
@@ -152,8 +153,8 @@ own screen shows that instead (see
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **K1**–**K3** still set
-the three parameters shown on Edit. **B1** goes back. Push the encoder on
-Stage's **PRESETS** page to open the same list.
+the three parameters shown on **EDIT**. **B1** goes back. Push the encoder on
+Stage's **PRESETS** page, or press **SHIFT** + **B2**, to open the same list.
 
 ![Plug-in presets](../images/screens/pluginpresets.png)
 
@@ -205,7 +206,11 @@ loop chains take plug-ins.
 
 Select an effect with a custom screen, such as **hdslave Cortex Filter**, to see its compact view below the slots. Push the encoder to open its full page. **B3** or **SHIFT + Push** returns to the same slot.
 
-**SHIFT + B3** opens the slot sheet. **PRESETS** opens the preset list, and **TRANSPORT** works as on a plug-in track's Edit page. With a plug-in effect selected in the chain or its preset list open, **Shift + Sample Select** saves its current settings as a user preset. You can save the first preset directly from the chain.
+**SHIFT** + **B3** opens the slot sheet. **PRESETS** opens the preset list,
+and **TRANSPORT** works as **SHIFT** + **B3** on a plug-in track's Stage.
+With a plug-in effect selected in the chain or its preset list open,
+**SHIFT** + **SAMPLE SELECT** saves its current settings as a user preset.
+You can save the first preset directly from the chain.
 
 A kit pad's own chain and Knob FX take no plug-ins.
 
@@ -217,10 +222,9 @@ Some plug-ins draw their own page on the MPC Sample. Melodee keeps **B1**–**B3
 and draws nothing over the plug-in's knobs: the plug-in shows where a pot sits
 until it reaches its value. **K1**–**K3** turn the three parameters it names.
 
-- **On a plug-in track**: Edit shows the plug-in's page. On Stage, **B1** goes
-  **PRESETS**, **PANEL** (its page), **EDIT** (Melodee's pages of its
-  parameters). On its page the encoder, its push and **−** / **+** are the
-  plug-in's. **SHIFT** + **B3** on Edit swaps its page and Melodee's.
+- **On a plug-in track**: on Stage, **B1** goes **PRESETS**, **PANEL** (its
+  page), **EDIT** (Melodee's pages of its parameters). On its page the
+  encoder, its push and **−** / **+** are the plug-in's.
 
 ![PANEL: a plug-in's own page](../images/screens/stagepluginpanel.png)
 
@@ -236,6 +240,24 @@ until it reaches its value. **K1**–**K3** turn the three parameters it names.
   plug-in.
 
 Plug-in makers: [Plug-in screens](../PLUGIN_SCREENS.md).
+
+### A screen installed apart from the plug-in
+
+A companion screen gives a VST2 plug-in a page of its own without changing
+the plug-in. Copy the screen's folder into `Melodee/Plugin Screens/` on the
+card; the plug-in stays in `Melodee/Plugins/` as it is.
+
+- It shows on **PANEL** as a plug-in's own screen does, when the plug-in
+  has none of its own.
+- Melodee checks that the screen is for that plug-in and that every
+  parameter it uses is where it expects. When one is not, Melodee shows its
+  own pages and says why in `Melodee/Plugin Screens/problems.txt`.
+- A screen that stops working is closed: Melodee's pages come back with a
+  notice, and the plug-in plays on.
+- Delete the screen's folder to go back to Melodee's pages. Projects never
+  need the screen.
+
+Screen makers: [Companion screens](../PLUGIN_COMPANIONS.md).
 
 ## Neural Amp Modeler
 

@@ -4,6 +4,9 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/companion_host.h"
+#include "melodee/plugin/companion_package.h"
+#include "melodee/plugin/companion_screen.h"
 #include "melodee/plugin/idle_gate.h"
 #include "melodee/plugin/user_presets.h"
 #include "melodee/plugin/page_file.h"
@@ -241,6 +244,19 @@ std::string text_of(const fs::path& file, size_t most) {
     return std::string((std::istreambuf_iterator<char>(in)), {});
 }
 
+// Who a plug-in is, as page files and companion screens name it (plugin/page_file.h).
+PluginIdentity identity_of(juce::AudioPluginInstance& instance, ClapInstance* clap, const PluginFile& file) {
+    juce::PluginDescription description;
+    instance.fillInPluginDescription(description);
+    PluginIdentity who;
+    who.name = description.name.toStdString();
+    who.vendor = description.manufacturerName.toStdString();
+    if (clap) who.clap = clap->clapId();
+    if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) who.vst2 = description.uniqueId;
+    if (file.format == PluginFormat::Lv2) who.lv2 = description.fileOrIdentifier.toStdString();
+    return who;
+}
+
 // The pages of the first page file for this plug-in (plugin/page_file.h): the card's Melodee/Plugin Pages folder, its
 // own package, Melodee's library (plugin/page_library.h). Empty: none. Its skin, where it has one, into `skin`
 // (plugin/plugin_skin.h; images from the file's folder, so none from the library). `problems` gets, by file, what
@@ -250,14 +266,7 @@ std::vector<PluginPage> file_pages(juce::AudioPluginInstance& instance, ClapInst
                                    std::map<std::string, std::vector<std::string>>& problems,
                                    std::shared_ptr<const PluginSkin>& skin) {
     skin = nullptr;
-    juce::PluginDescription description;
-    instance.fillInPluginDescription(description);
-    PluginIdentity who;
-    who.name = description.name.toStdString();
-    who.vendor = description.manufacturerName.toStdString();
-    if (clap) who.clap = clap->clapId();
-    if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) who.vst2 = description.uniqueId;
-    if (file.format == PluginFormat::Lv2) who.lv2 = description.fileOrIdentifier.toStdString();
+    const PluginIdentity who = identity_of(instance, clap, file);
     std::vector<std::string> names, ids;
     for (auto* p : instance.getParameters()) {
         names.push_back(p->getName(64).trim().toStdString());
@@ -444,10 +453,16 @@ public:
         declared_tail = instance->getTailLengthSeconds();
         idle.reset(is_instrument, this->plugin_rate, declared_tail);
         clap = dynamic_cast<ClapInstance*>(instance.get());
-        screen_source = dynamic_cast<ScreenSource*>(instance.get());
+        screen_source = waker = dynamic_cast<ScreenSource*>(instance.get());
         has_screen = screen_source && screen_source->hasScreen();
         // A side-chain key (melodee-hdslave): a CLAP instrument's second output port (plugin/clap_instance.h).
         key_source = is_instrument && clap && clap->hasKeyOutput() ? clap : nullptr;
+    }
+    // A companion screen in place of a screen of its own (rack's thread, before it is offered).
+    void use_companion(std::unique_ptr<CompanionScreen> screen) {
+        companion = std::move(screen);
+        screen_source = companion.get();
+        has_screen = true;
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -463,9 +478,6 @@ public:
     // A parameter value or program set for it off the audio thread: run a block for it, asleep or not (a CLAP
     // plug-in says the same itself, wantsProcess(); JUCE's VST3 and LV2 plug-ins cannot, so the rack remembers).
     void note_change() { change_waiting.store(true, std::memory_order_release); }
-    // Its tail was told again (a CLAP plug-in's changed, taken in idle_plugins()): the gate's span follows it
-    // from the next render, on the audio thread where the gate lives.
-    void note_tail(double seconds) { tail_waiting.store(seconds, std::memory_order_release); }
     // Events with nowhere to go since it opened: MIDI its pending room had no place for, and a CLAP plug-in's own.
     uint32_t dropped() const { return dropped_midi.load(std::memory_order_relaxed) + (clap ? clap->droppedEvents() : 0); }
     void silence() override {
@@ -509,15 +521,11 @@ public:
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         follow_clock(frames);
-        if (double tail = tail_waiting.exchange(-1, std::memory_order_acq_rel); tail >= 0) {
-            declared_tail = tail;
-            idle.setTail(tail);
-        }
-        // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
-        // MIDI for it wakes it, and so does a plug-in's own request to be run (CLAP's request_process, a screen input
-        // its audio side takes) or a value waiting for it (a pot turned; another format's value the rack noted,
-        // note_change()): else neither reaches it until a note does.
-        const bool waiting = pending_count > 0 || (screen_source && screen_source->wantsProcess()) || change_waiting.load(std::memory_order_acquire);
+        // Take a changed CLAP tail before sleep. Ring prints also read changes raised within processBlock.
+        if (clap && clap->takeTailChange(declared_tail)) idle.set_tail(plugin_rate, declared_tail);
+        const bool changed = change_waiting.load(std::memory_order_relaxed)
+                             && change_waiting.exchange(false, std::memory_order_acq_rel);
+        const bool waiting = pending_count > 0 || (waker && waker->wantsProcess()) || changed;
         // Ring prints can hear a delayed repeat after the live gate would sleep.
         bool sleeping = !warming && !(ring_print && declared_tail > 0) && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
@@ -531,7 +539,6 @@ public:
             load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
             return;
         }
-        change_waiting.store(false, std::memory_order_release); // this block takes it
         // Its load, sampled: two clock reads a block for every plug-in is work the audio thread need not do.
         const bool measure_load = (++load_tick & 15) == 0;
         std::chrono::steady_clock::time_point t0;
@@ -542,7 +549,7 @@ public:
             if (key_source) key_frames = std::min(frames, unsigned(std::max(key_source->keyFrames(), 0)));
         }
         // The offline host may render many seconds before the rack worker next wakes.
-        if (ring_print && clap && clap->readChangedAudioTail(declared_tail)) idle.setTail(declared_tail);
+        if (ring_print && clap && clap->takeTailChange(declared_tail)) idle.set_tail(plugin_rate, declared_tail);
         if (measure_load) {
             double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             float share = float(took / (frames / sample_rate));
@@ -579,17 +586,34 @@ public:
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
         if (watching) measure(l, r, frames, false);
-        float peak = 0; // taken passing the samples by: the gate is told it, not left to walk the block again
-        if (add) for (unsigned f = 0; f < frames; ++f) { peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])}); left[f] += sane(l[f]); right[f] += sane(r[f]); }
-        else for (unsigned f = 0; f < frames; ++f) { peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])}); left[f] = sane(l[f]); right[f] = sane(r[f]); }
+        float peak = 0; // taken while passing the samples by: avoids walking the output buffer a second time
+        if (add) {
+            for (unsigned f = 0; f < frames; ++f) {
+                const float sl = sane(l[f]), sr = sane(r[f]);
+                peak = std::max({peak, std::fabs(sl), std::fabs(sr)});
+                left[f] += sl; right[f] += sr;
+            }
+        } else {
+            for (unsigned f = 0; f < frames; ++f) {
+                const float sl = sane(l[f]), sr = sane(r[f]);
+                peak = std::max({peak, std::fabs(sl), std::fabs(sr)});
+                left[f] = sl; right[f] = sr;
+            }
+        }
         idle.heardPeak(peak, frames);
     }
     // What a plug-in gives, kept finite and within ±8.
     static float sane(float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; }
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
+    // Its companion screen (plugin/companion_screen.h), null none: after `instance`, so it goes first.
+    std::unique_ptr<CompanionScreen> companion;
     ClapInstance* clap = nullptr;        // the instance, when it is a CLAP plug-in
-    ScreenSource* screen_source = nullptr; // the instance, when it is one that may draw its own screen (CLAP, VST2)
+    // The screen the screen thread draws: the instance's own (CLAP, VST2 that draw one), else its companion; and the
+    // instance as the audio thread asks whether it wants its next block run.
+    ScreenSource* screen_source = nullptr;
+    ScreenSource* waker = nullptr;
+    uint32_t generation = 0;             // its entry's when it was loaded
     const bool instrument;
     const bool ring_print;
     double declared_tail = 0;
@@ -609,6 +633,7 @@ public:
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
+    unsigned load_tick = 0;              // renders run, for 1-in-16 load sampling (audio thread)
     // Its sound as the page in view shows it (plugin_panel.h `scope`): written by the audio thread only while
     // `watched` (the panel's plug-in), a block's lowest and highest sample per entry, and peak levels in and out.
     std::atomic<bool> watched {false};
@@ -633,9 +658,7 @@ public:
         scope_head.store(at + 1, std::memory_order_release);
     }
     std::atomic<bool> change_waiting {false}; // a value or program set for it, to be taken by a block (note_change())
-    std::atomic<double> tail_waiting {-1};   // a tail told again, for its gate's span (-1: none; note_tail())
     std::atomic<uint32_t> dropped_midi {0};   // MIDI its pending room had no place for (dropped())
-    unsigned load_tick = 0;              // renders run, for sampling the load (audio thread)
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
     UserPresets user_presets;
@@ -708,7 +731,7 @@ std::vector<uint8_t> state_now(PluginHandle* handle, const std::vector<uint8_t>&
     return {static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize()};
 }
 
-PluginRack::PluginRack(EngineHost& engine, std::string stage, bool ring) : host(engine), stage_tag(std::move(stage)), ring_print(ring) {
+PluginRack::PluginRack(EngineHost& engine, std::string stage, bool ring) : host(engine), stage_tag(std::move(stage)), ring_print(ring), companions(std::make_unique<CompanionHost>()) {
     racks.fetch_add(1);
     thread = std::thread([this] { run(); });
 }
@@ -1062,6 +1085,60 @@ void PluginRack::set_screen_param(unsigned entry, unsigned k, int value) {
     if (index < 0 || index >= params.size()) return;
     params[index]->setValue(std::clamp(value, 0, plugin_param_max) / float(plugin_param_max));
     h->note_change();
+}
+
+void PluginRack::set_param_index(unsigned entry, uint32_t generation, int index, int value) {
+    if (entry >= max_plugins) return;
+    std::lock_guard<std::mutex> held(lock);
+    const auto& e = entries[entry];
+    auto* h = e.live;
+    if (!h || e.status != PluginStatus::Ready || h->generation != generation) return; // replaced since it was asked
+    const auto& params = h->instance->getParameters();
+    if (index < 0 || index >= params.size()) return;
+    params[index]->setValue(std::clamp(value, 0, plugin_param_max) / float(plugin_param_max));
+    h->note_change();
+}
+
+uint32_t PluginRack::live_generation(unsigned entry) const {
+    if (entry >= max_plugins) return 0;
+    std::lock_guard<std::mutex> held(lock);
+    const auto& e = entries[entry];
+    return e.live && e.status == PluginStatus::Ready ? e.live->generation : 0;
+}
+
+void PluginRack::take_screen_requests(std::vector<ScreenRequest>& out) {
+    std::vector<CompanionRequest> asked;
+    std::lock_guard<std::mutex> held(lock);
+    for (unsigned n = 0; n < max_plugins; ++n) {
+        const auto& e = entries[n];
+        if (!e.live || !e.live->companion || e.status != PluginStatus::Ready) continue;
+        asked.clear();
+        e.live->companion->take(asked);
+        for (const auto& a : asked) out.push_back({uint8_t(n), e.live->generation, a.program, a.index, a.value});
+    }
+}
+
+std::string PluginRack::screen_notice() {
+    std::lock_guard<std::mutex> held(lock);
+    if (screen_notices.empty()) return {};
+    std::string first = screen_notices.front();
+    screen_notices.erase(screen_notices.begin());
+    return first;
+}
+
+std::string PluginRack::screens() const {
+    std::string out;
+    std::lock_guard<std::mutex> held(lock);
+    for (unsigned n = 0; n < max_plugins; ++n) {
+        const auto& e = entries[n];
+        if (!e.live || !e.live->companion) continue;
+        const auto& c = *e.live->companion;
+        std::string folder = c.package().folder;
+        for (char& ch : folder) if (ch == ',' || ch == ':' || ch == ' ') ch = '_';
+        if (!out.empty()) out += ',';
+        out += std::to_string(n) + ":" + folder + ":" + (c.hasScreen() ? "on" : "stopped");
+    }
+    return out.empty() ? "none" : out;
 }
 
 PluginPrograms PluginRack::programs(unsigned entry) const {
@@ -1575,6 +1652,8 @@ void PluginRack::load(const Job& job) {
     handle->qlinks = handle->file_pages.empty() && (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32)
                      && !pages.empty() && !pages[0].name.empty();
     handle->layout = layout_of(*handle->instance, pages);
+    handle->generation = job.generation;
+    if (!handle->has_screen) find_companion(*handle, file, top, stage.string()); // a screen of its own comes first
     handle->warm_up(); // before the audio thread first runs it
 
     PluginHandle* raw = handle.get();
@@ -1728,6 +1807,7 @@ void PluginRack::destroy(PluginHandle* handle) {
     std::string stage = owned->stage;
     {
         std::lock_guard<std::mutex> calls(screen_calls); // the screen thread is not inside it
+        if (owned->companion) owned->companion->close();
         if (juce_hosted(owned->format)) message_thread().run([&] { owned.reset(); });
         else owned.reset();
     }
@@ -1754,6 +1834,86 @@ void PluginRack::write_page_problems(const std::string& top) {
     page_problems_written = text;
 }
 
+// The same for companion screens, in Melodee/Plugin Screens/problems.txt. Rack's thread.
+void PluginRack::write_screen_problems(const std::string& top) {
+    if (top.empty()) return;
+    std::string text;
+    for (const auto& [source, lines] : screen_problems)
+        for (const auto& line : lines) text += source + ": " + line + "\n";
+    if (text == screen_problems_written) return;
+    std::error_code e;
+    fs::path folder = fs::path(top) / "Melodee" / "Plugin Screens";
+    if (!fs::is_directory(folder, e)) return;
+    if (text.empty()) fs::remove(folder / "problems.txt", e);
+    else std::ofstream(folder / "problems.txt", std::ios::binary | std::ios::trunc) << text;
+    screen_problems_written = text;
+}
+
+// A companion screen for a plug-in just opened that has no screen of its own (sdk/melodee-screen/melodee_companion.h):
+// each folder in the card's Melodee/Plugin Screens with a screen.json, checked against the plug-in. The one that fits
+// (not one that stopped earlier this run) gets a copy of its library in the plug-in's RAM stage (the card is mounted
+// noexec) and becomes its screen; several that fit: none, and problems.txt says which. Rack's thread.
+void PluginRack::find_companion(PluginHandle& handle, const PluginFile& file, const std::string& top, const std::string& stage) {
+    if (top.empty()) return;
+    std::error_code e;
+    const fs::path root = fs::path(top) / "Melodee" / "Plugin Screens";
+    if (!fs::is_directory(root, e)) return;
+    CompanionTarget target;
+    target.who = identity_of(*handle.instance, handle.clap, file);
+    target.vst2 = file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32;
+    for (auto* p : handle.instance->getParameters()) target.names.push_back(p->getName(64).trim().toStdString());
+    struct Found { std::string folder; CompanionManifest manifest; CompanionFit fit; };
+    std::vector<Found> found;
+    std::vector<fs::path> folders;
+    for (fs::directory_iterator it(root, e), end; !e && it != end; it.increment(e))
+        if (it->is_directory(e) && it->path().filename().string().rfind('.', 0) != 0) folders.push_back(it->path());
+    std::sort(folders.begin(), folders.end());
+    std::set<std::string> stopped;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        stopped = companion_stopped;
+    }
+    for (const auto& folder : folders) {
+        const std::string name = folder.filename().string();
+        const std::string json = text_of(folder / "screen.json", companion_manifest_most);
+        if (json.empty()) continue; // not a screen's folder (yet)
+        Found f {name, {}, CompanionFit::Other};
+        std::string why;
+        if (!read_companion_manifest(json, f.manifest, why)) { screen_problems[name] = {why}; continue; }
+        f.fit = companion_fit(f.manifest, target, why);
+        if (f.fit == CompanionFit::Other) continue;
+        if (f.fit == CompanionFit::Wrong) { screen_problems[name] = {"not for this " + target.who.name + ": " + why}; continue; }
+        if (stopped.count(name)) { screen_problems[name] = {"stopped earlier; used again once Melodee restarts"}; continue; }
+        if (!fs::is_regular_file(folder / f.manifest.library, e)) { screen_problems[name] = {"no " + f.manifest.library}; continue; }
+        found.push_back(std::move(f));
+    }
+    std::vector<CompanionFit> fits;
+    for (const auto& f : found) fits.push_back(f.fit);
+    const auto pick = pick_companion(fits);
+    if (pick.ambiguous) {
+        std::string names;
+        for (const auto& f : found) names += (names.empty() ? "" : ", ") + f.folder;
+        for (const auto& f : found) screen_problems[f.folder] = {"several screens fit " + target.who.name + " (" + names + "); none is used"};
+    }
+    if (pick.package >= 0) {
+        auto& f = found[size_t(pick.package)];
+        CompanionPackage package;
+        package.folder = f.folder;
+        package.manifest = std::move(f.manifest);
+        const fs::path from = root / package.folder / package.manifest.library, to = fs::path(stage) / "companion" / package.manifest.library;
+        const auto size = fs::file_size(from, e);
+        if (e || size > (32u << 20)) screen_problems[package.folder] = {"its library is too large or unreadable"};
+        else if (fs::create_directories(to.parent_path(), e), !fs::copy_file(from, to, fs::copy_options::overwrite_existing, e))
+            screen_problems[package.folder] = {"its library could not be copied: " + e.message()};
+        else {
+            screen_problems.erase(package.folder);
+            package.library = to.string();
+            handle.use_companion(std::make_unique<CompanionScreen>(*handle.instance, *companions, std::move(package), ++companion_sessions));
+        }
+    }
+    write_screen_problems(top);
+}
+
 void PluginRack::idle_plugins() {
     std::vector<PluginHandle*> clap; // freed only on this thread, so still there after the lock
     {
@@ -1764,7 +1924,6 @@ void PluginRack::idle_plugins() {
     bool moved = false;
     for (auto* h : clap) {
         h->clap->idle();
-        if (!ring_print && h->clap->takeTailChanged()) h->note_tail(h->clap->getTailLengthSeconds()); // its gate's span follows the new tail
         if (!h->clap->remotePagesChanged()) continue; // its pages (a preset's own, say): read again
         auto layout = layout_of(*h->instance, plugin_pages(*h->instance, h->clap, h->format, h->folder, h->shown, h->file_pages));
         std::lock_guard<std::mutex> held(lock);
@@ -1823,6 +1982,13 @@ void PluginRack::screen_run() {
     bool whole = true, owed = false, ask_controls = false;
     Clock::time_point last = start - std::chrono::seconds(1);
     milliseconds wait = rest;
+    // The companions' process, let go once no companion screen has been in view for a while (it costs memory).
+    Clock::time_point companion_seen = start;
+    auto companions_idle = [&] {
+        if (Clock::now() - companion_seen < std::chrono::seconds(30)) return;
+        std::lock_guard<std::mutex> calls(screen_calls);
+        if (companions->running()) companions->stop();
+    };
     for (;;) {
         ScreenView view;
         {
@@ -1836,17 +2002,42 @@ void PluginRack::screen_run() {
             screen_inputs.clear();
         }
         inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&](const auto& in) { return in.first != view.entry; }), inputs.end());
-        if (view.entry >= max_plugins) { wait = rest; drawn = nullptr; continue; }
+        if (view.entry >= max_plugins) { wait = rest; drawn = nullptr; companions_idle(); continue; }
         wait = tick;
-        std::lock_guard<std::mutex> calls(screen_calls); // destroy() frees no plug-in meanwhile
         PluginHandle* h = nullptr;
+        bool companion = false;
         {
             std::lock_guard<std::mutex> held(lock);
             const auto& e = entries[view.entry];
             if (e.live && e.status == PluginStatus::Ready && e.live->has_screen) h = e.live;
+            companion = h && h->companion;
+        }
+        if (companion) companion_seen = Clock::now();
+        else companions_idle();
+        std::lock_guard<std::mutex> calls(screen_calls); // destroy() frees no plug-in meanwhile
+        if (h) { // still there, now that destroy() is kept out
+            std::lock_guard<std::mutex> held(lock);
+            const auto& e = entries[view.entry];
+            if (e.live != h || !h->has_screen) h = nullptr;
         }
         if (!h || !h->screen_source) { wait = missing; continue; }
         auto* source = h->screen_source;
+        // A companion that crashed, hung or misbehaved (plugin/companion_screen.h): its plug-in's pages again, and the
+        // shell says why once.
+        auto stopped = [&] {
+            if (!h->companion || h->companion->hasScreen()) return false;
+            const auto& package = h->companion->package();
+            std::string why = h->companion->stop_reason();
+            std::lock_guard<std::mutex> held(lock);
+            if (h->has_screen) {
+                h->has_screen = h->screen_drawn = false;
+                companion_stopped.insert(package.folder);
+                screen_notices.push_back(package.manifest.name + " stopped: " + why);
+                changed();
+            }
+            return true;
+        };
+        if (stopped()) { drawn = nullptr; wait = missing; continue; }
         if (h != drawn || view.entry != drawn_entry || view.area != drawn_area) {
             drawn = h; drawn_entry = view.entry; drawn_area = view.area;
             whole = owed = ask_controls = true;
@@ -1860,6 +2051,7 @@ void PluginRack::screen_run() {
             inputs.pop_front();
             owed = ask_controls = true;
         }
+        if (stopped()) { drawn = nullptr; wait = missing; inputs.clear(); continue; }
         const auto now = Clock::now();
         if (owed && now - last < gap) {
             wait = std::chrono::duration_cast<milliseconds>(gap - (now - last)) + milliseconds(1);
@@ -1879,7 +2071,9 @@ void PluginRack::screen_run() {
             frame.shift = view.shift ? 1 : 0;
             for (unsigned k = 0; k < 3; ++k) { frame.pots[k] = view.pots[k]; frame.pots_live[k] = view.live[k]; }
             bool changed = false;
-            if (source->screenDraw(frame, changed)) {
+            const bool done = source->screenDraw(frame, changed);
+            if (stopped()) { drawn = nullptr; wait = missing; continue; }
+            if (done) {
                 last = now;
                 owed = false;
                 ask_controls = true;

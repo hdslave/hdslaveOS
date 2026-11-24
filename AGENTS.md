@@ -1,6 +1,6 @@
 # melodee-sample
 
-Melodee, a groovebox app for the MPC Sample AC50 1.3.0.12 and 1.4.0.7, on the
+Melodee, a groovebox app for the MPC Sample AC50 1.3.0.12, 1.4.0.7 and 1.4.0.8, on the
 sample-base runtime. The base is the `base/` git submodule; its AGENTS.md
 rules (no stock app injection, no firmware or proprietary assets, bounded
 audio/MIDI queues, no allocation, locks or file I/O in `render()`, screen
@@ -66,8 +66,8 @@ their own:
   the `hdslave` branches of hdslave/sample-base and hdslave/ellic-core, and
   both must stay public.
 - Audio stays bit-exact. `build/melodee --self-test` and
-  `build/melodee --melodee-dsp-bench` must give the hashes listed in the
-  workspace guide: prove every engine change or optimization against them.
+  `build/melodee --melodee-dsp-bench` must match the unmodified upstream release: prove every engine change or
+  optimization against its reference hashes.
   The CPU-speed setting defaults to Full.
 - Commit as `hdslave <111106843+hdslave@users.noreply.github.com>`. Never
   push without the owner's word.

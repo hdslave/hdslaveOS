@@ -24,8 +24,8 @@ while playing, red while recording, amber while waiting for a bar to start.
 When the pads do not play the selected track, the first chip in the header
 says what they do: **TRACKS**, **PATTERNS**, **SEQUENCES**, **STEPS**,
 **PAD FX**, **LOOPS**, **LEVELS** or **CHORDS**. The button of that job is bright; on
-the mixer's Tracks page that is **PAD BANK**. Press **SAMPLE** to open the
-sound's page, where the pads play again.
+the mixer, where the pads select channels, that is **PAD BANK**. Press **SAMPLE** to
+open the sound's page, where the pads play again.
 
 Lists work the same way on every page: the symbol before a name shows what
 the row is (folder, sample, instrument, plug-in), and facts about it are at
@@ -84,7 +84,7 @@ the lit place opens without the Menu.
 | Pad | Place | Pad | Place |
 | --- | --- | --- | --- |
 | 1 | Stage | 9 | Mixer |
-| 2 | Browser | 10 | Sends |
+| 2 | Browser | 10 | – |
 | 3 | Record | 11 | Effects |
 | 4 | Chop | 12 | Looper |
 | 5 | Sequence | 13 | Song |
@@ -94,9 +94,12 @@ the lit place opens without the Menu.
 
 The Menu opens on **HERE** when the page has something to list (Stage, the
 mixer's pages, Sequences, Patterns, Roll, Motion, MOD and Step Edit), and on
-**GO** otherwise. Any other button closes the Menu and does its own job. In
-Basic (see [Settings](settings.md#basic-and-full)), pads 8, 10 and 12 are
-empty.
+**GO** otherwise. Any other button closes the Menu and does its own job.
+Pad 10 is empty. In Basic (see [Settings](settings.md#basic-and-full)),
+pads 8 and 12 are empty too.
+
+The Menu's header shows how much of the processor the tracks use (**CPU**),
+and the selected track's share (snowflake: frozen).
 
 ## Lessons
 
@@ -221,6 +224,8 @@ it is held.
 
 - On a kit page, the pads mute kit pads.
 - On other pages, the pads mute tracks.
+- On the mixer's second row (**PAD BANK**), the pads mute submixes and
+  buses.
 - **SHIFT** + pad solos. An empty track can't be soloed: the screen says it is
   empty. A solo kept on an empty track by an older project silences nothing,
   and **SHIFT** + its pad turns it off.

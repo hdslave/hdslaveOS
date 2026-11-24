@@ -18,6 +18,7 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/mute_mode.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/sequences.h"
 #include "melodee/shell/track_copy.h"
@@ -305,7 +306,6 @@ Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {
 bool sends_lit(const PadScene& s) {
     const auto& t = selected(s);
     if (t.engine != EngineKind::Sampler || levels_on(t)) return false;
-    if (mix_sends_pads(s.ui, true)) return true; // the MIX hub's SENDS, on the kit's pads
     return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, stage_skip(s.project, s.ui, t)).kind == StageKind::Sends;
 }
 Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
@@ -338,6 +338,42 @@ Look tracks_look(const PadScene& s, unsigned pad) {
     if (any_solo(s.project) && !t.mix.solo) return track(pad, faint); // silenced by a solo
     float m = meter(s, pad);
     return t.mix.solo ? white(between(dim, mid, m)) : track(pad, between(dim, mid, m));
+}
+// ---- the mixer's second row (shell/mixer_channels.h): a pad a submix, bus, the input or the master, in its colour
+// (submixes their own, buses the Looper's, the input ice, the master white) as bright as its meter; the one in hand
+// full; muted red. In mute mode the ones that mute only, as Mute + pad leaves them.
+Look other_hue(unsigned n, float level) {
+    switch (channel_kind(n)) {
+    case ChannelKind::Submix: return pad_light::sub(channel_sub(n), level);
+    case ChannelKind::Bus: return pad_light::loop(channel_bus(n), level);
+    case ChannelKind::Input: return of(0xBFE3FF, Hue::White, level);
+    default: return white(level);
+    }
+}
+float other_meter(const PadScene& s, unsigned n) {
+    const auto m = s.host.strip_meter(n);
+    const float peak = std::max(m.left, m.right);
+    return peak > 0 ? std::clamp((20 * std::log10(peak) + 48) / 48, 0.0f, 1.0f) : 0;
+}
+bool other_muted(const Project& p, unsigned n) {
+    const auto k = channel_kind(n);
+    return k == ChannelKind::Submix ? p.subs[channel_sub(n)].mix.mute : k == ChannelKind::Bus && p.buses[channel_bus(n)].mute;
+}
+bool other_soloed(const Project& p, unsigned n) { return channel_kind(n) == ChannelKind::Submix && p.subs[channel_sub(n)].mix.solo; }
+Look mixer_look(const PadScene& s, unsigned pad, bool muting) {
+    if (s.ui.mixer_bank == 0) return tracks_look(s, pad);
+    const int at = pad_other(s.ui, pad);
+    if (at < 0) return {};
+    const unsigned n = unsigned(at);
+    const float m = other_meter(s, n);
+    if (muting) {
+        if (!channel_mutes(channel_kind(n))) return {};
+        return other_muted(s.project, n) ? red(dim) : other_soloed(s.project, n) ? white(between(mid, full, m)) : other_hue(n, between(mid, full, m));
+    }
+    if (other_muted(s.project, n)) return red(faint);
+    if (n == mixer_strip(s.ui)) return other_hue(n, full);
+    if (other_soloed(s.project, n)) return white(between(dim, mid, m));
+    return other_hue(n, between(dim, mid, m));
 }
 // ---- SCENES (roadmap P5): a pad a sequence (model/scene_links.h). The one in hand bright, blinking while its launch
 // waits for the bar; the rest as many tracks as play notes there, a sequence keeping only silence faint, one keeping
@@ -799,6 +835,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         case PadContext::RecordKeys: look = record_keys_look(s, pad); break;
         case PadContext::Mute:
             if (ui.page == PageId::Looper) { look = loop_look(s, pad, true); break; }
+            if (mute_on_others(ui)) { look = mixer_look(s, pad, true); break; }
             if (mute_on_kit(ui, s.facts.kit_pads)) {
                 unsigned kit = kit_of(t, pad);
                 if (!t.pads[kit].used()) break;
@@ -822,7 +859,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         case PadContext::Page:
             switch (ui.page) {
             case PageId::Looper: look = loop_look(s, pad, false); break;
-            case PageId::Tracks: look = tracks_look(s, pad); break;
+            case PageId::Mixer: look = mixer_look(s, pad, false); break;
             case PageId::Song: look = song_look(s, pad); break;
             case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5
             case PageId::StepEdit: look = s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, snd, pad); break; // the bar's steps, or the keys

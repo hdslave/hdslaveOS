@@ -2,10 +2,13 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/companion_host.h"
+#include "melodee/plugin/companion_screen.h"
 #include "melodee/plugin/vst2_instance.h"
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
 #include "melodee/shell/controls_rules.h"
@@ -662,6 +665,51 @@ void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
 
 // The Looper's previews: L1 playing with an overdub (stretched to another tempo), L2 recording a free take,
 // L3 stopped with a change waiting, L4 armed; peaks drawn as a beat would.
+// The mixer's previews: the project's tracks with their levels, track 3 a bass with EQ and a compressor at work, its
+// sends into buses with effects, every strip's meter playing; `block` the lit one.
+void mixer_scene(Snapshot& s, unsigned block) {
+    s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.mixer_block = uint8_t(block); s.playing = true;
+    auto& bass = s.project.tracks[2];
+    if (!bass.used()) bass.engine = EngineKind::Sampler;
+    bass.set_name("Bass");
+    bass.mix.sends = {18, 32, 6, 12};
+    bass.strip.eq = {40, 60, 20, -50, -30, 0, 20, 10, -20};
+    bass.strip.comp_amount = 18; bass.strip.comp_ratio = 40;
+    s.project.buses[0].fx.slots[0].kind = uint8_t(EffectKind::Reverb);
+    s.project.buses[1].fx.slots[0].kind = uint8_t(EffectKind::Echo);
+    const float meters[][2] {{0.70f, 0.62f}, {0.30f, 0.26f}, {0.55f, 0.50f}, {0.18f, 0.21f}, {0.08f, 0.06f}, {0.4f, 0.4f}};
+    for (unsigned t = 0; t < 6; ++t) {
+        if (!s.project.tracks[t].used()) s.project.tracks[t].engine = EngineKind::Sampler;
+        s.strips[t] = {meters[t][0], meters[t][1], t == 2 ? 5.5f : 0.0f};
+    }
+    for (unsigned n = 0; n < comp_columns; ++n) {
+        const float r = n % 9 < 2 ? 0.5f : 2.0f + 4.0f * float((n * 7) % 11) / 10.0f;
+        s.strip_trail[n] = {-12.0f + float(n % 5), r};
+    }
+    for (unsigned b = 0; b < spectrum_bands; ++b) { // a bass's: strong under 150 Hz, falling off above, some grit up top
+        const float oct = std::log2(spectrum_band_hz(float(b) + 0.5f) / 90.0f);
+        s.spectrum[b] = -14 - (oct > 0 ? 7 * oct : -9 * oct) + 3 * std::sin(float(b) * 0.9f) + 2 * std::sin(float(b) * 0.37f + 1);
+    }
+}
+
+// The mixer's second row (Pad Bank): submixes, buses, the input and the master, with the bass routed to submix 2.
+void mixer_other_scene(Snapshot& s, unsigned strip, unsigned block) {
+    mixer_scene(s, block);
+    s.ui.mixer_bank = 1; s.ui.mixer_other = uint8_t(other_place(strip));
+    s.project.tracks[2].mix.out = out_sub(1);
+    auto& sub = s.project.subs[1];
+    std::snprintf(sub.name, sizeof(sub.name), "%s", "DRUMS");
+    sub.mix.sends = {24, 0, 10, 0}; sub.mix.level = 96; sub.mix.pan = -8;
+    sub.strip.eq = {30, 10, 0, -20, 0, 10, 30, 20, 0};
+    s.project.buses[1].strip.eq = {-60, -30, 0, 0, 0, 0, 0, -20, -40}; s.project.buses[1].level = 64;
+    s.project.subs[3].mix.mute = true;
+    const float meters[][2] {{0.2f, 0.18f}, {0.62f, 0.58f}, {0.1f, 0.12f}, {0.0f, 0.0f}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
+                             {0.35f, 0.3f}, {0.42f, 0.4f}, {0.05f, 0.04f}, {0, 0}, {0.15f, 0.12f}, {0.72f, 0.7f}};
+    for (unsigned n = 0; n < other_count; ++n) s.strips[other_row[n]] = {meters[n][0], meters[n][1], 0.0f};
+    s.project.compressor.on = true; s.project.compressor.amount = 45; s.project.input_wet = true; // the master's COMP, the input's RECORD
+    for (unsigned n = 0; n < comp_columns; ++n) s.comp_trail[n] = {-10.0f, n % 7 < 2 ? 0.4f : 1.5f + 3.0f * float((n * 5) % 9) / 8.0f};
+}
+
 void looper_scene(Snapshot& s) {
     s.ui.page = PageId::Looper; s.playing = true; s.ui.loop = 0;
     s.project.looper.on = true; s.looper_on = true; s.loop_tick = 384 * 2 + 96 * 2 + 10;
@@ -833,10 +881,11 @@ void skin_panel(Snapshot& s) {
     }
 }
 
-void plugin_track(Snapshot& s, PluginStatus status, int page = 0) {
-    s.ui.page = PageId::Edit; s.ui.track = 2;
+void plugin_track(Snapshot& s, PluginStatus status, int page = 0) { // on Stage's B1 EDIT
     auto& t = s.project.tracks[2];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
+    auto edit = stage_find(EngineKind::Plugin, StageKind::PluginEdit);
+    on_stage(s, 2, edit.at.group, edit.at.sub);
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Bass Synth");
     plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status, page);
 }
@@ -943,7 +992,7 @@ void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
 // PRESETS for Surge XT, a CLAP plug-in whose presets are files in folders (plugin/preset_rows.h): Factory Presets'
 // folders as Surge XT ships them, with their counts, the first Leads by name, and Third Party Presets beside it.
 void surge_presets(Snapshot& s) {
-    s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Edit; s.ui.presets_entry = 0;
+    s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Stage; s.ui.presets_entry = 0;
     auto& t = s.project.tracks[0];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("SURGE XT");
     std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Surge XT/Surge XT.clap");
@@ -1021,7 +1070,6 @@ const Preview previews[] {
     {"stagepluginpresets", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, true); }}, // B1: Melodee Poly's presets
     {"stagepluginface", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, false); }}, // B1, a plug-in with none
     {"stagepluginedit", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginEdit, true); }},   // B1 again: its parameters
-    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; }},
     {"keylist", [](Shell&, Snapshot& s) { // B3 just pressed on a kit's Stage: its pages by name, FILTER open
          on_stage(s, 3, StageKind::Filter); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 45; pad.resonance = 40;
@@ -1034,13 +1082,13 @@ const Preview previews[] {
     {"menugo", [](Shell&, Snapshot& s) { // B3 GO: the sixteen places as the pads sit, the wheel on MIXER
          s.ui.page = PageId::Scenes; s.ui.track = 2; s.playing = true;
          s.ui.menu = menu_go_view; s.ui.menu_tile = 8;
+         s.machine.render_load = 0.31f; s.machine.track_load[2] = 0.08f; // CPU and the track's share (since the mixer)
      }},
     {"menumixer", [](Shell&, Snapshot& s) { // HERE on the mixer: the track's jobs
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.playing = true;
          s.ui.menu = menu_here_view; s.ui.menu_row = 0;
      }},
-    {"padbankheld", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; s.ui.pad_bank = true; }}, // Pad Bank held: TRACKS / MOVE / COPY over the page
-    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Sends); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
+    {"padbankheld", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Arp); s.playing = true; s.ui.pad_bank = true; }}, // Pad Bank held: TRACKS / MOVE / COPY over the page
     {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
     {"stagearpheld", [](Shell&, Snapshot& s) { // keys held: the notes it plays from them, up and down
          on_stage(s, 0, 1, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
@@ -1115,10 +1163,36 @@ const Preview previews[] {
     {"stageemptyslide", [](Shell&, Snapshot& s) { // the wheel just moved: Keygroup on its way to the middle
          on_stage(s, 12, 0, 0); s.ui.new_pick = uint8_t(NewType::Keygroup); s.ui.new_pick_from = 0; s.now = 1000; s.ui.new_pick_at = 960;
      }},
-    {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
-        s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
-        const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};
-        for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
+    // The mixer (docs/MIXER_PLAN.md): track 3 in the card, its neighbours' meters; SENDS, EQ (MID in hand), COMP (what
+    // it took off of late), Basic (send A alone).
+    {"mixer", [](Shell&, Snapshot& s) { mixer_scene(s, 0); }},
+    {"mixereq", [](Shell&, Snapshot& s) { mixer_scene(s, 1); s.ui.mixer_eq_group = 1; }},
+    {"mixercomp", [](Shell&, Snapshot& s) { mixer_scene(s, 2); }},
+    {"mixerbasic", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.settings.full_features = false; }},
+    {"mixersub", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_sub(1), 0); }},
+    {"mixerbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(1), 0); }},
+    {"mixermaster", [](Shell&, Snapshot& s) { mixer_other_scene(s, master_chain, 2); }},
+    {"mixerinput", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_input, 0); }}, // B1 INPUT
+    {"mixerrouted", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.project.tracks[2].mix.out = out_sub(1); }},
+    {"mixerfx", [](Shell&, Snapshot& s) { // B1 again: FX, the bass's chain in the card, Chorus lit
+        mixer_scene(s, 0); s.ui.mixer_b1 = 1;
+        auto& fx = s.project.tracks[2].fx;
+        const EffectKind kinds[] {EffectKind::Drive, EffectKind::Chorus, EffectKind::Echo};
+        for (unsigned k = 0; k < 3; ++k) {
+            fx.slots[k].kind = uint8_t(kinds[k]);
+            for (unsigned q = 0; q < effect_params; ++q) fx.slots[k].params[q] = effect_info(kinds[k]).params[q].initial;
+        }
+        fx.slots[2].bypass = true;
+        s.ui.fx_cursor[UiState::cursor_of(2)] = 1;
+    }},
+    {"mixerfxbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(0), 0); }}, // a bus: B1 is FX alone
+    {"mixerrow", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.mixer_row = 1; }},   // + on SENDS: its second row
+    {"fxsub", [](Shell&, Snapshot& s) { // Shift + Knob FX on submix 2: its chain
+        mixer_other_scene(s, strip_sub(1), 0);
+        s.ui.page = PageId::Rack; s.ui.fx_sub = 1;
+        auto& fx = s.project.subs[1].fx;
+        fx.slots[0].kind = uint8_t(EffectKind::Compressor); fx.slots[1].kind = uint8_t(EffectKind::Reverb);
+        for (unsigned q = 0; q < effect_params; ++q) { fx.slots[0].params[q] = effect_info(EffectKind::Compressor).params[q].initial; fx.slots[1].params[q] = effect_info(EffectKind::Reverb).params[q].initial; }
     }},
     // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
     {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
@@ -1144,7 +1218,6 @@ const Preview previews[] {
          looper_scene(s); s.ui.page = PageId::Rack; s.ui.fx_loop = 1;
          s.project.loop_fx[1].slots[0].kind = uint8_t(EffectKind::Echo);
      }},
-    {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.playing = true; s.project.tracks[2].mix.mute = true; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
@@ -1191,7 +1264,6 @@ const Preview previews[] {
          s.ui.settings.toggle_favourite(engine, 1); s.ui.settings.toggle_favourite(engine, 4);
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"edit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Edit; s.playing = true; }}, // a synth plug-in's own values
     {"stepeditsteps", [](Shell&, Snapshot& s) { // Step Edit's pads on the steps (Shift + B1 PADS), step 7 held: its locks
          s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
@@ -1229,7 +1301,7 @@ const Preview previews[] {
          s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = uint8_t(master_chain); s.ui.plugin_slot = 1;
          plugin_listing(s); s.ui.plugins_cursor = 5;
      }},
-    {"pluginedit", [](Shell&, Snapshot& s) { // Edit on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
+    {"pluginedit", [](Shell&, Snapshot& s) { // Stage's EDIT on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
          plugin_track(s, PluginStatus::Ready); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"plugineditfilter", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Ready, 1); }}, // a page with a filter: its curve
@@ -1501,13 +1573,6 @@ const Preview previews[] {
          s.ui.page = PageId::Stage;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
      }},
-    {"tracksfrozen", [](Shell&, Snapshot& s) {
-         frozen_scene(s);
-         s.ui.page = PageId::Tracks;
-         const float loads[] {0.04f, 0.11f, 0.004f, 0.02f, 0.16f, 0.09f, 0.03f, 0.05f};
-         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
-         s.machine.render_load = 0.41f;
-     }},
     {"stagefrozen", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); }}, // the print of P2 playing; the sound's cards dim
     {"stagefrozenshift", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); s.ui.shift = true; }}, // Shift + B3: DEEP FREEZE
     {"askunfreeze", [](Shell&, Snapshot& s) { // a sound card turned on a frozen track
@@ -1519,15 +1584,6 @@ const Preview previews[] {
     {"printdeep", [](Shell&, Snapshot& s) { print_scene(s); s.ui.shift = true; }},
     {"deepfreeze", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); }},
     {"thawing", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); s.thawing = 1u << 2; }},
-    {"tracksdeep", [](Shell&, Snapshot& s) { // track 3 deep frozen, track 5 frozen
-         deep_scene(s);
-         s.ui.page = PageId::Tracks;
-         auto& five = s.freeze[4];
-         five.state = FreezeState::Frozen; five.set(0, true);
-         const float loads[] {0.04f, 0.11f, 0.002f, 0.02f, 0.006f, 0.09f, 0.03f, 0.05f};
-         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
-         s.machine.render_load = 0.33f;
-     }},
     {"seqdeep", [](Shell&, Snapshot& s) { deep_scene(s); s.ui.page = PageId::Stage; s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; }},
     {"askreplace", [](Shell&, Snapshot& s) { // another plug-in picked over Surge XT on track 4
          s.ui.page = PageId::Plugins; s.ui.track = 3; s.ui.plugin_target = UiState::PluginTarget::Instrument;
@@ -1572,7 +1628,7 @@ const Preview previews[] {
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
      }},
     {"seqclear", [](Shell&, Snapshot& s) { // Seq held + Erase + pad 2: B1 Cancel, B3 Do it
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.ui.erase = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.erase = true;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
          s.ui.ask = UiState::Ask::ClearPattern; s.ui.ask_target = 1;
      }},
@@ -1635,22 +1691,6 @@ const Preview previews[] {
     {"rack", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"sends", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Sends; s.ui.track = 2; s.playing = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"sendspads", [](Shell&, Snapshot& s) { // a kit's SENDS, B2 again: its pads' own sends into bus A
-         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.playing = true; s.sample = break_sample();
-         auto& t = s.project.tracks[3];
-         const uint8_t sends[16] {0, 30, 15, 15, 20, 30, 10, 10, 0, 0, 25, 25, 0, 0, 40, 60};
-         for (unsigned n = 0; n < 16; ++n) t.pads[n].sends[0] = sends[n];
-         t.pads[14].sends[1] = 35;
-     }},
-    {"sendspadsb", [](Shell&, Snapshot& s) { // bus B: the pads that send there
-         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.ui.sends_bus = 1; s.playing = true; s.sample = break_sample();
-         auto& t = s.project.tracks[3];
-         t.pads[5].sends[1] = 20; t.pads[11].sends[1] = 10; t.pads[14].sends[1] = 35; t.last_pad = 14;
      }},
     {"bus", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
@@ -1735,9 +1775,6 @@ const Preview previews[] {
     {"movetrack", [](Shell&, Snapshot& s) { // Pad Bank held, B2 MOVE, track 2 picked: where does it go (B1 back)
          s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
          s.ui.copying = UiState::Copying::Tracks; s.ui.moving = true; s.ui.copy_from = 1;
-     }},
-    {"tracksshift", [](Shell&, Snapshot& s) { // Tracks with Shift held: MOVE and COPY on B2 and B3
-         s.ui.page = PageId::Tracks; s.ui.track = 1; s.ui.shift = true;
      }},
     {"cleartrack", [](Shell&, Snapshot& s) { // Pad Bank held + Erase + pad 1: B1 Cancel, B3 Clear
          s.ui.page = PageId::Stage; s.ui.track = 0; s.ui.pad_bank = true; s.ui.erase = true;
@@ -2512,7 +2549,7 @@ const Preview previews[] {
          t.fader_on = false; t.wheel = 70;
      }},
     {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level, on K2's card
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
+         s.ui.page = PageId::Mixer; s.ui.track = 2; s.playing = true;
          s.ui.fader = {90, true, 1}; s.ui.fader_moved_at = s.now;
          s.project.tracks[2].mix.level = 90;
          const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};
@@ -2911,10 +2948,6 @@ const Preview previews[] {
     {"patternsvary", [](Shell& shell, Snapshot& s) { // Shift + B3 on Patterns: VARY, Busier picked, amount 30 %
          step_edit_kit(shell, s);
          s.ui.page = PageId::Patterns; s.ui.sheet_open = true; s.ui.sheet_row = 1;
-     }},
-    {"tracksspeed", [](Shell&, Snapshot& s) { // Shift on Tracks: track 3 plays its patterns at x1 1/2
-         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; s.project.tracks[2].speed = 3;
-         s.ui.shift = true;
      }},
     {"repeatrates", [](Shell&, Snapshot& s) { // Note Repeat on the kit's Pads at 1/64: B3 pressed again (dots under B1 and B3)
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true;
@@ -3361,7 +3394,7 @@ int sound(const std::string& path) {
     EngineHost host;
     Shell shell(host);
     starter_project(shell.project(), shell.patterns());
-    host.load(shell.project(), shell.patterns());
+    shell.load_engine();
     std::array<SampleData, 3> drums;
     uint32_t seed = 1;
     auto noise = [&] { seed = seed * 1664525u + 1013904223u; return int32_t(seed) * (1.0f / 2147483648.0f); };
@@ -3564,6 +3597,18 @@ static int project_export(bool live, const char* path, const char* folder, const
         int used = 0;
         unsigned bar = 0, bars = 0;
         unsigned channel = 0, program = 0;
+        unsigned out = 0, level = 0, mute = 0;
+        int pan = 0;
+        if (std::sscanf(change[c], "O:%u=%u", &t, &out) == 2 && t < track_count) { // the mixer: track t into submix `out` (0 the master)
+            project->tracks[t].mix.out = uint8_t(out <= sub_count ? out : 0);
+            continue;
+        }
+        if (std::sscanf(change[c], "U:%u=%u,%d,%u", &n, &level, &pan, &mute) == 4 && n < sub_count) { // submix n's level, pan, mute
+            project->subs[n].mix.level = uint8_t(std::min(level, 127u));
+            project->subs[n].mix.pan = int8_t(std::clamp(pan, -50, 50));
+            project->subs[n].mix.mute = mute != 0;
+            continue;
+        }
         if (std::sscanf(change[c], "M:%u=%u,%u", &t, &channel, &program) == 3 && t < track_count) {
             auto& track = project->tracks[t];
             load_sound(track, EngineKind::Midi, 0);
@@ -3706,16 +3751,93 @@ namespace {
 // `path` (a CLAP library's first, or a VST2 .so) as Edit on its PLUGIN track shows it and writes the screen into
 // `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
 // k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
-int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps) {
+std::unique_ptr<juce::AudioPluginInstance> open_plugin(const char* path, juce::String& error) {
+    const juce::File file {juce::String(path)};
+    if (file.hasFileExtension("clap")) return ClapInstance::load(file, 0, 48000.0, 256, error);
+    return Vst2Instance::load(file, 48000.0, 256, error);
+}
+
+// A VST2 plug-in as a companion screen's screen.json names it (sdk/melodee-screen/melodee_companion.h).
+CompanionTarget companion_target(juce::AudioPluginInstance& plugin, bool clap) {
+    juce::PluginDescription d;
+    plugin.fillInPluginDescription(d);
+    CompanionTarget t;
+    t.who.name = d.name.toStdString();
+    t.who.vendor = d.manufacturerName.toStdString();
+    if (!clap) t.who.vst2 = d.uniqueId;
+    t.vst2 = !clap;
+    for (auto* p : plugin.getParameters()) t.names.push_back(p->getName(64).trim().toStdString());
+    return t;
+}
+
+// A companion package's folder read and checked against the plug-in: its manifest, else -1 with the reason printed.
+int check_companion(juce::AudioPluginInstance& plugin, bool clap, const std::string& package, CompanionManifest& m) {
+    std::ifstream in(std::filesystem::path(package) / "screen.json", std::ios::binary);
+    std::string json((std::istreambuf_iterator<char>(in)), {});
+    std::string why;
+    if (json.empty()) { std::printf("error=no screen.json in %s\n", package.c_str()); return -1; }
+    if (!read_companion_manifest(json, m, why)) { std::printf("error=%s\n", why.c_str()); return -1; }
+    const auto fit = companion_fit(m, companion_target(plugin, clap), why);
+    if (fit == CompanionFit::Other) { std::printf("error=screen.json names another plug-in\n"); return -1; }
+    if (fit == CompanionFit::Wrong) { std::printf("error=%s\n", why.c_str()); return -1; }
+    std::error_code e;
+    if (!std::filesystem::is_regular_file(std::filesystem::path(package) / m.library, e)) { std::printf("error=no %s\n", m.library.c_str()); return -1; }
+    return 0;
+}
+
+// The plug-in's parameters, for a companion's maker writing screen.json: index, name, value, text, default.
+int plugin_params(const char* path) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    juce::PluginDescription d;
+    plugin->fillInPluginDescription(d);
+    std::printf("name=%s\nvendor=%s\nvst2=%s\nparams=%d\nprograms=%d\n", d.name.toRawUTF8(), d.manufacturerName.toRawUTF8(),
+                vst2_code(d.uniqueId).c_str(), plugin->getParameters().size(), plugin->getNumPrograms());
+    for (auto* p : plugin->getParameters()) {
+        const float v = p->getValue();
+        const int steps = p->getNumSteps();
+        std::printf("%d\t%s\t%.4f\t%s\t%.4f\t%d\n", p->getParameterIndex(), p->getName(64).trim().toRawUTF8(), v,
+                    p->getText(v, 64).trim().toRawUTF8(), p->getDefaultValue(), steps > 1 && steps < 100000 ? steps - 1 : 0);
+    }
+    return 0;
+}
+
+int companion_check(const char* path, const std::string& package) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    CompanionManifest m;
+    if (check_companion(*plugin, juce::File(juce::String(path)).hasFileExtension("clap"), package, m) < 0) return 1;
+    std::printf("fits=%s params=%zu sdk=%ld library=%s\n", m.name.c_str(), m.params.size(), m.sdk, m.library.c_str());
+    return 0;
+}
+
+// `package`: a companion screen's folder, drawn in its own process as on the MPC (plugin/companion_screen.h), its
+// requests made on the plug-in as the shell would; else the plug-in's own screen.
+int plugin_screen(const char* path, const std::string& folder, const std::vector<std::string>& steps, const char* package = nullptr) {
     juce::String error;
     const juce::File file {juce::String(path)};
     const bool clap = file.hasFileExtension("clap");
-    std::unique_ptr<juce::AudioPluginInstance> plugin;
-    if (clap) plugin = ClapInstance::load(file, 0, 48000.0, 256, error);
-    else plugin = Vst2Instance::load(file, 48000.0, 256, error);
+    std::unique_ptr<juce::AudioPluginInstance> plugin = open_plugin(path, error);
     if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
-    auto* screen = dynamic_cast<ScreenSource*>(plugin.get());
-    if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
+    ScreenSource* screen = nullptr;
+    std::unique_ptr<CompanionHost> helper;
+    std::unique_ptr<CompanionScreen> companion;
+    if (package) {
+        CompanionManifest m;
+        if (check_companion(*plugin, clap, package, m) < 0) return 1;
+        CompanionPackage pack;
+        pack.folder = std::filesystem::path(package).filename().string();
+        pack.library = std::filesystem::absolute(std::filesystem::path(package) / m.library).string();
+        pack.manifest = std::move(m);
+        helper = std::make_unique<CompanionHost>();
+        companion = std::make_unique<CompanionScreen>(*plugin, *helper, std::move(pack), 1);
+        screen = companion.get();
+    } else {
+        screen = dynamic_cast<ScreenSource*>(plugin.get());
+        if (!screen || !screen->hasScreen()) { std::printf("error=no screen (%s)\n", clap ? MELODEE_SCREEN_CLAP : MELODEE_SCREEN_VST2_CANDO); return 1; }
+    }
     plugin->prepareToPlay(48000.0, 256);
     std::error_code made;
     std::filesystem::create_directories(folder, made);
@@ -3727,6 +3849,10 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
     s->ui = UiState {};
     s->now = 100000;
     plugin_track(*s, PluginStatus::Ready);
+    { // Stage's PANEL, where the MPC shows a plug-in's screen (plugin_track() leaves it on EDIT)
+        const auto at = stage_find(EngineKind::Plugin, StageKind::PluginScreen);
+        on_stage(*s, 2, at.at.group, at.at.sub);
+    }
     auto& panel = s->ui.plugin_panel;
     std::snprintf(panel.name, sizeof(panel.name), "%s", plugin->getName().toRawUTF8());
     std::snprintf(panel.format, sizeof(panel.format), "%s", clap ? "CLAP" : "VST2");
@@ -3752,10 +3878,26 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         plugin->processBlock(buffer, midi);
         if (auto* c = dynamic_cast<ClapInstance*>(plugin.get())) c->idle(); // its values read again
     };
+    // A companion's requests, made on the plug-in as the shell makes them (Context::companion_requests), and said.
+    auto requests = [&] {
+        if (!companion) return;
+        std::vector<CompanionRequest> asked;
+        companion->take(asked);
+        for (const auto& r : asked) {
+            if (r.program) { plugin->setCurrentProgram(r.index); std::printf("program=%d\n", r.index); }
+            else if (r.index >= 0 && r.index < params.size()) {
+                params[r.index]->setValue(r.value);
+                std::printf("edit=%d:%.4f\n", r.index, double(params[r.index]->getValue()));
+            }
+        }
+    };
     auto shoot = [&] {
         frame.time_ms = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
         bool changed = false;
+        if (companion) companion->takeRedraw(); // reads the plug-in's values again, as the screen thread does
         screen->screenDraw(frame, changed);
+        requests();
+        if (companion && !companion->hasScreen()) { std::printf("stopped=%s\n", companion->stop_reason().c_str()); return; }
         frame.redraw_all = 0;
         auto picture = std::make_shared<ScreenPicture>();
         picture->entry = 0;
@@ -3778,12 +3920,14 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         }
         s->ui.shift = frame.shift != 0;
         s->playing = frame.playing != 0;
+        std::printf("controls=%d,%d,%d\n", controls[0], controls[1], controls[2]);
         juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
         { juce::Graphics g(image); draw(g, *s); }
         save_png(image, folder + "/" + std::to_string(written++) + ".png");
     };
     shoot();
     for (const auto& step : steps) {
+        if (companion && !companion->hasScreen()) break;
         const auto colon = step.find(':');
         const std::string word = step.substr(0, colon);
         const int value = colon == std::string::npos ? 0 : std::atoi(step.c_str() + colon + 1);
@@ -3791,6 +3935,7 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
             melodee_screen_input_t in {kind, v, frame.shift};
             bool used = false;
             screen->screenInput(in, used);
+            requests();
         };
         if (word == "wheel") send(MELODEE_SCREEN_WHEEL, value);
         else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
@@ -3803,6 +3948,12 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
             frame.pots[k] = int16_t(std::clamp(value, 0, 127));
             frame.pots_live[k] = 1;
             if (controls[k] >= 0 && controls[k] < params.size()) params[controls[k]]->setValue(float(frame.pots[k]) / 127.0f);
+        } else if (word == "param" && colon != std::string::npos) { // param:INDEX:VALUE (0..1000): set from outside (MIDI, a preset)
+            const auto second = step.find(':', colon + 1);
+            const int index = value, to = second == std::string::npos ? 0 : std::atoi(step.c_str() + second + 1);
+            if (index >= 0 && index < params.size()) params[index]->setValue(std::clamp(to, 0, 1000) / 1000.0f);
+        } else if (word == "program") { // program:N from outside
+            plugin->setCurrentProgram(value);
         } else if (word == "wait") {
             std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, value)));
             continue;
@@ -3813,13 +3964,141 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         run_block();
         shoot();
     }
+    if (companion && !companion->hasScreen()) { // the plug-in plays on without it
+        for (int n = 0; n < 20; ++n) run_block();
+        std::printf("audio=ok\n");
+    }
     plugin->releaseResources();
     std::printf("written=%u\n", written);
+    if (companion && !companion->hasScreen()) return 2;
+    if (companion) // every parameter it lists, as the plug-in has them now
+        for (const auto& p : companion->package().manifest.params)
+            std::printf("value=%d:%.4f\n", p.index, double(params[p.index]->getValue()));
     return 0;
 }
 } // namespace
 
+namespace {
+// A companion package for the tools below: read, checked and pointed at its library where it lies.
+bool companion_package(juce::AudioPluginInstance& plugin, const std::string& folder, CompanionPackage& out) {
+    CompanionManifest m;
+    if (check_companion(plugin, false, folder, m) < 0) return false;
+    out.folder = std::filesystem::path(folder).filename().string();
+    out.library = std::filesystem::absolute(std::filesystem::path(folder) / m.library).string();
+    out.manifest = std::move(m);
+    return true;
+}
+
+// Two instances of a VST2 plug-in, each with its own companion screen, sharing one process as on the MPC. Prints
+// pair=ok when: a screen's edits reach its own plug-in only, five wheel detents in a row add up, the other screen's
+// page and K1-K3 are its own, and a screen shown again starts afresh.
+int companion_pair(const char* path, const std::string& folder) {
+    juce::String error;
+    auto a = open_plugin(path, error), b = open_plugin(path, error);
+    if (!a || !b) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    CompanionPackage pack;
+    if (!companion_package(*a, folder, pack)) return 1;
+    CompanionHost helper;
+    CompanionScreen sa(*a, helper, pack, 1), sb(*b, helper, pack, 2);
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    frame.redraw_all = 1;
+    for (auto& p : frame.pots) p = -1;
+    auto draw = [&](CompanionScreen& s) { bool changed = false; s.takeRedraw(); s.screenDraw(frame, changed); };
+    auto input = [&](CompanionScreen& s, uint32_t kind, int32_t value) {
+        melodee_screen_input_t in {kind, value, 0};
+        bool used = false;
+        s.screenInput(in, used);
+    };
+    auto apply = [&](CompanionScreen& s, juce::AudioPluginInstance& p) {
+        std::vector<CompanionRequest> asked;
+        s.take(asked);
+        for (const auto& r : asked) if (!r.program) p.getParameters()[r.index]->setValue(r.value);
+        return asked.size();
+    };
+    auto controls = [](CompanionScreen& s) { std::array<int, 3> c {}; s.screenControls(c); return c; };
+    const float a_before = a->getParameters()[2]->getValue(), b_before = b->getParameters()[2]->getValue();
+    draw(sa);
+    input(sa, MELODEE_SCREEN_PUSH, 1); // edit K1, A's pitch (2)
+    for (int n = 0; n < 5; ++n) input(sa, MELODEE_SCREEN_WHEEL, 1);
+    const size_t asked = apply(sa, *a);
+    const float a_after = a->getParameters()[2]->getValue(), b_after = b->getParameters()[2]->getValue();
+    const auto a_controls = controls(sa);
+    draw(sb);
+    input(sb, MELODEE_SCREEN_STEP, 1); // B on its second row
+    draw(sb);
+    const auto b_controls = controls(sb);
+    const size_t b_asked = apply(sb, *b);
+    draw(sa); // A again: a fresh screen, its first row
+    const auto a_again = controls(sa);
+    const bool ok = asked == 1 && std::abs(a_after - (a_before + 5.0f / 60.0f)) < 0.01f && b_after == b_before && b_asked == 0
+                    && a_controls == std::array<int, 3> {2, 3, 10} && b_controls == std::array<int, 3> {27, 28, 29}
+                    && a_again == std::array<int, 3> {2, 3, 10} && sa.hasScreen() && sb.hasScreen();
+    std::printf("a=%.4f->%.4f b=%.4f->%.4f asked=%zu b_asked=%zu a=%d,%d,%d b=%d,%d,%d again=%d,%d,%d\n", a_before, a_after, b_before,
+                b_after, asked, b_asked, a_controls[0], a_controls[1], a_controls[2], b_controls[0], b_controls[1], b_controls[2],
+                a_again[0], a_again[1], a_again[2]);
+    std::printf("pair=%s\n", ok ? "ok" : "failed");
+    return ok ? 0 : 1;
+}
+
+// The plug-in's sound and state for one take (notes, 400 blocks), with a companion screen drawing and turning pages
+// all along when `folder` is given: OUT.raw (float stereo) and OUT.state, to compare with a take without one.
+int companion_render(const char* path, const std::string& out, const char* folder) {
+    juce::String error;
+    auto plugin = open_plugin(path, error);
+    if (!plugin) { std::printf("error=%s\n", error.toRawUTF8()); return 1; }
+    std::unique_ptr<CompanionHost> helper;
+    std::unique_ptr<CompanionScreen> screen;
+    if (folder) {
+        CompanionPackage pack;
+        if (!companion_package(*plugin, folder, pack)) return 1;
+        helper = std::make_unique<CompanionHost>();
+        screen = std::make_unique<CompanionScreen>(*plugin, *helper, std::move(pack), 1);
+    }
+    plugin->prepareToPlay(48000.0, 256);
+    std::vector<uint32_t> canvas(size_t(picture_width) * picture_page_rows, 0u);
+    melodee_screen_frame_t frame {};
+    frame.pixels = canvas.data();
+    frame.width = picture_width;
+    frame.height = picture_page_rows;
+    frame.stride = picture_width;
+    for (auto& p : frame.pots) p = -1;
+    std::ofstream raw(out + ".raw", std::ios::binary | std::ios::trunc);
+    juce::AudioBuffer<float> buffer(std::max(2, plugin->getTotalNumOutputChannels()), 256);
+    for (int block = 0; block < 400; ++block) {
+        juce::MidiBuffer midi;
+        if (block == 2) midi.addEvent(juce::MidiMessage::noteOn(1, 60, uint8_t(100)), 0);
+        if (block == 20) midi.addEvent(juce::MidiMessage::noteOn(1, 67, uint8_t(90)), 17);
+        if (block == 150) midi.addEvent(juce::MidiMessage::noteOff(1, 60), 5);
+        if (block == 160) midi.addEvent(juce::MidiMessage::noteOff(1, 67), 0);
+        buffer.clear();
+        plugin->processBlock(buffer, midi);
+        for (int f = 0; f < 256; ++f)
+            for (int c = 0; c < 2; ++c) { float v = buffer.getSample(std::min(c, buffer.getNumChannels() - 1), f); raw.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+        if (screen && block % 4 == 0) {
+            bool changed = false, used = false;
+            frame.redraw_all = block == 0;
+            screen->takeRedraw();
+            screen->screenDraw(frame, changed);
+            melodee_screen_input_t in {MELODEE_SCREEN_STEP, block % 8 ? 1 : -1, 0};
+            screen->screenInput(in, used);
+        }
+    }
+    juce::MemoryBlock state;
+    plugin->getStateInformation(state);
+    std::ofstream(out + ".state", std::ios::binary | std::ios::trunc).write(static_cast<const char*>(state.getData()), std::streamsize(state.getSize()));
+    std::printf("rendered=%s screen=%s\n", out.c_str(), screen ? (screen->hasScreen() ? "on" : "stopped") : "none");
+    return screen && !screen->hasScreen() ? 2 : 0;
+}
+} // namespace
+
 std::optional<int> run_tool(int argc, char** argv) {
+    // A companion screen's process (plugin/companion_host.h), started by Melodee itself: first, before anything else.
+    if (argc == 2 && !std::strcmp(argv[1], "--melodee-companion-helper")) return companion_helper_main();
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
         auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
         return monkey(arg(2, 1), arg(3, 12), arg(4, 3000));
@@ -3855,6 +4134,15 @@ std::optional<int> run_tool(int argc, char** argv) {
         return error.empty() ? 0 : 1;
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
+    // Companion screens (sdk/melodee-screen/melodee_companion.h): the plug-in with a package's screen, as the MPC
+    // draws it; the plug-in's parameters for writing screen.json; a package checked against the plug-in.
+    if (argc >= 5 && !std::strcmp(argv[1], "--melodee-companion-screen")) // PLUGIN PACKAGE DIR [STEP...]
+        return plugin_screen(argv[2], argv[4], std::vector<std::string>(argv + 5, argv + argc), argv[3]);
+    if (argc == 3 && !std::strcmp(argv[1], "--melodee-plugin-params")) return plugin_params(argv[2]);
+    if (argc == 4 && !std::strcmp(argv[1], "--melodee-companion-check")) return companion_check(argv[2], argv[3]);
+    if (argc == 4 && !std::strcmp(argv[1], "--melodee-companion-pair")) return companion_pair(argv[2], argv[3]);   // PLUGIN PACKAGE
+    if ((argc == 4 || argc == 5) && !std::strcmp(argv[1], "--melodee-companion-render"))                             // PLUGIN OUT [PACKAGE]
+        return companion_render(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 2 && !std::strcmp(argv[1], "--melodee-print-spike")) return print_spike(argc, argv);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-frames"))

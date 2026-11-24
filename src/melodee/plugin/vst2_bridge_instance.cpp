@@ -237,8 +237,14 @@ bool Vst2BridgeInstance::Connection::screenCall (bridge::ScreenCommand command, 
     const auto request = ++screenSequence;
     bridge::store (screen->request, request);
     futexWake (&screen->request);
+    for (int spin = 0; spin < 2000; ++spin)
+        if (bridge::load (screen->reply) == request)
+        {
+            result = screen->result;
+            return true;
+        }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds (timeoutMs);
-    for (int spin = 0;; ++spin)
+    for (;;)
     {
         const auto reply = bridge::load (screen->reply);
         if (reply == request)
@@ -248,8 +254,7 @@ bool Vst2BridgeInstance::Connection::screenCall (bridge::ScreenCommand command, 
         }
         if (std::chrono::steady_clock::now() > deadline)
             return false;
-        if (spin > 2000)
-            futexWait (&screen->reply, reply, 5);
+        futexWait (&screen->reply, reply, 5);
     }
 }
 

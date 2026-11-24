@@ -57,8 +57,9 @@ void initMainLock()
     pthread_mutexattr_destroy (&attributes);
 }
 
-// No timeout: the host wakes the bridge for every command, and PR_SET_PDEATHSIG
-// ends it when the host dies, so an idle bridge has no reason to wake.
+// No timeout: the host wakes the bridge for every command (and screen call),
+// and PR_SET_PDEATHSIG ends it if the host dies, so an idle bridge has no
+// reason to wake.
 void futexWait (uint32_t* word, uint32_t expected)
 {
     syscall (SYS_futex, word, FUTEX_WAIT, expected, nullptr, nullptr, 0);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // When a plug-in may sleep (plugin/idle_gate.h): held keys, the sustain pedal and the controllers that release
-// them (a stranded pedal must not keep a silent plug-in awake for ever), and an effect's reported tail holding
-// it awake past the plain quiet span. Built and run by tests/test_plugin_hosts.py; no JUCE, no objects.
+// them (a stranded pedal must not keep a silent plug-in awake for ever), heardPeak(), and an effect's reported
+// tail holding it awake past the plain quiet span. Built and run by tests/test_plugin_hosts.py; no JUCE, no objects.
 #include "melodee/plugin/idle_gate.h"
 
 #include <cstdio>
@@ -26,9 +26,9 @@ void cc(IdleGate& gate, uint8_t channel, uint8_t controller, uint8_t value) {
 } // namespace
 
 int main() {
-    // The pedal down keeps an instrument awake; each of All Sound Off, Reset All Controllers and All Notes Off
+    // The pedal down keeps an instrument awake; All Sound Off or Reset All Controllers
     // lets it sleep once it has been quiet long enough.
-    for (uint8_t release : {uint8_t(120), uint8_t(121), uint8_t(123)}) {
+    for (uint8_t release : {uint8_t(120), uint8_t(121)}) {
         IdleGate gate;
         gate.reset(true, rate);
         gate.midi(0x90, 60, 100);
@@ -38,6 +38,22 @@ int main() {
         CHECK(!gate.asleep(false, false, nullptr, nullptr, 0)); // the pedal is still down
         cc(gate, 0, release, 0);
         CHECK(gate.keys_held() == 0);
+        CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
+    }
+    { // Ordinary All Notes Off releases held keys, while sustain remains down until CC64 rises.
+        IdleGate gate;
+        gate.reset(true, rate);
+        gate.midi(0x90, 60, 100);
+        cc(gate, 0, 64, 127);
+        gate.midi(0x80, 60, 0);
+        gate.midi(0x90, 62, 100);
+        gate.set_tail(rate, 2.0);
+        CHECK(gate.keys_held() == 1);
+        cc(gate, 0, 123, 0);
+        quiet(gate, 1.0);
+        CHECK(gate.keys_held() == 0);
+        CHECK(!gate.asleep(false, false, nullptr, nullptr, 0));
+        cc(gate, 0, 64, 0);
         CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
     }
     { // The pedal on another channel is not this one's release.
@@ -59,6 +75,16 @@ int main() {
         CHECK(!gate.asleep(false, true, nullptr, nullptr, 0));
         CHECK(!gate.asleep(true, false, nullptr, nullptr, 0));
     }
+    { // heardPeak() matches heard(): resets on signal above quiet_level, accumulates below.
+        IdleGate gate;
+        gate.reset(true, rate);
+        for (double done = 0; done < 1.0; done += 128.0 / rate) gate.heardPeak(0.0f, 128);
+        CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
+        gate.heardPeak(IdleGate::quiet_level * 2.0f, 128);
+        CHECK(!gate.asleep(false, false, nullptr, nullptr, 0));
+        for (double done = 0; done < 1.0; done += 128.0 / rate) gate.heardPeak(IdleGate::quiet_level * 0.5f, 128);
+        CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
+    }
     { // An effect with a two-second tail stays awake for it after its last sound, then sleeps.
         IdleGate gate;
         gate.reset(false, rate, 2.0);
@@ -70,6 +96,18 @@ int main() {
         quiet(gate, 1.5);
         CHECK(gate.asleep(false, false, zeros, zeros, 128));
         CHECK(!gate.asleep(false, false, loud, loud, 128)); // sound at its input wakes it
+    }
+    { // Grow the tail of a quiet effect, then shorten it without losing the elapsed quiet time.
+        IdleGate gate;
+        gate.reset(false, rate);
+        quiet(gate, 0.5);
+        CHECK(gate.asleep(false, false, zeros, zeros, 128));
+        gate.set_tail(rate, 2.0);
+        CHECK(!gate.asleep(false, false, zeros, zeros, 128));
+        quiet(gate, 0.75);
+        CHECK(!gate.asleep(false, false, zeros, zeros, 128));
+        gate.set_tail(rate, 1.0);
+        CHECK(gate.asleep(false, false, zeros, zeros, 128));
     }
     { // The same effect told no tail sleeps after the plain quiet span, as before.
         IdleGate gate;
@@ -84,14 +122,14 @@ int main() {
         for (auto& s : loud) s = 0.5f;
         gate.heard(loud, loud, 128);
         quiet(gate, 0.4);
-        gate.setTail(2.0);
+        gate.set_tail(rate, 2.0);
         quiet(gate, 1.0);
         CHECK(!gate.asleep(false, false, zeros, zeros, 128)); // past the plain half second, inside the new tail
         quiet(gate, 1.5);
         CHECK(gate.asleep(false, false, zeros, zeros, 128));
         gate.heard(loud, loud, 128);
         quiet(gate, 1.0);
-        gate.setTail(0); // told shorter again: the second already counted is past the plain span
+        gate.set_tail(rate, 0); // told shorter again: the second already counted is past the plain span
         CHECK(gate.asleep(false, false, zeros, zeros, 128));
     }
     { // heardPeak(passing peak) decides as heard(samples) does, block by block, the -100 dB edge included.

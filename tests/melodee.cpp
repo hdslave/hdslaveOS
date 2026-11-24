@@ -93,6 +93,8 @@
 #include "melodee/model/fader.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/history.h"
+#include "melodee/shell/mixer_channels.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
@@ -147,6 +149,7 @@
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/xpl_preset.h"
 #include "melodee/plugin/page_file.h"
+#include "melodee/plugin/companion_package.h"
 #include "melodee/plugin/page_library.h"
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/preset_rows.h"
@@ -279,10 +282,11 @@ void bindings() {
     CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == midi_track::Cc1);
     CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 127 && stage[0].at(64) == 64);
     ui.stage_sub[0] = 0;
-    ui.page = PageId::Tracks; // the strip in hand, as Stage's MIX: level, pan, send A
+    ui.page = PageId::Mixer; // the mixer's SENDS: A, B, C; Shift: pan, output, D
     auto mix = page_bindings(project, ui, pattern);
-    CHECK(mix[0].kind == Binding::Kind::Level && mix[2].kind == Binding::Kind::Send && mix[2].id == 0);
-    CHECK(mix[1].kind == Binding::Kind::Pan && mix[1].at(0) == -50 && mix[1].at(127) == 50);
+    CHECK(mix[0].kind == Binding::Kind::Send && mix[0].id == 0 && mix[2].kind == Binding::Kind::Send && mix[2].id == 2);
+    auto mix_shift = page_bindings(project, ui, pattern, true);
+    CHECK(mix_shift[0].kind == Binding::Kind::Pan && mix_shift[0].at(0) == -50 && mix_shift[0].at(127) == 50);
     { // Held keys: Pad Bank held puts the selected track's strip on K1-K3 on any page, over Knob FX too.
         UiState held = ui; held.page = PageId::Roll; held.pad_bank = true;
         auto strip = page_bindings(project, held, pattern);
@@ -338,7 +342,8 @@ void pad_expression() {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
         synth(p->tracks[0], 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p, *b);
         auto tones = std::make_unique<Tones>();
         tones->offer(host, *p);
@@ -1377,11 +1382,11 @@ void button_remap() {
     for (unsigned n = 0; n < 3; ++n) CHECK(record_cards[n].kind == cards[n].kind && record_cards[n].value == cards[n].value);
     CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::RecGain);
     // Seq held, on any page: K1-K3 the pattern's length, Q and swing; Shift as on Patterns; before Knob FX's.
-    ui.page = PageId::Tracks; ui.seq_held = true;
+    ui.page = PageId::Mixer; ui.seq_held = true;
     cards = page_bindings(*project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::PatternLength && cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     cards = page_bindings(*project, ui, pattern, true);
-    CHECK(cards[0].kind == Binding::Kind::PatternSteps && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
+    CHECK(cards[0].kind == Binding::Kind::PatternSteps && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::TrackSpeed);
     project->knob_fx.on = true; project->knob_fx.kind = 1;
     CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::PatternLength);
     ui.seq_held = false;
@@ -1406,7 +1411,6 @@ void button_remap() {
         UiState j; j.track = 0;
         auto job = [&] { return std::string(pad_job(*project, j)); };
         j.page = PageId::Stage; CHECK(job().empty());
-        j.page = PageId::Tracks; CHECK(job() == "TRACKS");
         j.page = PageId::Scenes; CHECK(job() == "SEQUENCES");
         j.page = PageId::StepEdit; CHECK(job().empty()); j.step_pads = true; CHECK(job() == "STEPS"); j.step_pads = false;
         j.page = PageId::Roll; j.seq_held = true; CHECK(job() == "PATTERNS"); // Seq held: the track's patterns
@@ -1471,21 +1475,22 @@ void button_remap() {
         basic.reset_factory(); CHECK(!basic.full_features);                 // Reset Factory Settings keeps it
         { Settings rowless = basic; rowless.read(""); CHECK(rowless.full_features); } // no row read: Full, whatever came before
         UiState f; f.track = 0; f.page = PageId::Stage;
-        CHECK(full_features(f) && menu_tile_shown(f, 7) && sends_shown(f) && looper_shown(f) && follow_shown(f) && new_pick_count(f) == 5);
+        CHECK(full_features(f) && menu_tile_shown(f, 7) && !menu_tile_shown(f, 9) && looper_shown(f) && follow_shown(f) && new_pick_count(f) == 5);
         f.settings.full_features = false;
-        // GO: MOTION, SENDS and LOOPER are left out; the other tiles keep their pads; the wheel passes over them.
+        // GO: MOTION and LOOPER are left out (pad 10 is free since the mixer); the other tiles keep their pads; the
+        // wheel passes over them.
         CHECK(!menu_tile_shown(f, 7) && !menu_tile_shown(f, 9) && !menu_tile_shown(f, 11) && menu_tile_shown(f, 8) && menu_tile_shown(f, 6) && menu_tile_shown(f, 15));
         CHECK(menu_tile_turn(f, 6, 1) == 0 && menu_tile_turn(f, 0, -1) == 6); // STEP EDIT, then the bottom row: MOTION is passed over
         CHECK(menu_tile_turn(f, 8, 1) == 10 && menu_tile_turn(f, 10, 1) == 4 && menu_tile_turn(f, 4, -1) == 10); // MIXER, EFFECTS, then the row below
         CHECK(menu_tile_turn(f, 12, -1) == 12 && menu_tile_turn(f, 3, 1) == 3 && menu_tile_turn(f, 12, 15) == 3);
-        f.settings.full_features = true; CHECK(menu_tile_turn(f, 6, 1) == 7 && menu_tile_turn(f, 8, 1) == 9); f.settings.full_features = false;
+        f.settings.full_features = true; CHECK(menu_tile_turn(f, 6, 1) == 7 && menu_tile_turn(f, 8, 1) == 10); f.settings.full_features = false;
         // HERE: no LOOPER, no FREEZE, no FOLLOW TO ALL.
         std::array<MenuItem, menu_here_max> items {};
         f.page = PageId::Scenes;
         unsigned n = menu_here(*project, f, items);
         CHECK(n == 4);
         for (unsigned k = 0; k < n; ++k) CHECK(items[k].job != MenuJob::SequenceFollowAll);
-        f.page = PageId::Tracks; n = menu_here(*project, f, items);
+        f.page = PageId::Mixer; n = menu_here(*project, f, items);
         for (unsigned k = 0; k < n; ++k) CHECK(items[k].job != MenuJob::Looper && items[k].job != MenuJob::Freeze);
         // Seq's MOTION: only for a pattern that holds motion. The loop grid: Full's.
         Pattern plain, moved;
@@ -1587,11 +1592,11 @@ void button_remap() {
         CHECK(lesson_takes_button(u, B::PadFx) && !lesson_takes_button(u, B::KnobFx));
         lesson_button(u, B::PadFx, true, 1000); CHECK(lesson_takes_button(u, B::KnobFx));
         lesson_button(u, B::KnobFx, true, 1000); CHECK(u.lesson_step == 1); // its page ends the step
-        u.page = PageId::Tracks; lesson_page(u, 1100); CHECK(u.lesson_step == 2 && lesson_knob_card(u) == 0 && lesson_soft_key(u) == -1);
+        u.page = PageId::Mixer; lesson_page(u, 1100); CHECK(u.lesson_step == 2 && lesson_knob_card(u) == 0 && lesson_soft_key(u) == -1);
         CHECK(lesson_takes_knob(u, 0) && !lesson_takes_knob(u, 1));
         lesson_knob(u, 0, 60, 1200); lesson_knob(u, 0, 64, 1200); CHECK(u.lesson_step == 2); // a nudge is not a turn
-        lesson_knob(u, 0, 60 + lesson_knob_travel, 1300); CHECK(u.lesson_step == 3 && lesson_knob_card(u) == 1);
-        u.lesson_step = 4; CHECK(lesson_soft_key(u) == 2 && lesson_knob_card(u) == -1);
+        lesson_knob(u, 0, 60 + lesson_knob_travel, 1300); CHECK(u.lesson_step == 3 && lesson_takes_pad(u, 1) && lesson_knob_card(u) == -1);
+        u.lesson_step = 5; CHECK(lesson_soft_key(u) == 0 && lesson_knob_card(u) == -1); // PRESS B1: back from the effects
         // The settings keep the lessons done; a lesson shows Basic's pages.
         Settings done; done.lessons_done = 5;
         Settings read_back; read_back.read(done.text()); CHECK(read_back.lessons_done == 5);
@@ -1650,7 +1655,7 @@ void button_remap() {
         UiState m; m.track = 0; m.page = PageId::Stage;
         unsigned count = menu_here(*with, m, items);
         CHECK(count >= 4 && items[0].job == MenuJob::Chords && items[1].job == MenuJob::ChordFile);
-        m.page = PageId::Tracks; menu_here(*with, m, items); CHECK(items[0].job == MenuJob::TrackMove);
+        m.page = PageId::Mixer; menu_here(*with, m, items); CHECK(items[0].job == MenuJob::TrackMove);
     }
     // The MENU (shell/menu.h): the encoder held opens it, a tap stays the page's Push; GO's tiles and HERE's cards.
     {
@@ -1660,7 +1665,7 @@ void button_remap() {
         encoder_press(e, 2000);
         CHECK(encoder_tick(e, 2000 + menu_hold_ms) && !encoder_tick(e, 9000)); // held: the MENU, once
         CHECK(!encoder_release(e) && !encoder_release(e)); // its release is no tap
-        CHECK(menu_tile_of(PageId::Tracks) == 8 && menu_tile_of(PageId::Scenes) == 4 && menu_tile_of(PageId::Master) == 10 && menu_tile_of(PageId::Edit) == 0);
+        CHECK(menu_tile_of(PageId::Mixer) == 8 && menu_tile_of(PageId::Scenes) == 4 && menu_tile_of(PageId::Master) == 10 && menu_tile_of(PageId::Edit) == 0);
         CHECK(menu_tile_of(PageId::Patterns) == 4 && menu_places()[4].page == PageId::Scenes && std::string(menu_places()[4].name) == "SEQUENCE"); // Seq's home
         CHECK(menu_tile_turn(12, 1) == 13 && menu_tile_turn(15, 1) == 8 && menu_tile_turn(8, -1) == 15); // across a row, then the row below
         CHECK(menu_tile_turn(12, -1) == 12 && menu_tile_turn(3, 1) == 3 && menu_tile_turn(12, 15) == 3); // clamped at both ends
@@ -1668,7 +1673,7 @@ void button_remap() {
         UiState m; m.track = 0;
         m.page = PageId::Scenes;
         CHECK(menu_here(*project, m, items) == 5 && items[0].job == MenuJob::SequenceCapture && items[4].danger);
-        m.page = PageId::Tracks;
+        m.page = PageId::Mixer;
         unsigned count = menu_here(*project, m, items);
         CHECK(count >= 4 && items[0].job == MenuJob::TrackMove && items[count - 1].job == MenuJob::TrackClear);
         m.page = PageId::Tempo;
@@ -1694,7 +1699,7 @@ void button_remap() {
         std::snprintf(kit->samples.edit(0).path, sizeof(SampleRef::path), "/card/Samples/LOOP.wav");
         kit->samples.edit(0).frames = 4 * 44100;
         CHECK(offered() && button_has_shift_job(*kit, m, SurfaceButton::TopRight, true));
-        m.page = PageId::Tracks; CHECK(!offered()); // the pad's job: on Stage alone
+        m.page = PageId::Mixer; CHECK(!offered()); // the pad's job: on Stage alone
         m.page = PageId::Stage;
         m.settings.full_features = false; CHECK(offered() && button_has_shift_job(*kit, m, SurfaceButton::TopRight, true)); // Basic too
         m.settings.full_features = true;
@@ -1816,13 +1821,13 @@ void button_remap() {
         CHECK(tap_turn(tap, true) == TapDo::Nothing && tap_release(tap, true) == TapDo::Nothing); // on the page already: it stays
         CHECK(tap_turn(tap, false) == TapDo::Nothing); // not down: the encoder is the page's
     }
-    // Tracks is the mixer's: Tracks -> Stage, Back lands on Tracks; Tracks -> Sends -> Rack is one stop.
+    // The mixer and its chains are one stop: Mixer -> Stage, Back lands on the mixer; Mixer -> Rack -> Bus is one stop.
     {
         UiState m; m.page = PageId::Patterns;
         auto to = [&](PageId page) { push_back_stack(m, page); m.page = page; };
-        to(PageId::Tracks); to(PageId::Stage);
-        CHECK(back_target(m) == PageId::Tracks);
-        to(PageId::Tracks); to(PageId::Sends); to(PageId::Rack);
+        to(PageId::Mixer); to(PageId::Stage);
+        CHECK(back_target(m) == PageId::Mixer);
+        to(PageId::Mixer); to(PageId::Rack); to(PageId::Bus);
         CHECK(back_target(m) == PageId::Patterns);
     }
     // Seq, the SEQUENCE hub (docs/HUBS_PLAN.md): a tap opens the hub's page last open on the track (Patterns until
@@ -1863,6 +1868,21 @@ void button_remap() {
     CHECK(button_has_job(*project, l, B::Loop, true, false) && !button_has_job(*project, l, B::Chop, true, false)); // the last pad is empty
     project->tracks[1].pads[0].sample = 0;
     CHECK(button_has_job(*project, l, B::Chop, true, false));
+    { // a PLUGIN track's B1 pages on Stage light Shift + B1 PLUG-INS, B2 PRESETS (when it has some), B3 TRANSPORT
+        auto plug = std::make_unique<Project>();
+        plug->tracks[0].engine = EngineKind::Plugin; // none picked yet
+        UiState u; u.page = PageId::Stage; u.track = 0;
+        CHECK(stage_plugin_page(stage_page_now(u, plug->tracks[0], stage_skip(*plug, u, plug->tracks[0])).kind));
+        CHECK(button_has_shift_job(*plug, u, B::TopLeft, false) && !button_has_shift_job(*plug, u, B::TopMiddle, false)
+              && !button_has_shift_job(*plug, u, B::TopRight, false));
+        plug->tracks[0].plugin = 0;
+        CHECK(button_has_shift_job(*plug, u, B::TopRight, false) && !button_has_shift_job(*plug, u, B::TopMiddle, false)); // no presets yet
+        u.plugin_panel.entry = 0; u.plugin_panel.programs = 12;
+        CHECK(button_has_shift_job(*plug, u, B::TopMiddle, false));
+        CHECK(stage_go(u, EngineKind::Plugin, StageKind::PluginEdit) && button_has_shift_job(*plug, u, B::TopLeft, false));
+        CHECK(stage_go(u, EngineKind::Plugin, StageKind::Arp)); // B2 ARP: Shift + B1-B3 do nothing there
+        CHECK(!button_has_shift_job(*plug, u, B::TopLeft, false) && !button_has_shift_job(*plug, u, B::TopRight, false));
+    }
     l.exit_open = true;
     CHECK(!button_has_job(*project, l, B::Play, true, false));
 }
@@ -1898,7 +1918,8 @@ void parity_1c() {
         auto p = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         tone_kit(*p, 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p, *bank);
         auto tone = tone_sample();
         CHECK(host.offer_sample(0, &tone));
@@ -1918,7 +1939,8 @@ void parity_1c() {
             auto bank = std::make_unique<PatternBank>();
             tone_kit(*p, 0);
             p->tracks[0].pads[1] = p->tracks[0].pads[0];
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*p, *bank);
             auto tone = tone_sample();
             host.offer_sample(0, &tone);
@@ -1954,12 +1976,12 @@ void parity_1c() {
         CHECK(levels.next(v) == pad_note(52, -3)); // the octave on the key, its semitones kept
     }
 
-    // Mute mode: kit pads where the pads play the kit (Stage too), tracks on Tracks.
+    // Mute mode: kit pads where the pads play the kit (Stage too), tracks on the mixer.
     ui.page = PageId::Pads;
     CHECK(mute_on_kit(ui, true) && !mute_on_kit(ui, false));
     ui.page = PageId::Stage;
     CHECK(mute_on_kit(ui, true));
-    ui.page = PageId::Tracks;
+    ui.page = PageId::Mixer;
     CHECK(!mute_on_kit(ui, true));
     ui.mute_latch = true;
     CHECK(ui.mute_mode());
@@ -2333,7 +2355,9 @@ void timing() {
         Pattern seven; seven.length = 7 * sixteenth_ticks; seven.free = false; // 7/16 against a bar on another track
         CHECK(page_bindings(project, ui, seven, true)[0].value == 7 && pattern_lengths[page_bindings(project, ui, seven, false)[0].value] == 1);
         CHECK(shifted[1].kind == Binding::Kind::TimeSignature && shifted[1].value == int(common_time));
-        CHECK(shifted[2].kind == Binding::Kind::ClickLevel);
+        project.tracks[0].engine = EngineKind::Sampler; // a used track: its speed on Shift + K3 since the mixer (the click level is on Tempo)
+        CHECK(page_bindings(project, ui, five, true)[2].kind == Binding::Kind::TrackSpeed);
+        project.tracks[0].engine = EngineKind::None;
         ui.page = PageId::TimeCorrect; five.feel.strength = 70; five.feel.swing = 60; five.feel.humanize = 20;
         auto tc = page_bindings(project, ui, five, false); // time-correct C: Q, then the strength and swing heard live
         CHECK(tc[0].kind == Binding::Kind::Division && tc[1].kind == Binding::Kind::FeelStrength && tc[1].value == 70
@@ -2416,7 +2440,8 @@ void step_edit_and_pad_motion() {
     beat = Pattern {};
     beat.write_motion(point(4, level, 0, 9));
     for (unsigned st : {0u, 8u}) beat.add({st * sixteenth_ticks, uint16_t(sixteenth_ticks), uint8_t(sampler_first_note + 9), 120, 100, 0});
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*quiet, *bank);
     CHECK(host.offer_sample(0, &data_wav));
     host.send({Command::Type::Play});
@@ -3518,7 +3543,8 @@ void performance_effects() {
     auto bank = std::make_unique<PatternBank>();
     synth(project->tracks[0], 0);
     auto energy = [&](const std::function<void(EngineHost&)>& set) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         set(host);
@@ -3552,7 +3578,8 @@ void performance_effects() {
         tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
         for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.3) * 0.5); // about 2.1 kHz
         auto hit = [&](unsigned pad, bool knobbed) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3571,7 +3598,8 @@ void performance_effects() {
         // Playing, the sequencer's ticks split the host's blocks: a pad through Knob FX (none chosen, so it passes
         // untouched) must come out frame for frame as it does dry, whole and in place, as when stopped.
         auto take = [&](bool knobbed, bool playing) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*kit, *bank);
             tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
@@ -3606,7 +3634,8 @@ void performance_effects() {
 
     // Rec Input FX: the take hears Knob FX on the input (the mix here, Resample), the speakers do not.
     auto take = [&](bool rec_fx) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
@@ -3624,7 +3653,8 @@ void performance_effects() {
 
     // The master compressor: engaged at full amount it takes the loud chord down, and says by how much.
     auto loud = [&](bool on, bool color) {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3649,7 +3679,8 @@ void performance_effects() {
         synth(two->tracks[2], 2);
         struct Heard { double energy; float reduction; };
         auto side = [&](bool on, bool key_plays, bool other_plays, bool key_muted) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*two, *bank);
             tones_for(host, *two);
             host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3695,7 +3726,8 @@ void performance_effects() {
             host.send({Command::Type::Compressor, 0, 0, 0, int16_t(keyed)});
         };
         auto hit = [&](bool keyed, bool a01, bool a02) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap for the mixer buffers
+            auto& host = *host_held;
             setup(host, keyed);
             if (a01) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 0), 110});
             if (a02) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 1), 110});
@@ -3716,7 +3748,8 @@ void performance_effects() {
         // A01 is a sustained kick. Mute its track mid-hit, hit it again while muted, then unmute
         // while the sample is still playing. A tone on another track keeps the master audible.
         auto mute_cycle = [&](bool keyed) {
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap for the mixer buffers
+            auto& host = *host_held;
             setup(host, keyed);
             host.send({Command::Type::NoteOn, 0, 0, 69, 110});
             const Command kick {Command::Type::NoteOn, 1, 0, sampler_first_note, 110};
@@ -3744,7 +3777,8 @@ void performance_effects() {
     }
     // The page's picture: the compressor hands over its peaks, the trail keeps a column every 33 ms whatever the frame rate.
     {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
@@ -3817,7 +3851,7 @@ void performance_effects() {
 
     // Bindings: with the mode on the pots are Knob FX's on any page, Shift its second row; Shift + K on a chain gives the other row.
     UiState ui;
-    ui.page = PageId::Tracks;
+    ui.page = PageId::Mixer;
     project->knob_fx.on = true; project->knob_fx.bypass = false;
     Pattern pattern;
     auto cards = page_bindings(*project, ui, pattern, false);
@@ -3828,7 +3862,7 @@ void performance_effects() {
     CHECK(page_bindings(*project, ui, pattern, false)[1].value == 90 && page_bindings(*project, ui, pattern, true)[2].value == 5);
     project->knob_fx.editing = 0;
     project->knob_fx.on = false;
-    CHECK(page_bindings(*project, ui, pattern, false)[0].kind == Binding::Kind::Level);
+    CHECK(page_bindings(*project, ui, pattern, false)[0].kind != Binding::Kind::KnobParam); // the mixer's own again
     ui.page = PageId::Rack; ui.track = 2;
     project->tracks[2].fx.slots[0].kind = uint8_t(EffectKind::Spring);
     project->tracks[2].fx.slots[0].params = {0, 25, 30, 70, 60, 120};
@@ -3922,7 +3956,8 @@ void fader_and_takeover() {
         auto bank = std::make_unique<PatternBank>();
         ::synth(proj->tracks[0], 0);
         bank->at[0][0].write_motion(point(0, motion_bend, -64));
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*proj, *bank);
         auto tones = std::make_unique<Tones>();
         tones->offer(host, *proj);
@@ -3949,10 +3984,9 @@ void fader_and_takeover() {
     UiState ui; ui.track = 3; ui.page = PageId::Stage;
     auto job = fader_job(*project, ui);
     CHECK(job.source == FaderJob::Source::Target && job.binding.kind == Kind::PadLevel && job.binding.value == 90);
-    ui.page = PageId::Tracks;
+    ui.page = PageId::Mixer;
     job = fader_job(*project, ui);
     CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::Level);
-    ui.page = PageId::Sends; CHECK(fader_job(*project, ui).binding.kind == Kind::Send);
     ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target); // step entry: no nudge (round 2)
     ui.page = PageId::Compressor; CHECK(fader_job(*project, ui).binding.kind == Kind::CompAmount);
     ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
@@ -3967,7 +4001,7 @@ void fader_and_takeover() {
     // Off: only the page's own jobs remain.
     ui.page = PageId::Stage; kit.fader_on = false;
     CHECK(fader_job(*project, ui).source == FaderJob::Source::None && fader_light_level(fader_job(*project, ui)) == 0);
-    ui.page = PageId::Tracks; CHECK(fader_job(*project, ui).source == FaderJob::Source::Page);
+    ui.page = PageId::Mixer; CHECK(fader_job(*project, ui).source == FaderJob::Source::Page);
     kit.fader_on = true; ui.page = PageId::Stage;
     // Decay / Release swaps with the pad's play mode; an empty last pad has nothing to drive.
     kit.fader_target = uint8_t(FaderTarget::PadDecay); kit.pads[8].play = PadPlay::OneShot;
@@ -3981,8 +4015,8 @@ void fader_and_takeover() {
     CHECK(fader_job(*project, ui).binding.kind == Kind::Param && fader_job(*project, ui).binding.id == sampler::Level);
     { // Round 3 (fader readout B): the K card showing the fader's value says it moved; with none the header does.
         Pattern pattern;
-        UiState at; at.track = 3; at.page = PageId::Tracks;
-        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == 0); // LEVEL, K1
+        UiState at; at.track = 3; at.page = PageId::Compressor;
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == 2); // AMOUNT, K3
         at.page = PageId::Pads; // the last pad's PITCH, VOLUME, PAN
         CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == -1); // Kit Volume: no card
         kit.fader_target = uint8_t(FaderTarget::PadVolume);
@@ -4026,7 +4060,7 @@ void fader_and_takeover() {
         auto learned = fader_job(*project, at);
         CHECK(learned.source == FaderJob::Source::Target && learned.learned && !learned.pad && learned.binding.kind == Kind::Param
               && learned.binding.id == midi_track::Cc1 && learned.binding.value == 70);
-        at.page = PageId::Tracks; CHECK(fader_job(*project, at).source == FaderJob::Source::Page); // a page's own job still wins
+        at.page = PageId::Mixer; CHECK(fader_job(*project, at).source == FaderJob::Source::Page); // a page's own job still wins
         at.page = PageId::Stage;
         synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Pan, 0, -50, 50, 0});
         CHECK(fader_job(*project, at).binding.kind == Kind::Pan && fader_job(*project, at).centred);
@@ -4422,7 +4456,8 @@ void midi_and_sync() {
         project->tempo = 1200;
         put(bank->at[0][0], 4, 45, 100);
         put(bank->at[1][0], 0, 60, 90); // track 2 has no engine: a MIDI track under Empty
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5428,7 +5463,8 @@ void midi_tracks() {
         put(bank->at[0][0], 0, 60, 100, 2);
         bank->at[0][1].length = 4 * project->bar_ticks(); // pattern 2: four bars, one long note
         put(bank->at[0][1], 0, 62, 100, 64);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5570,7 +5606,8 @@ void midi_tracks() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Midi, 0);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -5647,10 +5684,9 @@ void stage() {
     ui.track = 1; CHECK(key() == "TRIM");
     stage_press(ui, project->tracks[1], 2, false); CHECK(key() == "MIX");
     ui.track = 0; CHECK(key() == "CHORD");
-    stage_press(ui, project->tracks[0], 2, false); CHECK(key() == "MIX"); // another button: its first page
-    stage_press(ui, project->tracks[0], 2, false); CHECK(key() == "SENDS");
-    stage_press(ui, project->tracks[0], 2, false); CHECK(key() == "FX");
-    stage_press(ui, project->tracks[0], 2, false); CHECK(key() == "MIX");
+    const auto synth_skip = stage_skip(*project, ui, project->tracks[0]); // MIX and SENDS are the mixer's since step 6
+    stage_press(ui, project->tracks[0], 2, synth_skip); CHECK(key() == "FX"); // another button: its first page shown
+    stage_press(ui, project->tracks[0], 2, synth_skip); CHECK(key() == "FX"); // its only one
     // PRESETS: the performance knobs, the plug-in open or not; EDIT: its own row of three once it is open (none
     // before). No Shift row on either.
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound) && cards(false)[0].kind == K::Param && !shift_bindings(*project, ui, pattern)[0].bound());
@@ -5696,17 +5732,11 @@ void stage() {
     }
     ui.plugin_panel = {};
 
-    // MIX: level, pan, send; Shift + K3 the bus.
+    // MIX and SENDS are the mixer's since step 6: a synth's B3 shows FX, and left on either, Stage shows FX.
     stage_go(ui, 2, 0);
-    CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(false)[2].id == 0);
-    CHECK(!shift_bindings(*project, ui, pattern)[2].bound()); // the quick send is A's; SENDS has all four
-    // SENDS (B3 again): K1 the send, K2 the bus, K3 its return, as MIX's SENDS; every bus, D too, without Shift.
+    CHECK(key() == "FX");
     stage_go(ui, 2, 1);
-    ui.sends_bus = 0;
-    CHECK(key() == "SENDS" && cards(false)[1].kind == K::SendBus && cards(false)[0].kind == K::Send && cards(false)[0].id == 0);
-    CHECK(cards(false)[2].kind == K::BusReturn && cards(false)[2].id == 0 && !shift_bindings(*project, ui, pattern)[0].bound());
-    ui.sends_bus = 3;
-    CHECK(cards(false)[1].value == 3 && cards(false)[0].id == 3 && cards(false)[2].id == 3);
+    CHECK(key() == "FX" && !cards(false)[0].bound());
     // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
     stage_go(ui, 1, 0);
     CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);
@@ -5859,9 +5889,9 @@ void stage() {
     CHECK(stage_focus(ui, project->tracks[9]) == 2 && stage_focus(ui, project->tracks[0]) == 2);
     ui.last_pot = -1;
 
-    // Tracks: K1 its level, K2 its pan, K3 its send into bus A, as Stage's MIX.
-    ui.page = PageId::Tracks; ui.track = 0;
-    CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send);
+    // The mixer: SENDS A-C on K1-K3 (Tracks and Stage's MIX are gone, docs/MIXER_PLAN.md step 6).
+    ui.page = PageId::Mixer; ui.track = 0;
+    CHECK(cards(false)[0].kind == K::Send && cards(false)[1].kind == K::Send && cards(false)[2].kind == K::Send);
 
     // Undo: Shift + B1 / B2 on a kit's TRIM (Loop Lock, Normalize) are the pad's; B1 alone on Stage keeps nothing.
     ui.page = PageId::Stage; ui.track = 1; stage_go(ui, 0, 0); kit.last_pad = 5;
@@ -5893,7 +5923,8 @@ void stage() {
         load_sound(p2->tracks[0], EngineKind::Midi, 0);
         p2->tracks[0].params[midi_track::Port] = midi_track::UsbC; p2->tracks[0].params[midi_track::Channel] = 3;
         p2->tracks[0].params[midi_track::Program] = 6; p2->tracks[0].params[midi_track::BankLsb] = 2;
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*p2, *bank);
         tones_for(host, *p2);
         host.set_audio_format(44100, 384);
@@ -6986,7 +7017,8 @@ void voice_taps() {
     }
     // The host publishes the watched track's after each block, stamped with the block's end.
     {
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         std::vector<int32_t> out(256);
         host.watch_taps(2);
         host.render(out.data(), 128, 1);
@@ -7396,6 +7428,17 @@ void preset_folders() {
     CHECK(preset_folder_name("Factory/Basses") == "Basses" && preset_folder_name("User") == "User");
     CHECK(preset_row_of_folder(list, "Factory/Keys", -1) == 1 && preset_row_of_folder(list, "User", -1) == 1);
 
+    // A CLAP location's name as its folder: "/" a level (Melodee Modules: a synth, then its Factory and SysEx files).
+    CHECK(preset_location_folder(" PPG / 2.2 factory ") == "PPG/2.2 factory" && preset_location_folder("/a//b/") == "a/b");
+    CHECK(preset_location_folder("Factory Presets") == "Factory Presets" && preset_location_folder(" / ").empty());
+    PluginProgramList synths({{0, "INIT", preset_location_folder("PPG/Factory")}, {1, "PROGRAM 00", "PPG/2.2 factory"},
+                              {2, "FAT BASS", preset_location_folder("TRIO")}});
+    auto by_synth = preset_rows(synths, "", 2);
+    CHECK(by_synth.size() == 2 && by_synth[0].name == "PPG" && by_synth[0].count == 2 && by_synth[1].name == "TRIO" &&
+          by_synth[1].current);
+    auto ppg = preset_rows(synths, "PPG", 2);
+    CHECK(ppg.size() == 2 && ppg[0].folder && ppg[0].name == "Factory" && ppg[1].name == "2.2 factory");
+
     PluginProgramList flat({{0, "One", ""}, {3, "Four", ""}}); // a VST3's programs: no folders
     auto rows = preset_rows(flat, "", 3);
     CHECK(rows.size() == 2 && !rows[0].folder && rows[1].name == "Four" && rows[1].current && rows[1].at == 1);
@@ -7683,6 +7726,49 @@ void plugin_page_layout() {
     CHECK(value_in("2 kHz", true, v) && std::abs(v - 2000) < 1e-9);
     CHECK(value_in("440 Hz", true, v) && std::abs(v - 440) < 1e-9);
     CHECK(!value_in("45", false, v) && !value_in("62 %", true, v) && !value_in("Off", false, v) && !value_in("2 kHz", false, v));
+}
+
+// Companion screens' screen.json (plugin/companion_package.h): read, checked against a plug-in by its ID and every
+// parameter's name at its index, refused with a reason, and none picked when two fit.
+void companion_packages() {
+    const char* json = R"({"name": "Panel", "sdk": 1, "plugin": {"vst2": "Pft5"},
+        "params": [{"index": 0, "name": "PM Filt Env"}, {"index": 2, "name": " A Frequency ", "steps": 60}]})";
+    CompanionManifest m;
+    std::string why;
+    CHECK(read_companion_manifest(json, m, why));
+    CHECK(m.library == "screen-aarch64.so" && m.params.size() == 2 && m.params[1].name == "A Frequency" && m.params[1].steps == 60);
+    CompanionTarget t;
+    t.who.vst2 = int32_t(0x50667435); // 'Pft5'
+    t.vst2 = true;
+    t.names = {"PM Filt Env", "PM Osc B", "A Frequency"};
+    CHECK(companion_fit(m, t, why) == CompanionFit::Fits);
+    t.names[2] = "A Freq";
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong && why.find("parameter 2 is \"A Freq\"") != std::string::npos);
+    t.names.resize(1);
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong && why.find("no parameter 2") != std::string::npos);
+    t.who.vst2 = 1;
+    CHECK(companion_fit(m, t, why) == CompanionFit::Other);
+    t.who.vst2 = int32_t(0x50667435);
+    t.vst2 = false;
+    CHECK(companion_fit(m, t, why) == CompanionFit::Wrong); // not a VST2: not yet
+    CHECK(read_companion_manifest(R"({"name": "x", "sdk": 1, "library": "custom.so", "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why)
+          && m.library == "custom.so");
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 2, "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why)
+          && why.find("SDK 2") != std::string::npos);
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "library": "../x.so", "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": []})", m, why));
+    CHECK(!read_companion_manifest(R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": [{"name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest(R"({"sdk": 1, "plugin": {"name": "P"}, "params": [{"index": 0, "name": "A"}]})", m, why));
+    CHECK(!read_companion_manifest("{not json", m, why));
+    std::string many = R"({"name": "x", "sdk": 1, "plugin": {"name": "P"}, "params": [)";
+    for (unsigned n = 0; n <= companion_params_most; ++n) many += (n ? "," : "") + std::string(R"({"index": 0, "name": "A"})");
+    CHECK(!read_companion_manifest(many + "]}", m, why) && why.find("more than") != std::string::npos);
+    CHECK(pick_companion({CompanionFit::Other, CompanionFit::Fits, CompanionFit::Wrong}).package == 1);
+    auto two = pick_companion({CompanionFit::Fits, CompanionFit::Fits});
+    CHECK(two.package == -1 && two.ambiguous);
+    CHECK(pick_companion({CompanionFit::Wrong}).package == -1 && !pick_companion({}).ambiguous);
+    CHECK(plugin_binding_indexed(plugin_binding(3, plugin_index_slot + 58)) && !plugin_binding_indexed(plugin_binding(3, plugin_screen_slot)));
+    CHECK(!plugin_binding_indexed(plugin_binding(3, 5)));
 }
 
 // Page files (plugin/page_file.h): which plug-in, its pages by names or IDs, labels, a last page of the rest,
@@ -7977,7 +8063,8 @@ void pad_lights() {
 
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     UiState ui;
     auto& kit = project->tracks[1];
@@ -8064,7 +8151,8 @@ void pad_lights() {
         p.events.push_back(e);
         ui.levels_hit = 0; light({});
         auto stopped = looks;
-        EngineHost playing;
+        auto playing_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& playing = *playing_held;
         playing.load(*project, *bank);
         playing.send({Command::Type::Play});
         std::vector<int32_t> block(256);
@@ -8089,8 +8177,8 @@ void pad_lights() {
     synth.transpose = 0; synth.last_note = 50; synth.levels = false; synth.levels_kind = uint8_t(LevelsKind::Scale);
     ui.track = 1;
 
-    // Tracks: picked Full, heard Dim, muted Faint red; a solo leaves the rest Faint.
-    ui.page = PageId::Tracks; project->tracks[3].engine = EngineKind::Plugin; project->tracks[3].mix.mute = true; light({});
+    // The mixer's tracks: picked Full, heard Dim, muted Faint red; a solo leaves the rest Faint.
+    ui.page = PageId::Mixer; project->tracks[3].engine = EngineKind::Plugin; project->tracks[3].mix.mute = true; light({});
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(3, Hue::Red, 1) && is(9, Hue::None, 0));
     project->tracks[0].mix.solo = true; light({});
     CHECK(is(0, Hue::White, 2) && is(5, Hue::Track, 1));
@@ -8104,10 +8192,10 @@ void pad_lights() {
     CHECK(is(9, Hue::Red, 1) && track_clearable(project->tracks[9], bank->at[9]));
     bank->at[9][4] = Pattern {};
     ui.erase = false; ui.pad_bank = false;
-    // Mute mode: a kit's pads on a kit page, the tracks on Tracks; muted Dim red, a solo white.
+    // Mute mode: a kit's pads on a kit page, the tracks on the mixer; muted Dim red, a solo white.
     ui.mute = true; light(plays);
     CHECK(is(8, Hue::Red, 2) && is(0, Hue::Track, 3) && is(12, Hue::None, 0));
-    ui.page = PageId::Tracks; light({});
+    ui.page = PageId::Mixer; light({});
     CHECK(is(3, Hue::Red, 2) && is(0, Hue::White, 3) && is(5, Hue::Track, 1));
     ui.mute = false; project->tracks[0].mix.solo = false;
     // Song: the lane picked, a clip under the cursor Mid, not in the song Faint.
@@ -8361,7 +8449,7 @@ void erase_copy_everywhere() {
     CHECK(copy_here(*project, ui, true, false) == C::Pads);
     ui.pad_bank = true; CHECK(copy_here(*project, ui, true, false) == C::Tracks); ui.pad_bank = false;
     ui.seq_held = true; CHECK(copy_here(*project, ui, true, false) == C::Patterns); ui.seq_held = false;
-    ui.page = PageId::Tracks; CHECK(copy_here(*project, ui, false, false) == C::Tracks);
+    ui.page = PageId::Mixer; CHECK(copy_here(*project, ui, false, false) == C::None); // SENDS: nothing (Pad Bank held: the tracks)
     ui.page = PageId::Patterns; CHECK(copy_here(*project, ui, true, false) == C::Patterns); // the page's patterns before the kit's pads
     ui.page = PageId::StepEdit; ui.step_pads = true; CHECK(copy_here(*project, ui, false, false) == C::Steps);
     ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::Keys);
@@ -8389,7 +8477,7 @@ void erase_copy_everywhere() {
     ui.page = PageId::SettingsPage; ui.track = 0; CHECK(copy_here(*project, ui, false, false) == C::None);
 
     // Where a tap of Erase has a job.
-    for (PageId page : {PageId::Roll, PageId::StepEdit, PageId::Patterns, PageId::Tracks,
+    for (PageId page : {PageId::Roll, PageId::StepEdit, PageId::Patterns,
                         PageId::Looper, PageId::Rack, PageId::Bus, PageId::Master, PageId::PadFx, PageId::Chop,
                         PageId::LayersPage, PageId::ModPage}) {
         ui.page = page; CHECK(erase_tap_page(ui));
@@ -8404,12 +8492,12 @@ void erase_copy_everywhere() {
     CHECK(!button_has_job(*project, ui, B::Erase, false, false) && button_has_job(*project, ui, B::Erase, false, false, true));
     CHECK(!button_has_shift_job(*project, ui, B::Erase, false) && button_has_shift_job(*project, ui, B::Erase, false, true));
     ui.page = PageId::Rack; CHECK(button_has_job(*project, ui, B::Erase, false, false) && button_has_shift_job(*project, ui, B::Erase, false));
-    ui.page = PageId::Tracks; CHECK(button_has_job(*project, ui, B::Erase, false, false) && button_has_shift_job(*project, ui, B::Erase, false));
     ui.page = PageId::Song; CHECK(button_has_shift_job(*project, ui, B::Erase, false));
 
     // The pads: a key copy and a key erase where the pads play a synth's keys, a step copy on Steps.
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     std::array<Look, 16> looks;
     PadFacts keys; keys.key_pads = true;
@@ -8539,9 +8627,121 @@ void track_move() {
     CHECK(track_key(held, 0) == TrackKey::Ended && !held.moving && !tracks_on_pads(held));
     held.copying = UiState::Copying::Pads; held.pad_bank = true;
     CHECK(track_key(held, 2) == TrackKey::Started && held.copying == UiState::Copying::Tracks && !held.moving); // a pad copy gives way
-    // The MIX hub's row (shell/mix_hub.h): TRACKS, SENDS, and FX along the chains, a kit's pads' last.
-    CHECK(mix_next(PageId::Stage, 0, false) == PageId::Tracks && mix_next(PageId::Tracks, 1, false) == PageId::Sends);
-    CHECK(mix_next(PageId::Sends, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
+    // The MIX hub's row (shell/mix_hub.h): MIXER, none (the page stays), and FX along the chains, a kit's pads' last.
+    CHECK(mix_next(PageId::Stage, 0, false) == PageId::Mixer && mix_next(PageId::Rack, 1, false) == PageId::Rack);
+    CHECK(mix_section(PageId::Mixer) == MixSection::Tracks && mix_next(PageId::Mixer, 2, false) == PageId::Rack);
+    {   // The mixer's second row (shell/mixer_channels.h): submixes on pads 1-8, buses 9-12, the input 15, the master 16.
+        UiState m; m.settings.full_features = true; m.page = PageId::Mixer;
+        CHECK(pad_other(m, 0) == int(strip_sub(0)) && pad_other(m, 7) == int(strip_sub(7)) && pad_other(m, 8) == int(bus_chain(0)));
+        CHECK(pad_other(m, 12) < 0 && pad_other(m, 13) < 0 && pad_other(m, 14) == int(strip_input) && pad_other(m, 15) == int(master_chain));
+        for (unsigned pad = 0; pad < 16; ++pad) if (const int n = pad_other(m, pad); n >= 0) CHECK(other_pad(unsigned(n)) == int(pad));
+        CHECK(mixer_strip(m) == m.track % track_count && mixer_row_count(m) == track_count);
+        m.mixer_bank = 1;
+        CHECK(mixer_strip(m) == strip_sub(0) && mixer_row_count(m) == 14 && mixer_row_at(m) == 0);
+        pick_other(m, master_chain);
+        CHECK(mixer_strip(m) == master_chain && mixer_row_at(m) == 13 && mixer_row_strip(m, 12) == strip_input);
+        // What each channel's keys reach: B1 SENDS, again FX (a bus or the master FX alone, the input INPUT); B3 COMP
+        // everywhere (the master's the printed Compressor).
+        m.mixer_block = 0;
+        CHECK(mixer_block_of(m, ChannelKind::Bus) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_sends);
+        CHECK(mixer_block_of(m, ChannelKind::Track) == block_sends && mixer_block_of(m, ChannelKind::Input) == block_input);
+        m.mixer_b1 = 1;
+        CHECK(mixer_block_of(m, ChannelKind::Track) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_fx);
+        m.mixer_b1 = 0;
+        m.mixer_block = 2;
+        CHECK(mixer_block_of(m, ChannelKind::Master) == block_comp && mixer_block_of(m, ChannelKind::Input) == block_comp);
+        CHECK(channel_chain(strip_sub(3)) == int(sub_chain(3)) && channel_chain(bus_chain(2)) == int(bus_chain(2))
+              && channel_chain(master_chain) == int(master_chain) && channel_chain(5) == 5 && channel_chain(strip_input) < 0);
+        CHECK(mute_on_others(m) && !mute_on_kit(m, true)); // Mute + pad: the channels, never the kit's pads
+        // Basic (decision 3): no submixes; the second row starts at the buses.
+        UiState b = m; b.settings.full_features = false; b.mixer_other = 0;
+        CHECK(pad_other(b, 0) < 0 && pad_other(b, 8) == int(bus_chain(0)) && mixer_strip(b) == bus_chain(0) && mixer_row_count(b) == 6);
+        // Cards and fader: a submix's sends, pan and level; a bus's return; the input's gain; the master's trim.
+        auto project = std::make_unique<Project>();
+        project->subs[2].mix.sends[1] = 40; project->subs[2].mix.level = 90; project->buses[1].level = 55;
+        m.mixer_block = 0; pick_other(m, strip_sub(2));
+        auto cards = mixer_cards(*project, m, false);
+        CHECK(cards[1].kind == Binding::Kind::SubMix && cards[1].id == int(2 << 8 | (Command::SubSend0 + 1)) && cards[1].value == 40);
+        auto second = mixer_cards(*project, m, true);
+        CHECK(second[0].id == int(2 << 8 | Command::SubPan) && !second[1].bound()); // a submix plays to the master: no OUTPUT
+        auto fj = fader_job(*project, m);
+        CHECK(fj.binding.kind == Binding::Kind::SubMix && fj.binding.value == 90);
+        pick_other(m, bus_chain(1));
+        CHECK(fader_job(*project, m).binding.kind == Binding::Kind::BusReturn && fader_job(*project, m).binding.value == 55);
+        CHECK(!mixer_cards(*project, m, false)[0].bound()); // B1: its FX, an empty chain (the plus)
+        m.mixer_block = 1;
+        CHECK(mixer_cards(*project, m, false)[0].kind == Binding::Kind::Strip); // B2: its EQ
+        m.mixer_block = 0;
+        pick_other(m, strip_input);
+        CHECK(fader_job(*project, m).binding.kind == Binding::Kind::RecGain);
+        pick_other(m, master_chain);
+        CHECK(fader_job(*project, m).binding.id == int(master_chain << 8 | unsigned(StripPart::Trim)));
+        // FX on B1: the lit effect of the channel's chain on K1-K3 (its FX page's cursor), Shift its other row; − / +
+        // left SENDS on its second row: K1 PAN, Shift the first row again.
+        project->tracks[4].engine = EngineKind::Sampler;
+        project->tracks[4].fx.slots[0].kind = uint8_t(EffectKind::Drive);
+        project->tracks[4].fx.slots[1].kind = uint8_t(EffectKind::Chorus);
+        UiState f = m; f.mixer_bank = 0; f.track = 4; f.mixer_block = 0; f.mixer_b1 = 1; f.page = PageId::Mixer;
+        f.fx_cursor[UiState::cursor_of(4)] = 1;
+        auto fxc = mixer_cards(*project, f, false);
+        CHECK(fxc[0].kind == Binding::Kind::FxParam && fxc[0].id == int(4 * 64 + 1 * 8 + 0) && mixer_fx_lit(f));
+        // On the FX block Erase takes the lit effect out and Shift + Erase copies it (its chain is the page's), and a
+        // Mute tap switching it is one undo step of that chain.
+        CHECK(page_chain(*project, f) == 4 && copy_here(*project, f, false, false) == CopyHere::Effect && erase_tap_page(f));
+        const auto mute_scope = press_scope(*project, f, SurfaceButton::Mute, false);
+        CHECK(mute_scope.kind == UndoScope::Kind::Chain && mute_scope.index == 4);
+        UiState sends_lit = f; sends_lit.mixer_b1 = 0;
+        CHECK(!erase_tap_page(sends_lit) && copy_here(*project, sends_lit, false, false) == CopyHere::None);
+        f.fx_cursor[UiState::cursor_of(4)] = 2; // the plus: no cards
+        CHECK(!mixer_cards(*project, f, false)[0].bound());
+        f.mixer_b1 = 0; f.mixer_row = 1;
+        CHECK(mixer_cards(*project, f, false)[0].kind == Binding::Kind::Pan && mixer_cards(*project, f, true)[0].kind == Binding::Kind::Send);
+        // The input's B1 INPUT: trim, monitor, dry or wet takes; the master's B3 the printed Compressor, Shift In Boost.
+        UiState in = m; pick_other(in, strip_input); in.mixer_block = 0;
+        auto inc = mixer_cards(*project, in, false);
+        CHECK(mixer_block_of(in, ChannelKind::Input) == block_input && inc[0].kind == Binding::Kind::Strip);
+        CHECK(inc[1].kind == Binding::Kind::InputMonitor && inc[2].kind == Binding::Kind::InputWet && !mixer_cards(*project, in, true)[0].bound());
+        UiState mc = m; pick_other(mc, master_chain); mc.mixer_block = 2; mc.mixer_row = 0;
+        CHECK(mixer_master_comp(mc) && mixer_cards(*project, mc, false)[0].kind == Binding::Kind::CompAttack);
+        CHECK(mixer_cards(*project, mc, true)[2].kind == Binding::Kind::CompBoost);
+        CHECK(press_scope(*project, mc, SurfaceButton::WheelPush, false).kind == UndoScope::Kind::Master);
+        // The EQ picture (shell/spectrum_view.h): a full-scale 1 kHz sine reads about 0 dB in its band, far below
+        // elsewhere; with nothing new it falls at spectrum_fall_db_per_s.
+        {
+            auto ring = std::make_unique<ScopeRing>();
+            std::vector<float> sine(ScopeRing::size);
+            for (unsigned f = 0; f < sine.size(); ++f) sine[f] = std::sin(2 * 3.14159265f * 1000.0f * float(f) / 48000.0f);
+            ring->put(sine.data(), sine.data(), unsigned(sine.size()));
+            auto view = std::make_unique<SpectrumView>();
+            view->update(*ring, 48000, 1000);
+            unsigned at = 0;
+            while (at + 1 < spectrum_bands && spectrum_band_hz(float(at + 1)) <= 1000) ++at;
+            const float peak = view->bands()[at], low = view->bands()[2];
+            CHECK(peak > -2.5f && peak < 0.5f && low < -50);
+            view->update(*ring, 48000, 1500); // half a second, nothing new
+            CHECK(std::fabs(view->bands()[at] - (peak - spectrum_fall_db_per_s * 0.5f)) < 0.01f);
+        }
+        // Undo keeps the submixes' level, pan and sends.
+        auto before = mix_of(*project);
+        project->subs[2].mix.pan = -20;
+        CHECK(!(mix_of(*project) == before));
+        before = mix_of(*project);
+        project->input_wet = !project->input_wet;
+        CHECK(!(mix_of(*project) == before)); // and the input's dry or wet
+        // A submix's chain (25-32) on the effect page: Rack with fx_sub, a cursor of its own (the kit pads' share the
+        // last), its Compressor's KEY row; keys on it and on the strips follow a track swap.
+        UiState r; r.page = PageId::Rack; r.fx_sub = 2;
+        CHECK(page_chain(*project, r) == sub_chain(2) && UiState::cursor_of(sub_chain(7)) == sub_chain(7));
+        CHECK(UiState::cursor_of(pad_chain(0, 0)) == mix_chain_count);
+        EffectSlot comp {}; comp.kind = uint8_t(EffectKind::Compressor);
+        CHECK(effect_rows(comp, sub_chain(2)) == effect_rows(comp, 0) && effect_rows(comp, pad_chain(0, 0)) == effect_rows(comp, 0) - 1);
+        auto swap_bank = std::make_unique<PatternBank>();
+        project->buses[0].strip.comp_key = fx_key_track(3);
+        project->subs[1].fx.slots[0] = comp; project->subs[1].fx.slots[0].key = fx_key_track(3);
+        auto swapped = swap_tracks(*project, *swap_bank, 3, 5);
+        CHECK(project->buses[0].strip.comp_key == fx_key_track(5) && project->subs[1].fx.slots[0].key == fx_key_track(5) && swapped.fx_keys);
+    }
+    CHECK(mix_next(PageId::Mixer, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
     CHECK(mix_next(PageId::Bus, 2, false) == PageId::Master && mix_next(PageId::Master, 2, false) == PageId::Rack);
     CHECK(mix_next(PageId::Master, 2, true) == PageId::PadFx && mix_next(PageId::PadFx, 2, true) == PageId::Rack);
     CHECK(mix_section(PageId::Bus) == MixSection::Fx && mix_section(PageId::Stage) == MixSection::None);
@@ -8559,17 +8759,16 @@ void track_move() {
     held.moving = true; held.stop_copying();
     CHECK(!held.moving && held.copy_from < 0);
 
-    // Shift on Tracks lights B2 and B3 (MOVE, COPY); elsewhere a synth track's B2 has no Shift job.
-    UiState tracks; tracks.page = PageId::Tracks; tracks.track = 11;
-    CHECK(button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
-    tracks.page = PageId::Keys;
+    // A synth track's B2 has no Shift job on Keys (track move and copy are Pad Bank + B2, B3).
+    UiState tracks; tracks.page = PageId::Keys; tracks.track = 11;
     CHECK(!button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && !button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
     tracks.page = PageId::Punch; // Shift + B3 QUANTIZE on Pad FX
     CHECK(!button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
 
     // The pads: the track picked white, a move's targets in their own colour (used Dim, empty Faint), a copy's used ones red.
     using namespace pad_light;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     std::array<Look, 16> looks;
     UiState pick; pick.pad_bank = true;
@@ -8675,7 +8874,8 @@ void drum_layout() {
     // The pads light as a kit's: the drum hit last Full, the rest Dim; with the plug-in's voices, a pad without one dark.
     using namespace pad_light;
     auto bank = std::make_unique<PatternBank>();
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     UiState lit; lit.track = 0; lit.page = PageId::Keys;
     t.layout = PadLayout::Drums; t.last_note = 38; t.chord = false;
@@ -8831,7 +9031,8 @@ std::vector<MidiOutEvent> played_notes(const Pattern& p, unsigned blocks, Engine
     if (engine == EngineKind::Midi) { project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 1; }
     project->tempo = 1200;
     bank->at[0][0] = p;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*project, *bank);
     host.set_audio_format(44100, 384);
     if (engine != EngineKind::Midi) host.send({Command::Type::MidiTrack, 0, 0, 1, 1}); // Pad MIDI Out: always
@@ -9086,7 +9287,8 @@ void pattern_motion() {
         MotionPoint other = point(3, Cc2, 90, 0, 6);
         CHECK(p.write_motion(a) && p.write_motion(lock) && p.write_motion(other));
         CHECK(p.lock_at(48, Cc1, 0) && !p.lock_at(5, Cc1, 0) && p.lane_value(60, Cc1, 0, -1) == 20 && p.lane_value(4, Cc1, 0, -1) == -1);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -9306,7 +9508,8 @@ void note_repeat_p1() {
             load_sound(project->tracks[0], EngineKind::Midi, 0);
             project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
             project->tempo = 1234; project->swing = uint8_t(swung);
-            EngineHost host;
+            auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+            auto& host = *host_held;
             host.load(*project, *bank);
             host.set_audio_format(44100, 128);
             host.send({Command::Type::Repeat, 0, 0, 2, 6}); // 1/32
@@ -9342,7 +9545,8 @@ void note_repeat_p1() {
     load_sound(project->tracks[0], EngineKind::Midi, 0);
     project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
     project->tempo = 1200;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     host.load(*project, *bank);
     host.set_audio_format(44100, 384);
     host.send({Command::Type::Repeat, 0, 0, 2, 4}); // 1/16
@@ -9616,7 +9820,8 @@ void track_speed() {
         project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1; project->tracks[0].speed = 4;
         project->tempo = 1200;
         put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 4, 62, 100);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.set_audio_format(44100, 384);
@@ -9716,10 +9921,10 @@ void track_speed() {
         synth(project->tracks[2], 2);
         project->tracks[2].speed = 3;
         UiState ui;
-        ui.page = PageId::Tracks; ui.track = 2;
+        ui.page = PageId::Patterns; ui.track = 2; // since the mixer: Patterns, Shift + K3 (Kerem's pick)
         Pattern none;
         auto cards = shift_bindings(*project, ui, none);
-        CHECK(cards[0].kind == Binding::Kind::TrackSpeed && cards[0].value == 3 && cards[0].id == 2 && cards[0].max == int(speed_count) - 1);
+        CHECK(cards[2].kind == Binding::Kind::TrackSpeed && cards[2].value == 3 && cards[2].id == 2 && cards[2].max == int(speed_count) - 1);
     }
 }
 
@@ -10998,7 +11203,8 @@ void pad_colours() {
 
     // The pads light in their own colours; one without stays in the track's.
     kit.pads[5].colour = 0xFF0000; kit.pads[7].colour = ui::track_shades[4][0];
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     PadFacts plays; plays.kit_pads = true;
     std::array<pad_light::Look, 16> looks;
@@ -11084,47 +11290,9 @@ void pad_sends_lanes() {
     CHECK((read.sends == std::array<uint8_t, 4> {30, 0, 100, 0}));
 }
 
-// Pad sends, phase 3: the MIX hub's SENDS on a kit, B2 again, shows its pads: K1 the last pad's own send; B2 once
-// more goes back to the tracks; a synth never; the pads light by their send there too.
-void pad_sends_mix() {
-    using K = Binding::Kind;
-    auto project = std::make_unique<Project>();
-    auto bank = std::make_unique<PatternBank>();
-    auto& kit = project->tracks[1];
-    kit.engine = EngineKind::Sampler;
-    std::snprintf(project->samples.edit(0).path, sizeof(SampleRef::path), "Samples/Snare.wav");
-    project->samples.edit(0).frames = 44100;
-    for (unsigned n : {0u, 1u, 2u}) kit.pads[n].sample = 0;
-    kit.pads[1].sends = {30, 0, 0, 0}; kit.pads[2].sends = {15, 0, 0, 0}; kit.mix.sends = {20, 0, 0, 0};
-    kit.last_pad = 1;
-    UiState ui;
-    ui.track = 1; ui.page = PageId::Sends;
-    Pattern none;
-    CHECK(page_bindings(*project, ui, none, false)[0].kind == K::Send && page_bindings(*project, ui, none, false)[0].value == 20);
-    mix_sends_key(ui, true); // B2 again
-    CHECK(ui.sends_pads && mix_sends_pads(ui, true));
-    auto cards = page_bindings(*project, ui, none, false);
-    CHECK(cards[0].kind == K::PadSend && cards[0].value == 30 && cards[1].kind == K::SendBus && cards[2].kind == K::BusReturn);
-    kit.last_pad = 7; // empty
-    CHECK(!page_bindings(*project, ui, none, false)[0].bound());
-    mix_sends_key(ui, true);
-    CHECK(!ui.sends_pads);
-    mix_sends_key(ui, true);
-    CHECK(!mix_sends_pads(ui, false)); // on a synth it is the tracks
-    ui.page = PageId::Tracks; mix_sends_key(ui, true); // B2 from Tracks: Sends opens on the tracks
-    CHECK(!ui.sends_pads);
-
-    ui.page = PageId::Sends; ui.sends_pads = true; kit.last_pad = 0;
-    EngineHost host;
-    TrackTaps taps;
-    PadFacts plays; plays.kit_pads = true;
-    std::array<pad_light::Look, 16> looks;
-    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
-    CHECK(looks[0].hue == pad_light::Hue::White && looks[1].level > looks[2].level && looks[2].lit());
-}
-
-// Pad sends, phase 2: Stage's SENDS on a kit is the last pad's (K2), Shift + K2 the whole kit's; an empty pad has no K2;
-// a synth keeps its track's; undo keeps the pad; the pads light by their send into the bus in view.
+// Pad sends, phase 2: Stage's SENDS on a kit is the last pad's; an empty pad has none; since the mixer (step 6) no
+// Shift row (the kit's own send is the mixer's) and no SENDS on a synth; undo keeps the pad; the pads light by their
+// send into the bus in view.
 void pad_sends_stage() {
     using K = Binding::Kind;
     auto project = std::make_unique<Project>();
@@ -11143,7 +11311,7 @@ void pad_sends_stage() {
     auto cards = page_bindings(*project, ui, none, false);
     CHECK(cards[1].kind == K::SendBus && cards[0].kind == K::PadSend && cards[0].id == 0 && cards[0].value == 30 && cards[2].kind == K::BusReturn);
     auto shift = shift_bindings(*project, ui, none);
-    CHECK(shift[0].kind == K::Send && shift[0].value == 20 && !shift[1].bound() && !shift[2].bound());
+    CHECK(!shift[0].bound() && shift[1].kind == K::PadOut && shift[1].value == 0 && shift[1].max == int(sub_count) && !shift[2].bound()); // Shift + K2: OUTPUT
     ui.sends_bus = 1;
     CHECK(page_bindings(*project, ui, none, false)[0].value == 0 && page_bindings(*project, ui, none, false)[0].id == 1);
     kit.last_pad = 2;
@@ -11152,19 +11320,19 @@ void pad_sends_stage() {
     kit.last_pad = 5; // empty: nothing to send
     cards = page_bindings(*project, ui, none, false);
     CHECK(!cards[0].bound() && cards[1].bound() && cards[2].bound());
-    // A synth's SENDS: the track's, no Shift row.
+    // A synth has no SENDS (or MIX) on Stage: Stage passes over them; the mixer has its sends.
     auto& synth = project->tracks[0];
     load_sound(synth, EngineKind::Plugin, 0);
-    synth.mix.sends = {0, 55, 0, 0};
     UiState su;
-    su.track = 0; su.page = PageId::Stage; su.sends_bus = 1;
-    CHECK(stage_go(su, EngineKind::Plugin, StageKind::Sends));
-    CHECK(page_bindings(*project, su, none, false)[0].kind == K::Send && page_bindings(*project, su, none, false)[0].value == 55);
-    CHECK(!shift_bindings(*project, su, none)[0].bound());
+    su.track = 0; su.page = PageId::Stage;
+    const auto skip = stage_skip(*project, su, synth);
+    CHECK((skip.kinds & stage_bit(StageKind::Sends)) && (skip.kinds & stage_bit(StageKind::Mix)));
+    CHECK(!(stage_skip(*project, ui, kit).kinds & stage_bit(StageKind::Sends)) && (stage_skip(*project, ui, kit).kinds & stage_bit(StageKind::Mix)));
 
     // Pad lights on bus A: Snare (30) brighter than Hat (15), Kick (dry) dark, the last pad white.
     kit.last_pad = 0; ui.sends_bus = 0;
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     TrackTaps taps;
     PadFacts plays; plays.kit_pads = true;
     std::array<pad_light::Look, 16> looks;
@@ -11281,7 +11449,8 @@ void free_length() {
         synth(project->tracks[0], 0); synth(project->tracks[1], 0);
         project->tempo = 1200;
         bank->at[1][0].length = 4 * bar; put(bank->at[1][0], 0, 57, 100);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         tones_for(host, *project);
         host.send({Command::Type::Play});
@@ -11524,8 +11693,7 @@ void controls_audit() {
     CHECK(controls_breaks(icon).size() == 1);
     CHECK(controls_breaks(row(PageId::Looper, {"BACK", "", "CANCEL"})).empty()); // cancel a queued stop: a job, not a way out
 
-    CHECK(controls_breaks(row(PageId::Sends, {"TRACKS", "SENDS", "FX"}, {"SEND A", "BUS", "RETURN"})).empty());
-    CHECK(controls_breaks(row(PageId::Stage, {"TRIM", "TUNE", "SENDS"}, {"KIT SEND A", "BUS", "RETURN"})).empty());
+    CHECK(controls_breaks(row(PageId::Stage, {"TRIM", "TUNE", "SENDS"}, {"SEND A", "BUS", "RETURN"})).empty());
     auto sends = controls_breaks(row(PageId::Stage, {"", "", ""}, {"BUS", "SEND A", "RETURN"}));
     CHECK(sends.size() == 1 && sends[0] == "sends: BUS / SEND A / RETURN");
     CHECK(controls_breaks(row(PageId::Motion, {"SEQUENCES", "ROLL", "MOTION"}, {"RETURN", "SEND A", ""})).empty()); // lanes
@@ -11536,8 +11704,8 @@ void controls_audit() {
     CHECK(controls_breaks(row(PageId::ModPage, {"SEQUENCES", "ROLL", "MACRO"})).empty());
     auto mod = controls_breaks(row(PageId::ModPage, {"MOD", "MACRO", "ADD"}));
     CHECK(mod.size() == 1 && mod[0] == "seq: MOD / MACRO / ADD");
-    CHECK(controls_breaks(row(PageId::Rack, {"TRACKS", "", "FX"})).empty()); // Basic: no SENDS
-    CHECK(controls_breaks(row(PageId::Bus, {"TRACKS", "FX", "SENDS"})).size() == 1);
+    CHECK(controls_breaks(row(PageId::Rack, {"MIXER", "", "FX"})).empty());
+    CHECK(controls_breaks(row(PageId::Bus, {"MIXER", "SENDS", "FX"})).size() == 1);
     // Over the row: Shift held, a sheet; a loop's chain; a frame with no key row.
     UiState ui; ui.page = PageId::ModPage; ui.shift = true;
     auto shifted = controls_row(ui); shifted.keys = {"", "", "ADD"};
@@ -11545,7 +11713,7 @@ void controls_audit() {
     ui = UiState {}; ui.page = PageId::Rack; ui.fx_loop = 1;
     auto loop = controls_row(ui); loop.keys = {"LOOPER", "L2", ""};
     CHECK(loop.loop_chain && controls_breaks(loop).empty());
-    auto bare = row(PageId::Tracks, {"", "", ""}); bare.keys_drawn = false;
+    auto bare = row(PageId::Rack, {"", "", ""}); bare.keys_drawn = false;
     CHECK(controls_breaks(bare).empty());
     ui = UiState {}; ui.page = PageId::Patterns; ui.sheet_open = true;
     CHECK(controls_overlay(ui));
@@ -12290,7 +12458,6 @@ int main() {
     spare_steps();
     progressions();
     pad_sends_stage();
-    pad_sends_mix();
     pad_sends_lanes();
     pad_colours();
     tempo_lane_p5();
@@ -12324,6 +12491,7 @@ int main() {
     xpl_presets();
     plugin_page_layout();
     page_files();
+    companion_packages();
     synths_as_plugins();
     voice_taps();
     voice_heads();

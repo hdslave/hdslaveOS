@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -37,9 +38,21 @@ namespace melodee {
 
 class EngineHost;
 class PluginHandle;
+class CompanionHost;
 struct PluginSkin;
 
 using PluginStates = std::array<std::vector<uint8_t>, max_plugins>;
+
+// What a companion screen (plugin/companion_screen.h) asked of its plug-in, for the MIDI thread to make: a parameter
+// (its index, `value` 0..1) or a program (its number in the plug-in). `generation`: the entry's when it was asked, so
+// one asked of a plug-in since replaced is dropped.
+struct ScreenRequest {
+    uint8_t entry = no_plugin;
+    uint32_t generation = 0;
+    bool program = false;
+    int index = 0;
+    float value = 0;
+};
 
 // Heap freed back to the system (after a plug-in is freed; freeze plan F2d). Not on the audio thread.
 void give_back_memory();
@@ -93,6 +106,16 @@ public:
     void screen_input(unsigned entry, const ScreenInput& input);
     void set_screen_param(unsigned entry, unsigned k, int value);
     ScreenPicturePtr screen_picture() const;
+    // Companion screens (plugin/companion_screen.h, sdk/melodee-screen/melodee_companion.h). MIDI thread:
+    // take_screen_requests() what the screens asked for since, to make as a pot turn does; set_param_index() one
+    // parameter by its index in the plug-in (a companion's edit, 0..plugin_param_max) while the entry is still on
+    // `generation`; screen_notice() why a screen stopped, once ("" none). screens() for `status`: entry:folder:state
+    // each, comma separated.
+    void take_screen_requests(std::vector<ScreenRequest>& out);
+    void set_param_index(unsigned entry, uint32_t generation, int index, int value);
+    uint32_t live_generation(unsigned entry) const; // the generation the entry's plug-in was loaded on, 0 none
+    std::string screen_notice();
+    std::string screens() const;
     // Its skin (plugin/plugin_skin.h), null none; loaded with it and never changed after. Any thread.
     std::shared_ptr<const PluginSkin> skin(unsigned entry) const;
     // PRESETS: the plug-in's named programs, and one of them picked (by its
@@ -182,6 +205,8 @@ private:
     void free_retired();                            // plug-ins the audio thread has handed back
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
     void write_page_problems(const std::string& top); // the page files' problems on the card (plugin/page_file.h)
+    void write_screen_problems(const std::string& top); // the companion screens' (plugin/companion_package.h)
+    void find_companion(PluginHandle& handle, const PluginFile& file, const std::string& top, const std::string& stage);
     void destroy(PluginHandle* handle);
     void screen_run();                              // the screen thread: draws the screen in view
     bool offer(unsigned entry, PluginHandle* handle);
@@ -224,6 +249,15 @@ private:
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
     std::mutex screen_calls;
+    // The companion screens' process (plugin/companion_host.h), used under `screen_calls` only; a session number for
+    // each screen made (rack's thread); folders whose screen stopped this run, not tried again, and why screens
+    // stopped, for the shell's notice (under `lock`); problems by folder, as written (rack's thread).
+    std::unique_ptr<CompanionHost> companions;
+    uint32_t companion_sessions = 0;
+    std::set<std::string> companion_stopped;
+    std::vector<std::string> screen_notices;
+    std::map<std::string, std::vector<std::string>> screen_problems;
+    std::string screen_problems_written;
     std::thread screen_thread;
 };
 

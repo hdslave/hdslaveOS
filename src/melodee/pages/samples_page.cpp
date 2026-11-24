@@ -212,8 +212,10 @@ void soft(Context& c, int key) {
     if (key == 0) { if (c.library->top()) samples_cancel(c); else c.library->browse_up(); } // at the top: CANCEL
     if (key == 1) { // the other drive, where it was left
         unsigned from = ui.files_drive % unsigned(Drive::Count), to = (from + 1) % unsigned(Drive::Count);
-        c.files_places[from] = {c.library->folder(), ui.files_cursor, true};
-        const auto& back = c.files_places[to];
+        const unsigned kind = c.files_kind >= 0 ? unsigned(c.files_kind) : c.browse_kind();
+        c.files_places[kind][from] = {c.library->folder(), ui.files_cursor, true};
+        c.files_drives[kind] = uint8_t(to);
+        const auto& back = c.files_places[kind][to];
         c.files_row_wanted = back.set ? back.row : -1;
         ui.files_drive = uint8_t(to);
         c.library->browse(Drive(to), back.set ? back.folder : std::string());

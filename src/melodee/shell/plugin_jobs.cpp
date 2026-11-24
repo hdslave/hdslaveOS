@@ -11,6 +11,7 @@
 // track or slot that already has one keeps its entry for the new plug-in; a
 // new one takes an entry nothing uses. The rack loads what is used and lets go
 // of the rest, so undo, a project switch or a removed effect need nothing more.
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
@@ -27,6 +28,7 @@
 #include "melodee/ui/tokens.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -67,7 +69,7 @@ void Context::split_shared_plugins() {
         tr.plugin = uint8_t(copy);
         send({Type::TrackPlugin, uint8_t(t), 0, 0, int16_t(copy)});
     }
-    for (unsigned n = 0; n < chain_count; ++n)
+    for (unsigned n = 0; n < mix_chain_count; ++n) // every chain but the kit pads' (no plug-ins there)
         for (unsigned k = 0; k < project.chain(n).size; ++k) {
             const auto& s = project.chain(n).slots[k];
             if (s.kind != plugin_effect_kind) continue;
@@ -81,7 +83,7 @@ void Context::open_plugin_picker(UiState::PluginTarget target, unsigned chain, u
     ui.plugin_target = target;
     ui.plugin_chain = uint8_t(chain);
     ui.plugin_slot = uint8_t(slot);
-    ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Edit : ui.page;
+    ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Stage : ui.page; // an instrument: Stage's B1 EDIT once loaded
     plugins->browse(plugins->view().folder); // where the picker was left, listed afresh, on the row it was on
     if (ui.page != PageId::Plugins) ui.plugin_from = ui.page;
     open(PageId::Plugins);
@@ -102,7 +104,7 @@ void Context::choose_plugin(const PluginFile& file) {
         const auto& t = track();
         if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) entry = t.plugin;
     } else {
-        if (n >= chain_count || k >= project.chain(n).size) return;
+        if (n >= mix_chain_count || k >= project.chain(n).size) return;
         const auto& s = project.chain(n).slots[k];
         if (s.kind == plugin_effect_kind && unsigned(s.params[0]) < max_plugins) entry = s.params[0];
     }
@@ -175,7 +177,9 @@ void Context::choose_plugin(const PluginFile& file) {
     dirty = true;
     plugins->sync(project, plugins_asleep());
     notice("Loading " + file.name);
+    if (instrument && ui.plugin_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit); // its parameters
     open(ui.plugin_back);
+    if (!instrument) picker_done(); // from the mixer's plus: back there
 }
 
 void Context::swap_plugin(Edit& e, bool after) {
@@ -195,6 +199,11 @@ void Context::set_plugin_param(int32_t id, int value) {
     if (!plugins) return;
     unsigned entry = plugin_binding_entry(id), shown = plugin_binding_shown(id);
     auto& panel = ui.plugin_panel;
+    if (plugin_binding_indexed(id)) { // a companion screen's own edit (plugin/companion_screen.h), by its index
+        plugins->set_param_index(entry, plugins->live_generation(entry), int(shown - plugin_index_slot), value);
+        dirty = true; // K1-K3's cards read it back at the panel's next tick
+        return;
+    }
     if (shown >= plugin_screen_slot) { // one of the three its own screen names
         unsigned k = shown - plugin_screen_slot;
         plugins->set_screen_param(entry, k, value);
@@ -290,6 +299,35 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
+void Context::pick_plugin_program(unsigned entry, int program) {
+    if (!plugins || entry >= max_plugins) return;
+    const auto programs = plugins->programs(entry);
+    for (const auto& p : programs.list) {
+        if (p.index != program) continue;
+        plugins->select_program(entry, p.index);
+        std::snprintf(project.plugins[entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(p).c_str());
+        dirty = true;
+        return;
+    }
+}
+
+// Companion screens (plugin/companion_screen.h) ask; the shell makes the change as a pot turn on the plug-in's card
+// makes it (apply(): a frozen track's question, one undo step per control) or as PRESETS picks a program. One asked of
+// a plug-in replaced since is dropped. And why a screen stopped, said once.
+void Context::companion_requests() {
+    static std::vector<ScreenRequest> asked; // the MIDI thread's, its room kept
+    asked.clear();
+    plugins->take_screen_requests(asked);
+    for (const auto& r : asked) {
+        if (r.entry >= max_plugins || r.generation != plugins->live_generation(r.entry)) continue;
+        if (r.program) { pick_plugin_program(r.entry, r.index); continue; }
+        if (r.index < 0 || unsigned(r.index) >= plugin_screen_slot - plugin_index_slot) continue;
+        Binding b {Binding::Kind::PluginParam, plugin_binding(r.entry, plugin_index_slot + unsigned(r.index)), 0, plugin_param_max, 0};
+        apply(b, int(std::lround(std::clamp(r.value, 0.0f, 1.0f) * plugin_param_max)));
+    }
+    if (const auto why = plugins->screen_notice(); !why.empty()) notice(why);
+}
+
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
 bool Context::plugin_screen_input(ScreenKey key, int value) {
     const auto at = plugin_screen_place(project, ui);
@@ -301,10 +339,10 @@ bool Context::plugin_screen_input(ScreenKey key, int value) {
 int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
-    if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
     if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
-    if (fx_chain_page(ui.page) && !ui.picker_open) {
-        unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
+    const bool mixer_fx = mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0; // the mixer's FX block: its lit effect
+    if ((fx_chain_page(ui.page) && !ui.picker_open) || mixer_fx) {
+        unsigned n = mixer_fx ? unsigned(channel_chain(mixer_strip(ui))) : page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
         const auto& chain = project.chain(n);
         if (k < chain.count() && chain.slots[k].kind == plugin_effect_kind && unsigned(chain.slots[k].params[0]) < max_plugins)
             return chain.slots[k].params[0];
@@ -365,6 +403,7 @@ void Context::plugins_tick(uint32_t at) {
         }
         plugins->screen_view(view);
     }
+    companion_requests();
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
     plugin_panel_at = at;
     { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)

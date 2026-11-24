@@ -380,6 +380,18 @@ int main(int argc, char** argv) {
         if (!gain) return 1;
         auto its = gain->findPresets({}); // no cache: every file read
         CHECK(its.size() == 2 && its[0].name == "Loud" && its[1].name == "Soft");
+        gain->prepareToPlay(rate, block);
+        gain->setPresets(its);
+        double seconds = -1;
+        CHECK(gain->getTailLengthSeconds() == 0 && !gain->takeTailChange(seconds));
+        gain->setCurrentProgram(0);
+        CHECK(gain->wantsProcess());
+        run(*gain);
+        CHECK(gain->takeTailChange(seconds) && seconds == 2);
+        CHECK(!gain->takeTailChange(seconds));
+        gain->setCurrentProgram(1);
+        run(*gain);
+        CHECK(gain->takeTailChange(seconds) && seconds == 0);
     }
     {
         setenv("MELODEE_TEST_PARAMETER_ONLY", "1", 1);

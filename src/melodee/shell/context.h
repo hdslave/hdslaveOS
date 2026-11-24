@@ -209,6 +209,14 @@ public:
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
+    // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
+    void set_channel_mute(unsigned strip, bool on);
+    void set_channel_solo(unsigned strip, bool on);
+    // The mixer's channel in hand's effect chain page (Shift + Knob FX there; Push on its FX block's plus with
+    // `picker`: the picker open on the chain's free slot). The input's: Input Config, it has no chain.
+    void open_mixer_chain(bool picker);
+    // The effect picker closed (an effect added, a plug-in picked or backed out of): from the mixer's plus, the mixer.
+    void picker_done();
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
     // The pattern's notes changed in the model: the audio thread gets a copy to play.
@@ -362,6 +370,8 @@ public:
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
+    void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)
+    void companion_requests(); // what companion screens asked for, made here (plugin/companion_screen.h)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
@@ -526,7 +536,15 @@ public:
     // The browsers keep their place: each drive's folder and row (Samples by Drive; Project 0 the card, 1 internal),
     // so B2 there and back, or leaving and coming back, lands where it was.
     struct BrowserPlace { std::string folder; uint16_t row = 0; bool set = false; };
-    std::array<BrowserPlace, 2> files_places {}, project_places {};
+    // The sample browser's places: where it was left for each kind of track it is opened for (a kit, a keygroup, an
+    // audio track, anything else) on each drive, and the drive; one never browsed for starts at the card's top.
+    static constexpr unsigned browse_kinds = 4;
+    std::array<std::array<BrowserPlace, 2>, browse_kinds> files_places {};
+    std::array<uint8_t, browse_kinds> files_drives {};
+    int files_kind = -1;             // whose place the browser shows; -1 none yet
+    unsigned browse_kind() const;    // the selected track's
+    void browse_for_track();         // Samples opened: the selected track's kind's place
+    std::array<BrowserPlace, 2> project_places {};
     int files_row_wanted = -1;        // Samples: the row to land on once the folder asked for lists
     std::string project_row_path;     // Project: the entry to land on once the folder lists (the open project, at first)
     std::string delete_path;          // Erase in a browser (shell/delete_jobs.h): what the question on screen would delete
@@ -537,9 +555,9 @@ public:
     // Moves whenever a kit (a track's pads, their chains, its zone trims) or a pattern may have changed: with every
     // control and MIDI message that reaches the shell (Shell::surface() and its like), and where a change is told to
     // the audio thread (send()'s edits, sync_pattern(), sync_motion(), a track sent whole, a project switched to),
-    // which is how the changes that come by themselves arrive: a sample landed, an arp's notes recorded. The screen
-    // copies the kits and draws the patterns' sketches again only when it has moved (Shell::snapshot();
-    // melodee-hdslave, optimization.md MODEL-1). MIDI thread, under the shell's lock.
+    // which is how changes that arrive asynchronously land (a sample loaded, an arp's notes recorded). The screen
+    // copies the kits and rebuilds the pattern sketches only when it has moved (Shell::snapshot()). MIDI thread,
+    // under the shell's lock.
     uint64_t heavy_serial = 1;
     bool import_unsaved = false;      // an MPC project just opened, with no file of its own: saved by hand (SAVE AS), never in the background
     void save_project_to(const std::string& path);
@@ -686,6 +704,15 @@ public:
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;
     uint32_t render_since = 0;
+    // Pad stems (shell/render.cpp): STEMS writes each kit pad the song plays apart too, in a folder of its kit's. The
+    // pads past what one pass of the song can write wait for later passes: `stem_pass` of `stem_passes` (0: no stems).
+    struct PadStem { uint8_t track = 0, pad = 0; std::array<char, 72> path {}; };
+    std::vector<PadStem> stem_pads;
+    unsigned stem_pads_taken = 0, stem_pass = 0, stem_passes = 0;
+    std::string stem_name;
+    void song_pad_stems();
+    unsigned stems_a_pass() const; // the stems one pass of the song writes, the mix counted
+    bool next_stem_pass(uint32_t now);
     // Song -> new pattern (parity phase 6, shell/song_export.cpp): the song's clips as one long pattern on every track, one undo.
     void song_to_pattern();
     void song_export_soft(int key);                       // the export sheet's B1 Cancel, B2 Audio mixdown, B3 New pattern

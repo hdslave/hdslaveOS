@@ -66,8 +66,6 @@ public:
     // Its tail was told again (the CLAP tail host's changed) since this was last taken: getTailLengthSeconds()
     // reads the new one, so whoever cached the old one (the idle gate's span) can follow. Any thread.
     bool takeTailChanged();
-    // A Ring print consumes its own notifications on the render thread, before testing for silence.
-    bool readChangedAudioTail (double& seconds);
     // Events a full block had no room for and could not keep for the next one (a choke or note-off burst is
     // kept, never counted here). Any thread.
     uint32_t droppedEvents() const { return droppedCount.load (std::memory_order_relaxed); }
@@ -78,6 +76,7 @@ public:
     void releaseResources() override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     double getTailLengthSeconds() const override;
+    bool takeTailChange (double& seconds); // audio thread, before the rack decides whether to sleep
     bool acceptsMidi() const override { return notePort >= 0; }
     bool producesMidi() const override { return false; }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -148,7 +147,7 @@ private:
                   bool clapNotes, bool midiNotes, double rate, int block);
     void readParameters();          // main thread, under `mainLock`
     void refreshValues();           // main thread, under `mainLock`: every cached value from the plug-in
-    double readTailSeconds() const; // CLAP tail.get permits both main and audio threads
+    double readTailSeconds() const; // CLAP permits this query on the main or audio thread
     void readLatency();             // main thread, under `mainLock`
     void stopProcessing();          // main thread, the audio thread no longer running it
     static bool pushOut (const clap_output_events*, const clap_event_header*);
@@ -167,7 +166,7 @@ private:
     juce::File file;
     Info info;
     juce::String name;
-    mutable std::recursive_mutex mainLock; // mutable: getTailLengthSeconds() is const and a main-thread call
+    mutable std::recursive_mutex mainLock;
     bool active = false, processing = false;
     double rate;
     int block;

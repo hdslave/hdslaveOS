@@ -5,6 +5,7 @@
 #include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/follow_tempo.h"
 #include "melodee/shell/mute_mode.h"
@@ -299,17 +300,50 @@ void Context::reload_tick() {
 #endif
 }
 
+// The sample browser's place for a kind of track: 0 a kit, 1 a keygroup, 2 an audio track, 3 anything else.
+unsigned Context::browse_kind() const {
+    switch (project.tracks[ui.track % track_count].engine) {
+    case EngineKind::Sampler: return 0;
+    case EngineKind::Keygroup: return 1;
+    case EngineKind::Audio: return 2;
+    default: return 3;
+    }
+}
+
+// Samples opened for the selected track: opened last for the same kind of track, as it was left; for another, that
+// one's place kept and this kind's taken up, where it was left, else the card's top.
+void Context::browse_for_track() {
+    if (!library) return;
+    const unsigned kind = browse_kind();
+    if (files_kind == int(kind)) return;
+    if (files_kind >= 0) {
+        files_places[unsigned(files_kind)][ui.files_drive % 2] = {library->folder(), ui.files_cursor, true};
+        files_drives[unsigned(files_kind)] = uint8_t(ui.files_drive % 2);
+    }
+    files_kind = int(kind);
+    const uint8_t drive = uint8_t(files_drives[kind] % 2);
+    const auto& back = files_places[kind][drive];
+    files_row_wanted = back.set ? back.row : -1;
+    ui.files_drive = drive;
+    library->browse(Drive(drive), back.set ? back.folder : std::string());
+}
+
 void Context::open(PageId page) {
     if (page != PageId::Scenes) ui.scene_capture = false; // CAPTURE waits for a pad on Scenes only
+    if (page == PageId::Samples) browse_for_track();
     // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
     if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
+    if (page == PageId::Edit && track().engine == EngineKind::Plugin) { // a plug-in's parameters live on Stage's B1 EDIT
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        page = PageId::Stage;
+    }
     if (page == PageId::Trim) { // Trim lives on Stage now: a kit's B1 TRIM (the sampler pages' B1 and Chop come here)
         if (track().engine == EngineKind::Sampler) stage_go(ui, 0, 0);
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     if (page != ui.page && ui.page == PageId::Chop) for (unsigned n = 0; n < 16; ++n) slice_release(n); // and a slice hit held (issue 24)
-    if (page != ui.page && page == PageId::Sends) ui.sends_pads = false; // SENDS opens on the tracks (B2 again: a kit's pads)
+    if (page == PageId::Tracks || page == PageId::Sends) page = PageId::Mixer; // gone with the mixer (docs/MIXER_PLAN.md step 6)
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
     if (page != PageId::Samples) ui.new_kit = -1;
@@ -318,7 +352,10 @@ void Context::open(PageId page) {
     ui.map_open = false;
     ui.loop_sheet = false;
     ui.layer_load = -1; // Layers' LOAD sets it after opening Samples
-    ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
+    // FX Select on a loop track is set by its caller after this, and on a submix (Shift + Knob FX on the mixer). The
+    // chain's own side pages (the plug-in picker, a plug-in's presets) keep it, so coming back lands on that chain.
+    auto chain_side = [](PageId p) { return p == PageId::Rack || p == PageId::Plugins || p == PageId::PluginPresets; };
+    if (!(chain_side(page) && chain_side(ui.page))) { ui.fx_loop = -1; ui.fx_sub = -1; ui.mixer_picker = false; }
     ui.picker_open = false;
     ui.fx_panel = false; // an effect's full page closes with the page
     ui.song_export = false;
@@ -359,6 +396,7 @@ void Context::select_track(unsigned t) {
     ui.track = uint8_t(t % track_count);
     ui.held_step = -1;
     if (ui.page == PageId::Sounds) ui.sounds_cursor = track().preset;
+    if (ui.page == PageId::Edit && track().engine == EngineKind::Plugin) open(PageId::Edit); // to Stage's B1 EDIT
 }
 
 void Context::note(unsigned t, int key, int velocity) {
@@ -641,6 +679,35 @@ void Context::apply(const Binding& b, int value) {
         record_motion(int(motion_send(bus)), t.mix.sends[bus]); // roadmap P4: the mix's lanes
         break;
     }
+    case Kind::Strip: { // the mixer (docs/MIXER_PLAN.md): one value of a strip; a track's on its Motion lane too
+        const unsigned n = unsigned(b.id) >> 8;
+        const auto part = StripPart(b.id & 0xff);
+        if (n >= strip_channels) break;
+        Strip& strip = project.strip(n);
+        strip_set(strip, part, value);
+        const int now = strip_get(strip, part);
+        send({Type::StripValue, uint8_t(n), 0, uint16_t(part), int16_t(now)});
+        if (n == ui.track % track_count) { const int lane = motion_strip(part); if (lane >= 0) record_motion(lane, now); }
+        break;
+    }
+    case Kind::TrackOut: { // the mixer: where a track plays (0 the master, out_sub(s))
+        const unsigned at = unsigned(b.id) % track_count;
+        project.tracks[at].mix.out = uint8_t(value <= int(sub_count) ? value : 0);
+        send({Type::TrackOut, uint8_t(at), 0, 0, int16_t(project.tracks[at].mix.out)});
+        break;
+    }
+    case Kind::SubMix: { // the mixer: a submix's level, pan or send (no Motion lanes: decision 7)
+        const unsigned sub = (unsigned(b.id) >> 8) % sub_count, part = unsigned(b.id) & 0xff;
+        auto& mix = project.subs[sub].mix;
+        if (part == Command::SubLevel) mix.level = uint8_t(std::clamp(value, 0, 127));
+        else if (part == Command::SubPan) mix.pan = int8_t(std::clamp(value, -50, 50));
+        else if (part >= Command::SubSend0 && part < Command::SubSend0 + bus_count) mix.sends[part - Command::SubSend0] = uint8_t(std::clamp(value, 0, 100));
+        else break;
+        send({Type::SubMix, uint8_t(sub), 0, uint16_t(part), int16_t(value)});
+        break;
+    }
+    case Kind::InputMonitor: ui.settings.input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1)); input_changed(); break;
+    case Kind::InputWet: project.input_wet = value != 0; send({Type::InputWet, 0, 0, 0, int16_t(project.input_wet)}); break;
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout:
@@ -770,6 +837,10 @@ void Context::apply(const Binding& b, int value) {
         record_pad_motion(PadParam(unsigned(PadParam::SendA) + bus), pad().sends[bus]); // its lane on the pad
         break;
     }
+    case Kind::PadOut: // the pad into the kit, or into a submix (MPC 3's pad output)
+        pad().out = uint8_t(std::clamp(value, 0, int(sub_count)));
+        send_pad(ui.track, t.last_pad);
+        break;
     case Kind::PadCloud: { // the pad's cloud: on or off, or a value Motion records as a lane of the pad
         if (!b.id) { pad().cloud = value != 0; send_pad(ui.track, t.last_pad); break; }
         auto which = PadParam(int(PadParam::CloudPosition) + std::clamp(b.id, 1, 5) - 1);
@@ -1274,6 +1345,44 @@ void Context::set_mute(unsigned t, bool on) {
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
     send({Type::Solo, uint8_t(t), 0, 0, int16_t(on)});
+}
+
+void Context::set_channel_mute(unsigned n, bool on) {
+    switch (channel_kind(n)) {
+    case ChannelKind::Track: set_mute(n, on); break;
+    case ChannelKind::Submix: project.subs[channel_sub(n)].mix.mute = on; send({Type::SubMix, uint8_t(channel_sub(n)), 0, Command::SubMute, int16_t(on)}); break;
+    case ChannelKind::Bus: project.buses[channel_bus(n)].mute = on; send({Type::BusMute, 0, 0, uint16_t(channel_bus(n)), int16_t(on)}); break;
+    default: break;
+    }
+}
+void Context::set_channel_solo(unsigned n, bool on) {
+    switch (channel_kind(n)) {
+    case ChannelKind::Track: set_solo(n, on); break;
+    case ChannelKind::Submix: project.subs[channel_sub(n)].mix.solo = on; send({Type::SubMix, uint8_t(channel_sub(n)), 0, Command::SubSolo, int16_t(on)}); break;
+    default: break;
+    }
+}
+
+void Context::open_mixer_chain(bool picker) {
+    const unsigned n = mixer_strip(ui);
+    switch (channel_kind(n)) {
+    case ChannelKind::Submix: open(PageId::Rack); ui.fx_sub = int8_t(channel_sub(n)); break;
+    case ChannelKind::Bus: open(PageId::Bus); ui.sends_bus = uint8_t(channel_bus(n)); break;
+    case ChannelKind::Master: open(PageId::Master); break;
+    case ChannelKind::Input: open(PageId::InputConfig); return;
+    default: open(PageId::Rack); break;
+    }
+    const unsigned chain = unsigned(channel_chain(n));
+    if (!picker || project.chain(chain).count() >= project.chain(chain).size) return;
+    ui.fx_cursor[UiState::cursor_of(chain)] = uint8_t(project.chain(chain).count()); // the plus
+    ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = false;
+    ui.mixer_picker = true;
+}
+
+void Context::picker_done() {
+    if (!ui.mixer_picker) return;
+    ui.mixer_picker = false;
+    open(PageId::Mixer); // the channel and its FX block, as they were
 }
 
 void Context::set_step(unsigned t, unsigned at, const Step& value) {
@@ -2091,7 +2200,7 @@ void Context::set_effect_param(unsigned n, unsigned slot, unsigned param, int va
 
 void Context::set_effect_key(unsigned n, unsigned slot, unsigned key) {
     auto& chain = project.chain(n);
-    if (n >= chain_count || slot >= chain.size || !fx_keyable(chain.slots[slot].kind)) return;
+    if (n >= mix_chain_count || slot >= chain.size || !fx_keyable(chain.slots[slot].kind)) return;
     if (key >= fx_keys || (fx_key_is_track(key) && n < track_count && key - 1 == n)) key = 0; // a track keyed by itself hears itself
     chain.slots[slot].key = uint8_t(key);
     send({Type::FxKey, uint8_t(n), 0, uint16_t(slot), int16_t(key)});
@@ -2131,7 +2240,7 @@ void Context::sync_chain(unsigned n) {
         send_fx(Type::FxKind, n, k, 0, int16_t(s.kind));
         for (unsigned q = 0; q < effect_params; ++q) send_fx(Type::FxParam, n, k, q, s.params[q]);
         send_fx(Type::FxBypass, n, k, 0, int16_t(s.bypass));
-        if (n < chain_count) send({Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(s.key)}); // roadmap P4
+        if (n < mix_chain_count) send({Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(s.key)}); // roadmap P4
     }
 }
 

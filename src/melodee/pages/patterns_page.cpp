@@ -128,7 +128,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(bank_pill(s));
     // Rec Quantize (Shift + Pad 10) on or off, after the scene: the header leaves it out when there is no room. Q is K2's card.
     h.left.push_back(pill(Icon::Magnet, s.ui.settings.rec_quantize ? "ON" : "OFF", s.ui.settings.rec_quantize ? colour::mid : colour::dim));
-    if (s.track().speed != speed_normal) // the track plays its patterns at a speed (Tracks, Shift + K1)
+    if (s.track().speed != speed_normal) // the track plays its patterns at a speed (Shift + K3)
         h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), c));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"PATTERNS", "ROLL", motion_key(s)}, 0, c};

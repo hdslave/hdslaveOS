@@ -111,6 +111,7 @@ private:
     // same words (freeze plan F2b; alone or `status`: what is frozen now) and `melodee-unfreeze TRACK`: parsed on
     // arrival, asked on the MIDI thread.
     MidiQueue<4, melodee::Context::PrintAsk> remote_print;
+    MidiQueue<2, std::array<char, 40>> remote_stems; // `melodee-stems NAME`: STEMS from Song's export, as B2 there
     std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;
     bool power_off_asked = false;             // service thread: systemd asked to turn the MPC off

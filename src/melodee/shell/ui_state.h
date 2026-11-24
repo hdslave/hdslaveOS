@@ -18,14 +18,15 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
+// Sends and Tracks are gone with the mixer (docs/MIXER_PLAN.md step 6): opening either opens it; kept so the numbers stay.
 enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
-                            Tracks,                            // Sample's second stop: the sixteen tracks and the strip in hand
-                            Looper,                            // LOOPER on Tracks: the four loops (docs/LOOPER.md)
+                            Tracks,                            // gone with the mixer (docs/MIXER_PLAN.md step 6): opens it; kept so the numbers stay
+                            Looper,                            // the four loops (Loop + 16 Levels; docs/LOOPER.md)
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
                             LayersPage,                        // roadmap P3: a kit pad's four layers
@@ -34,6 +35,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns,
                             Scenes,                            // roadmap P5: the bank's scenes (B1 again on Patterns)
                             AutoSample,                        // the AUTO SAMPLE sheet: Resample (Shift + Pad 11) on a plug-in track
                             Stems,                             // the STEMS sheet: Shift + B3 on a kit pad's TRIM (shell/stems_jobs.cpp)
+                            Mixer,                             // the mixer (docs/MIXER_PLAN.md): Pad FX + Knob FX
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -275,8 +277,8 @@ struct UiState {
     int8_t audio_rec_track = -1;
     bool audio_rec_running = false;
     // Per chain: the slot (or + ADD) and parameter row; the pad chains share the last entry (cursor_of()).
-    std::array<uint8_t, chain_count + 1> fx_cursor {}, fx_row {};
-    static unsigned cursor_of(unsigned chain) { return chain < chain_count ? chain : chain_count; }
+    std::array<uint8_t, mix_chain_count + 1> fx_cursor {}, fx_row {};
+    static unsigned cursor_of(unsigned chain) { return chain < mix_chain_count ? chain : mix_chain_count; } // the pads' chains share the last
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
@@ -291,19 +293,17 @@ struct UiState {
     bool scene_capture = false;  // Scenes' Shift + B2 CAPTURE: the next pad picks the scene the playing patterns go to
     PluginTarget plugin_target = PluginTarget::Instrument;
     uint8_t plugin_chain = 0, plugin_slot = 0;  // Effect: where it goes
-    PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
-    PageId plugin_from = PageId::Stage;          // the page it opened over: B1 at the top while the track is not PLUGIN yet
+    PageId plugin_back = PageId::Stage;          // where a load goes, and an effect's B1 (CANCEL) at the top
+    PageId plugin_from = PageId::Stage;          // the page it opened over: an instrument's B1 (CANCEL) at the top
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
-    // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it), and
-    // Edit showing Melodee's pages of a plug-in that has a screen (Shift + B3 swaps them).
+    // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it).
     bool fx_panel = false;
-    bool plugin_own_pages = false;
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
     // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.
     uint8_t presets_entry = no_plugin;
     uint16_t presets_cursor = 0;
-    PageId presets_back = PageId::Edit;
+    PageId presets_back = PageId::Stage;
     std::array<char, 192> presets_folder {}; // PRESETS: the folder in view, "" the top (plugin/preset_rows.h)
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
@@ -369,8 +369,16 @@ struct UiState {
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
-    bool sends_pads = false;      // MIX hub SENDS on a kit: the kit's pads and their own sends (B2 again), not the tracks
-    uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
+    // The mixer (docs/MIXER_PLAN.md): the block the card shows and K1-K3 turn (0 SENDS, 1 EQ, 2 COMP), and the EQ's
+    // three bands in hand (0 LOW 63-250 Hz, 1 MID 500 Hz-2 kHz, 2 HIGH 4-16 kHz).
+    uint8_t mixer_block = 0, mixer_eq_group = 0;
+    // The mixer's pad bank (shell/mixer_channels.h): 0 the tracks (the one in hand ui.track), 1 the submixes, buses,
+    // input and master, `mixer_other` the one in hand there (its place in that row).
+    uint8_t mixer_bank = 0, mixer_other = 0;
+    // B1's two pages on a track or submix (0 SENDS, 1 FX: its chain in the card), and the row − / + put SENDS and
+    // COMP on (0 the first, 1 the second, as Shift shows it).
+    uint8_t mixer_b1 = 0, mixer_row = 0;
+    uint8_t sends_bus = 0;        // the bus in view on Bus (its chain page), and on a kit's Stage SENDS
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
     uint8_t mod_view = 0, mod_index = 0, mod_target = 0, macro_index = 0, macro_target = 0;
@@ -467,6 +475,8 @@ struct UiState {
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;
+    int8_t fx_sub = -1; // the effect page (Rack) on a mixer submix's chain (Shift + Knob FX on the mixer), -1 none
+    bool mixer_picker = false; // the effect picker came from the mixer's FX block (its plus): done or backed out, back there
     // SD card access (shell/card_access.h): the card as the service thread
     // last saw it, copied in on the MIDI thread.
     CardView card;

@@ -53,6 +53,13 @@ bool erase_slice(Context& c) {
 }
 } // namespace
 
+void ask_clear_track(Context& c) {
+    const unsigned t = c.ui.track % track_count;
+    if (c.ui.recording) c.notice("Clear track: not in a take");
+    else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");
+    else ask(c, UiState::Ask::ClearTrack, int(t));
+}
+
 bool erase_tap(Context& c) {
     auto& ui = c.ui;
     if (ui.ask != UiState::Ask::None || ui.name.open() || ui.exit_open || ui.seq_held || ui.pad_bank || ui.mute_mode()) return false;
@@ -75,11 +82,7 @@ bool erase_tap(Context& c) {
         return true;
     }
     case PageId::Scenes: c.clear_scene(c.project.scene % pattern_count); return true; // the sequence in hand (one undo)
-    case PageId::Tracks:
-        if (ui.recording) c.notice("Clear track: not in a take");
-        else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");
-        else ask(c, UiState::Ask::ClearTrack, int(t));
-        return true;
+    case PageId::Mixer: return mixer_fx_lit(ui) && chain_erase(c); // its FX block: the lit effect out
     case PageId::Looper: {
         unsigned loop = ui.loop % loop_tracks;
         if (c.host.looper().view(loop).state == Looper::State::Empty) c.notice("L" + std::to_string(loop + 1) + " is empty");

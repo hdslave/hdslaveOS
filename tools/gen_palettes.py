@@ -99,7 +99,7 @@ def night_shades():
         body = body[:body.index("}};")]
         vals = [int(x, 16) for x in re.findall(r"0x([0-9A-Fa-f]{6})", body)]
         return [vals[3 * n:3 * n + 3] for n in range(rows)]
-    return table("track_shades", 16), table("loop_shades", 4)
+    return table("track_shades", 16), table("loop_shades", 4), table("sub_shades", 8)
 
 
 # name, BG, SURF, TEXT (FM-1's), chroma scale, lightness shift of the track colours (before the checks)
@@ -156,7 +156,7 @@ def neutral_at(bg, text, start, ground, need):
     return c
 
 
-def build(name, bg, surf, text, chroma, shift, tracks, loops):
+def build(name, bg, surf, text, chroma, shift, tracks, loops, subs):
     light = luminance(bg) > 0.4
     p = dict(bg=bg, surf=surf, text=text)
     p["panel"] = mix(bg, surf, 0.45)
@@ -171,6 +171,7 @@ def build(name, bg, surf, text, chroma, shift, tracks, loops):
         p[key] = fit_colour(hexrgb(NIGHT[key]), grounds, chroma, shift, light)
     p["tracks"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in tracks]
     p["loops"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in loops]
+    p["subs"] = [[fit_colour(hexrgb(v), grounds, chroma, shift, light) for v in row] for row in subs]
     p["light"] = light
     return p
 
@@ -190,6 +191,7 @@ def build_lcd(name, bg, surf, text):
         p[key] = text
     p["tracks"] = [list(shades) for _ in range(16)]
     p["loops"] = [list(shades) for _ in range(4)]
+    p["subs"] = [list(shades) for _ in range(8)]
     return p
 
 
@@ -203,6 +205,7 @@ def build_mono():
         p[key] = p["text"]
     p["tracks"] = [list(MONO_INKS) for _ in range(16)]
     p["loops"] = [list(MONO_INKS) for _ in range(4)]
+    p["subs"] = [list(MONO_INKS) for _ in range(8)]
     return p
 
 
@@ -217,7 +220,7 @@ def build_hdslave():
               0x76CDD7, 0xE1C783, 0xF594BC, 0x96D9C1, 0x919FFF, 0xFF997B, 0xF582E9, 0xC1BBD4]
     loops = [0xA795FF, 0xCFED76, 0xF28DCA, 0x8BD3DF]
     p = build("HDSLAVE", (2, 0, 4), (46, 27, 70), (249, 243, 246), 1.0, 0,
-              [shades(c) for c in tracks], [shades(c) for c in loops])
+              [shades(c) for c in tracks], [shades(c) for c in loops], [shades(c) for c in tracks[:8]])
     p.update(quiet=hexrgb(0x211333), panel=hexrgb(0x2D1A42), line=hexrgb(0x685080),
              sec=hexrgb(0xE0D0EE), mid=hexrgb(0xC2B0D2), dim=hexrgb(0x9F8DAE), accented_grid=True, contour_print=True,
              rec=hexrgb(0xFF6975), amber=hexrgb(0xFFD473), play=hexrgb(0xC2F769), ice=hexrgb(0xA5DBFF))
@@ -239,12 +242,13 @@ def weakest(p):
 
 
 def main():
-    tracks, loops = night_shades()
+    tracks, loops, subs = night_shades()
     night = {k: hexrgb(v) for k, v in NIGHT.items()}
     night["tracks"] = [[hexrgb(v) for v in row] for row in tracks]
     night["loops"] = [[hexrgb(v) for v in row] for row in loops]
+    night["subs"] = [[hexrgb(v) for v in row] for row in subs]
     night["light"] = False
-    all_ = [("NIGHT", night)] + [(n, build(n, bg, surf, text, c, s, tracks, loops)) for n, bg, surf, text, c, s in PALETTES]
+    all_ = [("NIGHT", night)] + [(n, build(n, bg, surf, text, c, s, tracks, loops, subs)) for n, bg, surf, text, c, s in PALETTES]
     all_.append((LCD[0], build_lcd(*LCD)))
     all_.append(("MONO", build_mono()))  # after LCD: a saved palette number keeps its meaning
     all_.append(("HDSLAVE", build_hdslave()))
@@ -271,6 +275,7 @@ def main():
              "    uint32_t " + ", ".join(keys) + ";",
              "    std::array<std::array<uint32_t, 3>, 16> tracks;",
              "    std::array<std::array<uint32_t, 3>, 4> loops;",
+             "    std::array<std::array<uint32_t, 3>, 8> subs; // the mixer's submixes",
              "    bool light; // a light ground (DAY, CANDY, LCD)",
              "    int face;   // a face of its own (ui/faces.h), whatever Settings' Font says; -1 none",
              "    bool mono;  // no colour anywhere (LCD, MONO): a pad colour of its own is shown in the ink too",
@@ -285,6 +290,7 @@ def main():
         lines.append(f'    {{"{name}", ' + ", ".join(h(p[k]) for k in keys) + ",")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["tracks"]) + "}},")
         lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["loops"]) + "}},")
+        lines.append("     {{" + ", ".join("{" + ", ".join(h(c) for c in row) + "}" for row in p["subs"]) + "}},")
         b = lambda v: "true" if v else "false"
         backdrop = "HdslaveFlare" if name == "HDSLAVE" else "None"
         lines.append(f"     {b(p['light'])}, {FACE.get(name, -1)}, {b(name in NO_COLOUR)}, {b(name in SQUARE)}, "

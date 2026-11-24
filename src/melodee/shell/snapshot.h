@@ -4,6 +4,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/comp_trail.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/playheads.h"
@@ -33,9 +34,9 @@ struct PatternSketch {
 };
 
 struct Snapshot {
-    // Shell::snapshot()'s own, kept from frame to frame (melodee-hdslave; optimization.md MODEL-1): what the kits and
-    // the sketches below were last copied at, so that a frame in which neither can have changed leaves them as they
-    // are. A new Snapshot is always filled whole. `whole`: this frame was.
+    // Shell::snapshot()'s own, kept from frame to frame: what the kits and pattern sketches below were last copied
+    // at, so a frame in which neither can have changed leaves them as they are. A new Snapshot is always filled
+    // whole. `whole`: this frame was.
     uint64_t heavy_serial = 0;
     uint32_t sent_seen = 0, whole_at = 0;
     bool whole = true;
@@ -66,6 +67,12 @@ struct Snapshot {
     std::array<GrainPlace, GrainTrail::size> grains {}; // a cloud's grains heard now, and the marks of those just gone
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
     std::array<CompColumn, comp_columns> comp_trail {}; // what it heard and took off, a column every comp_column_ms, oldest first
+    // The mixer (docs/MIXER_PLAN.md): each strip's meter by strip number (each side's peak after its level, pan and
+    // mute; its compressor's gain reduction, dB), and the selected track's strip's level and reduction over time.
+    struct StripShown { float left = 0, right = 0, reduction = 0; };
+    std::array<StripShown, strip_channels> strips {};
+    std::array<CompColumn, comp_columns> strip_trail {};
+    std::array<float, spectrum_bands> spectrum {}; // the mixer's EQ picture: the channel in hand's bands, dB (shell/spectrum_view.h)
     std::array<CompBarColumn, comp_bar_columns> comp_bar {}, comp_ghost {}; // compressor B: this bar, and the one before
     int comp_bar_at = -1;                                                   // the column the transport is at; -1 stopped
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)

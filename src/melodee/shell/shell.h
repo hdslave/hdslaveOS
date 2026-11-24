@@ -20,6 +20,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/snapshot.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/ui_state.h"
 #include "runtime/app.h"
 #include "surface/leds.h"
@@ -42,6 +43,7 @@ class Shell {
 public:
     // Starts with starting_project(); the engine host is loaded from it before audio runs.
     explicit Shell(EngineHost& host);
+    void load_engine(); // load the starting state before audio runs
 
     // MIDI thread.
     void surface(const SurfaceEvent& event, uint32_t now_ms);
@@ -59,6 +61,7 @@ public:
     bool usb_full_volume() const { return usb_full.load(std::memory_order_relaxed); }
     // Any thread: Settings' USB-C in (Direct) and its direct level as a gain.
     bool usb_direct_on() const { return usb_direct.load(std::memory_order_relaxed); }
+    bool usb_submixes_on() const { return usb_submixes.load(std::memory_order_relaxed); } // Settings' USB out
     float usb_direct_gain() const { return direct_gain.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
     // Any thread: power (melodee-hdslave; Settings' CPU speed, Refresh and Dim after, shell/settings.h). dimmed():
@@ -93,13 +96,12 @@ public:
     // Screen thread: a copy of what the page needs, taken under a short lock.
     void snapshot(Snapshot& out, uint32_t now_ms);
 
-    // Host previews: the state to draw from, without the hardware. Whoever takes one may write through it, so the
-    // next snapshot is taken whole.
-    Project& project() { handed_.fetch_add(1, std::memory_order_relaxed); return *project_; }
-    PatternBank& patterns() { handed_.fetch_add(1, std::memory_order_relaxed); return *patterns_; }
-    // The screen's snapshot (melodee-hdslave; optimization.md MODEL-1). snapshot_light off: every snapshot whole, as
-    // before. snapshot_verify (the monkey, the tests): every light snapshot is checked against a whole one, and one
-    // that differs is counted in snapshot_stale() and put right.
+    // Preview writers must serialize their edits with snapshots. They can keep either reference between frames.
+    // From then on this shell takes whole snapshots. The live app loads its engine without borrowing either.
+    Project& project() { preview_editable_.store(true, std::memory_order_relaxed); return *project_; }
+    PatternBank& patterns() { preview_editable_.store(true, std::memory_order_relaxed); return *patterns_; }
+    // The screen's snapshot: snapshot_light off forces every snapshot whole. snapshot_verify (monkey, tests)
+    // checks every light snapshot against a whole one, counting any drift in snapshot_stale() and repairing it.
     static inline bool snapshot_light = true, snapshot_verify = false;
     unsigned snapshot_stale() const { return stale_.load(std::memory_order_relaxed); }
     UiState& ui() { return ui_; }
@@ -165,19 +167,22 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
-    std::atomic<uint64_t> handed_ {0}; // project() or patterns() given out (any thread)
+    std::atomic<bool> preview_editable_ {false};
     std::atomic<unsigned> stale_ {0};  // snapshot_stale()
     // Presses the Loading sheet took (ui.loading): their releases are taken too, even after it has gone.
     std::array<bool, 256> eaten_buttons {};
     std::array<bool, 128> eaten_pads {};
     CompTrail comp_trail; // the screen thread's, in snapshot(): the Compressor page's picture over time
+    CompTrail strip_trail; // and the mixer's COMP block's: the selected track's strip
+    SpectrumView spectrum_view; // the mixer's EQ picture (draw thread), of the strip the engine taps
+    int spectrum_tapped = -1;
     CompBar comp_bar;     // and over one bar of the song (round 2, compressor B)
     HeadTrail trail; // the screen thread's, in snapshot(): heads kept while their wakes fade
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
     std::atomic<uint32_t> mirror_wanted {3u << 1}; // on | size << 1 | 60 fps << 4: off, 1280 x 960, 30 fps
-    std::atomic<bool> usb_full {true}, usb_direct {true};
+    std::atomic<bool> usb_full {true}, usb_direct {true}, usb_submixes {false};
     std::atomic<float> direct_gain {1.0f};
     std::atomic<bool> dimmed_ {false}, working_ {true}; // working until the first pass says otherwise: the start is at full speed
     std::atomic<uint8_t> cpu_wanted {Settings::CpuFull}, refresh_wanted {30};
@@ -188,6 +193,7 @@ private:
                             std::memory_order_relaxed);
         usb_full.store(ui_.settings.usb_full, std::memory_order_relaxed);
         usb_direct.store(ui_.settings.usb_direct, std::memory_order_relaxed);
+        usb_submixes.store(ui_.settings.usb_submixes, std::memory_order_relaxed);
         direct_gain.store(ui_.settings.direct_gain(), std::memory_order_relaxed);
     }
     std::atomic<unsigned> power {0};

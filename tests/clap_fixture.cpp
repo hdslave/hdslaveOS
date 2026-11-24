@@ -53,6 +53,7 @@ struct Plugin {
     bool instrument = false;
     double rate = 44100, level = 0.5, wave = 0, gain = 1;
     std::map<int, double> phases; // key: phase of its sine
+    std::atomic<uint32_t> tailFrames {0};
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
     int pulse = 0;                // Sine's SC Key: frames of its pulse still to play
     bool dynamicRing = false;
@@ -158,13 +159,10 @@ const clap_plugin_latency latencyExt {latency};
 
 uint32_t tailGet(const clap_plugin* p) {
     auto& fixture = of(p);
-    if (fixture.dynamicRing) {
-        if (fixture.threads && !fixture.threads->is_main_thread(fixture.host) && !fixture.threads->is_audio_thread(fixture.host)) ++wrongThread;
-        return fixture.ringTail.load();
-    }
-    fixture.main();
+    if (fixture.threads && !fixture.threads->is_main_thread(fixture.host) && !fixture.threads->is_audio_thread(fixture.host)) ++wrongThread;
+    if (fixture.dynamicRing) return fixture.ringTail.load();
     if (std::getenv("MELODEE_TEST_RING_TAIL")) return uint32_t(fixture.rate * 0.75);
-    return uint32_t(tailSamples.load());
+    return std::max(uint32_t(tailSamples.load()), fixture.tailFrames.load());
 }
 const clap_plugin_tail tailExt {tailGet};
 Plugin* gainPlugin = nullptr; // the Test Gain made last, so fixture_set_tail() can tell its host
@@ -290,6 +288,15 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     s.audio();
     if (beforeEvents) beforeEvents(beforeEventsData);
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
+    if (!s.instrument) {
+        // The Loud preset gains a two-second tail, applied on the audio thread.
+        const uint32_t frames = s.gain > 1 ? uint32_t(2 * s.rate) : 0;
+        if (frames != s.tailFrames.load()) {
+            s.tailFrames.store(frames);
+            if (auto* tail = static_cast<const clap_host_tail*>(s.host->get_extension(s.host, CLAP_EXT_TAIL)))
+                tail->changed(s.host);
+        }
+    }
     if (s.outLevel >= 0) {
         clap_event_param_value v {};
         v.header = {sizeof(v), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};

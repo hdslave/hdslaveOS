@@ -319,14 +319,14 @@ void move_here(Context& c) {
 
 void open_list(Context& c) {
     c.ui.project_list = true;
-    if (!c.project_list_opened) { // the first time: the open project's folder, on it
+    if (!c.project_list_opened) { // the first time: the open project's folder, on it; with none on the card, its top
         c.project_list_opened = true;
         auto v = view_of(c);
         const std::string card = card_dir(v);
         if (!card.empty() && c.project_path.rfind(card + "/", 0) == 0) { // anywhere on the card
             c.project_folder = card_folder_of(card, v.root, std::filesystem::path(c.project_path).parent_path().string());
             c.project_row_path = c.project_path;
-        }
+        } else if (!card.empty()) c.project_folder = card_folder;
     }
     if (c.store) c.store->list(c.project_folder); // else where it was left, on the same row
 }
@@ -400,7 +400,7 @@ void soft(Context& c, int key) {
         bool inside = on_internal(c.project_folder);
         c.project_places[inside ? 1 : 0] = {c.project_folder, c.ui.project_cursor, true};
         const auto& back = c.project_places[inside ? 0 : 1];
-        c.project_folder = back.set ? back.folder : inside ? std::string() : std::string(internal_folder);
+        c.project_folder = back.set ? back.folder : std::string(inside ? card_folder : internal_folder); // the card: its top
         c.ui.project_cursor = back.set ? back.row : first_entry;
         c.project_row_path.clear();
         if (c.store) c.store->list(c.project_folder);

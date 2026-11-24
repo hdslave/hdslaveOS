@@ -32,6 +32,7 @@
 #include "melodee/shell/note_jobs.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/mix_hub.h"
+#include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/sample_mode.h"
@@ -74,6 +75,10 @@ Shell::Shell(EngineHost& host)
     starting_project(*project_, *patterns_);
     context_.card = &card_link;
     context_.updates = &update_link;
+}
+
+void Shell::load_engine() {
+    host.load(*project_, *patterns_);
 }
 
 void Shell::start_settings(const std::string& text) {
@@ -293,8 +298,10 @@ void Shell::button(Button b, bool pressed) {
     }
     if (pressed && b != Button::Erase && b != Button::Shift && ui_.erase) ui_.erase_used = true; // Erase + a button: its release erases nothing
     // Erase's release is a press of its own (a tap erases the thing in focus): one undo step, as any page press.
-    // The encoder's too: its tap acts when it is let go (held, it opens the MENU: shell/menu.h).
-    if ((!pressed && b != Button::Erase && b != Button::WheelPush) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
+    // The encoder's too: its tap acts when it is let go (held, it opens the MENU: shell/menu.h). And Mute's on the
+    // mixer's FX block (a tap switches the lit effect: shell/mute_mode.h).
+    const bool release_acts = b == Button::Erase || b == Button::WheelPush || (b == Button::Mute && mixer_fx_lit(ui_));
+    if ((!pressed && !release_acts) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
     PageEdit step(context_, b, false);
     press(b, pressed);
     step.finish();
@@ -368,7 +375,7 @@ void Shell::press(Button b, bool pressed) {
         // Pad FX and Knob FX together, in either order: the MIX hub on Tracks (shell/mix_hub.h); alone, their own job
         // when let go. Shift + either acts as it goes down (the cases below).
         switch (fx_chord(ui, b, pressed)) {
-        case FxChord::Mix: context_.open(PageId::Tracks); end_copy_away(); return;
+        case FxChord::Mix: context_.open(PageId::Mixer); end_copy_away(); return;
         case FxChord::Wait: return;
         case FxChord::Own:
             if (pressed) break; // Shift: below, as printed
@@ -464,11 +471,12 @@ void Shell::press(Button b, bool pressed) {
         // Shift + Knob FX (FX SELECT): the effect chains, the same cycle as MIX's B3 FX (track, bus, master,
         // a kit's pad); on the Looper the selected loop track's chain
         if (ui.page == PageId::Looper && context_.project.looper.on) { int8_t l = int8_t(ui.loop % loop_tracks); context_.open(PageId::Rack); ui.fx_loop = l; break; }
+        if (ui.page == PageId::Mixer) { context_.open_mixer_chain(false); break; } // the channel in hand's chain; B1 MIXER back
         {
             bool kit = context_.track().engine == EngineKind::Sampler;
             bool own_chain = mix_section(ui.page) == MixSection::Fx && !(ui.page == PageId::Rack && ui.fx_loop >= 0);
             PageId next = own_chain ? mix_next(ui.page, 2, kit) : PageId::Rack;
-            if (next == PageId::Rack) ui.fx_loop = -1; // the track's own chain, not a loop's
+            if (next == PageId::Rack) { ui.fx_loop = -1; ui.fx_sub = -1; } // the track's own chain, not a loop's
             context_.open(next);
         }
         break;
@@ -567,7 +575,7 @@ void Shell::press(Button b, bool pressed) {
         else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && project_folder_up(context_)) {
             // up a folder, done
         }
-        else if (ui.shift && ui.page == PageId::Tracks && context_.track().used()) page.push(context_); // the Name sheet (pages/tracks_page.cpp)
+        else if (ui.shift && ui.page == PageId::Mixer && ui.mixer_bank == 0 && context_.track().used()) page.push(context_); // the Name sheet (pages/mixer_page.cpp)
         else if (ui.shift) context_.back();
         else encoder_press(enc, context_.now); // its job waits for the release: held, it opens the MENU (shell/menu.h)
         break;
@@ -849,10 +857,10 @@ void copy_track_light(Track& to, const Track& from) {
 void copy_light(Project& to, const Project& from) {
     auto& [name, tempo, seq_tempo, pattern_tempo, signature, swing, root, scale, punch_target, punch_bank, punch_depth, punch_snap, punch_tail,
            punch_quantize, pad_fx_params, flex, tracks, knob_fx, compressor, song, buses, samples, chops, plugins, master, looper, loop_mix, loop_fx,
-           modulators, macros, scenes, scene] = to;
+           modulators, macros, scenes, scene, subs, master_strip, input_strip, input_wet] = to;
     const auto& [name_, tempo_, seq_tempo_, pattern_tempo_, signature_, swing_, root_, scale_, punch_target_, punch_bank_, punch_depth_, punch_snap_,
                  punch_tail_, punch_quantize_, pad_fx_params_, flex_, tracks_, knob_fx_, compressor_, song_, buses_, samples_, chops_, plugins_, master_,
-                 looper_, loop_mix_, loop_fx_, modulators_, macros_, scenes_, scene_] = from;
+                 looper_, loop_mix_, loop_fx_, modulators_, macros_, scenes_, scene_, subs_, master_strip_, input_strip_, input_wet_] = from;
     put(name, name_); put(tempo, tempo_); put(seq_tempo, seq_tempo_); put(pattern_tempo, pattern_tempo_); put(signature, signature_);
     put(swing, swing_); put(root, root_); put(scale, scale_); put(punch_target, punch_target_); put(punch_bank, punch_bank_);
     put(punch_depth, punch_depth_); put(punch_snap, punch_snap_); put(punch_tail, punch_tail_); put(punch_quantize, punch_quantize_);
@@ -862,6 +870,7 @@ void copy_light(Project& to, const Project& from) {
     (void)chops; (void)chops_; // not copied: as the whole copy leaves them
     put(plugins, plugins_); put(master, master_); put(looper, looper_); put(loop_mix, loop_mix_); put(loop_fx, loop_fx_);
     put(modulators, modulators_); put(macros, macros_); put(scenes, scenes_); put(scene, scene_);
+    put(subs, subs_); put(master_strip, master_strip_); put(input_strip, input_strip_); put(input_wet, input_wet_);
 }
 bool same_kits(const Project& a, const Project& b) {
     for (unsigned t = 0; t < track_count; ++t) {
@@ -887,7 +896,7 @@ void sketch_of(const Pattern& pattern, PatternSketch& sketch) {
         if (!sketch.keys[k]) sketch.keys[k] = e.key;
     }
 }
-}
+} // namespace
 
 void Shell::snapshot(Snapshot& out, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
@@ -896,13 +905,13 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     fader_check(context_);
     edit_loop_check(context_); // an editor's loop ends with the editor (shell/note_jobs.h)
     out.ui = ui_;
-    // The kits and the patterns' sketches are most of what a frame copied (nine tenths of 0.8 MB) and change only
-    // with a control, a MIDI message or something told to the audio thread: Context::heavy_serial moves with each
-    // of those, and `sent` with every command to the audio thread. While neither has moved the frame is a light
-    // one, which leaves both as the last whole frame made them. Whole again at least every half second, whatever
-    // the counters say (melodee-hdslave; optimization.md MODEL-1).
-    const uint64_t serial = context_.heavy_serial + handed_.load(std::memory_order_relaxed);
-    const bool whole = !snapshot_light || out.heavy_serial != serial || out.sent_seen != context_.sent || now - out.whole_at >= 500;
+    // The kits and pattern sketches are most of what a frame copied (nine tenths of 0.8 MB) and change only with
+    // a control, a MIDI message or something told to the audio thread: Context::heavy_serial moves with each of
+    // those, and `sent` with every command to the audio thread. While neither has moved the frame is a light one,
+    // which leaves both as the last whole frame made them. Whole again at least every half second as a safety net.
+    const uint64_t serial = context_.heavy_serial;
+    const bool whole = !snapshot_light || preview_editable_.load(std::memory_order_relaxed)
+                    || out.heavy_serial != serial || out.sent_seen != context_.sent || now - out.whole_at >= 500;
     if (whole) { // The project, without each sample's chop: no page draws one (Chop draws the slices in hand, UiState's).
         SlotTable<SampleChop> chops = std::move(project_->chops);
         out.project = *project_;
@@ -1069,6 +1078,16 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         host.compressor_activity(level, reduce);
         comp_trail.update(level, reduce, now);
         out.comp_trail = comp_trail.trail();
+        for (unsigned n = 0; n < strip_channels; ++n) { const auto m = host.strip_meter(n); out.strips[n] = {m.left, m.right, m.reduction}; }
+        const auto& own = out.strips[mixer_strip(ui_)]; // the mixer's channel in hand (its COMP block)
+        const float peak = std::max(own.left, own.right);
+        strip_trail.update(peak > 1e-5f ? 20 * std::log10(peak) : -90.0f, own.reduction, now);
+        out.strip_trail = strip_trail.trail();
+        // The mixer's EQ picture: the engine taps the channel in hand only while its EQ is in view.
+        const int tap = ui_.page == PageId::Mixer && mixer_block_of(ui_, channel_kind(mixer_strip(ui_))) == block_eq ? int(mixer_strip(ui_)) : -1;
+        if (tap != spectrum_tapped) { host.set_spectrum_tap(tap); spectrum_tapped = tap; spectrum_view.clear(); }
+        if (tap >= 0) spectrum_view.update(host.spectrum(), dsp::sample_rate(), now);
+        out.spectrum = spectrum_view.bands();
         comp_bar.update(level, reduce, out.ticks, project_->bar_ticks(), out.playing);
         out.comp_bar = comp_bar.bar(); out.comp_ghost = comp_bar.ghost(); out.comp_bar_at = comp_bar.at();
     }
@@ -1116,7 +1135,8 @@ std::string Shell::summary() const {
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
            " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load())) +
            " " + looper_status(host.looper()) +
-           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none")) + p4_summary(host);
+           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none")) +
+           " melodee_screens=" + (context_.plugins ? context_.plugins->screens() : std::string("none")) + p4_summary(host);
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, a pot gesture open.

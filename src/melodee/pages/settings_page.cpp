@@ -56,7 +56,7 @@ const std::array<Door, 8> doors {{
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
     {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::Refresh, Settings::PlaceBarRow,
                                   Settings::PluginSkins, Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
-    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbDirect, Settings::DirectLevel,
+    {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbOut, Settings::UsbDirect, Settings::DirectLevel,
                                   Settings::CpuSpeed)},
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                                  Settings::SilenceBelow)},

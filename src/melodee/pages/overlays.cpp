@@ -217,7 +217,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
         const auto& t = s.track();
         bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && pad_job(s.ui) == play_pad);
-        text = kit ? "Mute: pads" : "Mute: tracks";
+        text = kit ? "Mute: pads" : mute_on_others(s.ui) ? "Mute: submixes, buses" : "Mute: tracks";
         copying = true; // in the track's colour, as a mode
     } else {
         return;

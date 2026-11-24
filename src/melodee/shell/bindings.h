@@ -79,7 +79,7 @@ struct Binding {
         // Generators (roadmap P1): Steps' EUCLID row on a kit (the last pad's lane: hits, steps, rotation) and the VARY
         // sheet's amount (percent).
         EuclidHits, EuclidSteps, EuclidRotate, VaryAmount,
-        TrackSpeed, // Tracks, Shift + K1: the strip in hand's playback speed (roadmap P1), id the track, an index of speeds
+        TrackSpeed, // Patterns, Shift + K3: the track's playback speed (roadmap P1), id the track, an index of speeds
         LoopSource, // the Looper's loop sheet, K1: the loop's source, an index into loop_sources() (shell/loop_sheet.h), id the loop
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
@@ -126,6 +126,14 @@ struct Binding {
         SceneColour, // Patterns' SEQUENCE K2 (issue 19): the sequence in view's colour, 0 none, 1-16 a track colour
         JamFrom, JamTo, // JAMS on Song (shell/jam_jobs.cpp): the first and last bar of the picked jam to play or take
         PadMute, // issue 32, Motion's card of a kit pad's mute lane: pad id muted (1) or not, as Mute + pad
+        // The mixer (docs/MIXER_PLAN.md): one value of a strip, id = strip number << 8 | StripPart (model/strip.h); a
+        // track's output, id the track, 0 the master or out_sub(s); a submix's level, pan or send, id = submix << 8 |
+        // Command::SubPart (engine/command.h).
+        Strip, TrackOut, SubMix,
+        // The mixer's input (its B1 INPUT): Input Config's monitor (0 Off, 1 Auto, 2 On) and what takes record, 0 the
+        // input dry, 1 after its strip (Project::input_wet).
+        InputMonitor, InputWet,
+        PadOut, // Stage's SENDS on a kit, Shift + K2: the last pad's output (PadSound::out), 0 the kit, 1-8 a submix
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -184,6 +192,20 @@ std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, con
 std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row);
 // The tick a held step or note locks at and how long the lock holds; false when nothing is held.
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
+// The mixer's cards (docs/MIXER_PLAN.md): the lit block's three values of the selected track's strip (SENDS: sends A-C;
+// EQ: the band group's three; COMP: amount, ratio, speed), or `shift_row`'s (pan, output, send D; none; key, mix,
+// gain). Basic: send A alone, and pan on Shift.
+std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bool shift_row);
+inline Binding strip_card(unsigned n, StripPart part, const Strip& s) {
+    static constexpr int lo[] {-trim_range, 0, 0, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range, -eq_range,
+                               -eq_range, -eq_range, 0, 0, int(comp_ratio_min), 0, 0, 0, comp_gain_min};
+    static constexpr int hi[] {trim_range, int(width_max), 1, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range, eq_range,
+                               eq_range, eq_range, 1, int(comp_amount_max), int(comp_ratio_max), int(CompSpeed::Count) - 1,
+                               strip_key_most, 100, comp_gain_max};
+    static_assert(sizeof(lo) / sizeof(lo[0]) == size_t(StripPart::Count) && sizeof(hi) / sizeof(hi[0]) == size_t(StripPart::Count));
+    const unsigned p = unsigned(part) % unsigned(StripPart::Count);
+    return {Binding::Kind::Strip, int32_t(n << 8 | p), lo[p], hi[p], strip_get(s, part)};
+}
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
 // Patterns' K1: lengths in bars, as on the MPC; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against
