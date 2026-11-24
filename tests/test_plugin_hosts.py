@@ -90,7 +90,7 @@ class PluginHostTests(unittest.TestCase):
             build_clap(clap)
             build_lv2(lv2)
             for plugin, mode in ((clap, "failsave"), (clap, "mono"), (clap, "ringtail"), (clap, "dynamic-ring"),
-                                 (clap, "native-ring"), (lv2, "lv2wake")):
+                                 (clap, "native-ring"), (clap, "ring-freeze"), (lv2, "lv2wake")):
                 with self.subTest(mode=mode):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                                    check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})

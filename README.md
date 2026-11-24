@@ -128,8 +128,8 @@ page and control, read the [user guide](docs/GUIDE.md).
   as on the stock app.
 - **Freeze**: print a track to audio and play it from the card, or deep
   freeze it to unload its plug-ins too. Ring prints keep delayed repeats, reverb
-  tails and kit pad sends, and follow changes to plug-in tails. Long tails can
-  overlap across several passes of a frozen pattern.
+  tails and kit pad sends, and follow changes to plug-in tails. Long tails stream as they overlap
+  across successive passes of a frozen pattern.
 - **Sync**: MIDI clock and MTC in and out, and CV clock out.
 - **The Menu**: hold the encoder on any page for the page's jobs with their
   shortcuts, and the 16 places laid out as the pads. Four short **lessons**
@@ -227,10 +227,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.7.1-hdslave.6 ./build.sh
+MELODEE_VERSION=v0.7.1-hdslave.7 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.7.1-hdslave.6
+python3 tools/package_unsigned.py v0.7.1-hdslave.7
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.

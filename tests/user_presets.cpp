@@ -17,6 +17,24 @@ using namespace melodee;
 namespace fs = std::filesystem;
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (false)
 
+static void run_job(PrintEngine& printer, PrintJob job) {
+    CHECK(printer.start(std::move(job)));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (printer.busy() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(!printer.busy());
+}
+
+static SampleData print_wav(PrintEngine& printer, PrintJob job) {
+    const auto folder = prints_folder(job.project_path);
+    run_job(printer, std::move(job));
+    PrintResult result;
+    CHECK(printer.take(result) && result.made && result.error.empty());
+    SampleData wav;
+    CHECK(read_wav((fs::path(folder) / result.record.file).string(), wav).empty());
+    return wav;
+}
+
 // The last step feeds a fully wet quarter-note Echo. Empty bars let the same note and its
 // effects decay inside the pattern, independently of the shorter print's Ring cutoff.
 static void native_ring_wav(const std::string& card, const std::string& plugin) {
@@ -25,7 +43,6 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         PrintJob job;
         job.card_top = card;
         job.project_path = (fs::path(card) / (std::to_string(bars) + ".mldp")).string();
-        const auto folder = prints_folder(job.project_path);
         job.patterns = {0}; job.tail = PrintTail::Ring; job.tap = PrintTap::PostFx;
         job.project = std::make_unique<Project>();
         job.bank = std::make_unique<PatternBank>();
@@ -47,15 +64,7 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         step.notes[0] = {69, 110};
         pattern.set_step(15, step);
 
-        CHECK(printer.start(std::move(job)));
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-        while (printer.busy() && std::chrono::steady_clock::now() < deadline)
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        PrintResult result;
-        CHECK(printer.take(result) && result.made && result.error.empty());
-        SampleData wav;
-        CHECK(read_wav((fs::path(folder) / result.record.file).string(), wav).empty());
-        return wav;
+        return print_wav(printer, std::move(job));
     };
     for (auto kind : {EffectKind::Echo, EffectKind::Spring, EffectKind::Room, EffectKind::Reverb,
                       EffectKind::Plate, EffectKind::Shimmer, EffectKind::Looper}) {
@@ -80,11 +89,119 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
     }
 }
 
+// The sample library already holds the short stereo kick. The first hit must fill a clean
+// pad delay, and a last-tick hit must get past the pad Limiter before the track Echo repeats.
+static void pad_print_wavs(const std::string& card, const std::string& sample, SampleLibrary& library) {
+    PrintEngine printer(&library);
+    auto run = [&](bool lookahead, unsigned bars, PrintTail tail) {
+        PrintJob job;
+        job.card_top = card; job.project_path = (fs::path(card) / "pad.mldp").string();
+        job.patterns = {0}; job.tap = PrintTap::PostFx; job.tail = tail;
+        job.project = std::make_unique<Project>(); job.bank = std::make_unique<PatternBank>();
+        job.project->tempo = 1200;
+        auto& track = job.project->tracks[0];
+        load_sound(track, EngineKind::Sampler, 0);
+        track.pads[0].sample = 0; track.pads[0].play = PadPlay::OneShot;
+        auto& ref = job.project->samples.edit(0);
+        std::snprintf(ref.path, sizeof(ref.path), "%s", sample.c_str()); ref.frames = 128;
+        const EffectSlot echo {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 9, 0}};
+        auto& pad = track.pad_fx.at[0].slots[0];
+        if (lookahead) {
+            pad = {uint8_t(EffectKind::Limiter), false, {0, 30, 10, 0, 0, 0}};
+            track.fx.slots[0] = echo;
+        } else pad = echo;
+        auto& pattern = job.bank->at[0][0]; pattern.length = bars * job.project->bar_ticks();
+        Step step; step.notes[0] = {sampler_first_note, 110}; pattern.set_step(0, step);
+        if (lookahead) { pattern.events[0].tick = job.project->bar_ticks() - 1; pattern.events[0].length = 1; }
+        return print_wav(printer, std::move(job));
+    };
+    for (bool lookahead : {false, true}) {
+        auto ring = run(lookahead, 1, PrintTail::Ring);
+        auto longer = run(lookahead, 2, PrintTail::Cut);
+        CHECK(ring.frames < longer.frames);
+        CHECK(*std::max_element(ring.left.begin(), ring.left.end()) > 0.05f);
+        CHECK(std::equal(ring.left.begin(), ring.left.end(), longer.left.begin()));
+        CHECK(std::equal(ring.right.begin(), ring.right.end(), longer.right.begin()));
+        CHECK(std::all_of(longer.left.begin() + ring.frames, longer.left.end(), [](float v) { return v == 0; }));
+        CHECK(std::all_of(longer.right.begin() + ring.frames, longer.right.end(), [](float v) { return v == 0; }));
+    }
+}
+
+// A budget shared by inactive launch points and the pager's active read windows.
+static size_t locked_bytes;
+static bool budget_pin(const void*, size_t bytes, bool lock) {
+    if (lock) {
+        if (locked_bytes + bytes > 8 * 1024 * 1024) return false;
+        locked_bytes += bytes;
+    } else {
+        CHECK(bytes <= locked_bytes);
+        locked_bytes -= bytes;
+    }
+    return true;
+}
+
+static void freeze_ring_wavs(const std::string& card, const std::string& plugin) {
+    StreamPager pager(budget_pin);
+    PrintEngine printer(nullptr); printer.set_pager(&pager);
+    PrintJob job;
+    job.card_top = card; job.project_path = (fs::path(card) / "freeze.mldp").string();
+    job.freeze = true; job.tap = PrintTap::PostFx; job.tail = PrintTail::Ring;
+    job.project = std::make_unique<Project>(); job.bank = std::make_unique<PatternBank>();
+    job.project->tempo = 1200; job.project->signature = 0; // 1/4
+    auto& track = job.project->tracks[0]; load_sound(track, EngineKind::Plugin, 0); track.plugin = 0;
+    std::snprintf(job.project->plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
+    track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 13, 0}};
+    track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
+    for (uint8_t p = 0; p < 8; ++p) {
+        auto& pattern = job.bank->at[0][p]; pattern.length = job.project->bar_ticks();
+        Step step; step.notes[0] = {uint8_t(60 + p), 110}; pattern.set_step(0, step);
+        job.patterns.push_back(p);
+    }
+    run_job(printer, std::move(job));
+    FreezeReady ready;
+    CHECK(printer.take_ready(ready) && ready.error.empty() && ready.pack);
+    std::unique_ptr<FreezePack> pack(ready.pack);
+    CHECK(pack->owned.size() == 8);
+    auto& clip = *pack->clips[0];
+    PrintPlayer player; player.set_pager(&pager);
+    // The first audible repeat arrives several launches later. The tail voices must each
+    // retain their stream through the seam and release it even when playback is cut.
+    // Leave the kit pager fully occupied. Ring overlaps have their own preallocated cursors.
+    float sample = 0;
+    ZonePart live;
+    live.left = live.right = &sample; live.total = 1; live.pins.resize(1);
+    std::array<int, StreamPager::stream_count> live_streams;
+    for (int& stream : live_streams) {
+        stream = pager.open(live, 0, false, 1, 0);
+        CHECK(stream >= 0);
+    }
+    while (pager.pump()) {}
+    const size_t launch_bytes = locked_bytes;
+    float peak = 0;
+    for (unsigned n = 0; n < 10; ++n) {
+        player.follow(&clip, 0, 0, clip.pass, float(clip.rate));
+        for (unsigned at = 0; at < clip.pass; at += 128) {
+            while (pager.pump()) {}
+            float l[128] {}, r[128] {};
+            unsigned frames = std::min(128u, clip.pass - at);
+            player.render(l, r, frames);
+            peak = std::max(peak, *std::max_element(l, l + frames));
+        }
+    }
+    CHECK(peak > 0.1f && player.underruns == 0 && player.waits == 0);
+    player.cut_all();
+    while (pager.pump()) {}
+    CHECK(locked_bytes == launch_bytes);
+    for (int stream : live_streams) pager.close(stream);
+    while (pager.pump()) {}
+}
+
 // A separate invocation starts a fresh project and a new plug-in instance.
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
     CHECK(argc == 4);
     const std::string card = argv[1], plugin = argv[2], mode = argv[3];
+    if (mode == "ring-freeze") { freeze_ring_wavs(card, plugin); return 0; }
     if (mode == "native-ring") { native_ring_wav(card, plugin); return 0; }
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
@@ -344,6 +461,7 @@ int main(int argc, char** argv) {
     samples->service(hardware);
     CHECK(samples->load(0, source, false));
     wait([&] { samples->service(hardware); return samples->loads_waiting() == 0; });
+    pad_print_wavs(card, source, *samples);
     tr.pads[0].start = 32;
     tr.pads[0].end = 96;
     chord();

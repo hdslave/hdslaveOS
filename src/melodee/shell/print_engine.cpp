@@ -97,7 +97,12 @@ long rss_kb() {
 // The effects' delay blocks a print of track `t` can take: its chain's and its pads' chains', and two to spare.
 unsigned delay_blocks_for(const Track& t) {
     unsigned n = 2;
-    auto count = [&](const Chain& c) { for (const auto& s : c.slots) n += s.used() && effect_needs_memory(EffectKind(s.kind)); };
+    auto count = [&](const Chain& c) {
+        for (const auto& slot : c.slots) {
+            auto kind = EffectKind(slot.kind);
+            if (effect_needs_memory(kind) || (kind == EffectKind::Limiter && slot.params[2] > 0)) ++n;
+        }
+    };
     count(t.fx);
     for (const auto& c : t.pad_fx.at) count(c);
     if (t.engine == EngineKind::Plugin) n += 2; // its performance knobs' echo and reverb (engine/macros.h)
@@ -129,21 +134,14 @@ PrintHost open_print_host(const Project& project, const PatternBank& bank, const
     PrintHost h;
     h.host = std::make_unique<EngineHost>(EngineHost::Lean {delay_blocks_for(track)});
     auto& host = h.host;
-    host->load(project, bank);
     host->set_audio_format(dsp::sample_rate(), EngineHost::block);
-    Command reload {Command::Type::Reload};
-    reload.pack = new ProjectPack(project, bank);
-    host->send(reload);
+    host->load(project, bank); // a fresh host: the first pad hit gets clean, ready delay lines
     // An instrument streamed from the card: its pager runs, and the print goes no faster than real time, as the
     // live pager's reads would (a print faster than that would outrun the card's reads; freeze plan F2b).
     for (unsigned n = 0; n < sample_slots; ++n) h.streams |= project.samples[n].used() && samples[n] && samples[n]->multi;
     if (h.streams) host->streams().start();
     std::vector<int32_t> out(EngineHost::block * 2);
-    auto idle = [&] { // a silent block: offers taken, packs handed back
-        host->render(out.data(), EngineHost::block, 1.0f);
-        const ProjectPack* done = nullptr;
-        while (host->take_done_pack(done)) delete done;
-    };
+    auto idle = [&] { host->render(out.data(), EngineHost::block, 1.0f); };
     for (unsigned n = 0; n < sample_slots; ++n) { // the slots it plays; the offers' queue taken a block at a time
         if (!project.samples[n].used() || !samples[n]) continue;
         while (!host->offer_sample(n, samples[n])) idle();
@@ -518,18 +516,10 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         pack->clips[p] = clip.get();
         pack->owned.push_back(std::move(clip));
     }
-    // A short pattern can launch again several times before a longer tail has played.
-    // Pin that tail once, shared by every outstanding pass, before publishing the pack.
+    // Set aside cursors before playback. Only sounding voices advance the pager through a tail.
     uint32_t shortest = UINT32_MAX;
     for (const auto& clip : pack->owned) if (clip->pass) shortest = std::min(shortest, clip->pass);
-    for (const auto& clip : pack->owned) {
-        if (!clip->prepare_tails(shortest)) continue;
-        const uint32_t from = clip->tail_from() * clip->stride;
-        if (!pager->hold(clip->part, from, clip->part.total - from)) {
-            f.error = "cannot hold overlapping Ring tails in memory";
-            return f;
-        }
-    }
+    for (const auto& clip : pack->owned) clip->prepare_tails(shortest, pager);
     f.pack = pack.release();
     return f;
 }
