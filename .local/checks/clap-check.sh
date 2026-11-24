@@ -9,7 +9,7 @@ cd /work
 OUT=build/clap-check
 mkdir -p "$OUT"
 JUCE=build/deps/JUCE/modules
-g++ -std=c++17 -O2 -pthread -Isrc -Icore/src -Ibase/src -I$JUCE -Ibuild/deps/clap/include -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \
+g++ -std=c++17 -O2 -pthread -Isrc -Icore/src -Ibase/src -I$JUCE -Ibuild/deps/clap/include -Isdk/melodee-screen -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \
     -DJUCE_STANDALONE_APPLICATION=1 -DJUCE_USE_CURL=0 -DJUCE_WEB_BROWSER=0 -DNDEBUG -DJUCE_PLUGINHOST_VST3=1 -DJUCE_PLUGINHOST_LV2=1 \
     .local/checks/clap_check.cpp build/obj/melodee/plugin/clap_instance.o build/obj/melodee/plugin/plugin_files.o \
     build/obj/melodee/plugin/plugin_support.o build/obj/plugin_support_pack.o build/obj/juce_core.o \

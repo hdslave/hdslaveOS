@@ -11,9 +11,9 @@ BLOCKS=${1:-2000}
 shift 2>/dev/null || true
 mkdir -p "$OUT/bridge/armhf"
 JUCE=build/deps/JUCE/modules
-FLAGS="-std=c++17 -O2 -pthread -Isrc -Icore/src -I$JUCE -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+FLAGS="-std=c++17 -O2 -pthread -Isrc -Icore/src -I$JUCE -Isdk/melodee-screen -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
     -DJUCE_USE_CURL=0 -DJUCE_WEB_BROWSER=0 -DNDEBUG"
-g++ -std=c++17 -O2 -Isrc src/melodee/plugin/bridge32/vst2_bridge32.cpp -ldl -o "$OUT/bridge/vst2_bridge32"
+g++ -std=c++17 -O2 -Isrc -Isdk/melodee-screen src/melodee/plugin/bridge32/vst2_bridge32.cpp -ldl -o "$OUT/bridge/vst2_bridge32"
 ln -sf /lib/ld-linux-aarch64.so.1 "$OUT/bridge/armhf/ld-linux-armhf.so.3"
 g++ -std=c++17 -O2 -Isrc -shared -fPIC .local/checks/bridge_fixture.cpp -o "$OUT/bridge_fixture.so"
 # shellcheck disable=SC2086
