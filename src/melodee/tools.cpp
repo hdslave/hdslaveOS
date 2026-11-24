@@ -683,6 +683,10 @@ void mixer_scene(Snapshot& s, unsigned block) {
         const float r = n % 9 < 2 ? 0.5f : 2.0f + 4.0f * float((n * 7) % 11) / 10.0f;
         s.strip_trail[n] = {-12.0f + float(n % 5), r};
     }
+    for (unsigned b = 0; b < spectrum_bands; ++b) { // a bass's: strong under 150 Hz, falling off above, some grit up top
+        const float oct = std::log2(spectrum_band_hz(float(b) + 0.5f) / 90.0f);
+        s.spectrum[b] = -14 - (oct > 0 ? 7 * oct : -9 * oct) + 3 * std::sin(float(b) * 0.9f) + 2 * std::sin(float(b) * 0.37f + 1);
+    }
 }
 
 // The mixer's second row (Pad Bank): submixes, buses, the input and the master, with the bass routed to submix 2.

@@ -94,6 +94,7 @@
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/mixer_channels.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
@@ -8539,6 +8540,22 @@ void track_move() {
         CHECK(mixer_master_comp(mc) && mixer_cards(*project, mc, false)[0].kind == Binding::Kind::CompAttack);
         CHECK(mixer_cards(*project, mc, true)[2].kind == Binding::Kind::CompBoost);
         CHECK(press_scope(*project, mc, SurfaceButton::WheelPush, false).kind == UndoScope::Kind::Master);
+        // The EQ picture (shell/spectrum_view.h): a full-scale 1 kHz sine reads about 0 dB in its band, far below
+        // elsewhere; with nothing new it falls at spectrum_fall_db_per_s.
+        {
+            auto ring = std::make_unique<ScopeRing>();
+            std::vector<float> sine(ScopeRing::size);
+            for (unsigned f = 0; f < sine.size(); ++f) sine[f] = std::sin(2 * 3.14159265f * 1000.0f * float(f) / 48000.0f);
+            ring->put(sine.data(), sine.data(), unsigned(sine.size()));
+            auto view = std::make_unique<SpectrumView>();
+            view->update(*ring, 48000, 1000);
+            unsigned at = 0;
+            while (at + 1 < spectrum_bands && spectrum_band_hz(float(at + 1)) <= 1000) ++at;
+            const float peak = view->bands()[at], low = view->bands()[2];
+            CHECK(peak > -2.5f && peak < 0.5f && low < -50);
+            view->update(*ring, 48000, 1500); // half a second, nothing new
+            CHECK(std::fabs(view->bands()[at] - (peak - spectrum_fall_db_per_s * 0.5f)) < 0.01f);
+        }
         // Undo keeps the submixes' level, pan and sends.
         auto before = mix_of(*project);
         project->subs[2].mix.pan = -20;

@@ -4,6 +4,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/comp_trail.h"
+#include "melodee/shell/spectrum_view.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/playheads.h"
@@ -65,6 +66,7 @@ struct Snapshot {
     struct StripShown { float left = 0, right = 0, reduction = 0; };
     std::array<StripShown, strip_channels> strips {};
     std::array<CompColumn, comp_columns> strip_trail {};
+    std::array<float, spectrum_bands> spectrum {}; // the mixer's EQ picture: the channel in hand's bands, dB (shell/spectrum_view.h)
     std::array<CompBarColumn, comp_bar_columns> comp_bar {}, comp_ghost {}; // compressor B: this bar, and the one before
     int comp_bar_at = -1;                                                   // the column the transport is at; -1 stopped
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)

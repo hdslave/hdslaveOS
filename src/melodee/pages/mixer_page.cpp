@@ -181,6 +181,21 @@ void eq_block(Paint& p, const Snapshot& s, const Channel& ch) {
     const unsigned g = s.ui.mixer_eq_group % 3;
     const float gx0 = x_of(eq_band_hz[g * 3] / 1.414f), gx1 = x_of(eq_band_hz[g * 3 + 2] * 1.414f);
     p.fill(gx0, y, gx1 - gx0, h, shade(ch, 0).withAlpha(0.14f), 3);
+    // What the channel plays (shell/spectrum_view.h), behind the curve: -72 dB at the floor of the picture, 0 dB at its top.
+    {
+        juce::Path heard;
+        auto y_level = [&](float db) { return y + h - std::clamp((db + 72) / 72, 0.0f, 1.0f) * h; };
+        heard.startNewSubPath(x_of(spectrum_low_hz), y + h);
+        bool any = false;
+        for (unsigned b = 0; b < spectrum_bands; ++b) {
+            const float db = s.spectrum[b];
+            any |= db > -72;
+            heard.lineTo(x_of(spectrum_band_hz(float(b) + 0.5f)), y_level(db));
+        }
+        heard.lineTo(x_of(spectrum_high_hz), y + h);
+        heard.closeSubPath();
+        if (any) { p.g.setColour(colour::mid.withAlpha(0.16f)); p.g.fillPath(heard); }
+    }
     p.fill(x, y + h / 2, w, 1, colour::line);
     juce::Path curve;
     for (unsigned n = 0; n <= 96; ++n) {

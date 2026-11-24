@@ -993,6 +993,11 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         const float peak = std::max(own.left, own.right);
         strip_trail.update(peak > 1e-5f ? 20 * std::log10(peak) : -90.0f, own.reduction, now);
         out.strip_trail = strip_trail.trail();
+        // The mixer's EQ picture: the engine taps the channel in hand only while its EQ is in view.
+        const int tap = ui_.page == PageId::Mixer && mixer_block_of(ui_, channel_kind(mixer_strip(ui_))) == block_eq ? int(mixer_strip(ui_)) : -1;
+        if (tap != spectrum_tapped) { host.set_spectrum_tap(tap); spectrum_tapped = tap; spectrum_view.clear(); }
+        if (tap >= 0) spectrum_view.update(host.spectrum(), dsp::sample_rate(), now);
+        out.spectrum = spectrum_view.bands();
         comp_bar.update(level, reduce, out.ticks, project_->bar_ticks(), out.playing);
         out.comp_bar = comp_bar.bar(); out.comp_ghost = comp_bar.ghost(); out.comp_bar_at = comp_bar.at();
     }
