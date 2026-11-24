@@ -348,6 +348,17 @@ std::array<Binding, 3> mixer_cards(const Project& project, const UiState& ui, bo
     const unsigned block = mixer_block_of(ui, kind);
     const bool second = shift_row != (ui.mixer_row != 0); // − / + left SENDS or COMP on its second row: Shift shows the first
     if (!full_features(ui)) return second ? std::array<Binding, 3> {pan, Binding {}, Binding {}} : std::array<Binding, 3> {sends[0], Binding {}, Binding {}};
+    if (block == block_input) { // the input: its strip's trim, Input Config's monitor, and dry or wet takes
+        if (shift_row) return {};
+        return {strip(StripPart::Trim), Binding {Kind::InputMonitor, 0, 0, int(Monitor::Count) - 1, int(ui.settings.input.monitor)},
+                Binding {Kind::InputWet, 0, 0, 1, project.input_wet ? 1 : 0}};
+    }
+    if (block == block_comp && kind == ChannelKind::Master) { // the printed Compressor, as its page: Shift + K3 In Boost
+        const auto& c = project.compressor;
+        if (second) return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, c.boost}};
+        return {Binding {Kind::CompAttack, 0, 0, 100, c.attack}, Binding {Kind::CompRelease, 0, 0, 100, c.release},
+                Binding {Kind::CompAmount, 0, 0, 100, c.amount}};
+    }
     if (block == block_fx) { // the lit effect of the channel's chain, as its FX page has it (the same cursor and row)
         const int chain = channel_chain(n);
         if (chain < 0) return {};

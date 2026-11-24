@@ -45,7 +45,7 @@ juce::Colour channel_shade(unsigned strip, unsigned knob) {
     case ChannelKind::Track: return ui::knob_shade(strip, knob);
     case ChannelKind::Submix: return ui::sub_shade(channel_sub(strip), knob);
     case ChannelKind::Bus: return ui::loop_shade(channel_bus(strip), knob);
-    default: return knob % 3 == 1 ? ui::colour::sec : knob % 3 == 2 ? ui::colour::mid : channel_kind(strip) == ChannelKind::Input ? ui::colour::ice : ui::colour::text;
+    default: return channel_kind(strip) == ChannelKind::Input ? ui::colour::ice : ui::colour::text; // neutral, as the Bus and Master pages
     }
 }
 juce::Colour load_colour(float load) { return load >= 0.85f ? ui::colour::rec : load >= 0.6f ? ui::colour::amber : ui::colour::play; }
@@ -466,6 +466,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         } else { c.label = "LEVEL"; c.value = juce::String(b.value); }
         break;
     }
+    case Kind::InputMonitor: { // the mixer's input, K2: Input Config's monitor
+        static const char* const words[] {"OFF", "AUTO", "ON"};
+        c.label = "MONITOR"; c.value = words[unsigned(b.value) % 3];
+        break;
+    }
+    case Kind::InputWet: c.label = "RECORD"; c.value = b.value ? "WET" : "DRY"; break; // takes after the input's strip, or before
     case Kind::TrackOut: { // where the track plays: the master or a submix, by its name when it has one
         c.label = "OUTPUT";
         if (!b.value) { c.value = "MASTER"; break; }

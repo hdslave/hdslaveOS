@@ -667,6 +667,8 @@ void Context::apply(const Binding& b, int value) {
         send({Type::SubMix, uint8_t(sub), 0, uint16_t(part), int16_t(value)});
         break;
     }
+    case Kind::InputMonitor: ui.settings.input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1)); input_changed(); break;
+    case Kind::InputWet: project.input_wet = value != 0; send({Type::InputWet, 0, 0, 0, int16_t(project.input_wet)}); break;
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout:

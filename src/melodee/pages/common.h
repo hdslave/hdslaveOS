@@ -42,7 +42,7 @@ void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, floa
 ui::SoftKeys sound_keys(const Snapshot& s); // Stage's B1-B3 for the track (pages/stage_page.cpp): Pads and Keys, Sample held
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
 // A mixer channel's knob shade by strip number (shell/mixer_channels.h): a track's, a submix's own, a bus's (the
-// Looper's); the input ice and the master white, then greys.
+// Looper's); the input ice and the master white on all three.
 juce::Colour channel_shade(unsigned strip, unsigned knob);
 juce::Colour load_colour(float load);                   // a load's: green, amber from 60 %, red from 85 % (of a block, a core)
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),

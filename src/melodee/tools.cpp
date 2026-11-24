@@ -699,6 +699,8 @@ void mixer_other_scene(Snapshot& s, unsigned strip, unsigned block) {
     const float meters[][2] {{0.2f, 0.18f}, {0.62f, 0.58f}, {0.1f, 0.12f}, {0.0f, 0.0f}, {0, 0}, {0, 0}, {0, 0}, {0, 0},
                              {0.35f, 0.3f}, {0.42f, 0.4f}, {0.05f, 0.04f}, {0, 0}, {0.15f, 0.12f}, {0.72f, 0.7f}};
     for (unsigned n = 0; n < other_count; ++n) s.strips[other_row[n]] = {meters[n][0], meters[n][1], 0.0f};
+    s.project.compressor.on = true; s.project.compressor.amount = 45; s.project.input_wet = true; // the master's COMP, the input's RECORD
+    for (unsigned n = 0; n < comp_columns; ++n) s.comp_trail[n] = {-10.0f, n % 7 < 2 ? 0.4f : 1.5f + 3.0f * float((n * 5) % 9) / 8.0f};
 }
 
 void looper_scene(Snapshot& s) {
@@ -1164,6 +1166,7 @@ const Preview previews[] {
     {"mixersub", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_sub(1), 0); }},
     {"mixerbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(1), 0); }},
     {"mixermaster", [](Shell&, Snapshot& s) { mixer_other_scene(s, master_chain, 2); }},
+    {"mixerinput", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_input, 0); }}, // B1 INPUT
     {"mixerrouted", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.project.tracks[2].mix.out = out_sub(1); }},
     {"mixerfx", [](Shell&, Snapshot& s) { // B1 again: FX, the bass's chain in the card, Chorus lit
         mixer_scene(s, 0); s.ui.mixer_b1 = 1;

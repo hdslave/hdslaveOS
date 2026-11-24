@@ -70,7 +70,9 @@ struct MixState {
     std::array<uint8_t, sub_count> sub_level {};
     std::array<int8_t, sub_count> sub_pan {};
     std::array<std::array<uint8_t, bus_count>, sub_count> sub_sends {};
+    bool input_wet = false; // the mixer's input: takes after its strip
     bool operator==(const MixState& o) const {
+        if (input_wet != o.input_wet) return false;
         if (!(level == o.level && sends == o.sends && pan == o.pan && returns == o.returns && outs == o.outs)) return false;
         if (!(sub_level == o.sub_level && sub_pan == o.sub_pan && sub_sends == o.sub_sends)) return false;
         for (unsigned n = 0; n < strip_channels; ++n) if (!same_strip(strips[n], o.strips[n])) return false;

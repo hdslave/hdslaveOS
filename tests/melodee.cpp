@@ -8474,16 +8474,16 @@ void track_move() {
         CHECK(mixer_strip(m) == strip_sub(0) && mixer_row_count(m) == 14 && mixer_row_at(m) == 0);
         pick_other(m, master_chain);
         CHECK(mixer_strip(m) == master_chain && mixer_row_at(m) == 13 && mixer_row_strip(m, 12) == strip_input);
-        // What each channel's keys reach: B1 SENDS, again FX (a bus or the master FX alone; the input none yet: its
-        // EQ); the master no COMP.
+        // What each channel's keys reach: B1 SENDS, again FX (a bus or the master FX alone, the input INPUT); B3 COMP
+        // everywhere (the master's the printed Compressor).
         m.mixer_block = 0;
         CHECK(mixer_block_of(m, ChannelKind::Bus) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_sends);
-        CHECK(mixer_block_of(m, ChannelKind::Track) == block_sends && mixer_block_of(m, ChannelKind::Input) == block_eq);
+        CHECK(mixer_block_of(m, ChannelKind::Track) == block_sends && mixer_block_of(m, ChannelKind::Input) == block_input);
         m.mixer_b1 = 1;
         CHECK(mixer_block_of(m, ChannelKind::Track) == block_fx && mixer_block_of(m, ChannelKind::Submix) == block_fx);
         m.mixer_b1 = 0;
         m.mixer_block = 2;
-        CHECK(mixer_block_of(m, ChannelKind::Master) == block_eq && mixer_block_of(m, ChannelKind::Input) == block_comp);
+        CHECK(mixer_block_of(m, ChannelKind::Master) == block_comp && mixer_block_of(m, ChannelKind::Input) == block_comp);
         CHECK(channel_chain(strip_sub(3)) == int(sub_chain(3)) && channel_chain(bus_chain(2)) == int(bus_chain(2))
               && channel_chain(master_chain) == int(master_chain) && channel_chain(5) == 5 && channel_chain(strip_input) < 0);
         CHECK(mute_on_others(m) && !mute_on_kit(m, true)); // Mute + pad: the channels, never the kit's pads
@@ -8530,10 +8530,22 @@ void track_move() {
         CHECK(!mixer_cards(*project, f, false)[0].bound());
         f.mixer_b1 = 0; f.mixer_row = 1;
         CHECK(mixer_cards(*project, f, false)[0].kind == Binding::Kind::Pan && mixer_cards(*project, f, true)[0].kind == Binding::Kind::Send);
+        // The input's B1 INPUT: trim, monitor, dry or wet takes; the master's B3 the printed Compressor, Shift In Boost.
+        UiState in = m; pick_other(in, strip_input); in.mixer_block = 0;
+        auto inc = mixer_cards(*project, in, false);
+        CHECK(mixer_block_of(in, ChannelKind::Input) == block_input && inc[0].kind == Binding::Kind::Strip);
+        CHECK(inc[1].kind == Binding::Kind::InputMonitor && inc[2].kind == Binding::Kind::InputWet && !mixer_cards(*project, in, true)[0].bound());
+        UiState mc = m; pick_other(mc, master_chain); mc.mixer_block = 2; mc.mixer_row = 0;
+        CHECK(mixer_master_comp(mc) && mixer_cards(*project, mc, false)[0].kind == Binding::Kind::CompAttack);
+        CHECK(mixer_cards(*project, mc, true)[2].kind == Binding::Kind::CompBoost);
+        CHECK(press_scope(*project, mc, SurfaceButton::WheelPush, false).kind == UndoScope::Kind::Master);
         // Undo keeps the submixes' level, pan and sends.
         auto before = mix_of(*project);
         project->subs[2].mix.pan = -20;
         CHECK(!(mix_of(*project) == before));
+        before = mix_of(*project);
+        project->input_wet = !project->input_wet;
+        CHECK(!(mix_of(*project) == before)); // and the input's dry or wet
         // A submix's chain (25-32) on the effect page: Rack with fx_sub, a cursor of its own (the kit pads' share the
         // last), its Compressor's KEY row; keys on it and on the strips follow a track swap.
         UiState r; r.page = PageId::Rack; r.fx_sub = 2;

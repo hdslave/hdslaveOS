@@ -130,6 +130,9 @@ struct Binding {
         // track's output, id the track, 0 the master or out_sub(s); a submix's level, pan or send, id = submix << 8 |
         // Command::SubPart (engine/command.h).
         Strip, TrackOut, SubMix,
+        // The mixer's input (its B1 INPUT): Input Config's monitor (0 Off, 1 Auto, 2 On) and what takes record, 0 the
+        // input dry, 1 after its strip (Project::input_wet).
+        InputMonitor, InputWet,
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

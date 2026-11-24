@@ -142,6 +142,7 @@ void Context::restore_mix(const MixState& m) {
         for (unsigned b = 0; b < bus_count; ++b)
             if (x.sends[b] != m.sub_sends[sub][b]) { x.sends[b] = m.sub_sends[sub][b]; put(Command::SubSend0 + b, x.sends[b]); }
     }
+    if (project.input_wet != m.input_wet) { project.input_wet = m.input_wet; send({Type::InputWet, 0, 0, 0, int16_t(m.input_wet)}); }
 }
 
 void Context::restore_sound(unsigned t, const SoundState& s) {

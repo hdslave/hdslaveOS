@@ -274,6 +274,55 @@ void fx_block(Paint& p, const Snapshot& s, const Channel& ch) {
     }
 }
 
+// INPUT: what the input plays after its strip, a meter a side across the block, its peak in dB over them; the
+// cards set its trim, Input Config's monitor and whether takes record it dry or wet.
+void input_block(Paint& p, const Snapshot& s, const Channel& ch) {
+    const auto& m = s.strips[strip_input];
+    const float peak = std::max(m.left, m.right);
+    p.text("PEAK", block_x + 4, block_y + 4, 40, 14, caps_text(colour::mid));
+    const juce::String minus = juce::String::fromUTF8("\xe2\x88\x92");
+    const float db = peak > 1e-5f ? 20 * std::log10(peak) : -90.0f;
+    const juce::String value = db <= -89 ? minus + juce::String::fromUTF8("\xe2\x88\x9e") : (db < -0.05f ? minus : juce::String()) + juce::String(std::fabs(db), 1);
+    p.text(value + " dB", block_x + 40, block_y + 2, block_w - 44, 16, plain(colour::text, type::body, Weight::SemiBold), juce::Justification::centredRight);
+    const float x = block_x + 4, w = block_w - 8, mh = 14;
+    auto row = [&](float y, float level) { // short segments left to right, 2 px with a gap of 1
+        const unsigned count = unsigned((w + 1) / 3), lit = unsigned(std::lround(meter_fraction(level) * float(count)));
+        for (unsigned n = 0; n < count; ++n) {
+            const float f = float(n) / float(count);
+            const auto c = n >= lit ? colour::line : f > 0.94f ? colour::rec : f > 0.82f ? colour::amber : ch.colour;
+            p.fill(x + float(n) * 3, y, 2, mh, c);
+        }
+    };
+    row(block_y + 26, m.left);
+    row(block_y + 26 + mh + 4, m.right);
+    auto label = plain(colour::mid, type::small, Weight::Medium);
+    const float ly = block_y + 26 + 2 * mh + 8;
+    p.text(minus + "48", x, ly, 30, 13, label);
+    p.text(minus + "12", x + w * 0.75f - 15, ly, 30, 13, label, juce::Justification::centred);
+    p.text("0", x + w - 20, ly, 20, 13, label, juce::Justification::centredRight);
+}
+
+// The master's COMP: the printed Compressor (Shift + Pad 5) as its page has it. What it takes off now, in dB, and
+// what it took off of late, a bar a column hanging down (12 dB the full depth); OFF while it is off.
+void master_comp_block(Paint& p, const Snapshot& s) {
+    const auto& comp = s.project.compressor;
+    const auto& trail = s.comp_trail;
+    const float reduce = trail.back().reduce;
+    p.text("GR", block_x + 4, block_y + 2, 30, 14, caps_text(colour::mid));
+    const juce::String value = (comp.on && reduce >= 0.05f ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(comp.on ? reduce : 0.0f, 1);
+    p.text(value + " dB", block_x + 30, block_y + 1, block_w - 34, 16, plain(comp.on ? colour::text : colour::dim, type::body, Weight::SemiBold), juce::Justification::centredRight);
+    const float hx = block_x + 4, hy = block_y + 22, hw = block_w - 8, hh = block_h - 40;
+    p.fill(hx, hy, hw, 1, colour::line);
+    const unsigned shown = std::min<unsigned>(comp_columns, unsigned(hw / 2));
+    if (comp.on)
+        for (unsigned n = 0; n < shown; ++n) {
+            const float r = trail[comp_columns - shown + n].reduce;
+            if (r >= 0.05f) p.fill(hx + float(n) * 2, hy + 1, 1.4f, hh * std::min(r / 12.0f, 1.0f), colour::amber);
+        }
+    else p.text("OFF", hx, hy + hh / 2 - 7, hw, 14, caps_text(colour::dim), juce::Justification::centred);
+    p.text(juce::String::fromUTF8("\xe2\x88\x92") + "12", hx, hy + hh + 2, 30, 13, plain(colour::mid, type::small, Weight::Medium));
+}
+
 // The channel in hand's card: its name on its colour with M and S (those it has) and, for a track played into a
 // submix, that submix's number in its colour; its meter and fader, its pan, the lit block.
 void card(Paint& p, const Snapshot& s, const Channel& ch) {
@@ -321,8 +370,9 @@ void card(Paint& p, const Snapshot& s, const Channel& ch) {
     p.fill(block_x, block_y, block_w, block_h, colour::surf, 3);
     switch (mixer_block_of(s.ui, ch.kind)) {
     case block_eq: eq_block(p, s, ch); break;
-    case block_comp: comp_block(p, s, ch); break;
+    case block_comp: if (ch.kind == ChannelKind::Master) master_comp_block(p, s); else comp_block(p, s, ch); break;
     case block_fx: fx_block(p, s, ch); break;
+    case block_input: input_block(p, s, ch); break;
     default: sends_block(p, s, ch); break;
     }
 }
@@ -338,9 +388,9 @@ void draw(Paint& p, const Snapshot& s) {
     const unsigned block = mixer_block_of(s.ui, ch.kind);
     const bool sends = channel_sends(ch.kind), fx = !basic && channel_fx(ch.kind);
     // B1: SENDS, again FX (a bus or the master FX alone); B2 EQ, again the next bands; B3 COMP.
-    const char* b1 = block == block_fx || (!sends && fx) ? "FX" : sends ? "SENDS" : "";
+    const char* b1 = block == block_fx || (!sends && fx) ? "FX" : sends ? "SENDS" : basic ? "" : "INPUT";
     SoftKeys keys {{b1, basic ? "" : block == block_eq ? groups[s.ui.mixer_eq_group % 3] : "EQ", basic || !channel_comp(ch.kind) ? "" : "COMP"},
-                   basic && !sends ? -1 : block == block_fx ? 0 : int(block), own};
+                   basic && !sends ? -1 : block == block_fx || block == block_input ? 0 : int(block), own};
     if (!basic) { keys.dots[1] = 3; keys.dot_at[1] = uint8_t(s.ui.mixer_eq_group % 3); }
     if (sends && fx) { keys.dots[0] = 2; keys.dot_at[0] = uint8_t(block == block_fx ? 1 : 0); }
     frame(p, s, keys, h);
@@ -380,7 +430,8 @@ void push(Context& c) {
     const auto kind = channel_kind(n);
     if (kind == ChannelKind::Track && !c.track().used()) { offer_new_track(c); return; }
     const unsigned block = mixer_block_of(c.ui, kind);
-    if (block == block_sends) return;
+    if (block == block_sends || block == block_input) return;
+    if (block == block_comp && kind == ChannelKind::Master) { c.set_compressor(0, !c.project.compressor.on); return; } // the printed Compressor on or off
     if (block == block_fx) {
         const int chain = channel_chain(n);
         if (chain < 0) return;
@@ -400,7 +451,7 @@ void soft(Context& c, int key) {
     if (!full_features(c.ui)) { c.ui.mixer_block = 0; return; }
     const unsigned k = unsigned(key) % 3;
     const auto kind = channel_kind(mixer_strip(c.ui));
-    if ((k == 0 && !channel_fx(kind)) || (k == 2 && !channel_comp(kind))) return;
+    if (k == 2 && !channel_comp(kind)) return;
     const unsigned now = mixer_block_of(c.ui, kind);
     if (k == 0 && channel_sends(kind) && (now == block_sends || now == block_fx)) c.ui.mixer_b1 = c.ui.mixer_b1 ? 0 : 1;
     if (k == 1 && now == block_eq) c.ui.mixer_eq_group = uint8_t((c.ui.mixer_eq_group + 1) % 3);

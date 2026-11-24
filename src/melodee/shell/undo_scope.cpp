@@ -31,6 +31,7 @@ MixState mix_of(const Project& p) {
         m.sub_level[sub] = x.level; m.sub_pan[sub] = x.pan;
         for (unsigned b = 0; b < bus_count; ++b) m.sub_sends[sub][b] = x.sends[b];
     }
+    m.input_wet = p.input_wet;
     return m;
 }
 SoundState sound_of(const Track& t) {
@@ -60,7 +61,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     using S = UndoScope::Kind;
     switch (b.kind) {
     case Kind::Param: case Kind::ModSource: case Kind::ModDest: case Kind::ModAmount: return of(S::Sound, ui);
-    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: case Kind::Strip: case Kind::TrackOut: case Kind::SubMix: return of(S::Mix, ui);
+    case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: case Kind::Strip: case Kind::TrackOut: case Kind::SubMix: case Kind::InputWet: return of(S::Mix, ui);
     case Kind::FxParam: case Kind::FxKey: return of(S::Chain, ui, unsigned(b.id) / 64);
     // Roadmap P4: a modulator's settings and a macro's targets, with the master's; a macro's turn and the picks are not kept.
     case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput: case Kind::ModAttack:
@@ -137,8 +138,9 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {
     case PageId::Song: return of(S::Song, ui);
-    case PageId::Mixer: // its FX block edits the channel's chain (Push: an effect on or off)
+    case PageId::Mixer: // its FX block edits the channel's chain; the master's COMP the printed Compressor
         if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui))));
+        if (mixer_master_comp(ui)) return of(S::Master, ui);
         return of(S::Mix, ui);
     case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));

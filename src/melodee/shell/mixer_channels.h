@@ -79,8 +79,8 @@ inline void pick_other(UiState& ui, unsigned strip) { ui.mixer_bank = 1; ui.mixe
 constexpr bool channel_sends(ChannelKind k) { return k == ChannelKind::Track || k == ChannelKind::Submix; }
 constexpr bool channel_mutes(ChannelKind k) { return k == ChannelKind::Track || k == ChannelKind::Submix || k == ChannelKind::Bus; }
 constexpr bool channel_solos(ChannelKind k) { return k == ChannelKind::Track || k == ChannelKind::Submix; }
-// The master's compressor is the printed Compressor (Melodee step 4), never its strip's.
-constexpr bool channel_comp(ChannelKind k) { return k != ChannelKind::Master; }
+// Every channel has a COMP; the master's is the printed Compressor (Shift + Pad 5), never its strip's.
+constexpr bool channel_comp(ChannelKind) { return true; }
 // A channel's effect chain by its number (model/project.h), or -1: the input has none.
 constexpr int channel_chain(unsigned strip) {
     switch (channel_kind(strip)) {
@@ -91,24 +91,26 @@ constexpr int channel_chain(unsigned strip) {
     default: return -1;
     }
 }
-// B1 on a channel: a track or submix has two pages (SENDS, FX); a bus or the master only FX; the input none yet
-// (its INPUT block comes with Melodee step 4).
+// B1 on a channel: a track or submix has two pages (SENDS, FX); a bus or the master only FX; the input INPUT (it has
+// no chain).
 constexpr bool channel_fx(ChannelKind k) { return k != ChannelKind::Input; }
 
 // The mixer's blocks: what the card shows and K1-K3 turn.
-enum : unsigned { block_sends = 0, block_eq = 1, block_comp = 2, block_fx = 3 };
-// The block for the channel in hand: B1 lit is SENDS or FX (as `mixer_b1` left it; a bus or the master FX alone),
-// B2 EQ, B3 COMP. A key the channel has nothing for shows its EQ (the input's B1, the master's B3 until step 4).
-// Basic: SENDS only.
+enum : unsigned { block_sends = 0, block_eq = 1, block_comp = 2, block_fx = 3, block_input = 4 };
+// The block for the channel in hand: B1 lit is SENDS or FX (as `mixer_b1` left it; a bus or the master FX alone, the
+// input INPUT), B2 EQ, B3 COMP. Basic: SENDS only.
 inline unsigned mixer_block_of(const UiState& ui, ChannelKind k) {
     if (!full_features(ui)) return block_sends;
     const unsigned b = ui.mixer_block % 3;
     if (b == 0) {
         if (channel_sends(k)) return ui.mixer_b1 ? block_fx : block_sends;
-        return channel_fx(k) ? block_fx : block_eq;
+        return channel_fx(k) ? block_fx : block_input;
     }
-    if (b == 2 && !channel_comp(k)) return block_eq;
     return b;
+}
+// The master's COMP lit: the printed Compressor's cards and picture.
+inline bool mixer_master_comp(const UiState& ui) {
+    return ui.page == PageId::Mixer && mixer_strip(ui) == master_chain && mixer_block_of(ui, ChannelKind::Master) == block_comp;
 }
 // The FX block lit, on the channel in hand.
 inline bool mixer_fx_lit(const UiState& ui) { return ui.page == PageId::Mixer && mixer_block_of(ui, channel_kind(mixer_strip(ui))) == block_fx; }
