@@ -17,8 +17,7 @@
 // in an effect's input, or anything else waiting for it (a CLAP plug-in's
 // request_process or request_flush, a parameter value set for it) wakes it
 // for that block and counts it quiet again from there, as a note does. All
-// Sound Off, All Notes Off and Reset All Controllers each lift the pedal, as
-// the plug-in itself takes them. Audio thread only; no allocation.
+// Notes Off releases the keys while a held sustain pedal keeps the gate awake. Audio thread only; no allocation.
 namespace melodee {
 
 class IdleGate {
@@ -31,13 +30,17 @@ public:
     // output already, so only an effect's counts).
     void reset(bool is_instrument, double rate, double tail_seconds = 0) {
         instrument = is_instrument;
-        double span = quiet_seconds;
-        if (!instrument && tail_seconds > span) span = std::min(tail_seconds, 10.0);
-        quiet_needed = uint32_t(std::lround(span * rate));
+        set_tail(rate, tail_seconds);
         quiet = 0;
         held.fill(0);
         held_count = 0;
         sustain = 0;
+    }
+    // Update only the silence threshold. Elapsed quiet time and MIDI state survive a tail change.
+    void set_tail(double rate, double seconds) {
+        double span = quiet_seconds;
+        if (!instrument && seconds > span) span = std::min(seconds, 10.0);
+        quiet_needed = uint32_t(std::lround(span * rate));
     }
     // Every MIDI message sent to the plug-in, as sent: keys held and the sustain pedal followed.
     void midi(uint8_t status, uint8_t data1, uint8_t data2) {
@@ -54,7 +57,7 @@ public:
         } else if (kind == 0xb0 && data1 == 121) { // Reset All Controllers: lift the sustain pedal
             sustain = uint16_t(sustain & ~(1u << channel));
         } else if (kind == 0xb0 && (data1 == 120 || data1 == 123)) {
-            sustain = uint16_t(sustain & ~(1u << channel));
+            if (data1 == 120) sustain = uint16_t(sustain & ~(1u << channel));
             for (unsigned k = 0; k < 16; ++k) {
                 held_count -= unsigned(__builtin_popcount(held[size_t(channel) * 16 + k]));
                 held[size_t(channel) * 16 + k] = 0;

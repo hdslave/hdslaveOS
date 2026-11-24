@@ -60,7 +60,7 @@ private:
 
     void restart() {
         shell = std::make_unique<Shell>(host);
-        host.load(shell->project(), shell->patterns());
+        shell->load_engine();
         note("-- start");
     }
     unsigned pick(unsigned n) { return std::uniform_int_distribution<unsigned>(0, n - 1)(rng); }
@@ -191,10 +191,41 @@ private:
         draw_overlays(p, *snap);
     }
 };
+// Borrow each mutable view on a fresh shell so one accessor cannot mask a bug in the other.
+bool preview_snapshot_edits() {
+    auto host = std::make_unique<EngineHost>();
+    for (bool edit_pattern : {false, true}) {
+        auto shell = std::make_unique<Shell>(*host);
+        shell->load_engine();
+        auto frame = std::make_unique<Snapshot>();
+        shell->snapshot(*frame, 1000);
+        shell->snapshot(*frame, 1001);
+        if (frame->whole) return false; // engine initialization still allows light frames
+        if (edit_pattern) {
+            auto& pattern = shell->patterns().at[0][0];
+            shell->snapshot(*frame, 1002);
+            pattern.length += sixteenth_ticks;
+            shell->snapshot(*frame, 1003);
+            if (frame->sketches[0][0].length != pattern.length) return false;
+        } else {
+            auto& pad = shell->project().tracks[0].pads[0];
+            shell->snapshot(*frame, 1002);
+            pad.sample ^= 1;
+            shell->snapshot(*frame, 1003);
+            if (frame->project.tracks[0].pads[0].sample != pad.sample) return false;
+        }
+        if (shell->snapshot_stale()) return false; // verification must never have to repair a frame
+    }
+    return true;
+}
 } // namespace
 
 int monkey(unsigned first, unsigned seeds, unsigned steps) {
     Shell::snapshot_verify = true;
+    if (!preview_snapshot_edits()) {
+        std::puts("MELODEE_MONKEY retained preview edit or light snapshot check failed");
+        return 1;
+    }
     unsigned failed = 0;
     for (unsigned s = first; s < first + seeds; ++s) {
         auto m = std::make_unique<Monkey>(s); // large: off the stack

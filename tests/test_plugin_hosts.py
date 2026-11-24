@@ -36,10 +36,7 @@ def compile_and_run(test, temp, plugin, host_source, extra_objects, expected):
     test.assertIn(expected, result.stdout)
 
 
-@unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "aarch64"
-                     and all((OBJ / o).is_file() for o in OBJECTS + ["melodee/plugin/clap_instance.o"]),
-                     "needs make's aarch64 objects")
-class PluginHostTests(unittest.TestCase):
+class IdleGateTests(unittest.TestCase):
     def test_idle_gate(self):
         with tempfile.TemporaryDirectory() as temp:
             exe = Path(temp) / "idle_gate"
@@ -49,6 +46,11 @@ class PluginHostTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("idle ok", result.stdout)
 
+
+@unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "aarch64"
+                     and all((OBJ / o).is_file() for o in OBJECTS + ["melodee/plugin/clap_instance.o"]),
+                     "needs make's aarch64 objects")
+class PluginHostTests(unittest.TestCase):
     def test_clap_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.clap"

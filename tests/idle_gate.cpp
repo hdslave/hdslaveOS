@@ -26,9 +26,9 @@ void cc(IdleGate& gate, uint8_t channel, uint8_t controller, uint8_t value) {
 } // namespace
 
 int main() {
-    // The pedal down keeps an instrument awake; each of All Sound Off, Reset All Controllers and All Notes Off
+    // The pedal down keeps an instrument awake; All Sound Off or Reset All Controllers
     // lets it sleep once it has been quiet long enough.
-    for (uint8_t release : {uint8_t(120), uint8_t(121), uint8_t(123)}) {
+    for (uint8_t release : {uint8_t(120), uint8_t(121)}) {
         IdleGate gate;
         gate.reset(true, rate);
         gate.midi(0x90, 60, 100);
@@ -38,6 +38,22 @@ int main() {
         CHECK(!gate.asleep(false, false, nullptr, nullptr, 0)); // the pedal is still down
         cc(gate, 0, release, 0);
         CHECK(gate.keys_held() == 0);
+        CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
+    }
+    { // Ordinary All Notes Off releases held keys, while sustain remains down until CC64 rises.
+        IdleGate gate;
+        gate.reset(true, rate);
+        gate.midi(0x90, 60, 100);
+        cc(gate, 0, 64, 127);
+        gate.midi(0x80, 60, 0);
+        gate.midi(0x90, 62, 100);
+        gate.set_tail(rate, 2.0);
+        CHECK(gate.keys_held() == 1);
+        cc(gate, 0, 123, 0);
+        quiet(gate, 1.0);
+        CHECK(gate.keys_held() == 0);
+        CHECK(!gate.asleep(false, false, nullptr, nullptr, 0));
+        cc(gate, 0, 64, 0);
         CHECK(gate.asleep(false, false, nullptr, nullptr, 0));
     }
     { // The pedal on another channel is not this one's release.
@@ -80,6 +96,18 @@ int main() {
         quiet(gate, 1.5);
         CHECK(gate.asleep(false, false, zeros, zeros, 128));
         CHECK(!gate.asleep(false, false, loud, loud, 128)); // sound at its input wakes it
+    }
+    { // Grow the tail of a quiet effect, then shorten it without losing the elapsed quiet time.
+        IdleGate gate;
+        gate.reset(false, rate);
+        quiet(gate, 0.5);
+        CHECK(gate.asleep(false, false, zeros, zeros, 128));
+        gate.set_tail(rate, 2.0);
+        CHECK(!gate.asleep(false, false, zeros, zeros, 128));
+        quiet(gate, 0.75);
+        CHECK(!gate.asleep(false, false, zeros, zeros, 128));
+        gate.set_tail(rate, 1.0);
+        CHECK(gate.asleep(false, false, zeros, zeros, 128));
     }
     { // The same effect told no tail sleeps after the plain quiet span, as before.
         IdleGate gate;

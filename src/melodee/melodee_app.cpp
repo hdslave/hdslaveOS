@@ -75,7 +75,7 @@ MelodeeApp::MelodeeApp()
     const std::string projects = melodee::ProjectStore::projects_root(Platform().storage());
     if (!projects.empty()) melodee::crash_log::set_folder(std::filesystem::path(projects).parent_path().string() + "/Crashes");
     shell.start_settings(melodee::ProjectStore::read_settings_file(projects).settings);
-    host.load(shell.project(), shell.patterns());
+    shell.load_engine();
     // The tracks render on several cores (roadmap P2). Floating: a worker for each core beside the audio thread, every
     // one free to run anywhere. Pinned: the audio thread on core 1 and two workers on cores 2 and 3, the rest of Melodee
     // kept on core 0 (keep_rest_off()). $MELODEE_RENDER_THREADS: "pinned", or how many floating workers.
