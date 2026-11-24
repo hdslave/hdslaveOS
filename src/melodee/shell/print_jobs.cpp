@@ -114,6 +114,12 @@ void Context::print_tick() {
     audio_tick(); // freeze plan F3: audio tracks' regions and takes (shell/audio_jobs.cpp)
     if (!printer) return;
     autosample_tick();
+    const uint32_t lost = host.print_underruns();
+    if (lost != last_print_underruns) {
+        if (!last_print_underruns || now - last_print_loss_at > 3000) notice("Frozen playback missed audio");
+        last_print_loss_at = now;
+        last_print_underruns = lost;
+    }
     // Freeze plan F2b: packs the audio thread is done with, freed on the print thread; prints ready to play, sent to
     // switch on the next bar; and the next track waiting for its prints, started once the print engine is free.
     FreezePack* done = nullptr;
@@ -131,7 +137,10 @@ void Context::print_tick() {
         }
         if (!wanted || !ready.pack) {
             printer->discard(ready.pack);
-            if (wanted) notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
+            if (wanted) {
+                unfreeze(t); // restore the live track (and reload a deep freeze's plug-ins) on admission failure
+                notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
+            }
             continue;
         }
         print_peaks[t] = std::move(ready.peaks); // freeze plan F2c: Stage's picture of each print

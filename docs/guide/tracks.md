@@ -129,7 +129,8 @@ chain. This saves CPU. The pads still play the sound live.
    including tempo-synced Echo. It also captures delayed sound from reverbs, modulation effects and Looper.
    For example, when Echo feeds a reverb, Ring waits through both effects. When a frozen pattern repeats,
    its earlier tails keep playing over the new pass. Pad Limiter lookahead counts toward the wait.
-   Freeze streams these tails as they play, including when other tracks are streaming samples.
+   Freeze shares read-ahead between sounding prints so several tails can play together.
+   If playback runs out of buffered audio, the screen shows **Frozen playback missed audio**.
    It also follows the tail each plug-in reports at the selected tap. A kit's recorded pad sends can ring out even when its track insert is silent.
    Ring keeps 200 ms of trailing silence, up to ten seconds total after the pattern ends.
 6. Press **B3** (**FREEZE**).
@@ -140,7 +141,9 @@ Beside the pads the sheet shows how many patterns are lit, the space the
 prints take on the card, and the CPU the freeze saves. While the prints
 are made, **B1** (**CANCEL**) calls them off. The track plays live until the
 prints are ready, then switches on a bar line. The first freeze after updating to 0.7.1-hdslave.7
-regenerates prints made with the earlier renderer. Later freezes reuse matching files.
+regenerates prints made with the earlier renderer. Version 0.7.1-hdslave.8 also rebuilds Post FX prints
+with a track Limiter whose lookahead starts at zero. Later freezes reuse matching files.
+If memory cannot hold the pattern starts, Freeze reports the error and returns the track to live playback.
 
 To freeze single patterns, hold **SEQ** and press **SAMPLE RECORD**: each
 pattern pad freezes or thaws that pattern. The prints are made when you let

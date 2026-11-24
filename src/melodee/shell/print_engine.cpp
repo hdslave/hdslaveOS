@@ -97,14 +97,14 @@ long rss_kb() {
 // The effects' delay blocks a print of track `t` can take: its chain's and its pads' chains', and two to spare.
 unsigned delay_blocks_for(const Track& t) {
     unsigned n = 2;
-    auto count = [&](const Chain& c) {
+    auto count = [&](const Chain& c, bool track_chain) {
         for (const auto& slot : c.slots) {
             auto kind = EffectKind(slot.kind);
-            if (effect_needs_memory(kind) || (kind == EffectKind::Limiter && slot.params[2] > 0)) ++n;
+            if (effect_needs_memory(kind) || (kind == EffectKind::Limiter && (track_chain || slot.params[2] > 0))) ++n;
         }
     };
-    count(t.fx);
-    for (const auto& c : t.pad_fx.at) count(c);
+    count(t.fx, true); // Motion and modulators can turn on any track Limiter's lookahead during the print
+    for (const auto& c : t.pad_fx.at) count(c, false);
     if (t.engine == EngineKind::Plugin) n += 2; // its performance knobs' echo and reverb (engine/macros.h)
     return std::min(n, DelayPool::blocks);
 }
@@ -519,7 +519,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     // Set aside cursors before playback. Only sounding voices advance the pager through a tail.
     uint32_t shortest = UINT32_MAX;
     for (const auto& clip : pack->owned) if (clip->pass) shortest = std::min(shortest, clip->pass);
-    for (const auto& clip : pack->owned) clip->prepare_tails(shortest, pager);
+    for (const auto& clip : pack->owned) clip->prepare_playback(shortest, pager);
     f.pack = pack.release();
     return f;
 }

@@ -4,6 +4,7 @@ make built: the CLAP host (tests/clap_host.cpp), the VST2 host
 (tests/vst2_host.cpp) and JUCE's LV2 host as the rack uses it
 (tests/lv2_host.cpp). Runs where those objects are: aarch64
 Linux (./build.sh)."""
+import itertools
 import os
 from pathlib import Path
 import platform
@@ -90,10 +91,23 @@ class PluginHostTests(unittest.TestCase):
             build_clap(clap)
             build_lv2(lv2)
             for plugin, mode in ((clap, "failsave"), (clap, "mono"), (clap, "ringtail"), (clap, "dynamic-ring"),
-                                 (clap, "native-ring"), (clap, "ring-freeze"), (lv2, "lv2wake")):
+                                 (clap, "native-ring"), (lv2, "lv2wake")):
                 with self.subTest(mode=mode):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                                    check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
+    def test_freeze_playback_matches_wavs_or_reports_insufficient_memory(self):
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Test.clap"
+            plugin.parent.mkdir(parents=True)
+            build_clap(plugin)
+            env = {**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")}
+            for rate, count, mib in itertools.product((44100, 48000, 96000), (1, 4, 8, 12, 16), (4, 8, 64)):
+                with self.subTest(rate=rate, patterns=count, locked_mib=mib):
+                    subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), "ring-freeze",
+                                    str(count), str(rate), str(mib)], check=True, timeout=90, env=env)
 
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:

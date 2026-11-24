@@ -450,6 +450,7 @@ public:
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
     uint32_t freeze_waiting = 0;
+    uint32_t last_print_underruns = 0, last_print_loss_at = 0;
     // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's
     // `asleep`): its pads play nothing and only its prints sound. `deep_hold`: deep-frozen tracks whose plug-ins stay
     // until their prints play and the engine sleeps (`deep_sent`: when their pack went, ms). Unfreezing one thaws it:

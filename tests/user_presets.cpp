@@ -127,11 +127,44 @@ static void pad_print_wavs(const std::string& card, const std::string& sample, S
     }
 }
 
+// Compare the worker's WAV to the full engine, including when Motion enables every Limiter after playback starts.
+static void automated_limiter_wav(const std::string& card, const std::string& sample, SampleLibrary& library) {
+    PrintJob job;
+    job.card_top = card; job.project_path = (fs::path(card) / "motion.mldp").string();
+    job.patterns = {0}; job.tap = PrintTap::PostFx; job.tail = PrintTail::Cut;
+    job.project = std::make_unique<Project>(); job.bank = std::make_unique<PatternBank>();
+    auto& tr = job.project->tracks[0]; load_sound(tr, EngineKind::Sampler, 0);
+    tr.pads[0].sample = 0; tr.pads[0].play = PadPlay::OneShot;
+    auto& ref = job.project->samples.edit(0);
+    std::snprintf(ref.path, sizeof(ref.path), "%s", sample.c_str()); ref.frames = 128;
+    auto& pat = job.bank->at[0][0]; pat.length = job.project->bar_ticks();
+    Step note; note.notes[0] = {sampler_first_note, 110}; pat.set_step(8, note);
+    for (unsigned i = 0; i < track_slots; ++i) {
+        tr.fx.slots[i] = {uint8_t(EffectKind::Limiter), false, {0, 30, 0, 0, 0, 0}};
+        MotionPoint motion; motion.tick = 2 * sixteenth_ticks; motion.param = motion_fx_param(i, 2); motion.value = 10;
+        pat.write_motion(motion);
+    }
+    print_project(*job.project, *job.bank, 0, 0);
+    auto host = std::make_unique<EngineHost>();
+    host->set_audio_format(dsp::sample_rate(), EngineHost::block);
+    host->load(*job.project, *job.bank);
+    auto inputs = library.hold_samples();
+    CHECK(inputs[0] && host->offer_sample(0, inputs[0]));
+    std::array<int32_t, 2 * EngineHost::block> idle {};
+    host->render(idle.data(), EngineHost::block, 1.0f);
+    const auto expected = render_print(*host, 0, pat.length, job.tap, job.tail, [] { return true; });
+    library.release_samples();
+    PrintEngine printer(&library);
+    const auto wav = print_wav(printer, std::move(job));
+    CHECK(expected.error.empty() && *std::max_element(wav.left.begin(), wav.left.end()) > 0.05f);
+    CHECK(wav.left == expected.left && wav.right == expected.right);
+}
+
 // A budget shared by inactive launch points and the pager's active read windows.
-static size_t locked_bytes;
+static size_t locked_bytes, lock_limit;
 static bool budget_pin(const void*, size_t bytes, bool lock) {
     if (lock) {
-        if (locked_bytes + bytes > 8 * 1024 * 1024) return false;
+        if (locked_bytes + bytes > lock_limit) return false;
         locked_bytes += bytes;
     } else {
         CHECK(bytes <= locked_bytes);
@@ -140,7 +173,9 @@ static bool budget_pin(const void*, size_t bytes, bool lock) {
     return true;
 }
 
-static void freeze_ring_wavs(const std::string& card, const std::string& plugin) {
+static void freeze_ring_wavs(const std::string& card, const std::string& plugin, unsigned count, unsigned rate, unsigned budget_mib) {
+    dsp::device_rate.store(rate);
+    lock_limit = size_t(budget_mib) << 20;
     StreamPager pager(budget_pin);
     PrintEngine printer(nullptr); printer.set_pager(&pager);
     PrintJob job;
@@ -152,17 +187,38 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin)
     std::snprintf(job.project->plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
     track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 13, 0}};
     track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
-    for (uint8_t p = 0; p < 8; ++p) {
+    for (uint8_t p = 0; p < count; ++p) {
         auto& pattern = job.bank->at[0][p]; pattern.length = job.project->bar_ticks();
         Step step; step.notes[0] = {uint8_t(60 + p), 110}; pattern.set_step(0, step);
         job.patterns.push_back(p);
+    }
+    // All fixtures print stereo tails longer than a second and have no other bar lines.
+    const size_t head_chunks = (2 * rate + stream_chunk - 1) / stream_chunk;
+    if (count * head_chunks * stream_chunk_bytes > lock_limit) {
+        // The launch points alone exceed the budget. Exercise the sheet's freeze path through to its notice.
+        auto host = std::make_unique<EngineHost>();
+        auto shell = std::make_unique<Shell>(*host);
+        shell->set_printer(&printer);
+        auto& context = shell->context();
+        context.project = *job.project; context.patterns = *job.bank; context.project_path = job.project_path;
+        Context::PrintAsk ask; ask.all = true; ask.deep = true; ask.tail = PrintTail::Ring;
+        context.freeze(ask);
+        CHECK(context.deep(0));
+        context.print_tick();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (printer.busy() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        CHECK(!printer.busy());
+        context.print_tick();
+        CHECK(std::string(shell->ui().notice).find("cannot hold") != std::string::npos);
+        CHECK(!context.frozen(0) && !context.plugins_asleep() && !host->frozen_tracks());
+        return;
     }
     run_job(printer, std::move(job));
     FreezeReady ready;
     CHECK(printer.take_ready(ready) && ready.error.empty() && ready.pack);
     std::unique_ptr<FreezePack> pack(ready.pack);
-    CHECK(pack->owned.size() == 8);
-    auto& clip = *pack->clips[0];
+    CHECK(pack->owned.size() == count);
     PrintPlayer player; player.set_pager(&pager);
     // The first audible repeat arrives several launches later. The tail voices must each
     // retain their stream through the seam and release it even when playback is cut.
@@ -178,14 +234,28 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin)
     while (pager.pump()) {}
     const size_t launch_bytes = locked_bytes;
     float peak = 0;
-    for (unsigned n = 0; n < 10; ++n) {
+    std::vector<PrintClip*> launched;
+    for (unsigned n = 0; n < count + 14; ++n) {
+        auto& clip = *pack->clips[n < count ? n : 0];
+        launched.push_back(&clip);
         player.follow(&clip, 0, 0, clip.pass, float(clip.rate));
         for (unsigned at = 0; at < clip.pass; at += 128) {
             while (pager.pump()) {}
             float l[128] {}, r[128] {};
             unsigned frames = std::min(128u, clip.pass - at);
             player.render(l, r, frames);
-            peak = std::max(peak, *std::max_element(l, l + frames));
+            for (unsigned k = 0; k < frames; ++k) {
+                float expected_l = 0, expected_r = 0;
+                for (unsigned age = 0; age < launched.size(); ++age) {
+                    const auto& source = *launched[n - age];
+                    const unsigned frame = age * clip.pass + at + k;
+                    if (frame >= source.frames) continue;
+                    expected_l += source.data()[2 * frame];
+                    expected_r += source.data()[2 * frame + 1];
+                }
+                CHECK(l[k] == expected_l && r[k] == expected_r);
+                peak = std::max(peak, std::fabs(l[k]));
+            }
         }
     }
     CHECK(peak > 0.1f && player.underruns == 0 && player.waits == 0);
@@ -199,9 +269,14 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin)
 // A separate invocation starts a fresh project and a new plug-in instance.
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
-    CHECK(argc == 4);
+    CHECK(argc >= 4);
     const std::string card = argv[1], plugin = argv[2], mode = argv[3];
-    if (mode == "ring-freeze") { freeze_ring_wavs(card, plugin); return 0; }
+    if (mode == "ring-freeze") {
+        CHECK(argc == 7);
+        freeze_ring_wavs(card, plugin, std::stoul(argv[4]), std::stoul(argv[5]), std::stoul(argv[6]));
+        return 0;
+    }
+    CHECK(argc == 4);
     if (mode == "native-ring") { native_ring_wav(card, plugin); return 0; }
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
@@ -462,6 +537,7 @@ int main(int argc, char** argv) {
     CHECK(samples->load(0, source, false));
     wait([&] { samples->service(hardware); return samples->loads_waiting() == 0; });
     pad_print_wavs(card, source, *samples);
+    automated_limiter_wav(card, source, *samples);
     tr.pads[0].start = 32;
     tr.pads[0].end = 96;
     chord();
