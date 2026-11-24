@@ -1,7 +1,8 @@
 # Mixer: plan
 
 Status: design approved 2026-11-24, then eight stereo submixes added. All
-decisions made the same day (end of this file). Nothing built.
+decisions made the same day (end of this file). Core step 1 (model and
+files) built: core e971012. Nothing plays or shows yet.
 
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
