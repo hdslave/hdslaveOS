@@ -11,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 #include <stdexcept>
+#include <sys/resource.h>
 #include <thread>
 
 using namespace melodee;
@@ -203,7 +204,7 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin,
         context.project = *job.project; context.patterns = *job.bank; context.project_path = job.project_path;
         Context::PrintAsk ask; ask.all = true; ask.deep = true; ask.tail = PrintTail::Ring;
         context.freeze(ask);
-        CHECK(context.deep(0));
+        CHECK(!context.frozen(0));
         context.print_tick();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
         while (printer.busy() && std::chrono::steady_clock::now() < deadline)
@@ -266,6 +267,181 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin,
     while (pager.pump()) {}
 }
 
+// Through the real Print sheet, print worker, audio command queue and render callback.
+static void freeze_transitions(const std::string& card, const std::string& plugin, const std::string& mode) {
+    constexpr unsigned rate = 48000, block = EngineHost::block;
+    const bool memory = mode == "freeze-replace";
+    const bool deep = mode == "deep-freeze-live" || mode == "deep-freeze-replace";
+    const bool prior_freeze = mode == "deep-freeze-replace";
+    if (memory) {
+        struct rlimit limit {};
+        CHECK(getrlimit(RLIMIT_MEMLOCK, &limit) == 0 && limit.rlim_max >= 8 * 1024 * 1024);
+        limit.rlim_cur = 8 * 1024 * 1024;
+        CHECK(setrlimit(RLIMIT_MEMLOCK, &limit) == 0);
+    }
+
+    dsp::device_rate.store(rate);
+    auto host = std::make_unique<EngineHost>();
+    host->set_render_threads(0);
+    auto rack = std::make_unique<PluginRack>(*host);
+    rack->set_card(card);
+    PrintEngine printer(nullptr);
+    printer.set_pager(&host->streams());
+    auto shell = std::make_unique<Shell>(*host);
+    shell->set_printer(&printer);
+    if (deep) shell->set_plugins(rack.get());
+    auto& c = shell->context();
+    c.project_path = (fs::path(card) / (mode + ".mldp")).string();
+    c.now = 1000;
+    c.project.tempo = deep ? 300 : 1200;
+    c.project.signature = deep ? 8 : 0; // 9/4 at 30 BPM is an 18-second bar
+    auto& track = c.project.tracks[0];
+    load_sound(track, EngineKind::Plugin, 0);
+    track.plugin = 0;
+    std::snprintf(c.project.plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
+    if (memory) {
+        track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 13, 0}};
+        track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
+    }
+    const unsigned count = memory ? 24 : prior_freeze ? 2 : 1;
+    for (unsigned p = 0; p < count; ++p) {
+        auto& pattern = c.patterns.at[0][p];
+        pattern.length = c.project.bar_ticks();
+        for (unsigned i = 0; i < (deep ? 36u : 1u); ++i) {
+            Step note;
+            note.notes[0] = {uint8_t(60 + p), 110};
+            note.length = deep ? 2 : 1;
+            pattern.set_step(i, note);
+        }
+    }
+    host->load(c.project, c.patterns);
+    host->set_audio_format(rate, block);
+    host->streams().start();
+    std::array<int32_t, block * 2> audio {};
+    auto render = [&] { host->render(audio.data(), block, 0.7f); };
+    auto prepare = [&](uint64_t picks, bool unload = false) {
+        c.open_print_sheet();
+        auto& sheet = shell->ui().print_sheet;
+        sheet.picks[0] = picks;
+        sheet.tail = memory ? PrintTail::Ring : PrintTail::Loop;
+        c.print_sheet_go(unload);
+        CHECK(sheet.printing);
+        c.print_tick();
+        auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (printer.busy() && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        CHECK(!printer.busy());
+    };
+    auto deliver = [&] { c.print_tick(); render(); };
+    auto selected = [&](uint64_t mask) {
+        CHECK(c.frozen(0) && (host->frozen_tracks() & 1));
+        CHECK(c.prints.freeze[0].patterns[0] == mask);
+    };
+
+    if (memory) {
+        const uint64_t initial = (uint64_t{1} << 16) - 1, smaller = (uint64_t{1} << 15) - 1;
+        prepare(initial);
+        deliver();
+        selected(initial);
+        prepare(smaller);
+        deliver();
+        selected(smaller); // remapping the retained heads would exceed 8 MiB
+        prepare((uint64_t{1} << count) - 1);
+        deliver();
+        selected(smaller); // 24 independent heads cannot fit even with reuse
+        CHECK(std::string(shell->ui().notice).find("kept: cannot hold") != std::string::npos);
+        CHECK(host->send({Command::Type::Play}));
+        bool sounded = false;
+        // This fully wet Echo/Spring fixture first sounds several pattern passes later.
+        for (unsigned i = 0; i < 8 * rate / block; ++i) {
+            render();
+            if (i % 8 == 0) std::this_thread::sleep_for(std::chrono::microseconds(350));
+            sounded |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
+        }
+        CHECK(host->printing_tracks() & 1);
+        CHECK(sounded);
+        CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+    } else if (deep) {
+        // An ordinary pack that covers only pattern 2 leaves pattern 1 playing live. Its
+        // frozen bit must never count as acknowledgment of the requested deep freeze.
+        for (unsigned i = 0; i < 1500 && (i < 30 || rack->status(0) != PluginStatus::Ready); ++i) {
+            c.plugins_tick(++c.now);
+            render();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        CHECK(rack->status(0) == PluginStatus::Ready);
+        if (prior_freeze) {
+            prepare(2);
+            deliver();
+            selected(2);
+        }
+        CHECK(host->send({Command::Type::Play}));
+        for (unsigned i = 0; i < 96; ++i) render(); // ask in the body of the bar
+        prepare(1, true);
+        deliver();
+        CHECK(c.deep(0) && !(host->printing_tracks() & 1));
+
+        const uint32_t begin = c.now;
+        bool audible = false, switched = false;
+        unsigned windows = 0;
+        for (unsigned i = 0; i < 27 * rate / block; ++i) {
+            const unsigned frames = i * block;
+            c.now = begin + uint32_t(uint64_t(frames) * 1000 / rate);
+            if (i % 8 == 0) {
+                c.plugins_tick(c.now);
+                c.print_tick();
+                std::this_thread::sleep_for(std::chrono::microseconds(350));
+            }
+            render();
+            switched |= (host->printing_tracks() & 1) != 0;
+            if (!switched) CHECK(!(c.plugins_asleep() & 1) && !rack->asleep(0));
+            audible |= std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; });
+            const unsigned elapsed = (frames + block) / rate;
+            if (elapsed != windows) {
+                CHECK(audible);
+                audible = false;
+                windows = elapsed;
+            }
+        }
+        CHECK(switched && (c.plugins_asleep() & 1) && rack->asleep(0));
+        CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+    } else {
+        auto fill_queue = [&] {
+            Command swing {Command::Type::Swing};
+            swing.value = 50;
+            unsigned queued = 0;
+            while (host->send(swing)) CHECK(++queued <= 4096);
+            CHECK(queued > 4000);
+        };
+        prepare(1);
+        fill_queue();
+        c.print_tick();
+        CHECK(shell->ui().print_sheet.printing && !c.frozen(0) && !(host->frozen_tracks() & 1));
+        render();
+        c.print_sheet_cancel(); // cancellation must invalidate a ready pack that could not be sent
+        deliver();
+        CHECK(!shell->ui().print_sheet.printing && !c.frozen(0) && !(host->frozen_tracks() & 1));
+
+        prepare(1);
+        fill_queue();
+        deliver(); // delivery was refused, then the render drained the queue
+        CHECK(shell->ui().print_sheet.printing && !c.frozen(0) && !(host->frozen_tracks() & 1));
+        deliver();
+        CHECK(!shell->ui().print_sheet.printing);
+        selected(1);
+
+        fill_queue();
+        c.open_print_sheet();
+        c.print_sheet_unfreeze();
+        selected(1);
+        CHECK(std::string(shell->ui().notice).find("waiting to unfreeze") != std::string::npos);
+        render();
+        deliver();
+        CHECK(!c.frozen(0) && !(host->frozen_tracks() & 1));
+        CHECK(std::string(shell->ui().notice) == "Track 1 live");
+    }
+}
+
 // A separate invocation starts a fresh project and a new plug-in instance.
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
@@ -277,6 +453,10 @@ int main(int argc, char** argv) {
         return 0;
     }
     CHECK(argc == 4);
+    if (mode == "freeze-replace" || mode == "freeze-queue" || mode == "deep-freeze-live" || mode == "deep-freeze-replace") {
+        freeze_transitions(card, plugin, mode);
+        return 0;
+    }
     if (mode == "native-ring") { native_ring_wav(card, plugin); return 0; }
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth

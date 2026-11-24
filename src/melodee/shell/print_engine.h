@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 // Freeze plan F2a: the print engine. One thread at SCHED_IDLE (it takes only
@@ -33,6 +34,7 @@ class SampleLibrary;
 class StreamPager;
 struct SampleData;
 struct FreezePack;
+struct PrintSource;
 
 struct PrintJob {
     std::string project_path;            // whose prints (results for another project are dropped)
@@ -146,6 +148,7 @@ public:
     // its streams (and its files' mappings with it).
     void set_pager(StreamPager* p) { pager = p; }
     bool take_ready(FreezeReady& out);
+    void return_ready(FreezeReady result); // retry delivery after the audio queue drains
     void discard(FreezePack* pack);
     // Any thread: what it is doing and the latest results, a line each (`melodee-print status`); a line of its own.
     std::string status() const;
@@ -164,6 +167,14 @@ private:
                                 std::unique_ptr<NoteSource>* keep = nullptr);
     FreezeReady freeze_pack(const PrintJob& job, const PrintTable& known);
     void empty_trash(); // print thread: the packs discarded, freed
+    struct MappedPrint {
+        PrintRecord record;
+        uint64_t device = 0, inode = 0, bytes = 0, offset = 0;
+        int64_t modified_seconds = 0, modified_nanos = 0;
+        uint32_t bar = 0, ticks = 0;
+        std::weak_ptr<PrintSource> source;
+    };
+    std::unordered_map<std::string, MappedPrint> mapped_prints; // print thread, one entry per active file
     SampleLibrary* library;
     StreamPager* pager = nullptr;
     std::deque<FreezeReady> ready;   // under lock

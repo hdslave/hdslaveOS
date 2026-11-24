@@ -217,6 +217,11 @@ bool PrintEngine::take_ready(FreezeReady& out) {
     return true;
 }
 
+void PrintEngine::return_ready(FreezeReady result) {
+    std::lock_guard<std::mutex> held(lock);
+    ready.push_front(std::move(result));
+}
+
 void PrintEngine::discard(FreezePack* pack) {
     if (!pack) return;
     std::lock_guard<std::mutex> held(lock);
@@ -448,6 +453,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     pack->track = uint8_t(job.track);
     pack->tap = job.tap;
     pack->deep = job.deep; // freeze plan F2d
+    pack->serial = job.serial;
     { // freeze plan F2c: what its prints were made at (a print whose hash still matches was made at these too)
         Mix m = print_mix(job.project->tracks[job.track % track_count]);
         pack->level = m.level; pack->pan = m.pan;
@@ -456,6 +462,10 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     const std::string folder = prints_folder(job.project_path);
     const Track& track = job.project->tracks[job.track % track_count];
     const unsigned bar = std::max(1u, job.project->bar_ticks());
+    for (auto it = mapped_prints.begin(); it != mapped_prints.end();) {
+        if (it->second.source.expired()) it = mapped_prints.erase(it);
+        else ++it;
+    }
     for (uint8_t p : job.patterns) {
         const PrintRecord* rec = known.find(job.track, p);
         if (!rec) { f.error = "no print of " + print_pattern_name(p); return f; }
@@ -465,40 +475,57 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         int fd = ::open(path.c_str(), O_RDONLY);
         struct stat st {};
         if (fd < 0 || fstat(fd, &st) != 0 || uint64_t(st.st_size) < offset + bytes) { if (fd >= 0) ::close(fd); f.error = "cannot open " + rec->file; return f; }
-        void* map = mmap(nullptr, size_t(st.st_size), PROT_READ, MAP_SHARED, fd, 0);
+        const uint32_t ticks = std::max(1u, played_pattern(job.bank->at[job.track][p], track.speed).length);
+        auto& cached = mapped_prints[path];
+        std::shared_ptr<PrintSource> source;
+        if (cached.record == *rec && cached.device == uint64_t(st.st_dev) && cached.inode == uint64_t(st.st_ino) &&
+            cached.bytes == uint64_t(st.st_size) && cached.offset == offset && cached.bar == bar && cached.ticks == ticks &&
+            cached.modified_seconds == st.st_mtim.tv_sec && cached.modified_nanos == st.st_mtim.tv_nsec)
+            source = cached.source.lock();
+        const bool reuse = bool(source);
+        if (!reuse) {
+            void* map = mmap(nullptr, size_t(st.st_size), PROT_READ, MAP_SHARED, fd, 0);
+            if (map == MAP_FAILED) { ::close(fd); f.error = "cannot map " + rec->file; return f; }
+            source = std::make_shared<PrintSource>();
+            auto& part = source->part;
+            part.mapping = map; part.mapping_bytes = size_t(st.st_size);
+            part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
+        }
         ::close(fd);
-        if (map == MAP_FAILED) { f.error = "cannot map " + rec->file; return f; }
-        auto clip = std::make_unique<PrintClip>();
+
+        auto clip = std::make_unique<PrintClip>(source);
         clip->set_sends(rec->sends); // a kit's pad sends ride along in pairs after the print's own two
         const unsigned s = clip->stride;
-        auto& part = clip->part;
-        part.mapping = map; part.mapping_bytes = size_t(st.st_size); // unmapped with the clip
+        auto& part = source->part;
         clip->frames = uint32_t(std::min<uint64_t>(bytes / (4 * s), rec->frames));
         clip->rate = rate;
         clip->tail = rec->tail;
         clip->pass = uint32_t(std::llround(double(rec->pass) * rate / dsp::model_rate));
-        part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
-        part.total = s * clip->frames;
-        if (!part.total) { f.error = "empty print " + rec->file; return f; }
-        part.pins.assign((part.total - 1) / stream_chunk + 1, 0);
-        part.frames.store(part.total);
-        // Held: the first second, and two chunks from each bar line in the pass on.
-        auto hold = [&](uint32_t from_float, uint32_t floats) {
-            from_float -= from_float % stream_chunk;
-            uint32_t to = uint32_t(std::min<uint64_t>(uint64_t(from_float) + floats, part.total));
-            if (from_float >= to) return true;
-            if (!pager || !pager->hold(part, from_float, to - from_float)) return false;
-            uint32_t end = uint32_t(std::min<uint64_t>((uint64_t(to - 1) / stream_chunk + 1) * stream_chunk, part.total)); // whole chunks
-            clip->held.push_back({from_float, end});
-            return true;
-        };
-        bool held = hold(0, std::max<uint32_t>(s * rate, 2 * stream_chunk));
-        const uint32_t ticks = std::max<uint32_t>(1, played_pattern(job.bank->at[job.track][p], track.speed).length);
-        for (uint32_t b = bar; held && b < ticks; b += bar) {
-            uint64_t frame = uint64_t(clip->pass) * b / ticks;
-            if (frame >= uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(s * frame, part.total)), 2 * stream_chunk);
+        if (!reuse) {
+            part.total = s * clip->frames;
+            if (!part.total) { f.error = "empty print " + rec->file; return f; }
+            part.pins.assign((part.total - 1) / stream_chunk + 1, 0);
+            part.frames.store(part.total);
+            // Held: the first second, and two chunks from each bar line in the pass on.
+            // A reused mapping already has these pins. Its old and new voices have separate pager windows.
+            auto hold = [&](uint32_t from_float, uint32_t floats) {
+                from_float -= from_float % stream_chunk;
+                uint32_t to = uint32_t(std::min<uint64_t>(uint64_t(from_float) + floats, part.total));
+                if (from_float >= to) return true;
+                if (!pager || !pager->hold(part, from_float, to - from_float)) return false;
+                uint32_t end = uint32_t(std::min<uint64_t>((uint64_t(to - 1) / stream_chunk + 1) * stream_chunk, part.total));
+                source->held.push_back({from_float, end});
+                return true;
+            };
+            bool held = hold(0, std::max<uint32_t>(s * rate, 2 * stream_chunk));
+            for (uint32_t b = bar; held && b < ticks; b += bar) {
+                uint64_t frame = uint64_t(clip->pass) * b / ticks;
+                if (frame >= uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(s * frame, part.total)), 2 * stream_chunk);
+            }
+            if (!held) { f.error = "cannot hold " + rec->file + " in memory"; return f; }
+            cached = {*rec, uint64_t(st.st_dev), uint64_t(st.st_ino), uint64_t(st.st_size), offset,
+                      st.st_mtim.tv_sec, st.st_mtim.tv_nsec, bar, ticks, source};
         }
-        if (!held) { f.error = "cannot hold " + rec->file + " in memory"; return f; }
         { // freeze plan F2c: its first pass in small for Stage, a few frames of each column read
             PrintPeaks peaks {};
             const uint32_t span = std::max<uint32_t>(1, std::min(clip->frames, clip->pass ? clip->pass : clip->frames));

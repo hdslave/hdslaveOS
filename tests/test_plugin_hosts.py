@@ -109,6 +109,27 @@ class PluginHostTests(unittest.TestCase):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), "ring-freeze",
                                     str(count), str(rate), str(mib)], check=True, timeout=90, env=env)
 
+    def run_freeze_transition(self, mode):
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Test.clap"
+            plugin.parent.mkdir(parents=True)
+            build_clap(plugin)
+            subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
+                           check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
+    def test_deep_freeze_waits_for_its_pack_to_take_over(self):
+        for mode in ("deep-freeze-live", "deep-freeze-replace"):
+            with self.subTest(mode=mode):
+                self.run_freeze_transition(mode)
+
+    def test_freeze_replacement_reuses_pins_and_preserves_selection_on_failure(self):
+        self.run_freeze_transition("freeze-replace")
+
+    def test_freeze_and_unfreeze_retry_when_the_audio_queue_is_full(self):
+        self.run_freeze_transition("freeze-queue")
+
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.so"

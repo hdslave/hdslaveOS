@@ -444,27 +444,32 @@ public:
     // Each freeze asked has a serial: the prints of one a later ask replaced are dropped. `freeze_waiting`: a bit a
     // track whose prints wait for the print engine. refreeze(): the track's prints checked and played again (after
     // the audio thread took the track anew: a copy, an undo, a move).
-    void freeze(const PrintAsk& ask);
+    bool freeze(const PrintAsk& ask);
+    void request_freeze(unsigned track, const TrackFreeze& selection);
+    void cancel_freeze_request(unsigned track);
+    void finish_freeze_sheet(unsigned track);
+    void reject_freeze(unsigned track, const std::string& error);
     void unfreeze(unsigned track);
     void refreeze(unsigned track);
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
-    uint32_t freeze_waiting = 0;
+    std::array<TrackFreeze, track_count> freeze_requested {}; // until all prints are ready and the audio queue takes them
+    uint32_t freeze_waiting = 0, freeze_restoring = 0, unfreeze_waiting = 0;
     uint32_t last_print_underruns = 0, last_print_loss_at = 0;
     // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's
     // `asleep`): its pads play nothing and only its prints sound. `deep_hold`: deep-frozen tracks whose plug-ins stay
-    // until their prints play and the engine sleeps (`deep_sent`: when their pack went, ms). Unfreezing one thaws it:
+    // until their own pack is active and the engine sleeps. Unfreezing one thaws it:
     // `thawing` tracks reload their plug-ins with the state they were let go with, the prints playing meanwhile, and go
     // live once every one is open (thaw_tick()). plugins_asleep(): the tracks whose plug-ins are let go now.
     bool deep(unsigned track) const { return prints.freeze[track % track_count].state == FreezeState::Deep; }
     uint32_t deep_hold = 0, thawing = 0;
-    std::array<uint32_t, track_count> deep_sent {}, thaw_since {}, thaw_ready {};
+    std::array<uint32_t, track_count> deep_serial {}, deep_active_at {}, thaw_since {}, thaw_ready {};
     uint32_t thaw_took = 0; // ms, the last thaw's
     // For `melodee-freeze status` (any thread): the deep-frozen tracks, the thawing ones, the last thaw's ms.
     std::atomic<uint32_t> deep_now {0}, thawing_now {0}, thaw_took_now {0};
     uint32_t plugins_asleep() const;
     void thaw_tick();
-    void go_live(unsigned track); // the freeze dropped at once (unfreeze() of a track not deep, or a thaw done)
+    bool go_live(unsigned track); // false if the audio queue is full, leaving the accepted freeze in place
     // Freeze plan F2c (shell/print_sheet.cpp). The PRINT sheet: opened by Sample Record on a PLUGIN or MIDI track (B3
     // PRINT on a kit's Record), its pads the patterns of the bank in view (a tap lights or leaves one out, B2 ALL), B3
     // FREEZE prints and freezes them, B1 CANCEL closes it or calls the prints off with nothing changed.
@@ -494,7 +499,6 @@ public:
     // its share of a block as it played live then (0: not known), for what freezing saved.
     std::array<TrackFreeze, track_count> freeze_last {};
     std::array<float, track_count> live_load {};
-    TrackFreeze print_was {}; // the track's freeze before B3 FREEZE, for B1 to put back
     // Each frozen track's prints in small (PrintPeaks, shell/print_engine.h), by pattern, as their freeze was made.
     std::array<std::vector<std::pair<uint8_t, std::array<uint8_t, 96>>>, track_count> print_peaks {};
     // Sampler tracks

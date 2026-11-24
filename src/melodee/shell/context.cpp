@@ -146,10 +146,16 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     send({Type::AllNotesOff, 255});
     import_unsaved = false; // an MPC project's load sets it again once this is done (Shell::lights)
     prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
-    freeze_waiting = 0; // freeze plan F2b: its frozen tracks play live until their prints are checked and mapped again
-    deep_hold = thawing = 0; // freeze plan F2d: its deep-frozen tracks' plug-ins are never loaded (plugins_asleep())
-    deep_sent.fill(0);
-    for (unsigned t = 0; t < track_count; ++t) { ++freeze_serial[t]; if (frozen(t)) freeze_waiting |= 1u << t; }
+    freeze_requested = {};
+    freeze_waiting = freeze_restoring = unfreeze_waiting = 0;
+    deep_hold = thawing = 0; // saved deep freezes keep their plug-ins asleep while their prints are checked
+    deep_serial.fill(0);
+    deep_active_at.fill(0);
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!frozen(t)) continue;
+        freeze_restoring |= 1u << t;
+        request_freeze(t, prints.freeze[t]);
+    }
     audio_stale = 0xffff; // freeze plan F3: its audio tracks' regions mapped again (the audio thread lets the last go)
     audio_peaks.reset();  // and their takes' overviews read again (another folder's)
     audio_prune = true;   // and its takes no pattern plays removed (nothing in its history can bring them back)

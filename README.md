@@ -129,7 +129,8 @@ page and control, read the [user guide](docs/GUIDE.md).
 - **Freeze**: print a track to audio and play it from the card, or deep
   freeze it to unload its plug-ins too. Ring prints keep delayed repeats, reverb
   tails and kit pad sends, and follow changes to plug-in tails. Long tails stream as they overlap
-  across successive passes of a frozen pattern.
+  across successive passes of a frozen pattern. Changing the selection keeps the previous freeze
+  playable if the new selection exceeds the memory available.
 - **Sync**: MIDI clock and MTC in and out, and CV clock out.
 - **The Menu**: hold the encoder on any page for the page's jobs with their
   shortcuts, and the 16 places laid out as the pads. Four short **lessons**

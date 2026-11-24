@@ -30,7 +30,9 @@ bool none_of(const std::array<uint64_t, (pattern_count + 63) / 64>& bits) {
 
 // ---- the question before an edit of a frozen track
 
-bool Context::print_covers(const UndoScope& s) const { return melodee::print_covers(prints.freeze, s); } // shell/undo_scope.h
+bool Context::print_covers(const UndoScope& s) const {
+    return melodee::print_covers(prints.freeze, s) || melodee::print_covers(freeze_requested, s);
+}
 
 void Context::ask_unfreeze(unsigned track) {
     ask(*this, UiState::Ask::Unfreeze, int(track % track_count));
@@ -43,7 +45,7 @@ bool Context::frozen_edit(const UndoScope& scope) {
 }
 
 bool Context::frozen_edit(unsigned track) {
-    if (!frozen(track)) return false;
+    if (!frozen(track) && !freeze_requested[track % track_count].frozen()) return false;
     ask_unfreeze(track);
     return true;
 }
@@ -51,8 +53,11 @@ bool Context::frozen_edit(unsigned track) {
 bool Context::edit_covers(const Edit& e) const {
     if (e.swap_a >= 0 || e.track_before) return false; // a move or a copy: the tracks are printed again (freeze plan F2b)
     const unsigned t = e.track % track_count;
-    auto pattern_frozen = [&](unsigned track, unsigned p) { return frozen(track) && prints.freeze[track % track_count].plays(p); };
-    if (frozen(t)) {
+    auto pattern_frozen = [&](unsigned track, unsigned p) {
+        track %= track_count;
+        return prints.freeze[track].plays(p) || freeze_requested[track].plays(p);
+    };
+    if (frozen(t) || freeze_requested[t].frozen()) {
         auto differ = [](const auto& a, const auto& b) { return std::memcmp(&a, &b, sizeof(a)) != 0; }; // copies of model data, as undo compares them
         if (e.pad >= 0 && (differ(e.pad_after.sound, e.pad_before.sound) || differ(e.pad_after.chain, e.pad_before.chain) || !same_trims(e.pad_after, e.pad_before)))
             return true;
@@ -71,12 +76,13 @@ bool Context::edit_covers(const Edit& e) const {
 
 unsigned Context::edit_track(const Edit& edit) const {
     unsigned t = edit.track % track_count;
-    if (!frozen(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
-    if (!frozen(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
-    if (!frozen(t))
-        for (const auto& p : edit.patterns_before) if (frozen(p.track)) { t = p.track; break; }
-    if (!frozen(t) && edit.column >= 0)
-        for (const auto& [track, value] : edit.column_before) if (frozen(track)) { t = track; break; }
+    auto covered = [&](unsigned track) { return frozen(track) || freeze_requested[track].frozen(); };
+    if (!covered(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
+    if (!covered(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
+    if (!covered(t))
+        for (const auto& p : edit.patterns_before) if (covered(p.track)) { t = p.track; break; }
+    if (!covered(t) && edit.column >= 0)
+        for (const auto& [track, value] : edit.column_before) if (covered(track)) { t = track; break; }
     return t;
 }
 
@@ -138,7 +144,6 @@ void Context::print_sheet_go(bool deep_freeze) {
     if (!deep_freeze && frozen(t) && none_of(sheet.picks)) { print_sheet_unfreeze(); return; }
     // Freeze plan F2d: a deep freeze takes every pattern with notes, lit or not, at Post FX.
     if (none_of(deep_freeze ? with_notes(patterns, t) : sheet.picks)) { notice(deep_freeze ? "No pattern with notes" : "No pattern lit"); return; }
-    print_was = prints.freeze[t];
     PrintAsk ask;
     ask.track = uint8_t(t);
     ask.patterns = sheet.picks;
@@ -148,9 +153,7 @@ void Context::print_sheet_go(bool deep_freeze) {
     ask.deep = deep_freeze;
     if (deep_freeze) { sheet.picks = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
-    freeze(ask);
-    if (!frozen(t)) return; // refused (notes went with the printer)
-    freeze_last[t] = prints.freeze[t];
+    if (!freeze(ask)) return;
     sheet.printing = true;
     sheet.serial = freeze_serial[t];
 }
@@ -159,18 +162,14 @@ void Context::print_sheet_cancel() {
     auto& sheet = ui.print_sheet;
     const unsigned t = sheet.track % track_count;
     if (!sheet.printing) { back(); return; }
-    // The prints called off: the freeze as it was before B3 (still playing, if it was frozen), else live.
-    ++freeze_serial[t];
-    freeze_waiting &= ~(1u << t);
     if (printer && printer->busy()) {
-        auto now = printer->progress();
-        if (now.track == t && now.freeze) printer->cancel();
+        const auto job = printer->progress();
+        if (job.track == t && job.freeze && job.serial == sheet.serial) printer->cancel();
     }
-    if (print_was.frozen()) prints.freeze[t] = print_was;
-    else go_live(t); // nothing was let go yet (freeze plan F2d: a deep freeze's plug-ins wait for its print)
-    sheet.printing = false;
+    const bool restoring = (freeze_restoring >> t) & 1;
+    cancel_freeze_request(t);
+    if (restoring) request_freeze(t, prints.freeze[t]); // the project's previously saved selection still needs its pack
     notice("Print called off");
-    back();
 }
 
 // The track live again from the sheet, without asking: the key says what it does. Its prints stay for the next freeze.
@@ -179,9 +178,7 @@ void Context::print_sheet_unfreeze() {
     const unsigned t = sheet.track % track_count;
     if (sheet.printing) return;
     if (!frozen(t)) { notice(track_word(t) + " is live"); return; }
-    bool thaw = deep(t) && !((deep_hold >> t) & 1); // freeze plan F2d: its plug-ins load first
     unfreeze(t);
-    notice(thaw ? "Thawing " + track_word(t) : track_word(t) + " live");
     back();
 }
 
@@ -216,7 +213,7 @@ void Context::seq_print_end() {
     for (size_t n = 0; n < want.size(); ++n) want[n] &= notes[n];
     if (frozen(t) && want == prints.freeze[t].patterns) return; // as it was
     if (none_of(want)) {
-        if (frozen(t)) { unfreeze(t); notice(track_word(t) + " live"); }
+        unfreeze(t);
         return;
     }
     const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
@@ -227,8 +224,7 @@ void Context::seq_print_end() {
     ask.tail = f.tail;
     ask.mode = PrintAsk::Freeze;
     if (!frozen(t)) live_load[t] = host.track_load(t);
-    freeze(ask);
-    if (frozen(t)) { freeze_last[t] = prints.freeze[t]; notice("Printing " + track_word(t)); }
+    if (freeze(ask)) notice("Printing " + track_word(t));
 }
 
 // ---- freeze plan F2d: Shift + B3 DEEP FREEZE on a frozen track's Stage
@@ -248,8 +244,7 @@ void Context::deep_freeze(unsigned track) {
     ask.mode = PrintAsk::Freeze;
     ask.deep = true;
     if (!frozen(t)) live_load[t] = host.track_load(t);
-    freeze(ask);
-    if (deep(t)) { freeze_last[t] = prints.freeze[t]; notice("Deep freezing " + track_word(t)); }
+    if (freeze(ask)) notice("Deep freezing " + track_word(t));
 }
 
 } // namespace melodee

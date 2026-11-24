@@ -143,14 +143,16 @@ are made, **B1** (**CANCEL**) calls them off. The track plays live until the
 prints are ready, then switches on a bar line. The first freeze after updating to 0.7.1-hdslave.7
 regenerates prints made with the earlier renderer. Version 0.7.1-hdslave.8 also rebuilds Post FX prints
 with a track Limiter whose lookahead starts at zero. Later freezes reuse matching files.
-If memory cannot hold the pattern starts, Freeze reports the error and returns the track to live playback.
+Changing the selection reuses the pattern starts already held in memory. If memory cannot hold
+the requested starts, Freeze reports the error and keeps the previous selection playing. A first
+freeze that fails leaves the track live.
 
 To freeze single patterns, hold **SEQ** and press **SAMPLE RECORD**: each
 pattern pad freezes or thaws that pattern. The prints are made when you let
 go of **SEQ**. The other patterns play live.
 
 **SHIFT** + **B3** (**DEEP FREEZE**) freezes every pattern with notes and
-also unloads the track's plug-ins to save memory; its pads then play
+unloads the track's plug-ins after the new prints take over to save memory. Its pads then play
 nothing. It works on the PRINT sheet and on a frozen track's Stage.
 
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
