@@ -31,6 +31,10 @@ outputs play as the file has them; nothing in Melodee sets them yet. Checked
 as step 3, plus a test of delay compensation through a late plug-in on a
 submix chain.
 
+Core step 5 (buses, input, master) built: core 3ef6a4f. Every channel of the
+mix now has its strip in the engine; flat, each sounds as before. Checked as
+step 3; on the MPC the idle render load is as before.
+
 Mockups: https://claude.ai/artifact/Qsc7atsMAih8QNPvxcgza7 (page "Round 4").
 Their sources are in `build/mixer-mock/` (not in Git): `canvas/project/` holds
 the boards, `render/render.py` draws a board to a PNG.
@@ -198,9 +202,23 @@ and the Compressor. Meters are one peak a track; buses have none.
      `n >= chain_count` for a kit pad's chain (`context.cpp` keys,
      `bindings.cpp` KEY row, `plugin_jobs.cpp`, `plugin/plugin_sleep.h`,
      `track_copy.cpp`, `track_swap.h`) has to count chains 25-32 as submixes.
-5. **Buses, input, master.** A bus's strip with its chain. The input's strip
-   where the monitor joins the master, and RECORD dry or wet where a take is
-   written. The master's strip (no compressor) before the master chain.
+5. **Buses, input, master.** Built (core 3ef6a4f).
+   - A bus: its chain, then its strip (keyed as its chain is), then its
+     return. A bus whose chain is empty but whose strip works runs in the
+     buses' run too. New: a bus's mute (`Bus::mute`, a byte at the end of
+     BUSS that older builds do not read; command `BusMute`) eases its return
+     out.
+   - The master: its strip before its chain, its compressor held off (the
+     master's compressor is the Compressor; the engine sets a master strip's
+     amount to 0).
+   - The input: its strip on the source after its gain and Rec Input FX.
+     Monitor always hears it after the strip. Takes, Audio Recall and the input
+     meter hear it after the strip when `Project::input_wet` (file section
+     INWT, command `InputWet`), else before. Its key is heard as the master's
+     chain hears one.
+   - Meters (`strip_meter`): a bus after its return and mute; the master after
+     its chain and the Compressor, before main volume, with the Compressor's
+     reduction; the input after its strip.
 6. **Motion.** Lane numbers for a track's strip values. Free numbers: 206–253
    (`model/limits.h`); a track's strip needs 17. Every switch that handles
    160–165 gets the new cases (`move_lane`, `restore_lane`, `mod_write`,
