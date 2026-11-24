@@ -4,6 +4,7 @@
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/print_engine.h"
 #include "runtime/controller.h"
 #include <chrono>
 #include <cstring>
@@ -15,11 +16,56 @@ using namespace melodee;
 namespace fs = std::filesystem;
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (false)
 
+// The last step feeds a fully wet quarter-note Echo. Adding an empty bar gives the same repeat
+// inside the pattern, so its saved WAV is an independent reference for the shorter Ring print.
+static void native_ring_wav(const std::string& card, const std::string& plugin) {
+    PrintEngine printer(nullptr);
+    auto print = [&](unsigned bars) {
+        PrintJob job;
+        job.card_top = card;
+        job.project_path = (fs::path(card) / (std::to_string(bars) + ".mldp")).string();
+        const auto folder = prints_folder(job.project_path);
+        job.patterns = {0}; job.tail = PrintTail::Ring; job.tap = PrintTap::PostFx;
+        job.project = std::make_unique<Project>();
+        job.bank = std::make_unique<PatternBank>();
+        job.project->tempo = 1200;
+        auto& track = job.project->tracks[0];
+        load_sound(track, EngineKind::Plugin, 0);
+        track.plugin = 0;
+        std::snprintf(job.project->plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
+        track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 9, 0}};
+        auto& pattern = job.bank->at[0][0];
+        pattern.length = bars * 16 * sixteenth_ticks;
+        Step step;
+        step.notes[0] = {69, 110};
+        pattern.set_step(15, step);
+
+        CHECK(printer.start(std::move(job)));
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (printer.busy() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        PrintResult result;
+        CHECK(printer.take(result) && result.made && result.error.empty());
+        SampleData wav;
+        CHECK(read_wav((fs::path(folder) / result.record.file).string(), wav).empty());
+        return wav;
+    };
+    const auto reference = print(2);
+    const auto ring = print(1);
+    const size_t repeat = size_t(2.375 * dsp::sample_rate()); // step 16 at 1.875 s, then one quarter at 120 BPM
+    CHECK(ring.frames > repeat && ring.frames < reference.frames);
+    CHECK(*std::max_element(ring.left.begin() + repeat, ring.left.end()) > 0.4f);
+    CHECK(std::equal(ring.left.begin(), ring.left.end(), reference.left.begin()));
+    CHECK(std::equal(ring.right.begin(), ring.right.end(), reference.right.begin()));
+    CHECK(std::all_of(reference.left.begin() + ring.frames, reference.left.end(), [](float v) { return v == 0; }));
+}
+
 // A separate invocation starts a fresh project and a new plug-in instance.
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
     CHECK(argc == 4);
     const std::string card = argv[1], plugin = argv[2], mode = argv[3];
+    if (mode == "native-ring") { native_ring_wav(card, plugin); return 0; }
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
     // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
