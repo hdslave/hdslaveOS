@@ -124,8 +124,22 @@ the core's names (`pad_chain_base`, `pad_chain()`, `StemRing::stem_count`),
 so pad chains at 33 and the 28 stems carry over; it never routes to a
 submix, so stems 20-27 stay out of its exports. `./build.sh full` passes
 (every suite, the simulated Move with no underruns). Not checked on a Move
-(it was not on the network). Its own mixer screen does not show the strips
-or submixes yet.
+(it was not on the network).
+
+Move step: melodee-move cf54d49 (Kerem's B from the Move mock: the strip on
+the Mixer, not in the Device View). The Mixer's wheel goes on past MAIN to
+EQ and COMP for the track in hand (a step picks it) or the submix picked:
+EQ knobs 1-8 the bands 63 Hz-8 kHz, Shift + knob 8 16 kHz, Shift + knob 1
+the trim, the push the EQ off and on; COMP knobs 1-6 amount, ratio, speed,
+key, mix, gain, knob 8 the width, the push off and on. Left / Right past
+9-16 shows the submixes S1-S8 (steps 1-8 pick, Mute (+ Shift) + step mutes
+or solos, the push their chain with the level first). The track item's
+knob 7 is its OUTPUT (MAIN, S1-S8), knob 8 its width. Strip moves on a
+track are Motion lanes; a submix's are not. The EQ and COMP pictures are
+`ui/mix_widgets` drawn from the strip's values, shared with the mockups
+(`docs/ui/mixer.png`). mixer-tests 210 of 210 (EQ, COMP, a submix muted
+and heard, saved and opened again); `./build.sh full` passes. Not checked
+on a Move.
 
 
 ## What it is
@@ -351,7 +365,7 @@ and the Compressor. Meters are one peak a track; buses have none.
      export notice adds "mixer settings left out"): strips (MPC 3 and Live),
      a submix's name, sends and chain, bus mutes; in Live also the routes and
      submixes (group tracks, later).
-8. **melodee-move.** Built (melodee-move afd9c56, core 297dab1). Its mixer (`src/app/screens/mixer.cpp`) reads `Mix`. It
+8. **melodee-move.** Built (melodee-move afd9c56, core 297dab1; its Mixer's EQ, COMP and submixes cf54d49). Its mixer (`src/app/screens/mixer.cpp`) reads `Mix`. It
    must build and behave as before after each core step.
 
 ### Melodee
