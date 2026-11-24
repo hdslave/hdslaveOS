@@ -116,8 +116,17 @@ the shortcut tables, the other chapters, QUICKSTART step 3 and MELODEE.md
 follow. New screens: mixer, mixereq, mixercomp, mixerfx, mixersub,
 mixerfxbus, mixerinput, mixermaster, mixerrouted, fxsub; tracks, sends,
 sendspads, stagemix and stagesends are gone. The tests came with each step.
-Left: core step 8 (melodee-move), Width and a track's trim on a card, the
-snow on a frozen track's strip.
+Left: Width and a track's trim on a card, the snow on a frozen track's
+strip.
+
+Core step 8: melodee-move afd9c56 moves its core to 297dab1. The Move reads
+the core's names (`pad_chain_base`, `pad_chain()`, `StemRing::stem_count`),
+so pad chains at 33 and the 28 stems carry over; it never routes to a
+submix, so stems 20-27 stay out of its exports. `./build.sh full` passes
+(every suite, the simulated Move with no underruns). Not checked on a Move
+(it was not on the network). Its own mixer screen does not show the strips
+or submixes yet.
+
 
 ## What it is
 
@@ -342,7 +351,7 @@ and the Compressor. Meters are one peak a track; buses have none.
      export notice adds "mixer settings left out"): strips (MPC 3 and Live),
      a submix's name, sends and chain, bus mutes; in Live also the routes and
      submixes (group tracks, later).
-8. **melodee-move.** Its mixer (`src/app/screens/mixer.cpp`) reads `Mix`. It
+8. **melodee-move.** Built (melodee-move afd9c56, core 297dab1). Its mixer (`src/app/screens/mixer.cpp`) reads `Mix`. It
    must build and behave as before after each core step.
 
 ### Melodee
