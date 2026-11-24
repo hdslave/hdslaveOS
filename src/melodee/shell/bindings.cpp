@@ -55,6 +55,7 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
 unsigned page_chain(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) return loop_chain(unsigned(ui.fx_loop) % loop_tracks); // the Looper's track
     if (ui.page == PageId::Rack && ui.fx_sub >= 0) return sub_chain(unsigned(ui.fx_sub) % sub_count);    // a mixer submix's
+    if (mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0) return unsigned(channel_chain(mixer_strip(ui))); // the mixer's FX block
     if (ui.page == PageId::Bus) return bus_chain(ui.sends_bus % bus_count); // the bus in view (Sends' K2)
     if (ui.page == PageId::Master) return master_chain;
     if (ui.page == PageId::PadFx) { const auto& t = project.tracks[ui.track % track_count]; return pad_chain(ui.track % track_count, t.last_pad % sampler_pads); }

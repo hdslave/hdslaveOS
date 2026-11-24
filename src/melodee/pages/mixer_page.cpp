@@ -5,8 +5,8 @@
 // and its fader, and one block, the one B1-B3 light: SENDS (four sends and what each bus holds), EQ (nine bands as a
 // curve, the three in hand lit; B2 again steps LOW, MID, HIGH) or COMP (its curve and what it took off of late).
 // K1-K3 turn the lit block (Shift: its second row), the fader the level. A pad or the wheel pick the channel; Minus /
-// Plus move through the lit block (a row, a group of bands, an effect); Push turns the lit block's EQ, compressor or
-// effect on or off. B1 again: FX, the channel's chain in the card. Pad Bank steps between the tracks and the second
+// Plus move through the lit block (a row, a group of bands, an effect); Push turns the EQ or compressor on or off.
+// B1 again: FX, the channel's chain in the card: Push edits the lit effect, Mute switches it, Erase takes it out. Pad Bank steps between the tracks and the second
 // row: submixes, buses, the input and the master (shell/mixer_channels.h).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -361,7 +361,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
         return;
     }
     c.select_track(pad % track_count);
-    if (c.ui.erase) erase_tap(c); // Erase + pad: that track cleared, once B3 says so (as on Tracks)
+    if (c.ui.erase) ask_clear_track(c); // Erase + pad: that track cleared, once B3 says so (as on Tracks)
     else offer_new_track(c);      // an empty one: its doors, then back here
 }
 
@@ -372,8 +372,9 @@ void wheel(Context& c, int delta) {
     else c.ui.mixer_other = uint8_t(other_first(c.ui) + unsigned(at));
 }
 
-// Push: the lit block's on and off (EQ, the compressor, the lit effect); on FX's plus the picker (effects and
-// plug-ins), back here once one is in. SENDS has none.
+// Push: EQ's and the compressor's on and off; on FX the lit effect to edit (its FX page, every row and a plug-in's
+// own screen; B1 MIXER back), on its plus the picker (effects and plug-ins), back here once one is in. SENDS has
+// none. On FX, Mute switches the lit effect off or on and Erase takes it out (shell/mute_mode.h, shell/erase_copy.h).
 void push(Context& c) {
     const unsigned n = mixer_strip(c.ui);
     const auto kind = channel_kind(n);
@@ -385,8 +386,7 @@ void push(Context& c) {
         if (chain < 0) return;
         const auto& fx = c.project.chain(unsigned(chain));
         const unsigned slot = c.ui.fx_cursor[UiState::cursor_of(unsigned(chain))];
-        if (slot < fx.count()) c.toggle_bypass(unsigned(chain), slot);
-        else c.open_mixer_chain(true);
+        c.open_mixer_chain(slot >= fx.count()); // an effect: its page to edit; the plus: the picker
         return;
     }
     const auto part = block == 1 ? StripPart::EqOn : StripPart::CompOn;

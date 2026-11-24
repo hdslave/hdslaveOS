@@ -4,6 +4,7 @@
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/ui_state.h"
+#include "melodee/shell/mixer_channels.h"
 
 // Erase and Copy (Shift + Erase) on whatever the page in view holds.
 //
@@ -44,6 +45,9 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
         if (ui.song_export) return CopyHere::None;
         return project.song.clip_at(ui.track % track_count, ui.song_cursor) >= 0 ? CopyHere::Clip : CopyHere::None;
     case PageId::Project: return ui.project_list && !ui.move_open ? CopyHere::Project : CopyHere::None;
+    case PageId::Mixer: // its FX block: the lit effect, as on its FX page
+        if (!mixer_fx_lit(ui)) return CopyHere::None;
+        [[fallthrough]];
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: {
         if (ui.picker_open) return CopyHere::None;
         unsigned n = page_chain(project, ui);
@@ -62,6 +66,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 // something to erase and says so when there is not).
 inline bool erase_tap_page(const UiState& ui) {
     switch (ui.page) {
+    case PageId::Mixer: return mixer_fx_lit(ui); // its FX block: the lit effect
     case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes: case PageId::Tracks:
     case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
     case PageId::Chop: case PageId::LayersPage: case PageId::ModPage:
@@ -74,6 +79,8 @@ inline bool erase_tap_page(const UiState& ui) {
 
 // Erase let go on its own: the thing in focus erased, asked first where it says so. False when the page has none.
 bool erase_tap(Context& c);
+// Erase + pad on Tracks or the mixer's tracks: the selected track cleared, once B3 says so.
+void ask_clear_track(Context& c);
 // Shift + Erase with no copy under way: a copy armed, or done at once (copy_here()).
 void copy_press(Context& c, bool kit_pads, bool key_pads);
 // A pad while a key copy waits (Copying::Keys): the key to copy, then where.

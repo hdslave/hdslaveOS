@@ -288,8 +288,10 @@ void Shell::button(Button b, bool pressed) {
     }
     if (pressed && b != Button::Erase && b != Button::Shift && ui_.erase) ui_.erase_used = true; // Erase + a button: its release erases nothing
     // Erase's release is a press of its own (a tap erases the thing in focus): one undo step, as any page press.
-    // The encoder's too: its tap acts when it is let go (held, it opens the MENU: shell/menu.h).
-    if ((!pressed && b != Button::Erase && b != Button::WheelPush) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
+    // The encoder's too: its tap acts when it is let go (held, it opens the MENU: shell/menu.h). And Mute's on the
+    // mixer's FX block (a tap switches the lit effect: shell/mute_mode.h).
+    const bool release_acts = b == Button::Erase || b == Button::WheelPush || (b == Button::Mute && mixer_fx_lit(ui_));
+    if ((!pressed && !release_acts) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
     PageEdit step(context_, b, false);
     press(b, pressed);
     step.finish();

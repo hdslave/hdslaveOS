@@ -131,6 +131,8 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     if (ui.seq_held) return {}; // the Sequence layer: launches and pages; a copy keeps its own edit (shell/seq_layer.cpp)
     if (!pad && ui.page == PageId::Song && !ui.shift && !ui.song_export && (button == B::Loop || button == B::NoteRepeat)) return of(S::Song, ui); // the brace, the clip's repeats
     if (!pad && (button == B::Loop || (button == B::Chop && ui.shift))) return pad_scope(ui, project);
+    if (!pad && button == B::Mute && !ui.shift && !ui.mute_latch && mixer_fx_lit(ui) && channel_chain(mixer_strip(ui)) >= 0)
+        return of(S::Chain, ui, unsigned(channel_chain(mixer_strip(ui)))); // the mixer's FX block: a tap switches the lit effect
     if (!pad && (button == B::KnobFx || button == B::Mute || button == B::NoteRepeat || button == B::PadBank || button == B::Play
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {

@@ -17,6 +17,8 @@ class Context;
 constexpr uint32_t mute_hold_ms = 400; // longer than this, Mute was held, not tapped
 
 void mute_button(Context& c, bool pressed);
+// Mute tapped on the mixer's FX block: the lit effect switched off or on (its bypass). False elsewhere, or on the plus.
+bool mute_effect(Context& c);
 // Whether mute mode works on kit pads here: the pads play the selected
 // track's kit (`kit_pads`), and the page is not one about tracks (Stage, Mix).
 inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Tracks && ui.page != PageId::Mixer; }

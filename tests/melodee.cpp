@@ -8519,6 +8519,13 @@ void track_move() {
         f.fx_cursor[UiState::cursor_of(4)] = 1;
         auto fxc = mixer_cards(*project, f, false);
         CHECK(fxc[0].kind == Binding::Kind::FxParam && fxc[0].id == int(4 * 64 + 1 * 8 + 0) && mixer_fx_lit(f));
+        // On the FX block Erase takes the lit effect out and Shift + Erase copies it (its chain is the page's), and a
+        // Mute tap switching it is one undo step of that chain.
+        CHECK(page_chain(*project, f) == 4 && copy_here(*project, f, false, false) == CopyHere::Effect && erase_tap_page(f));
+        const auto mute_scope = press_scope(*project, f, SurfaceButton::Mute, false);
+        CHECK(mute_scope.kind == UndoScope::Kind::Chain && mute_scope.index == 4);
+        UiState sends_lit = f; sends_lit.mixer_b1 = 0;
+        CHECK(!erase_tap_page(sends_lit) && copy_here(*project, sends_lit, false, false) == CopyHere::None);
         f.fx_cursor[UiState::cursor_of(4)] = 2; // the plus: no cards
         CHECK(!mixer_cards(*project, f, false)[0].bound());
         f.mixer_b1 = 0; f.mixer_row = 1;
