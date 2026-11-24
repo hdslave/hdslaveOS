@@ -271,8 +271,9 @@ static void freeze_ring_wavs(const std::string& card, const std::string& plugin,
 static void freeze_transitions(const std::string& card, const std::string& plugin, const std::string& mode) {
     constexpr unsigned rate = 48000, block = EngineHost::block;
     const bool memory = mode == "freeze-replace";
-    const bool deep = mode == "deep-freeze-live" || mode == "deep-freeze-replace";
-    const bool prior_freeze = mode == "deep-freeze-replace";
+    const bool change_tempo = mode == "deep-freeze-tempo" || mode == "deep-freeze-tempo-replace";
+    const bool deep = change_tempo || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
+    const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
     if (memory) {
         struct rlimit limit {};
         CHECK(getrlimit(RLIMIT_MEMLOCK, &limit) == 0 && limit.rlim_max >= 8 * 1024 * 1024);
@@ -293,8 +294,8 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     auto& c = shell->context();
     c.project_path = (fs::path(card) / (mode + ".mldp")).string();
     c.now = 1000;
-    c.project.tempo = deep ? 300 : 1200;
-    c.project.signature = deep ? 8 : 0; // 9/4 at 30 BPM is an 18-second bar
+    c.project.tempo = deep && !change_tempo ? 300 : 1200;
+    c.project.signature = change_tempo ? common_time : deep ? 8 : 0; // 9/4 at 30 BPM is an 18-second bar
     auto& track = c.project.tracks[0];
     load_sound(track, EngineKind::Plugin, 0);
     track.plugin = 0;
@@ -307,7 +308,8 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     for (unsigned p = 0; p < count; ++p) {
         auto& pattern = c.patterns.at[0][p];
         pattern.length = c.project.bar_ticks();
-        for (unsigned i = 0; i < (deep ? 36u : 1u); ++i) {
+        const unsigned steps = deep ? pattern.length / sixteenth_ticks : 1;
+        for (unsigned i = 0; i < steps; ++i) {
             Step note;
             note.notes[0] = {uint8_t(60 + p), 110};
             note.length = deep ? 2 : 1;
@@ -334,11 +336,42 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     };
     auto deliver = [&] { c.print_tick(); render(); };
     auto selected = [&](uint64_t mask) {
+        c.print_tick(); // read the engine's confirmation
         CHECK(c.frozen(0) && (host->frozen_tracks() & 1));
         CHECK(c.prints.freeze[0].patterns[0] == mask);
     };
 
-    if (memory) {
+    if (mode == "freeze-recording") {
+        c.play();
+        for (unsigned i = 0; i < 32; ++i) render();
+        CHECK(host->playing() && host->position_of(0) >= 0);
+        auto& pattern = c.patterns.at[0][0];
+        c.set_recording(true);
+        c.key(78, 110, true);
+        for (unsigned i = 0; i < 80; ++i) render();
+        const Pattern original = pattern;
+        prepare(1);
+        c.key(78, 0, false); // a note held before the snapshot cannot change length after it
+        auto overdub = [&](int key) {
+            c.key(key, 110, true);
+            c.key(key, 0, false);
+            c.record_motion(motion_wheel, 35);
+        };
+        overdub(79);
+        CHECK(pattern == original); // the worker has already copied this pattern
+        deliver();
+        CHECK(!(host->frozen_tracks() & 1)); // sent, still waiting for its bar
+        overdub(80);
+        CHECK(pattern == original);
+        c.unfreeze(0);
+        render();
+        c.print_tick();
+        overdub(81);
+        CHECK(pattern.events.size() == original.events.size() + 1 && !pattern.motion.empty());
+        c.set_recording(false);
+        for (unsigned i = 0; i < rate / block; ++i) render();
+        CHECK(!c.frozen(0) && !(host->frozen_tracks() & 1));
+    } else if (memory) {
         const uint64_t initial = (uint64_t{1} << 16) - 1, smaller = (uint64_t{1} << 15) - 1;
         prepare(initial);
         deliver();
@@ -377,14 +410,17 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         }
         CHECK(host->send({Command::Type::Play}));
         for (unsigned i = 0; i < 96; ++i) render(); // ask in the body of the bar
+        const auto previous = host->active_freeze_serial(0);
         prepare(1, true);
         deliver();
-        CHECK(c.deep(0) && !(host->printing_tracks() & 1));
+        CHECK(!c.deep(0) && !(host->printing_tracks() & 1));
+        if (change_tempo) c.set_tempo(1260); // after the audio engine has queued the 120 BPM pack
 
         const uint32_t begin = c.now;
         bool audible = false, switched = false;
         unsigned windows = 0;
-        for (unsigned i = 0; i < 27 * rate / block; ++i) {
+        const unsigned seconds = change_tempo ? 12 : 27;
+        for (unsigned i = 0; i < seconds * rate / block; ++i) {
             const unsigned frames = i * block;
             c.now = begin + uint32_t(uint64_t(frames) * 1000 / rate);
             if (i % 8 == 0) {
@@ -403,7 +439,15 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
                 windows = elapsed;
             }
         }
-        CHECK(switched && (c.plugins_asleep() & 1) && rack->asleep(0));
+        if (change_tempo) {
+            CHECK(!switched && !c.deep(0) && !rack->asleep(0));
+            CHECK(host->active_freeze_serial(0) == previous);
+            CHECK(c.frozen(0) == prior_freeze && bool(host->frozen_tracks() & 1) == prior_freeze);
+            if (prior_freeze) selected(2);
+            CHECK(std::string(shell->ui().notice).find("clock changed") != std::string::npos);
+        } else {
+            CHECK(switched && c.deep(0) && (c.plugins_asleep() & 1) && rack->asleep(0));
+        }
         CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
     } else {
         auto fill_queue = [&] {
@@ -453,7 +497,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     CHECK(argc == 4);
-    if (mode == "freeze-replace" || mode == "freeze-queue" || mode == "deep-freeze-live" || mode == "deep-freeze-replace") {
+    if (mode == "freeze-replace" || mode == "freeze-queue" || mode == "freeze-recording" || mode.rfind("deep-freeze-", 0) == 0) {
         freeze_transitions(card, plugin, mode);
         return 0;
     }

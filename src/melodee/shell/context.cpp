@@ -147,6 +147,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     import_unsaved = false; // an MPC project's load sets it again once this is done (Shell::lights)
     prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
     freeze_requested = {};
+    for (unsigned t = 0; t < track_count; ++t) clear_submitted_freeze(t);
     freeze_waiting = freeze_restoring = unfreeze_waiting = 0;
     deep_hold = thawing = 0; // saved deep freezes keep their plug-ins asleep while their prints are checked
     deep_serial.fill(0);
@@ -508,7 +509,7 @@ void Context::record(int key, int velocity, int cutoff) {
     // end reached this thread), goes on the take's first tick, and is not played again there.
     const bool early = host.count_in() != 0;
     if (early && (host.song_playing() || host.count_in_ticks() > sixteenth_ticks)) return;
-    if (frozen(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
+    if (freeze_protects_track(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
     auto& p = pattern();
     int position = 0;
     uint32_t ticks = 0;
@@ -546,6 +547,7 @@ void Context::record_release(int key) {
     for (auto& h : held_notes) {
         if (h.key != key || h.track % track_count != ui.track % track_count) continue; // the same key on another track is its own
         h.key = -1;
+        if (freeze_protects_track(h.track)) continue; // the freeze has already taken the recorded note's length
         auto& p = patterns.at[h.track % track_count][h.pattern % pattern_count];
         int position = 0;
         uint32_t ticks = 0;
@@ -1301,7 +1303,7 @@ void Context::sync_pattern(unsigned t, unsigned p) {
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
 void Context::record_motion(int lane, int value) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
-    if (frozen(ui.track)) return; // freeze plan F2b
+    if (freeze_protects_track(ui.track)) return; // freeze plan F2b
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
@@ -1337,7 +1339,7 @@ void Context::take_arp_notes() {
     EngineHost::ArpWritten w;
     int synced = -1;
     while (host.take_arp_written(w)) {
-        if (!ui.recording) continue;
+        if (!ui.recording || freeze_protects_track(w.track)) continue;
         auto& p = patterns.at[w.track % track_count][w.pattern % pattern_count];
         Event e;
         e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = std::max<uint16_t>(w.length, 1);

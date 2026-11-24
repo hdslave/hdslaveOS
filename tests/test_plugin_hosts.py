@@ -124,6 +124,14 @@ class PluginHostTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_freeze_transition(mode)
 
+    def test_deep_freeze_keeps_playback_when_tempo_changes_before_the_bar(self):
+        for mode in ("deep-freeze-tempo", "deep-freeze-tempo-replace"):
+            with self.subTest(mode=mode):
+                self.run_freeze_transition(mode)
+
+    def test_recording_cannot_change_a_pending_freeze_snapshot(self):
+        self.run_freeze_transition("freeze-recording")
+
     def test_freeze_replacement_reuses_pins_and_preserves_selection_on_failure(self):
         self.run_freeze_transition("freeze-replace")
 

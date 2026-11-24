@@ -89,7 +89,6 @@ void Context::cancel_freeze_request(unsigned t) {
 }
 
 void Context::reject_freeze(unsigned t, const std::string& error) {
-    cancel_freeze_request(t);
     const uint32_t bit = 1u << t;
     if (freeze_restoring & bit) {
         // A project or track load dropped the old pack, so there is no old audio to keep.
@@ -103,11 +102,39 @@ void Context::reject_freeze(unsigned t, const std::string& error) {
     notice("Track " + std::to_string(t + 1) + (frozen(t) ? " kept: " : " live: ") + error);
 }
 
+void Context::clear_submitted_freeze(unsigned t) {
+    freeze_submitted[t] = {};
+    freeze_submitted_serial[t] = 0;
+    freeze_submitted_peaks[t].clear();
+}
+
+void Context::confirm_freeze(unsigned t) {
+    const uint32_t bit = 1u << t;
+    const auto selection = freeze_submitted[t];
+    const bool hold = selection.state == FreezeState::Deep && (!deep(t) || (deep_hold & bit));
+    if (hold) {
+        deep_hold |= bit;
+        deep_serial[t] = freeze_submitted_serial[t];
+        deep_active_at[t] = now ? now : 1;
+    } else {
+        deep_hold &= ~bit;
+        deep_serial[t] = deep_active_at[t] = 0;
+    }
+    dirty |= !(prints.freeze[t] == selection);
+    prints.freeze[t] = freeze_last[t] = selection;
+    print_peaks[t] = std::move(freeze_submitted_peaks[t]);
+    clear_submitted_freeze(t);
+    if (!(freeze_restoring & bit))
+        notice("Track " + std::to_string(t + 1) + (deep(t) ? " deep frozen" : " frozen"));
+    freeze_restoring &= ~bit;
+}
+
 uint32_t Context::plugins_asleep() const {
     uint32_t out = 0;
     for (unsigned t = 0; t < track_count; ++t) {
         const uint32_t bit = 1u << t;
-        if (deep(t) && !((deep_hold | thawing) & bit) && freeze_requested[t].state != FreezeState::Frozen) out |= bit;
+        if (deep(t) && !((deep_hold | thawing) & bit) && freeze_requested[t].state != FreezeState::Frozen &&
+            freeze_submitted[t].state != FreezeState::Frozen) out |= bit;
     }
     return out;
 }
@@ -115,6 +142,7 @@ uint32_t Context::plugins_asleep() const {
 void Context::refreeze(unsigned track) {
     const unsigned t = track % track_count;
     cancel_freeze_request(t);
+    clear_submitted_freeze(t);
     if (!frozen(t)) return;
     // A track load discards the engine's old pack. If the replacement fails there is no pack to fall back to.
     freeze_restoring |= 1u << t;
@@ -145,7 +173,8 @@ void Context::unfreeze(unsigned track) {
 
 bool Context::go_live(unsigned t) {
     bool was = frozen(t);
-    if (was && !host.send({Command::Type::Freeze, uint8_t(t)})) return false;
+    if ((was || freeze_submitted_serial[t]) && !host.send({Command::Type::Freeze, uint8_t(t)})) return false;
+    clear_submitted_freeze(t);
     const uint32_t bit = 1u << t;
     deep_hold &= ~bit;
     thawing &= ~bit;
@@ -171,8 +200,16 @@ void Context::print_tick() {
     // Freeze plan F2b: packs the audio thread is done with, freed on the print thread; prints ready to play, sent to
     // switch on the next bar; and the next track waiting for its prints, started once the print engine is free.
     FreezePack* done = nullptr;
-    while (host.take_done_freeze(done)) printer->discard(done);
+    while (host.take_done_freeze(done)) {
+        const unsigned t = done->track % track_count;
+        if (done->clock_rejected && freeze_submitted_serial[t] == done->serial && done->serial) {
+            clear_submitted_freeze(t);
+            reject_freeze(t, "clock changed");
+        }
+        printer->discard(done);
+    }
     for (unsigned t = 0; t < track_count; ++t) {
+        if (freeze_submitted_serial[t] && freeze_submitted_serial[t] == host.active_freeze_serial(t)) confirm_freeze(t);
         if (((unfreeze_waiting >> t) & 1) && go_live(t))
             notice("Track " + std::to_string(t + 1) + " live");
     }
@@ -180,13 +217,13 @@ void Context::print_tick() {
     FreezeReady ready;
     while (printer->take_ready(ready)) {
         const unsigned t = ready.track % track_count;
-        const uint32_t bit = 1u << t;
         const bool wanted = ready.project_path == project_path && ready.serial == freeze_serial[t] && freeze_requested[t].frozen();
         if (!wanted) {
             printer->discard(ready.pack);
             continue;
         }
         if (!ready.pack) {
+            cancel_freeze_request(t);
             reject_freeze(t, ready.error);
             continue;
         }
@@ -197,23 +234,12 @@ void Context::print_tick() {
             delivery_blocked = true;
             break;
         }
-        const auto selection = freeze_requested[t];
-        const bool hold = selection.state == FreezeState::Deep && (!deep(t) || (deep_hold & bit));
-        if (hold) {
-            deep_hold |= bit;
-            deep_serial[t] = ready.serial;
-            deep_active_at[t] = 0;
-        } else {
-            deep_hold &= ~bit;
-            deep_serial[t] = deep_active_at[t] = 0;
-        }
-        dirty |= !(prints.freeze[t] == selection);
-        prints.freeze[t] = freeze_last[t] = selection;
-        print_peaks[t] = std::move(ready.peaks);
-        const bool restoring = freeze_restoring & bit;
-        freeze_restoring &= ~bit;
+        freeze_submitted[t] = freeze_requested[t];
+        freeze_submitted_serial[t] = ready.serial;
+        freeze_submitted_peaks[t] = std::move(ready.peaks);
         cancel_freeze_request(t);
-        if (!restoring) notice("Track " + std::to_string(t + 1) + (deep(t) ? " deep frozen" : " frozen"));
+        if (host.playing() && !(freeze_restoring & (1u << t)))
+            notice("Track " + std::to_string(t + 1) + " waiting for bar");
     }
     // Start both grace periods only when this request's pack is active, even if an earlier freeze was already playing.
     for (unsigned t = 0; t < track_count; ++t) {
@@ -230,9 +256,12 @@ void Context::print_tick() {
     deep_now.store(deep_bits, std::memory_order_relaxed);
     thawing_now.store(thawing, std::memory_order_relaxed);
     thaw_took_now.store(thaw_took, std::memory_order_relaxed);
-    if (freeze_waiting && !delivery_blocked && !printer->busy() && !project_path.empty()) {
+    uint32_t waiting = freeze_waiting;
+    for (unsigned t = 0; t < track_count; ++t)
+        if (freeze_submitted_serial[t]) waiting &= ~(1u << t);
+    if (waiting && !delivery_blocked && !printer->busy() && !project_path.empty()) {
         unsigned t = 0;
-        while (!((freeze_waiting >> t) & 1)) ++t;
+        while (!((waiting >> t) & 1)) ++t;
         const auto& f = freeze_requested[t];
         PrintJob job;
         job.project_path = project_path;
@@ -245,6 +274,7 @@ void Context::print_tick() {
         for (unsigned p = 0; p < pattern_count; ++p)
             if (f.plays(p) && !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
         if (job.patterns.empty()) {
+            cancel_freeze_request(t);
             reject_freeze(t, "no pattern with notes");
         } else {
             job.project = std::make_unique<Project>(project);

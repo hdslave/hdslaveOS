@@ -31,7 +31,8 @@ bool none_of(const std::array<uint64_t, (pattern_count + 63) / 64>& bits) {
 // ---- the question before an edit of a frozen track
 
 bool Context::print_covers(const UndoScope& s) const {
-    return melodee::print_covers(prints.freeze, s) || melodee::print_covers(freeze_requested, s);
+    return melodee::print_covers(prints.freeze, s) || melodee::print_covers(freeze_requested, s)
+        || melodee::print_covers(freeze_submitted, s);
 }
 
 void Context::ask_unfreeze(unsigned track) {
@@ -45,7 +46,7 @@ bool Context::frozen_edit(const UndoScope& scope) {
 }
 
 bool Context::frozen_edit(unsigned track) {
-    if (!frozen(track) && !freeze_requested[track % track_count].frozen()) return false;
+    if (!freeze_protects_track(track)) return false;
     ask_unfreeze(track);
     return true;
 }
@@ -55,9 +56,9 @@ bool Context::edit_covers(const Edit& e) const {
     const unsigned t = e.track % track_count;
     auto pattern_frozen = [&](unsigned track, unsigned p) {
         track %= track_count;
-        return prints.freeze[track].plays(p) || freeze_requested[track].plays(p);
+        return prints.freeze[track].plays(p) || freeze_requested[track].plays(p) || freeze_submitted[track].plays(p);
     };
-    if (frozen(t) || freeze_requested[t].frozen()) {
+    if (freeze_protects_track(t)) {
         auto differ = [](const auto& a, const auto& b) { return std::memcmp(&a, &b, sizeof(a)) != 0; }; // copies of model data, as undo compares them
         if (e.pad >= 0 && (differ(e.pad_after.sound, e.pad_before.sound) || differ(e.pad_after.chain, e.pad_before.chain) || !same_trims(e.pad_after, e.pad_before)))
             return true;
@@ -76,13 +77,12 @@ bool Context::edit_covers(const Edit& e) const {
 
 unsigned Context::edit_track(const Edit& edit) const {
     unsigned t = edit.track % track_count;
-    auto covered = [&](unsigned track) { return frozen(track) || freeze_requested[track].frozen(); };
-    if (!covered(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
-    if (!covered(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
-    if (!covered(t))
-        for (const auto& p : edit.patterns_before) if (covered(p.track)) { t = p.track; break; }
-    if (!covered(t) && edit.column >= 0)
-        for (const auto& [track, value] : edit.column_before) if (covered(track)) { t = track; break; }
+    if (!freeze_protects_track(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
+    if (!freeze_protects_track(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
+    if (!freeze_protects_track(t))
+        for (const auto& p : edit.patterns_before) if (freeze_protects_track(p.track)) { t = p.track; break; }
+    if (!freeze_protects_track(t) && edit.column >= 0)
+        for (const auto& [track, value] : edit.column_before) if (freeze_protects_track(track)) { t = track; break; }
     return t;
 }
 
@@ -141,7 +141,7 @@ void Context::print_sheet_go(bool deep_freeze) {
     if (!printer) return;
     if (deep_freeze && deep(t)) { notice(track_word(t) + " is deep frozen"); return; }
     // Nothing lit on a frozen track: it plays live again, as Seq held + Sample Record does with no pattern left.
-    if (!deep_freeze && frozen(t) && none_of(sheet.picks)) { print_sheet_unfreeze(); return; }
+    if (!deep_freeze && freeze_protects_track(t) && none_of(sheet.picks)) { print_sheet_unfreeze(); return; }
     // Freeze plan F2d: a deep freeze takes every pattern with notes, lit or not, at Post FX.
     if (none_of(deep_freeze ? with_notes(patterns, t) : sheet.picks)) { notice(deep_freeze ? "No pattern with notes" : "No pattern lit"); return; }
     PrintAsk ask;
@@ -177,7 +177,7 @@ void Context::print_sheet_unfreeze() {
     auto& sheet = ui.print_sheet;
     const unsigned t = sheet.track % track_count;
     if (sheet.printing) return;
-    if (!frozen(t)) { notice(track_word(t) + " is live"); return; }
+    if (!freeze_protects_track(t)) { notice(track_word(t) + " is live"); return; }
     unfreeze(t);
     back();
 }

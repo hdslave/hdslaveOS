@@ -449,11 +449,20 @@ public:
     void cancel_freeze_request(unsigned track);
     void finish_freeze_sheet(unsigned track);
     void reject_freeze(unsigned track, const std::string& error);
+    void clear_submitted_freeze(unsigned track);
+    void confirm_freeze(unsigned track);
+    bool freeze_pending(unsigned track) const {
+        track %= track_count;
+        return freeze_requested[track].frozen() || freeze_submitted[track].frozen();
+    }
+    bool freeze_protects_track(unsigned track) const { return frozen(track) || freeze_pending(track); }
     void unfreeze(unsigned track);
     void refreeze(unsigned track);
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
-    std::array<TrackFreeze, track_count> freeze_requested {}; // until all prints are ready and the audio queue takes them
+    std::array<TrackFreeze, track_count> freeze_requested {}; // on the print worker or waiting for the audio queue
+    std::array<TrackFreeze, track_count> freeze_submitted {}; // waiting for the engine's bar-line decision
+    std::array<uint32_t, track_count> freeze_submitted_serial {};
     uint32_t freeze_waiting = 0, freeze_restoring = 0, unfreeze_waiting = 0;
     uint32_t last_print_underruns = 0, last_print_loss_at = 0;
     // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's
@@ -500,7 +509,8 @@ public:
     std::array<TrackFreeze, track_count> freeze_last {};
     std::array<float, track_count> live_load {};
     // Each frozen track's prints in small (PrintPeaks, shell/print_engine.h), by pattern, as their freeze was made.
-    std::array<std::vector<std::pair<uint8_t, std::array<uint8_t, 96>>>, track_count> print_peaks {};
+    using TrackPrintPeaks = std::vector<std::pair<uint8_t, std::array<uint8_t, 96>>>;
+    std::array<TrackPrintPeaks, track_count> print_peaks {}, freeze_submitted_peaks {};
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     std::vector<std::string> prog_paths; // the card's .progression files, as the Prog layout's wheel walks them (listed when first wanted)

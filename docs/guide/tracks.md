@@ -145,7 +145,8 @@ regenerates prints made with the earlier renderer. Version 0.7.1-hdslave.8 also 
 with a track Limiter whose lookahead starts at zero. Later freezes reuse matching files.
 Changing the selection reuses the pattern starts already held in memory. If memory cannot hold
 the requested starts, Freeze reports the error and keeps the previous selection playing. A first
-freeze that fails leaves the track live.
+freeze that fails leaves the track live. A track cannot record notes or Motion while
+its freeze is pending. Cancel the request or unfreeze the track to resume recording.
 
 To freeze single patterns, hold **SEQ** and press **SAMPLE RECORD**: each
 pattern pad freezes or thaws that pattern. The prints are made when you let
@@ -154,6 +155,8 @@ go of **SEQ**. The other patterns play live.
 **SHIFT** + **B3** (**DEEP FREEZE**) freezes every pattern with notes and
 unloads the track's plug-ins after the new prints take over to save memory. Its pads then play
 nothing. It works on the PRINT sheet and on a frozen track's Stage.
+If a clock change makes the print incompatible at the switch, the request is
+declined and the track keeps its previous playback state.
 
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 
