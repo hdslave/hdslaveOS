@@ -160,7 +160,6 @@ PrintHost open_print_host(const Project& project, const PatternBank& bank, const
         h.rack->sync(project);
         auto w0 = Clock::now();
         while (h.error.empty()) {
-            idle();
             bool ready = true;
             for (unsigned entry = 0; entry < max_plugins; ++entry) {
                 if (!project.plugins[entry].used()) continue;
@@ -168,12 +167,13 @@ PrintHost open_print_host(const Project& project, const PatternBank& bank, const
                 if (st == PluginStatus::Failed || st == PluginStatus::Crashed) h.error = "plug-in did not open: " + h.rack->summary();
                 ready &= st == PluginStatus::Ready;
             }
-            if (ready) break;
+            // Loading takes wall time. Start every print at the same effect and plug-in phase.
+            if (host->attach_print_plugins(project) && ready) break;
             if (cancelled.load()) h.error = "stopped";
             else if (since(w0) > plugin_wait_seconds) h.error = "plug-in did not open in time";
             else std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
-        idle(); // the plug-in offered is in place
+        if (h.error.empty()) idle(); // one silent block for the fully attached rack
         idle_new_threads(h.threads_before, h.threads_idle);
     }
     return h;
@@ -517,6 +517,18 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         }
         pack->clips[p] = clip.get();
         pack->owned.push_back(std::move(clip));
+    }
+    // A short pattern can launch again several times before a longer tail has played.
+    // Pin that tail once, shared by every outstanding pass, before publishing the pack.
+    uint32_t shortest = UINT32_MAX;
+    for (const auto& clip : pack->owned) if (clip->pass) shortest = std::min(shortest, clip->pass);
+    for (const auto& clip : pack->owned) {
+        if (!clip->prepare_tails(shortest)) continue;
+        const uint32_t from = clip->tail_from() * clip->stride;
+        if (!pager->hold(clip->part, from, clip->part.total - from)) {
+            f.error = "cannot hold overlapping Ring tails in memory";
+            return f;
+        }
     }
     f.pack = pack.release();
     return f;

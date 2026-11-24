@@ -24,12 +24,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <thread>
 #include <string>
 #include <sys/stat.h>
 #include <vector>
@@ -401,6 +403,7 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     p.desc = instrument ? &sineDescriptor : &gainDescriptor;
     p.plugin_data = s;
     p.init = [](const clap_plugin* p) {
+        if (std::getenv("MELODEE_TEST_SLOW_OPEN")) std::this_thread::sleep_for(std::chrono::milliseconds(60));
         auto& s = of(p);
         s.threads = static_cast<const clap_host_thread_check*>(s.host->get_extension(s.host, CLAP_EXT_THREAD_CHECK));
         s.main();

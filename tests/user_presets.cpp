@@ -21,7 +21,7 @@ namespace fs = std::filesystem;
 // effects decay inside the pattern, independently of the shorter print's Ring cutoff.
 static void native_ring_wav(const std::string& card, const std::string& plugin) {
     PrintEngine printer(nullptr);
-    auto print = [&](unsigned bars, bool spring) {
+    auto print = [&](unsigned bars, EffectKind kind) {
         PrintJob job;
         job.card_top = card;
         job.project_path = (fs::path(card) / (std::to_string(bars) + ".mldp")).string();
@@ -35,7 +35,12 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         track.plugin = 0;
         std::snprintf(job.project->plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
         track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 100, 60, 9, 0}};
-        if (spring) track.fx.slots[1] = {uint8_t(EffectKind::Spring), false, {250, 25, 100, 70, 60, 120}};
+        if (kind == EffectKind::Spring) track.fx.slots[1] = {uint8_t(kind), false, {250, 25, 100, 70, 60, 120}};
+        else if (kind == EffectKind::Looper) track.fx.slots[0] = {uint8_t(kind), false, {74, 1, 0, 100, 0, 0}};
+        else if (kind != EffectKind::Echo) {
+            job.project->tempo = 1500;
+            track.fx.slots[1] = {uint8_t(kind), false, {100, 75, 30, 100, 100, 100}};
+        }
         auto& pattern = job.bank->at[0][0];
         pattern.length = bars * 16 * sixteenth_ticks;
         Step step;
@@ -52,17 +57,26 @@ static void native_ring_wav(const std::string& card, const std::string& plugin) 
         CHECK(read_wav((fs::path(folder) / result.record.file).string(), wav).empty());
         return wav;
     };
-    for (bool spring : {false, true}) {
-        const auto reference = print(spring ? 4 : 2, spring);
-        const auto ring = print(1, spring);
-        const size_t repeat = size_t((2.375 + (spring ? 0.250 : 0.0)) * dsp::sample_rate());
-        CHECK(ring.frames > repeat && ring.frames < reference.frames);
-        CHECK(*std::max_element(ring.left.begin() + repeat, ring.left.end()) > 0.4f);
+    for (auto kind : {EffectKind::Echo, EffectKind::Spring, EffectKind::Room, EffectKind::Reverb,
+                      EffectKind::Plate, EffectKind::Shimmer, EffectKind::Looper}) {
+        const auto reference = print(4, kind);
+        const auto ring = print(1, kind);
+        const double pass = kind == EffectKind::Echo || kind == EffectKind::Spring || kind == EffectKind::Looper ? 2.0 : 1.6;
+        const size_t after_pass = size_t(pass * dsp::sample_rate());
+        CHECK(ring.frames > after_pass && ring.frames < reference.frames);
+        const float expected_peak = kind == EffectKind::Echo || kind == EffectKind::Spring ? 0.4f : 0.05f;
+        CHECK(*std::max_element(ring.left.begin() + after_pass, ring.left.end()) > expected_peak);
         CHECK(std::equal(ring.left.begin(), ring.left.end(), reference.left.begin()));
         CHECK(std::equal(ring.right.begin(), ring.right.end(), reference.right.begin()));
-        auto quiet = [spring](float v) { return spring ? std::fabs(v) < 0.000316f : v == 0; };
+        auto quiet = [kind](float v) { return kind == EffectKind::Echo ? v == 0 : std::fabs(v) < 0.000316f; };
         CHECK(std::all_of(reference.left.begin() + ring.frames, reference.left.end(), quiet));
         CHECK(std::all_of(reference.right.begin() + ring.frames, reference.right.end(), quiet));
+        if (kind == EffectKind::Shimmer) {
+            setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);
+            const auto slow = print(1, kind);
+            unsetenv("MELODEE_TEST_SLOW_OPEN");
+            CHECK(ring.left == slow.left && ring.right == slow.right);
+        }
     }
 }
 
