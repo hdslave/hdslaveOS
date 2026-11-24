@@ -115,4 +115,28 @@ inline bool mixer_master_comp(const UiState& ui) {
 // The FX block lit, on the channel in hand.
 inline bool mixer_fx_lit(const UiState& ui) { return ui.page == PageId::Mixer && mixer_block_of(ui, channel_kind(mixer_strip(ui))) == block_fx; }
 
+// The mixer's Minus / Plus: a tap moves through the lit block as it is let go; held mixer_view_hold_ms, Plus shows the
+// channel in hand's card and Minus every channel of the row as strips (UiState::mixer_card); the release does no more.
+constexpr uint32_t mixer_view_hold_ms = 400;
+struct MixerViewHold {
+    bool down = false, fired = false;
+    int way = 0; // −1 Minus, +1 Plus
+    uint32_t at = 0;
+};
+inline void mixer_view_press(MixerViewHold& h, int way, uint32_t now) { h = MixerViewHold {true, false, way, now}; }
+// Each pass while it is down: the card or the strips once it has been held long enough. Off the mixer (a page opened
+// while it was down), it is let go.
+inline void mixer_view_tick(MixerViewHold& h, UiState& ui, uint32_t now) {
+    if (h.down && ui.page != PageId::Mixer) h.down = false;
+    if (!h.down || h.fired || now - h.at < mixer_view_hold_ms) return;
+    h.fired = true;
+    ui.mixer_card = h.way > 0;
+}
+// Its button let go: the way to move when it was a tap, else 0.
+inline int mixer_view_release(MixerViewHold& h) {
+    const bool tap = h.down && !h.fired;
+    h.down = false;
+    return tap ? h.way : 0;
+}
+
 } // namespace melodee

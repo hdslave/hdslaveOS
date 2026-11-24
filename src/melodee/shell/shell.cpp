@@ -299,8 +299,10 @@ void Shell::button(Button b, bool pressed) {
     if (pressed && b != Button::Erase && b != Button::Shift && ui_.erase) ui_.erase_used = true; // Erase + a button: its release erases nothing
     // Erase's release is a press of its own (a tap erases the thing in focus): one undo step, as any page press.
     // The encoder's too: its tap acts when it is let go (held, it opens the MENU: shell/menu.h). And Mute's on the
-    // mixer's FX block (a tap switches the lit effect: shell/mute_mode.h).
-    const bool release_acts = b == Button::Erase || b == Button::WheelPush || (b == Button::Mute && mixer_fx_lit(ui_));
+    // mixer's FX block (a tap switches the lit effect: shell/mute_mode.h), and the mixer's Minus / Plus (held, the
+    // strips or the card: shell/mixer_channels.h).
+    const bool release_acts = b == Button::Erase || b == Button::WheelPush || (b == Button::Mute && mixer_fx_lit(ui_))
+                           || ((b == Button::Minus || b == Button::Plus) && mixer_view.down);
     if ((!pressed && !release_acts) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
     PageEdit step(context_, b, false);
     press(b, pressed);
@@ -317,6 +319,10 @@ void Shell::press(Button b, bool pressed) {
     }
     if (b == Button::Minus && !pressed && history_hold.down) { // Shift + Minus let go: a tap undoes one step
         if (history_release(history_hold)) context_.undo();
+        return;
+    }
+    if ((b == Button::Minus || b == Button::Plus) && !pressed && mixer_view.down && (b == Button::Plus) == (mixer_view.way > 0)) {
+        if (const int way = mixer_view_release(mixer_view); way && ui.page == PageId::Mixer) page_spec(ui.page).nudge(context_, way); // a tap
         return;
     }
     if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
@@ -546,14 +552,18 @@ void Shell::press(Button b, bool pressed) {
         if (ui.shift) history_press(history_hold, context_.now); // a tap undoes as it is let go; held, the undo list
         else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, -1); } // 16 Levels held
         else if (record_track_keys()) context_.record_octave(-1); // the source track's pads, while they play
-        else if (!pad_bank_move(context_, -1)) page.nudge(context_, -1);
+        else if (pad_bank_move(context_, -1)) {}
+        else if (ui.page == PageId::Mixer) mixer_view_press(mixer_view, -1, context_.now); // a tap nudges as it is let go; held, the strips
+        else page.nudge(context_, -1);
         break;
     case Button::Plus:
         if (ui.sample_held && ui.light_show && !ui.shift) { light_style_step(1); break; }
         if (ui.shift) context_.redo();
         else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, 1); }
         else if (record_track_keys()) context_.record_octave(1);
-        else if (!pad_bank_move(context_, 1)) page.nudge(context_, 1);
+        else if (pad_bank_move(context_, 1)) {}
+        else if (ui.page == PageId::Mixer) mixer_view_press(mixer_view, 1, context_.now); // held, the card
+        else page.nudge(context_, 1);
         break;
     // The pads the tracks (Pad Bank held, a track move or copy): B2 MOVE, B3 COPY, B1 back (shell/pad_bank.h).
     // Note Repeat on: B1-B3 are its rate (Shift: triplets), except on Arp and Chord.

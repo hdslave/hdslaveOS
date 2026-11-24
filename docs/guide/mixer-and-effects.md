@@ -43,10 +43,19 @@ mixer. It is also pad 9 (**MIXER**) on the Menu's **GO**.
 
 ![The mixer](../images/screens/mixer.png)
 
-The selected channel is the wide card in the middle. Its neighbours are
-narrow strips left and right, each with its number, a stereo meter and its
-fader. The card shows the channel's name, **M** and **S**, its meter, its
-fader, its pan and one block: the one **B1**–**B3** light.
+The mixer opens on the strips: every channel of the row side by side, each
+with its number, a stereo meter, its fader and **M** or **S** when on. The
+selected channel's strip is lit.
+
+Hold **+** to open the selected channel's card. Hold **−** to go back to the
+strips. The mixer stays on the view you left it on until Melodee restarts.
+
+![The card](../images/screens/mixercard.png)
+
+The card is in the middle. Its neighbours are narrow strips left and right.
+The card shows the channel's name, **M** and **S**, its meter, its fader,
+its pan and one block: the one **B1**–**B3** light. On the strips,
+**K1**–**K3** still set the lit block.
 
 | Key | Block | **K1**–**K3** |
 | --- | --- | --- |
@@ -63,10 +72,12 @@ when you pick another channel.
 | Control | Does |
 | --- | --- |
 | Pads | Select a channel. No sound. An empty track opens its [new track cards](tracks.md#make-a-new-track). |
-| Encoder | Turn: the next channel comes to the middle. |
+| Encoder | Turn: select the next channel. |
 | Encoder push | EQ or COMP: on or off. FX: edit the lit effect on its FX page; on the **+**, the effect picker. |
 | **SHIFT** + encoder push | Name the selected track (see [Naming](projects-and-files.md#naming)). |
-| **−** / **+** | Move through the lit block: SENDS and COMP their first and second row, EQ its three groups, FX its effects and the **+**. |
+| **−** / **+** | Move through the lit block: SENDS and COMP their first and second row, EQ its three groups, FX its effects and the **+**. Acts when you let go. |
+| Hold **+** | The card. |
+| Hold **−** | The strips. |
 | **SHIFT** + **−** / **+** | Undo / redo, as on every page. |
 | Fader | The level of the selected channel. |
 | **PAD BANK** | The tracks, or the submixes, buses, input and master (see [Submixes, buses, input and master](#submixes-buses-input-and-master)). |

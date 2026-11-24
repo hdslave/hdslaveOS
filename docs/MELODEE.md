@@ -375,8 +375,10 @@ beat; the meters show the mix.
     track (none in a new project).
     Picked with a pad (the mixer, Pad Bank held, Song's lanes), the track goes
     back to that page once made.
-- **Mixer** (Pad FX + Knob FX together; the MENU's MIXER; docs/MIXER_PLAN.md, pages/mixer_page.cpp): one channel
-  at a time. The channel in hand is a card in the middle (its name on its colour, M and S, a stereo meter, its fader,
+- **Mixer** (Pad FX + Knob FX together; the MENU's MIXER; docs/MIXER_PLAN.md, pages/mixer_page.cpp): it opens on
+  the strips, every channel of the row side by side from the left (16 tracks 20 px apart, the second row 22; number,
+  stereo meter, level, M / S), the one in hand lit. + held: the card view, one channel at a time; − held: the strips
+  again (kept until a restart; a tap of − / + acts as it is let go). The channel in hand is a card in the middle (its name on its colour, M and S, a stereo meter, its fader,
   its pan and one block), its neighbours narrow strips either side (number, meter, level). Pad Bank steps between two
   rows (shell/mixer_channels.h): the sixteen tracks, and the submixes S1-S8 (pads 1-8), buses A-D (9-12), the input
   (15) and the master (16); Basic has no submixes. Blocks: B1 **SENDS** (K1-K3 A-C; second row PAN, OUTPUT (master or

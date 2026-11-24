@@ -101,8 +101,9 @@ kit). The other tracks stay empty until you choose what they are (see
 [step 7](#7-add-a-plug-in-instrument)).
 
 To mix the tracks, press **PAD FX** and **KNOB FX** together to open the
-mixer. The selected track is the wide card in the middle; its neighbours
-sit left and right. Press a pad or turn the encoder to pick a track. The
+mixer. Every track is a strip; the selected one is lit. Hold **+** to see
+its card (its sends, EQ or compressor), hold **−** to go back to the
+strips. Press a pad or turn the encoder to pick a track. The
 fader sets its level, **K1**–**K3** its sends A–C. Press **B2** for its EQ
 and **B3** for its compressor (see
 [The mixer](guide/mixer-and-effects.md#the-mixer)).

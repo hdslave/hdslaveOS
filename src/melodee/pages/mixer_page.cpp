@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// The mixer (docs/MIXER_PLAN.md; Pad FX + Knob FX): the channels in a row, the selected one a wide card in the middle,
-// its neighbours narrow strips either side (number, stereo meter, level). The card: name, mute and solo, a slim meter
+// The mixer (docs/MIXER_PLAN.md; Pad FX + Knob FX). It opens on the strips: every channel of the row side by side from
+// the left, as wide as the row lets them be, the selected one lit (number, stereo meter, level, M and S). Plus held:
+// the card view, the selected one a wide card in the middle, its neighbours narrow strips either side (number, stereo
+// meter, level); Minus held: the strips again (shell/mixer_channels.h MixerViewHold). The card: name, mute and solo, a slim meter
 // and its fader, and one block, the one B1-B3 light: SENDS (four sends and what each bus holds), EQ (nine bands as a
 // curve, the three in hand lit; B2 again steps LOW, MID, HIGH) or COMP (its curve and what it took off of late).
 // K1-K3 turn the lit block (Shift: its second row), the fader the level. A pad or the wheel pick the channel; Minus /
@@ -122,6 +124,50 @@ void strip(Paint& p, const Snapshot& s, const Channel& ch, float x) {
     const float at = my + mh * (1 - std::clamp(ch.level, 0.0f, 1.0f));
     p.fill(x + 17, my, 1, mh, colour::line);
     p.fill(x + 15, at - 1.5f, 6, 3, colour::text, 1);
+}
+
+// The strips view's channel: its number (on its colour when it is the one in hand, the strip raised), its stereo
+// meter, where its level sits, and M (over the meter a mute leaves dark) and S under it when on. `w` 18 px for the
+// sixteen tracks, 20 for the second row.
+void lane(Paint& p, const Snapshot& s, const Channel& ch, float x, float w, bool here) {
+    p.fill(x, top, w, bottom - top + 5, here ? colour::raised : colour::panel, 3);
+    if (here) {
+        p.fill(x, top, w, head_h, ch.used ? ch.colour : colour::line, 3);
+        p.fill(x, top + head_h - 4, w, 4, ch.used ? ch.colour : colour::line);
+    } else {
+        p.fill(x, top, w, 2, ch.used ? ch.colour : colour::line, 1);
+    }
+    auto style = plain(here ? (ch.used ? colour::bg : colour::text) : ch.used ? ch.colour : colour::dim, type::body, Weight::Bold);
+    p.text(ch.number, x, top + (here ? 0.0f : 2.0f), w, head_h - (here ? 0.0f : 2.0f), p.fit(ch.number, style, w - 2, type::floor), juce::Justification::centred);
+    if (!ch.used) return;
+    const auto& m = s.strips[ch.n];
+    const float my = top + head_h + 4, mh = bottom - my - 16, mw = w >= 20 ? 4.0f : 3.0f;
+    segments(p, x + 2, my, mw, mh, ch.mute ? 0 : meter_fraction(m.left), ch.colour);
+    segments(p, x + 3 + mw, my, mw, mh, ch.mute ? 0 : meter_fraction(m.right), ch.colour);
+    const float fx = x + w - 4, at = my + mh * (1 - std::clamp(ch.level, 0.0f, 1.0f));
+    p.fill(fx, my, 1, mh, colour::line);
+    p.fill(fx - 2.5f, at - 1.5f, 6, 3, colour::text, 1);
+    auto pill = [&](const char* letter, float y, juce::Colour c) {
+        const float pw = std::min(w - 4, 14.0f);
+        p.fill(x + (w - pw) / 2, y, pw, 12, c, 2);
+        p.text(letter, x + (w - pw) / 2, y, pw, 12, plain(colour::bg, type::small, Weight::Bold), juce::Justification::centred);
+    };
+    if (ch.mute && channel_mutes(ch.kind)) pill("M", my + mh - 13, colour::rec);
+    if (ch.solo && channel_solos(ch.kind)) pill("S", bottom - 12, colour::amber);
+}
+
+// The strips view: the row in view from the left edge, at most 40 px apart (16 tracks 20, the second row 22); the
+// master, last, takes what is left of the screen's width, up to 14 px more, so MST fits.
+void strips_view(Paint& p, const Snapshot& s) {
+    const unsigned count = mixer_row_count(s.ui), at = mixer_row_at(s.ui);
+    if (!count) return;
+    const float pitch = std::min(40.0f, std::floor(float(zone::width) / float(count)));
+    for (unsigned k = 0; k < count; ++k) {
+        const Channel ch = channel_of(s, mixer_row_strip(s.ui, k));
+        const float x = float(k) * pitch;
+        const float w = ch.kind == ChannelKind::Master ? std::min(float(zone::width) - x, pitch + 14) : pitch - 2;
+        lane(p, s, ch, x, w, k == at);
+    }
 }
 
 // The response of a strip's nine bands at `hz`, dB (model/strip.h; the engine's peaks, engine/rbj.h, at 48 kHz).
@@ -409,6 +455,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (!basic) { keys.dots[1] = 3; keys.dot_at[1] = uint8_t(s.ui.mixer_eq_group % 3); }
     if (sends && fx) { keys.dots[0] = 2; keys.dot_at[0] = uint8_t(block == block_fx ? 1 : 0); }
     frame(p, s, keys, h);
+    if (!s.ui.mixer_card) { strips_view(p, s); return; } // as it opens, and Minus held: every channel a strip
     // The neighbours in the row in view, three a side, nearest the card first; then the card over them.
     const int at = int(mixer_row_at(s.ui)), count = int(mixer_row_count(s.ui));
     for (int k = 1; k <= 3; ++k) {
@@ -475,8 +522,9 @@ void soft(Context& c, int key) {
     c.ui.mixer_row = 0;
 }
 
-// Minus / Plus: through what the lit block holds. SENDS and COMP their two rows (−: the first, +: the second, as
-// Shift shows it), EQ its three groups, FX the chain's effects and its plus. The wheel and the pads pick the channel.
+// Minus / Plus, a tap (as it is let go; held, the strips or the card): through what the lit block holds. SENDS and COMP
+// their two rows (−: the first, +: the second, as Shift shows it), EQ its three groups, FX the chain's effects and its
+// plus. The wheel and the pads pick the channel.
 void nudge(Context& c, int way) {
     const unsigned n = mixer_strip(c.ui);
     switch (mixer_block_of(c.ui, channel_kind(n))) {

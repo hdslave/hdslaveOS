@@ -364,6 +364,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     if (encoder_tick(enc, now)) menu_open(context_); // the encoder held: the MENU (shell/menu.h)
     if (history_tick(history_hold, now)) history_open(context_); // Shift + Minus held: the undo list (shell/history_list.h)
+    mixer_view_tick(mixer_view, ui_, now); // the mixer's Plus / Minus held: the card or the strips (shell/mixer_channels.h)
     lesson_tick(context_, now); // a lesson: its kit loaded, or its last step done (shell/lesson_jobs.h)
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
     // Tap Tempo held half a second with nothing turned: the Tempo page; held on it, back to the page under it.
