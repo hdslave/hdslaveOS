@@ -443,10 +443,10 @@ void draw_screen_picture(Paint& p, const ScreenPicture& picture, float x, float 
     const int w = picture.width, h = picture.height;
     if (picture.pixels.size() < size_t(w) * size_t(h) || w <= 0 || h <= 0) return;
     if (!image.isValid() || image.getWidth() != w || image.getHeight() != h || serial != picture.serial || entry != picture.entry) {
-        if (!image.isValid() || image.getWidth() != w || image.getHeight() != h) image = juce::Image(juce::Image::ARGB, w, h, false);
+        if (!image.isValid() || image.getWidth() != w || image.getHeight() != h) image = juce::Image(juce::Image::RGB, w, h, false);
         juce::Image::BitmapData bits(image, juce::Image::BitmapData::writeOnly);
         for (int row = 0; row < h; ++row) {
-            auto* line = reinterpret_cast<juce::PixelARGB*>(bits.getLinePointer(row));
+            auto* line = reinterpret_cast<juce::PixelRGB*>(bits.getLinePointer(row));
             const uint32_t* from = picture.pixels.data() + size_t(row) * size_t(w);
             for (int col = 0; col < w; ++col) {
                 uint32_t c = from[col];
@@ -471,6 +471,25 @@ bool plugin_page_shown(const Snapshot& s, unsigned entry) {
     if (entry >= max_plugins || panel.entry != entry || panel.status != PluginStatus::Ready || (!panel.rows && !panel.screen)) return false;
     auto cards = cards_of(s);
     return std::none_of(cards.begin(), cards.end(), [](const ui::KnobCard& c) { return c.knob_fx; });
+}
+
+// An opaque native plug-in picture replaces whole rows of the backdrop. Keep the
+// full backdrop for the generic editor, a knob FX takeover or a frozen Stage.
+void page_background(Paint& p, const Snapshot& s) {
+    const auto& picture = s.plugin_picture;
+    if (picture && picture->width == zone::width &&
+        picture->height == (picture->area ? picture_strip_rows : picture_page_rows) &&
+        picture->pixels.size() >= size_t(picture->width) * picture->height &&
+        plugin_screen_shown(s, picture->area)) {
+        const bool chain = fx_chain_page(s.ui.page);
+        const auto& track = s.track();
+        const bool frozen = s.ui.page == PageId::Stage && (!track.used() || s.freeze[s.ui.track % track_count].frozen());
+        if (chain || (!frozen && plugin_page_shown(s, track.plugin))) {
+            p.background(0, zone::height - picture->height);
+            return;
+        }
+    }
+    p.background();
 }
 
 void draw_plugin_page(Paint& p, const Snapshot& s, unsigned entry, const SoftKeys& keys) {

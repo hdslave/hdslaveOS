@@ -2977,7 +2977,7 @@ void draw(juce::Graphics& g, const Snapshot& s) {
     ui::use_palette(s.ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : s.ui.settings.font); // LCD sets its own
     ui::Paint p(g);
-    p.background();
+    page_background(p, s);
     page_spec(s.ui.page).draw(p, s);
     draw_overlays(p, s);
 }

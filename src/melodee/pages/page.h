@@ -18,6 +18,7 @@ struct PageSpec {
     void (*soft)(Context&, int key);  // B1-B3: 0-2
     void (*nudge)(Context&, int way); // Minus -1, Plus +1
 };
+void page_background(ui::Paint& p, const Snapshot& s);
 const PageSpec& page_spec(PageId page);
 // What the pads do on the page in view (Seq held, Pad Bank held and the like come first: shell/shell.cpp).
 using PadJob = void (*)(Context&, unsigned pad, uint8_t velocity, bool down);
