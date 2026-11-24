@@ -260,7 +260,8 @@ and the Compressor. Meters are one peak a track; buses have none.
      template's 1, from an imported MPC Sample project, meant Submix 1, past
      the track's channel. Tool changes for tests: `O:T=S` (a track's output),
      `U:S=LEVEL,PAN,MUTE`. Checked: the export run on the MPC, read back by
-     `test_submix_routes`. Not yet heard in MPC 3.
+     `test_submix_routes`, and opened in MPC 3 (2026-11-24): Track 1 on
+     Submix 3.
    - Left out, and counted (`mixer_left_out()`, `report.mixer`; Melodee's
      export notice adds "mixer settings left out"): strips (MPC 3 and Live),
      a submix's name, sends and chain, bus mutes; in Live also the routes and
