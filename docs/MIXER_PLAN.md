@@ -46,9 +46,19 @@ strips yet and say so.
 Melodee steps 1 and 2 (page, knobs) built: 50d160b. Pad FX + Knob FX, the
 Menu's MIXER tile and B1 of an effect chain open the mixer: the tracks in a
 carousel, the selected track's card with SENDS, EQ (B2 again: LOW, MID,
-HIGH) and COMP on K1-K3 and Shift + K1-K3. Pads select. Not yet: the second
-bank (submixes, buses, input, master), pad lights by level, the spectrum;
-the old Tracks and Sends pages are still in.
+HIGH) and COMP on K1-K3 and Shift + K1-K3. Pads select.
+
+Melodee step 3 (other controls) built: 9f81915. Pad Bank steps to the
+second row: submixes on pads 1-8, buses 9-12, input 15, master 16 (Basic:
+no submixes). Pads, the wheel and Minus / Plus pick the channel; the fader
+is its level (a bus's return, the input's gain, the master's trim); Mute +
+pad mutes a submix or bus, Shift + pad solos a submix; Shift + Mute
+unmutes them too. Pads light in the channel's colour by its meter. Submixes
+have eight colours of their own (`ui/shades.h`, `tools/gen_palettes.py`).
+A track routed to a submix shows its number on the card. A bus, the input
+and the master show their EQ and compressor (the master no compressor);
+their B1 block is step 4. Not yet: the spectrum; the old Tracks and Sends
+pages are still in.
 
 ## What it is
 
@@ -288,7 +298,7 @@ and the Compressor. Meters are one peak a track; buses have none.
    (`shell/bindings.h`); the page's rows in `base_bindings` and
    `shift_bindings`; labels in `describe_card`; commands in
    `Context::apply`; the Mix undo scope. Pickup works as on every page.
-3. **Other controls.** Pads select (`pad_job`, pad chip SELECT), the pad
+3. **Other controls.** Built (9f81915). Pads select (`pad_job`, pad chip SELECT), the pad
    lights by level (`shell/pad_lights.cpp`, after `tracks_look`), **PAD
    BANK** tap for the second bank, mute mode for submixes and buses
    (`shell/mute_mode.cpp`), the fader's page job (`shell/fader_job.cpp:113`),
