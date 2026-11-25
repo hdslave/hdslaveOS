@@ -125,9 +125,11 @@ void doors_draw(Paint& p, const Snapshot& s) {
     for (unsigned n = 0; n < doors.size(); ++n) {
         float x = zone::pad + (n % 4) * (w + gap), y = top + (n / 4) * (h + gap);
         bool on = n == s.ui.settings_door % doors.size();
-        if (on && palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(h));
-        else p.fill(x, y, w, h, on ? colour::raised : colour::surf, 5);
-        if (on) p.fill(x, y, w, 2.5f, colour::text, 1);
+        if (on && palette().contour_print) p.contour_panel(int(x), int(y), int(w), int(h), Paint::ContourEdge::Dark);
+        else {
+            p.fill(x, y, w, h, on ? colour::raised : colour::surf, 5);
+            if (on) p.fill(x, y, w, 2.5f, colour::text, 1);
+        }
         auto c = on ? colour::text : colour::mid;
         icon(p, doors[n].icon, x + w / 2 - 11, y + 12, 22, c, 1.5f);
         p.text(doors[n].name, x, y + 42, w, 14, caps_text(c), juce::Justification::centred);
