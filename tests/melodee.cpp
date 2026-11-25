@@ -12196,20 +12196,63 @@ void sequence_links() {
         host->send({Command::Type::SceneMutes, 0, 0, 1, 1});
         host->send({Command::Type::Mute, 0, 0, 0, 0}); // the hand's after it: it stays on
         CHECK(play(2 * bar) >= 3);
-        // Play from past where it stopped: a MIDI track reads on from there (issue 59).
-        Command from {Command::Type::Play};
-        from.position = 64 * 4 * ticks_per_quarter;
         host->send({Command::Type::Stop});
         play(10);
         host->send({Command::Type::SceneMutes, 0, 0, 1, 1}); // stopped: at once
-        host->send(from);
+        host->send({Command::Type::Play});
         CHECK(play(bar) == 0);
         host->send({Command::Type::SceneMutes, 0, 0, 1, 0});
         host->send({Command::Type::Stop}); // one waiting for its bar when the transport stops: set then
         play(10);
-        from.position = 128 * 4 * ticks_per_quarter;
-        host->send(from);
-        CHECK(play(bar) >= 1);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 2); // the bar's two (the next bar's first may fall in the last block)
+    }
+    {   // Issue 59: a MIDI track plays from the first bar after Play, Locate or MTC, however far on it stopped, with a
+        // negative DELAY (read ahead) or none.
+        using namespace midi_track;
+        for (int delay : {0, -50}) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            load_sound(project->tracks[0], EngineKind::Midi, 0);
+            project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+            project->tracks[0].params[Delay] = delay;
+            project->tempo = 1200;
+            put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 8, 60, 100); // two notes a bar
+            auto host = std::make_unique<EngineHost>();
+            host->load(*project, *bank);
+            tones_for(*host, *project);
+            host->set_audio_format(44100, 384);
+            std::vector<int32_t> buffer(256);
+            auto play = [&](unsigned blocks) {
+                unsigned ons = 0;
+                for (unsigned b = 0; b < blocks; ++b) {
+                    host->render(buffer.data(), 128, 1);
+                    MidiOutEvent e;
+                    while (host->take_midi(e)) ons += e.kind == MidiOutEvent::Kind::NoteOn;
+                }
+                return ons;
+            };
+            const unsigned bar = 690; // blocks of 128 frames in a bar at 120 BPM
+            host->send({Command::Type::Play});
+            const unsigned before = play(5 * bar + bar / 2); // eleven (twelve when the read-ahead reaches the next note)
+            CHECK(before >= 11 && before <= 12);
+            host->send({Command::Type::Stop});
+            play(10);
+            host->send({Command::Type::Play}); // from the top: its first bar plays
+            CHECK(play(bar) >= 2);
+            play(3 * bar);
+            Command back {Command::Type::Locate}; // back to the first bar while playing
+            back.position = 0;
+            host->send(back);
+            CHECK(play(bar) >= 2);
+            play(3 * bar);
+            host->send({Command::Type::Stop});
+            play(10);
+            Command from {Command::Type::Play}; // Shift + Play: from a place before where it stopped
+            from.position = 4 * ticks_per_quarter;
+            host->send(from);
+            CHECK(play(bar) >= 2);
+        }
     }
     {   // The engine: off stops the track on the next bar, holds through Stop and Play, and a launch ends it.
         using namespace midi_track;
