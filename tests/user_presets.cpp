@@ -654,7 +654,9 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
     const bool with_note = mode == "anvil-freeze-note";
     const bool ring_launch = mode == "anvil-freeze-ring-launch";
     const bool queued_run = mode == "anvil-freeze-queued-run";
-    const bool panel_pending = mode == "anvil-freeze-panel-pending";
+    const bool manual_bank = mode == "anvil-freeze-panel-bank-manual";
+    const bool queued_bank = manual_bank || mode == "anvil-freeze-panel-bank";
+    const bool panel_pending = queued_bank || mode == "anvil-freeze-panel-pending";
     const bool panel_run = panel_pending || mode == "anvil-freeze-panel-run";
     struct Audio {
         std::vector<float> left, right;
@@ -771,11 +773,18 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         advance(requested);
         if (queued_run)
             rack->set_param_index(0, generation, run_index, 1000);
+        if (queued_bank) {
+            c.launch(0, pattern_pads); // B1 is queued while A1 still plays.
+            advance(requested + 1);
+            CHECK(host->pattern_of(0) == 0 && track.pattern == pattern_pads);
+        }
         if (panel_run) {
             if (freeze && panel_pending) {
                 // Open PRINT before the preceding panel gesture reaches its worker.
                 tap(SurfaceButton::SampleRecord);
                 CHECK(shell->ui().page == PageId::Print && !shell->ui().print_sheet.picked(0));
+                if (queued_bank) CHECK(shell->ui().pad_pattern(0) == pattern_pads);
+                if (manual_bank) tap(SurfaceButton::Plus); // Browse bank C before RUN arrives.
             }
             const auto input = run_index == 33 ? ScreenInput {ScreenKey::Wheel, 1, false}
                                                : ScreenInput {ScreenKey::Push, 0, false};
@@ -796,10 +805,12 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
                 // any print tick can refresh the already open sheet.
                 if (panel_pending) c.print_tick();
                 CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
+                if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : 0));
             }
             if (ring_launch) shell->ui().print_sheet.tail = PrintTail::Ring;
             tap(SurfaceButton::TopRight);
             CHECK(sheet.printing && sheet.picked(0) && !sheet.picked(1));
+            if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : 0));
             c.print_tick();
             if (queued_run) {
                 CHECK(c.freeze_pending(0) && !printer->busy());
@@ -815,6 +826,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             advance(requested + 1);
             CHECK(rack->anvil_sequencer_running(0) && rack->state(0) == patch);
         }
+        if (queued_bank) c.launch(0, 0); // Keep A1 through the printed and live comparison bars.
         advance(2 * bar_blocks);
         std::vector<uint8_t> saved;
         Audio launch;
@@ -915,7 +927,8 @@ int main(int argc, char** argv) {
     }
     if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note" ||
         mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run" ||
-        mode == "anvil-freeze-panel-run" || mode == "anvil-freeze-panel-pending") {
+        mode == "anvil-freeze-panel-run" || mode == "anvil-freeze-panel-pending" ||
+        mode == "anvil-freeze-panel-bank" || mode == "anvil-freeze-panel-bank-manual") {
         CHECK(argc <= 6);
         anvil_freeze(card, plugin, mode, argc >= 5 ? std::stoul(argv[4]) : 44100, argc == 6 ? std::stoi(argv[5]) : 2);
         return 0;

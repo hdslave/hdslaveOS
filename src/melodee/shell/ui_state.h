@@ -493,7 +493,7 @@ struct UiState {
     // where the prints are taken and how they end; `printing` once B3 FREEZE went (the sheet shows the prints made
     // until they are ready, B1 calls them off), for the freeze `print_serial` names.
     struct PrintSheet {
-        uint8_t track = 0;
+        uint8_t track = 0, default_bank = 0;
         std::array<uint64_t, (pattern_count + 63) / 64> picks {}, eligible {};
         bool clocked_anvil = false, picks_touched = false;
         PrintTap tap = PrintTap::PostFx;

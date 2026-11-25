@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_anvil_print_opens_after_native_panel_run_without_reopening(self):
         self.run_anvil_fixture("anvil-freeze-panel-run", "anvil-freeze-panel-pending")
 
+    def test_anvil_print_shows_the_selected_bank_when_panel_run_arrives_late(self):
+        self.run_anvil_fixture("anvil-freeze-panel-bank", "anvil-freeze-panel-bank-manual")
+
     def test_knob_takeover_on_plugin_screen_changes(self):
         for mode in ("knob-scaled", "knob-pickup", "knob-instant"):
             with self.subTest(mode=mode):

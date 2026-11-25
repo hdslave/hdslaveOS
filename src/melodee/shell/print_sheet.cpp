@@ -98,13 +98,16 @@ bool Context::edit_gate(void* owner, Edit& edit) {
 // ---- the PRINT sheet
 
 namespace {
-auto eligible_patterns(const Context& c, unsigned t, bool clocked_anvil) {
+unsigned clocked_pattern(const Context& c, unsigned t) {
+    return (c.host.playing() ? c.host.pattern_of(t) : c.project.tracks[t].pattern) % pattern_count;
+}
+
+auto eligible_patterns(const Context& c, unsigned t, unsigned anvil_pattern) {
     auto eligible = with_notes(c.patterns, t);
-    if (clocked_anvil) {
+    if (anvil_pattern < pattern_count) {
         // The playing pattern can carry Anvil's sequence with zero MPC notes. Retain previously
         // frozen empty patterns so the sheet can show and unpick them after a launch.
-        const unsigned p = (c.host.playing() ? c.host.pattern_of(t) : c.project.tracks[t].pattern) % pattern_count;
-        eligible[p / 64] |= uint64_t(1) << (p % 64);
+        eligible[anvil_pattern / 64] |= uint64_t(1) << (anvil_pattern % 64);
         for (size_t i = 0; i < eligible.size(); ++i) eligible[i] |= c.prints.freeze[t].patterns[i];
     }
     return eligible;
@@ -113,7 +116,8 @@ auto eligible_patterns(const Context& c, unsigned t, bool clocked_anvil) {
 
 std::array<uint64_t, (pattern_count + 63) / 64> Context::freeze_patterns(unsigned track, bool deep) const {
     const unsigned t = track % track_count;
-    return eligible_patterns(*this, t, !deep && anvil_sequencing(t));
+    const bool clocked = !deep && anvil_sequencing(t);
+    return eligible_patterns(*this, t, clocked ? clocked_pattern(*this, t) : pattern_count);
 }
 
 void Context::open_print_sheet() {
@@ -121,20 +125,22 @@ void Context::open_print_sheet() {
     const auto& tr = project.tracks[t];
     if (!tr.used()) { notice("Empty track"); return; }
     auto& sheet = ui.print_sheet;
-    if (!(sheet.track == t && sheet.printing)) { // a sheet under way comes back as it is
+    const bool printing = sheet.track == t && sheet.printing;
+    const bool clocked = printing ? sheet.clocked_anvil : anvil_sequencing(t);
+    const unsigned shown = clocked ? clocked_pattern(*this, t) : tr.pattern % pattern_count;
+    if (!printing) { // a sheet under way comes back as it is
         sheet = UiState::PrintSheet {};
         sheet.track = uint8_t(t);
         const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
-        sheet.clocked_anvil = anvil_sequencing(t);
-        sheet.tap = sheet.clocked_anvil ? PrintTap::PostFx : f.tap;
+        sheet.clocked_anvil = clocked;
+        sheet.tap = clocked ? PrintTap::PostFx : f.tap;
         sheet.tail = f.tail;
-        sheet.eligible = eligible_patterns(*this, t, sheet.clocked_anvil);
+        sheet.eligible = eligible_patterns(*this, t, clocked ? shown : pattern_count);
         sheet.picks = frozen(t) ? f.patterns : sheet.eligible;
         for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
     }
     // The bank in view: the one the track plays.
-    const unsigned shown = sheet.clocked_anvil && host.playing() ? host.pattern_of(t) : tr.pattern;
-    ui.pattern_bank = uint8_t(shown % pattern_count / pattern_pads);
+    ui.pattern_bank = sheet.default_bank = uint8_t(shown / pattern_pads);
     if (ui.page != PageId::Print) open(PageId::Print);
 }
 
@@ -146,16 +152,21 @@ void Context::refresh_print_sheet() {
     if (clocked == sheet.clocked_anvil) return;
     sheet.clocked_anvil = clocked;
     if (clocked) sheet.tap = PrintTap::PostFx;
-    sheet.eligible = eligible_patterns(*this, t, clocked);
+    const unsigned anvil_pattern = clocked ? clocked_pattern(*this, t) : pattern_count;
+    sheet.eligible = eligible_patterns(*this, t, anvil_pattern);
     if (!sheet.picks_touched) sheet.picks = frozen(t) ? prints.freeze[t].patterns : sheet.eligible;
     for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
+    // RUN can arrive after PRINT opened on a queued pattern's bank. Follow the automatic pick
+    // while the sheet is still on its default bank.
+    if (clocked && !sheet.picks_touched && ui.pattern_bank == sheet.default_bank && sheet.picked(anvil_pattern))
+        ui.pattern_bank = sheet.default_bank = uint8_t(anvil_pattern / pattern_pads);
 }
 
 void Context::print_sheet_pad(unsigned pad) {
+    const unsigned p = ui.pad_pattern(pad); // the pattern under the pad as pressed
     refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
-    unsigned p = ui.pad_pattern(pad);
     if (!sheet.can_pick(p)) { notice(pattern_word(p) + " is empty"); return; }
     sheet.pick(p, !sheet.picked(p));
     sheet.picks_touched = true;
