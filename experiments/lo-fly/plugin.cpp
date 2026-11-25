@@ -123,6 +123,8 @@ struct Plugin {
     const clap_host* host = nullptr;
     const clap_host_params* host_params = nullptr;
     const melodee_screen_host_t* screen_host = nullptr;
+    const melodee_screen_host_2_t* screen_host_2 = nullptr; // Melodee that lets a page take MUTE and ERASE
+    std::uint32_t keys_told = 0;                            // the keys it was told last
     const clap_host_preset_load* host_preset_load = nullptr;
 
     Store store;
@@ -756,17 +758,29 @@ void request_redraw(void* context)
     if (s.screen_host)
         s.screen_host->redraw(s.host, 0);
 }
+// The printed buttons the page takes, told to Melodee when they change (the FX page, its lit slot, the picker).
+void tell_keys(Plugin& s)
+{
+    const std::uint32_t keys = s.panel->keys();
+    if (s.screen_host_2 && keys != s.keys_told) {
+        s.screen_host_2->keys(s.host, keys);
+        s.keys_told = keys;
+    }
+}
 bool screen_draw(const void* p, const melodee_screen_frame_t* frame)
 {
     auto& s = of(p);
     s.synth->collectGarbage();
-    return s.panel->draw(*frame);
+    const bool drew = s.panel->draw(*frame);
+    tell_keys(s); // a preset or the state may have filled or emptied the lit slot
+    return drew;
 }
 bool screen_input(const void* p, const melodee_screen_input_t* in)
 {
     auto& s = of(p);
     bool changed = false;
     const bool used = s.panel->input(*in, changed);
+    tell_keys(s);
     if (changed && s.host_params)
         s.host_params->rescan(s.host, CLAP_PARAM_RESCAN_VALUES); // Melodee reads the values again
     if (used && s.screen_host)
@@ -802,6 +816,7 @@ bool init(const clap_plugin* p)
     auto& s = of(p);
     s.host_params = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS));
     s.screen_host = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)); // Melodee only
+    s.screen_host_2 = static_cast<const melodee_screen_host_2_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST_2));
     s.host_preset_load = static_cast<const clap_host_preset_load*>(s.host->get_extension(s.host, CLAP_EXT_PRESET_LOAD));
     if (!s.host_preset_load)
         s.host_preset_load = static_cast<const clap_host_preset_load*>(s.host->get_extension(s.host, CLAP_EXT_PRESET_LOAD_COMPAT));

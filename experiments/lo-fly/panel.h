@@ -2,10 +2,14 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 //
 // lo-fly's panel on the MPC Sample's screen in Melodee (sdk/melodee-screen/melodee_screen.h).
-// Thirteen pages. Each has a picture, one control on the wheel and three on K1-K3.
+// Ten pages. Each has a picture, one control on the wheel and three on K1-K3.
 //   Minus / Plus   previous / next page
 //   wheel          the page's wheel control (SHIFT: finer steps)
 //   Push           the page's section on or off
+// FX is the effect chain, as Melodee's chains work: the wheel walks the four slots and K1-K3 set the lit one; Push
+// opens the picker (on an empty slot to add, on an effect to change it): the wheel walks the families, Push enters
+// one, the wheel walks its effects, Push picks; Minus goes back. MUTE switches the lit effect off or on, ERASE
+// removes it (Melodee with keys(), melodee_screen.h).
 // Calls come from Melodee's screen thread only (never the audio thread).
 #pragma once
 
@@ -29,6 +33,8 @@ public:
     bool input(const melodee_screen_input_t& in, bool& changed);
     // The CLAP parameter IDs K1-K3 turn on this page.
     void controls(std::uint32_t ids[3]) const;
+    // The printed buttons the page takes now (MELODEE_SCREEN_KEY_ bits): MUTE and ERASE on an effect in the chain.
+    std::uint32_t keys() const;
 
     int page() const { return page_; }
     void set_page(int page);
@@ -46,10 +52,20 @@ private:
     void build_background(int area);
     void paint(const melodee_screen_frame_t& frame);
 
+    bool fx_page() const;
+    int fx_type(int slot) const;
+    void close_picker();
+
     Store& store_;
     void (*redraw_)(void*);
     void* context_;
     int page_ = 0;
+
+    // FX: the lit slot, and the picker over the page (families, then a family's effects; `picker_change_`: the lit
+    // slot holds an effect, which the pick replaces).
+    int fx_slot_ = 0;
+    bool picker_ = false, picker_items_ = false, picker_change_ = false;
+    int picker_family_ = 0, picker_item_ = 0;
 
     // What it drew last, and the background (the paper) of the page and area it drew.
     std::uint64_t drawn_ = 0;

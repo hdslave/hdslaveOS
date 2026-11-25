@@ -69,10 +69,7 @@ constexpr PageDef pages[] {
     { "FILTER", Pic::Filter, 0 },
     { "FILTER ENV", Pic::Env, 0 },
     { "AMP ENV", Pic::Env, 1 },
-    { "FX 1", Pic::Fx, 0 },
-    { "FX 2", Pic::Fx, 1 },
-    { "FX 3", Pic::Fx, 2 },
-    { "FX 4", Pic::Fx, 3 },
+    { "FX", Pic::Fx, 0 },
     { "VOICE", Pic::Voice, 0 },
 };
 constexpr int page_total = static_cast<int>(std::size(pages));
@@ -95,7 +92,7 @@ std::optional<ParamId> on_param(const PageDef& p)
     case Pic::Engine: return eng(p.n, lofly::EngineParam::On);
     case Pic::Noise: return ParamId::NoiseOn;
     case Pic::Filter: return ParamId::FilterOn;
-    case Pic::Fx: return lofly::fxParam(p.n, lofly::FxCommon::On);
+    case Pic::Fx: // Push opens the picker; MUTE switches the lit effect
     case Pic::Env:
     case Pic::Voice: return std::nullopt;
     }
@@ -379,14 +376,18 @@ void text_right(Canvas& g, const Font& f, float rx, float base, std::string_view
     text(g, f, rx - static_cast<float>(text_width(f, s, track)), base, s, c, track, a);
 }
 
+// A stroke of pink marker from `x0` to `x1` under text on `base`, `rise` up its letters.
+void marker(Canvas& g, float x0, float x1, float base, float rise, float a)
+{
+    PinkPlate plate(g);
+    g.quad({ x0, x1, x1 - 1.0f, x0 + 1.0f }, { base - rise, base - rise - 1.5f, base + 2.0f, base + 3.0f }, pink, 0.85f * a);
+}
+
 // The wheel's choice: its name over a stroke of pink marker, between two chevrons. A chevron fades where the list ends.
 void wheel(Canvas& g, std::string_view s, bool prev, bool next, float a)
 {
     const float hw = static_cast<float>(text_width(np_wheel_font, s)) * 0.5f + 7.0f;
-    {
-        PinkPlate plate(g);
-        g.quad({ 160.0f - hw, 160.0f + hw, 160.0f + hw - 1.0f, 160.0f - hw + 1.0f }, { 47.0f, 45.5f, 58.0f, 59.0f }, pink, 0.85f * a);
-    }
+    marker(g, 160.0f - hw, 160.0f + hw, wheel_base, 9.0f, a);
     text_centre(g, np_wheel_font, 160.0f, wheel_base, s, blue, 0, a);
     for (float side : { -1.0f, 1.0f }) {
         const float tip = 160.0f + side * 143.0f, back = tip - side * 7.0f;
@@ -798,30 +799,146 @@ void picture_env(Canvas& g, const Store& s, int n, float a)
     }
 }
 
-// The four slots in a row: pink = an effect that is on, a bar under this page's slot, and under the bar SEND or
-// INSERT for a reverb or delay type.
-void picture_fx(Canvas& g, const Store& s, int slot, float a)
+// The picker's families, as Melodee's effect picker groups its own, each with the lo-fly effect types it holds.
+struct FxFamily {
+    const char* name;
+    int count;
+    std::array<int, 8> types;
+};
+constexpr FxFamily fx_families[] {
+    { "SPACE", 1, { 1 } },                                  // Reverb
+    { "TIME", 3, { 2, 3, 4 } },                             // Delay, Tape Echo, Pitch Delay
+    { "MOTION", 8, { 13, 14, 12, 15, 16, 17, 18, 11 } },    // Chorus, BBD Chorus, Unison, Flanger, Vintage Flanger, Phaser, Auto Pan, Step Gate
+    { "DIRT", 2, { 9, 10 } },                               // Distortion, Bitcrusher
+    { "TONE", 2, { 7, 8 } },                                // Multi Filter, Parametric EQ
+    { "DYNAMICS", 2, { 5, 6 } },                            // Compressor, Multiband
+};
+constexpr int fx_family_count = static_cast<int>(std::size(fx_families));
+
+// Where an effect type sits in the picker: its family and its place in it (none: the first family's first).
+std::pair<int, int> fx_place(int type)
 {
-    constexpr float y = 82.0f, w = 54.0f, h = 20.0f, gap = 16.0f, x0 = 160.0f - (4.0f * w + 3.0f * gap) * 0.5f;
-    for (int i = 0; i < lofly::kFxSlots; ++i) {
-        const float x = x0 + static_cast<float>(i) * (w + gap);
-        if (i > 0)
-            g.seg(x - gap + 3.0f, y + h * 0.5f, x - 3.0f, y + h * 0.5f, 1.2f, blue, a);
-        const bool used = s.index(lofly::fxParam(i, lofly::FxCommon::Type)) != 0 && s.on(lofly::fxParam(i, lofly::FxCommon::On));
-        if (used) {
-            PinkPlate plate(g);
-            g.rect(x, y, w, h, pink, a);
+    for (int f = 0; f < fx_family_count; ++f)
+        for (int i = 0; i < fx_families[f].count; ++i)
+            if (fx_families[f].types[static_cast<std::size_t>(i)] == type)
+                return { f, i };
+    return { 0, 0 };
+}
+std::string_view fx_name(int type) { return lofly::kFxTypeNames[static_cast<std::size_t>(std::clamp(type, 0, lofly::kFxTypes - 1))]; }
+
+// An effect's name in a slot `w` wide around `mid`: one line, else two at the space, in the larger size that fits.
+void tile_name(Canvas& g, float cx, float mid, float w, std::string_view name, float a)
+{
+    for (const Font* f : { &np_name_font, &np_small_font }) {
+        if (static_cast<float>(text_width(*f, name)) <= w) {
+            text_centre(g, *f, cx, mid + 4.0f, name, blue, 0, a);
+            return;
         }
-        g.rect_line(x + 0.5f, y + 0.5f, w - 1.0f, h - 1.0f, 1.2f, blue, used || i == slot ? a : 0.55f * a);
-        if (i == slot)
-            g.rect(x, y + h + 4.0f, w, 3.0f, blue, a);
-        const char digit[2] { static_cast<char>('1' + i), 0 };
-        text_centre(g, np_label_font, x + w * 0.5f, y + 14.0f, digit, blue, 0, used || i == slot ? a : 0.55f * a);
+        const auto space = name.find(' ');
+        if (space == std::string_view::npos)
+            continue;
+        const auto top = name.substr(0, space), bottom = name.substr(space + 1);
+        if (static_cast<float>(std::max(text_width(*f, top), text_width(*f, bottom))) <= w) {
+            text_centre(g, *f, cx, mid - 2.0f, top, blue, 0, a);
+            text_centre(g, *f, cx, mid + 11.0f, bottom, blue, 0, a);
+            return;
+        }
     }
-    const int type = s.index(lofly::fxParam(slot, lofly::FxCommon::Type));
-    if (lofly::isSpatial(static_cast<lofly::FxType>(type)))
-        text_centre(g, np_label_font, x0 + static_cast<float>(slot) * (w + gap) + w * 0.5f, y + h + 20.0f,
-            s.on(lofly::fxParam(slot, lofly::FxCommon::Send)) ? "SEND" : "INSERT", blue, 1, 0.8f * a);
+    text_centre(g, np_small_font, cx, mid + 4.0f, name, blue, 0, a);
+}
+
+// The chain: four slots in a row, as the sound runs through them. Pink: an effect that is on; a frame and a faint
+// name: one that is off; a dotted frame and a plus: an empty slot. A bar under the lit slot, and under the row the
+// lit slot's effect large: on the marker while on, OFF while off, else SEND or INSERT for a reverb or delay type.
+void fx_chain(Canvas& g, const Store& s, int lit)
+{
+    constexpr float y = 40.0f, w = 71.0f, h = 38.0f, gap = (304.0f - 4.0f * w) / 3.0f;
+    for (int i = 0; i < lofly::kFxSlots; ++i) {
+        const float x = 8.0f + static_cast<float>(i) * (w + gap);
+        const int type = s.index(lofly::fxParam(i, lofly::FxCommon::Type));
+        const bool on = s.on(lofly::fxParam(i, lofly::FxCommon::On));
+        if (i > 0)
+            g.seg(x - gap + 1.5f, y + h * 0.5f, x - 1.5f, y + h * 0.5f, 1.2f, blue);
+        if (type == 0) {
+            for (float d = 0.0f; d < w; d += 3.0f) {
+                g.fill(x + d, y, 1.0f, 1.0f, blue, 0.7f);
+                g.fill(x + d, y + h - 1.0f, 1.0f, 1.0f, blue, 0.7f);
+            }
+            for (float d = 3.0f; d < h - 1.0f; d += 3.0f) {
+                g.fill(x, y + d, 1.0f, 1.0f, blue, 0.7f);
+                g.fill(x + w - 1.0f, y + d, 1.0f, 1.0f, blue, 0.7f);
+            }
+            const float cx = x + w * 0.5f, cy = y + h * 0.5f;
+            g.seg(cx - 6.0f, cy, cx + 6.0f, cy, 2.0f, blue);
+            g.seg(cx, cy - 6.0f, cx, cy + 6.0f, 2.0f, blue);
+        } else {
+            if (on) {
+                PinkPlate plate(g);
+                g.rect(x, y, w, h, pink);
+            }
+            g.rect_line(x + 0.5f, y + 0.5f, w - 1.0f, h - 1.0f, 1.2f, blue);
+            tile_name(g, x + w * 0.5f, y + h * 0.5f, w - 8.0f, fx_name(type), on ? 1.0f : 0.5f);
+        }
+        if (i == lit)
+            g.rect(x, y + h + 4.0f, w, 3.0f, blue);
+    }
+    const int type = s.index(lofly::fxParam(lit, lofly::FxCommon::Type));
+    if (type == 0) {
+        text_centre(g, np_wheel_font, 160.0f, 114.0f, "Empty", blue, 0, 0.35f);
+        return;
+    }
+    const bool on = s.on(lofly::fxParam(lit, lofly::FxCommon::On));
+    const auto name = fx_name(type);
+    const char* state = !on ? "OFF"
+        : lofly::isSpatial(static_cast<lofly::FxType>(type)) ? (s.on(lofly::fxParam(lit, lofly::FxCommon::Send)) ? "SEND" : "INSERT")
+                                                            : "";
+    // The name and its state on one line, centred together (under the knobs' labels a word would read as one).
+    const float name_w = static_cast<float>(text_width(np_wheel_font, name)), state_w = static_cast<float>(text_width(np_label_font, state, 1));
+    const float x = 160.0f - (name_w + (*state ? 10.0f + state_w : 0.0f)) * 0.5f, base = 114.0f;
+    if (on)
+        marker(g, x - 7.0f, x + name_w + 7.0f, base, 9.0f, 1.0f);
+    text(g, np_wheel_font, x, base, name, blue, 0, on ? 1.0f : 0.5f);
+    if (*state)
+        text(g, np_label_font, x + name_w + 10.0f, base - 1.0f, state, blue, 1, 0.8f);
+}
+
+// The picker over the page, for slot `slot`: the families down the left with how many each holds, the family's
+// effects on the right. The lit entry is on the marker, the chosen family has a bar, the effect the slot holds a dot.
+// In the header: Add (an empty slot) or Change, and Minus: back.
+void fx_picker(Canvas& g, int slot, bool change, bool items, int family, int item, int current)
+{
+    char title[16];
+    std::snprintf(title, sizeof title, "SLOT %d", slot + 1);
+    text(g, np_title_font, 9.0f, title_base, title, blue);
+    text_right(g, np_name_font, 312.0f, 15.0f, change ? "Change" : "Add", blue);
+    const float back_x = 312.0f - static_cast<float>(text_width(np_small_font, "BACK"));
+    text(g, np_small_font, back_x, 29.0f, "BACK", blue, 0, 0.75f);
+    g.rect_line(back_x - 17.5f, 21.5f, 13.0f, 8.0f, 1.0f, blue, 0.75f); // the Minus key
+    g.fill(back_x - 14.0f, 25.0f, 6.0f, 1.0f, blue, 0.75f);
+    for (int f = 0; f < fx_family_count; ++f) {
+        const float base = 57.0f + static_cast<float>(f) * 26.0f;
+        const auto& fam = fx_families[f];
+        if (f == family && !items)
+            marker(g, 10.0f, 16.0f + static_cast<float>(text_width(np_label_font, fam.name, 1)) + 6.0f, base, 7.0f, 1.0f);
+        if (f == family && items)
+            g.rect(8.0f, base - 10.0f, 3.0f, 13.0f, blue);
+        text(g, np_label_font, 16.0f, base, fam.name, blue, 1, f == family || !items ? 1.0f : 0.55f);
+        char count[4];
+        std::snprintf(count, sizeof count, "%d", fam.count);
+        text_right(g, np_small_font, 112.0f, base, count, blue, 0, 0.7f);
+    }
+    g.dots_v(122.0f, 42.0f, 210.0f, 3.0f, blue, 0.6f);
+    const auto& fam = fx_families[family];
+    for (int i = 0; i < fam.count; ++i) {
+        const float base = 57.0f + static_cast<float>(i) * 20.0f;
+        const int type = fam.types[static_cast<std::size_t>(i)];
+        const auto name = fx_name(type);
+        if (items && i == item)
+            marker(g, 132.0f, 140.0f + static_cast<float>(text_width(np_name_font, name)) + 6.0f, base, 8.0f, 1.0f);
+        if (change && type == current)
+            g.disc(133.0f, base - 4.0f, 2.2f, blue);
+        text(g, np_name_font, 140.0f, base, name, blue, 0, items ? 1.0f : 0.6f);
+    }
 }
 
 // A lamp a voice: pink while it sounds, a frame while free, faint past the polyphony.
@@ -876,6 +993,7 @@ Panel::Panel(Store& store, void (*redraw)(void*), void* context)
 
 void Panel::set_page(int page)
 {
+    close_picker();
     page_ = std::clamp(page, 0, page_total - 1);
     store_.page.store(page_, std::memory_order_relaxed);
 }
@@ -898,11 +1016,13 @@ std::array<Panel::Knob, 3> Panel::knobs() const
         return { k(ids[0], "ATTACK"), k(ids[1], "DECAY"), k(ids[3], "RELEASE") };
     }
     case Pic::Fx: {
-        const int type = store_.index(lofly::fxParam(p.n, lofly::FxCommon::Type));
-        std::array<Knob, 3> out { k(type != 0 ? lofly::fxParam(p.n, lofly::FxCommon::Mix) : ParamId::Count, "MIX"), k(ParamId::Count, ""),
+        if (picker_)
+            return { k(ParamId::Count, ""), k(ParamId::Count, ""), k(ParamId::Count, "") };
+        const int type = fx_type(fx_slot_);
+        std::array<Knob, 3> out { k(type != 0 ? lofly::fxParam(fx_slot_, lofly::FxCommon::Mix) : ParamId::Count, "MIX"), k(ParamId::Count, ""),
             k(ParamId::Count, "") };
         for (int i = 0; i < 2; ++i) {
-            const auto& ids = fx_ids()[static_cast<std::size_t>(p.n)][static_cast<std::size_t>(type)][static_cast<std::size_t>(i)];
+            const auto& ids = fx_ids()[static_cast<std::size_t>(fx_slot_)][static_cast<std::size_t>(type)][static_cast<std::size_t>(i)];
             const auto& pick = fx_picks[static_cast<std::size_t>(type)][static_cast<std::size_t>(i)];
             ParamId id = ids.field;
             if (ids.sync != ParamId::Count && store_.on(ids.sync))
@@ -923,10 +1043,51 @@ void Panel::controls(std::uint32_t ids[3]) const
         ids[i] = ks[static_cast<std::size_t>(i)].used ? clap_id(spec_of(ks[static_cast<std::size_t>(i)].id).key) : MELODEE_SCREEN_NO_CONTROL;
 }
 
+bool Panel::fx_page() const { return pages[static_cast<std::size_t>(page_)].pic == Pic::Fx; }
+int Panel::fx_type(int slot) const { return store_.index(lofly::fxParam(slot, lofly::FxCommon::Type)); }
+void Panel::close_picker() { picker_ = picker_items_ = false; }
+
+std::uint32_t Panel::keys() const
+{
+    return fx_page() && !picker_ && fx_type(fx_slot_) != 0 ? MELODEE_SCREEN_KEY_MUTE | MELODEE_SCREEN_KEY_ERASE : 0u;
+}
+
 bool Panel::input(const melodee_screen_input_t& in, bool& changed)
 {
     changed = false;
     const auto& p = pages[static_cast<std::size_t>(page_)];
+    if (picker_) { // the picker takes the wheel, Push and Minus (back); Plus does nothing there
+        switch (in.kind) {
+        case MELODEE_SCREEN_WHEEL:
+            if (picker_items_)
+                picker_item_ = std::clamp(picker_item_ + in.value, 0, fx_families[picker_family_].count - 1);
+            else
+                picker_family_ = std::clamp(picker_family_ + in.value, 0, fx_family_count - 1);
+            return true;
+        case MELODEE_SCREEN_PUSH:
+            if (!picker_items_) { // into the family, on the effect the slot holds if it is there
+                const auto [family, item] = fx_place(fx_type(fx_slot_));
+                picker_items_ = true;
+                picker_item_ = picker_change_ && family == picker_family_ ? item : 0;
+                return true;
+            }
+            store_.set(lofly::fxParam(fx_slot_, lofly::FxCommon::Type),
+                static_cast<float>(fx_families[picker_family_].types[static_cast<std::size_t>(picker_item_)]));
+            store_.set(lofly::fxParam(fx_slot_, lofly::FxCommon::On), 1.0f);
+            changed = true;
+            close_picker();
+            return true;
+        case MELODEE_SCREEN_STEP:
+            if (in.value < 0) {
+                if (picker_items_)
+                    picker_items_ = false;
+                else
+                    close_picker();
+            }
+            return true;
+        default: return false;
+        }
+    }
     auto step_choice = [&](ParamId id, int by) {
         const float before = store_.get(id);
         changed = store_.set(id, before + static_cast<float>(by)) != before;
@@ -936,6 +1097,13 @@ bool Panel::input(const melodee_screen_input_t& in, bool& changed)
         set_page(page_ + (in.value < 0 ? -1 : 1));
         return true;
     case MELODEE_SCREEN_PUSH: {
+        if (p.pic == Pic::Fx) { // the picker: Add on an empty slot, Change on an effect
+            picker_ = true;
+            picker_items_ = false;
+            picker_change_ = fx_type(fx_slot_) != 0;
+            picker_family_ = picker_change_ ? fx_place(fx_type(fx_slot_)).first : 0;
+            return true;
+        }
         const auto on = on_param(p);
         if (!on)
             return false;
@@ -965,10 +1133,25 @@ bool Panel::input(const melodee_screen_input_t& in, bool& changed)
             changed = store_.get(id) != before;
             return true;
         }
-        case Pic::Fx: step_choice(lofly::fxParam(p.n, lofly::FxCommon::Type), in.value); return true;
+        case Pic::Fx: fx_slot_ = std::clamp(fx_slot_ + in.value, 0, lofly::kFxSlots - 1); return true;
         case Pic::Voice: step_choice(ParamId::VoiceMode, in.value); return true;
         }
         return false;
+    case MELODEE_SCREEN_MUTE: { // the lit effect off or on
+        if (!fx_page() || fx_type(fx_slot_) == 0)
+            return false;
+        const auto id = lofly::fxParam(fx_slot_, lofly::FxCommon::On);
+        store_.set(id, store_.on(id) ? 0.0f : 1.0f);
+        changed = true;
+        return true;
+    }
+    case MELODEE_SCREEN_ERASE: // the lit effect out of its slot
+        if (!fx_page() || fx_type(fx_slot_) == 0)
+            return false;
+        store_.set(lofly::fxParam(fx_slot_, lofly::FxCommon::Type), 0.0f);
+        store_.set(lofly::fxParam(fx_slot_, lofly::FxCommon::On), 1.0f);
+        changed = true;
+        return true;
     default: return false;
     }
 }
@@ -999,6 +1182,9 @@ std::uint64_t Panel::signature(const melodee_screen_frame_t& f) const
     }
     if (pic == Pic::Voice)
         add(store_.voices.load(std::memory_order_relaxed));
+    if (pic == Pic::Fx)
+        add(static_cast<std::uint64_t>(fx_slot_) | (picker_ ? 8u : 0u) | (picker_items_ ? 16u : 0u) | (picker_change_ ? 32u : 0u)
+            | static_cast<std::uint64_t>(picker_family_) << 8 | static_cast<std::uint64_t>(picker_item_) << 16);
     return h;
 }
 
@@ -1026,6 +1212,10 @@ void Panel::paint(const melodee_screen_frame_t& f)
     Canvas g { f.pixels, w, static_cast<int>(f.height), static_cast<int>(f.stride) };
     g.ink = true; // everything from here prints onto the paper
     const auto& p = pages[static_cast<std::size_t>(page_)];
+    if (picker_ && !strip) {
+        fx_picker(g, fx_slot_, picker_change_, picker_items_, picker_family_, picker_item_, fx_type(fx_slot_));
+        return;
+    }
     const auto on_id = on_param(p);
     const bool on = !on_id || store_.on(*on_id);
     header(g, p, page_, on_id ? std::optional<bool>(on) : std::nullopt, store_.preset());
@@ -1055,11 +1245,7 @@ void Panel::paint(const melodee_screen_frame_t& f)
             wheel(g, "Sustain " + value_text(id, store_.get(id)), n > 0.0f, n < 1.0f, a);
             break;
         }
-        case Pic::Fx: {
-            const auto id = lofly::fxParam(p.n, lofly::FxCommon::Type);
-            choice_wheel(id, choice_name(store_, id));
-            break;
-        }
+        case Pic::Fx: break; // the wheel walks the chain's slots
         case Pic::Voice: choice_wheel(ParamId::VoiceMode, choice_name(store_, ParamId::VoiceMode)); break;
         }
         switch (p.pic) {
@@ -1069,16 +1255,17 @@ void Panel::paint(const melodee_screen_frame_t& f)
         case Pic::Noise: picture_noise(g, store_, noise_columns_[static_cast<std::size_t>(noise_index(store_))], a); break;
         case Pic::Filter: picture_filter(g, store_, a); break;
         case Pic::Env: picture_env(g, store_, p.n, a); break;
-        case Pic::Fx: picture_fx(g, store_, p.n, a); break;
+        case Pic::Fx: fx_chain(g, store_, fx_slot_); break;
         case Pic::Voice: picture_voice(g, store_, a); break;
         }
     }
     const auto ks = knobs();
     const float ky = strip ? knob_y_strip : knob_y_page;
+    const bool lit_on = p.pic != Pic::Fx || fx_type(fx_slot_) == 0 || store_.on(lofly::fxParam(fx_slot_, lofly::FxCommon::On));
     for (int i = 0; i < 3; ++i) {
         const auto& kn = ks[static_cast<std::size_t>(i)];
         knob(g, knob_x[static_cast<std::size_t>(i)], ky, kn.used ? kn.id : ParamId::Count, store_, kn.label, i, f.pots[i], f.pots_live[i] != 0,
-            on ? 1.0f : 0.45f);
+            on && lit_on ? 1.0f : 0.45f);
     }
 }
 

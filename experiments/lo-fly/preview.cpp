@@ -102,9 +102,10 @@ bool write_png(const std::string& path, const std::uint32_t* px, int w, int h, i
 
 struct Host {
     clap_host host {};
-    melodee_screen_host_t screen {};
+    melodee_screen_host_2_t screen {};
     clap_host_params params {};
     int redraws = 0;
+    uint32_t keys = 0; // the printed buttons the page takes, as the plug-in told them last
 };
 Host* host_of(const void* h) { return static_cast<Host*>(static_cast<const clap_host*>(h)->host_data); }
 
@@ -159,7 +160,7 @@ struct Session {
         host.host = { CLAP_VERSION_INIT, &host, "Preview", "Melodee", "", "1.0",
             [](const clap_host* h, const char* id) -> const void* {
                 auto* self = static_cast<Host*>(h->host_data);
-                if (!std::strcmp(id, MELODEE_SCREEN_CLAP_HOST))
+                if (!std::strcmp(id, MELODEE_SCREEN_CLAP_HOST) || !std::strcmp(id, MELODEE_SCREEN_CLAP_HOST_2))
                     return &self->screen;
                 if (!std::strcmp(id, CLAP_EXT_PARAMS))
                     return &self->params;
@@ -167,6 +168,7 @@ struct Session {
             },
             [](const clap_host*) {}, [](const clap_host*) {}, [](const clap_host*) {} };
         host.screen.redraw = [](const void* h, uint32_t) { host_of(h)->redraws++; };
+        host.screen.keys = [](const void* h, uint32_t keys) { host_of(h)->keys = keys; };
         host.params.rescan = [](const clap_host*, clap_param_rescan_flags) {};
         host.params.clear = [](const clap_host*, clap_id, clap_param_clear_flags) {};
         host.params.request_flush = [](const clap_host*) {};
@@ -348,13 +350,40 @@ int shots(const std::string& dir)
     shot("07-filter-env");
     s.page(7);
     shot("08-amp-env");
+    // FX: the chain (Chorus, Reverb, two empty slots); the wheel to slot 2, then 3; Push on the empty slot: the picker;
+    // Time, its Tape Echo added; MUTE switches it off, ERASE takes it out.
     s.page(8);
-    shot("09-fx-1");
+    shot("09-fx");
+    s.input(MELODEE_SCREEN_WHEEL, 1);
+    shot("10-fx-slot-2");
+    s.input(MELODEE_SCREEN_WHEEL, 1);
+    shot("11-fx-empty");
+    if (s.host.keys != 0) {
+        std::fprintf(stderr, "an empty slot takes no keys\n");
+        ++failed;
+    }
+    s.input(MELODEE_SCREEN_PUSH);
+    s.input(MELODEE_SCREEN_WHEEL, 1);
+    shot("11b-fx-picker");
+    s.input(MELODEE_SCREEN_PUSH);
+    s.input(MELODEE_SCREEN_WHEEL, 1);
+    shot("11c-fx-picker-time");
+    s.input(MELODEE_SCREEN_PUSH);
+    shot("11d-fx-added");
+    if (s.host.keys != (MELODEE_SCREEN_KEY_MUTE | MELODEE_SCREEN_KEY_ERASE)) {
+        std::fprintf(stderr, "an effect in the lit slot takes MUTE and ERASE\n");
+        ++failed;
+    }
+    s.input(MELODEE_SCREEN_MUTE);
+    shot("11e-fx-muted");
+    s.input(MELODEE_SCREEN_ERASE);
+    shot("11f-fx-erased");
+    s.input(MELODEE_SCREEN_WHEEL, -1);
+    s.input(MELODEE_SCREEN_PUSH);
+    shot("11g-fx-change");
+    s.input(MELODEE_SCREEN_STEP, -1); // Minus: the picker closes
+    s.preset(sound);
     s.page(9);
-    shot("10-fx-2");
-    s.page(10);
-    shot("11-fx-3-empty");
-    s.page(12);
     shot("13-voice");
     // Push on the LOFI page: the LoFi Processor off, then on again; the wheel to the next character.
     s.page(0);
@@ -369,6 +398,7 @@ int shots(const std::string& dir)
     s.page(2);
     shot("16-arcade-engine-1");
     s.page(8);
+    s.input(MELODEE_SCREEN_WHEEL, -3);
     shot("17-arcade-fx-1");
     s.strip = true;
     s.page(0);
