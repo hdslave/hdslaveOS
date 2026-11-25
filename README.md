@@ -4,7 +4,8 @@
 hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.8.1.</p>
 
 <p align="center">
-  <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE dark purple flare theme across Palette, Tracks, Step Edit, and Audio settings" width="760">
+  <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Mixer, Step Edit, and Deep Freeze screens" width="760">
+  <br><sub>Screenshots from the hdslaveOS 0.8.1 development build.</sub>
 </p>
 
 ## What hdslaveOS adds over stock Melodee
@@ -16,10 +17,17 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 - **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
 - **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time; kit pads assigned any of the 16 colours light more vividly; and a custom **hdslave intro** boot film replaces the default splash.
 
+### Mixer in 0.8.1
+
+<p align="center">
+  <img src="docs/images/hdslave-mixer.png" alt="Four views of the hdslaveOS mixer showing submix sends, insert effects, channel EQ, and compression" width="760">
+  <br><sub>Submix sends, insert effects, channel EQ, and compression.</sub>
+</p>
+
 ### Palettes & Custom Plug-in Screens
 
 <p align="center">
-  <img src="docs/images/hdslave-mono-theme.png" alt="hdslaveOS MONO black-and-white dark palette across 16 screens" width="760">
+  <img src="docs/images/hdslave-mono-theme.png" alt="hdslaveOS MONO black-and-white palette across 16 screens, including the Mixer" width="760">
   <br><sub><b>MONO</b> — high-contrast black-and-white dark palette across 16 pages.</sub>
 </p>
 
