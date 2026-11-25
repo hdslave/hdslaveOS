@@ -28,6 +28,16 @@ struct PluginPanelParam {
     uint16_t steps = 0;  // the values it takes when fewer than plugin_param_max (Shift + wheel steps by one), else 0
 };
 
+// The parameter behind a knob card. The same slot on a custom screen can name a new parameter on every step.
+struct PluginKnobTarget {
+    uint8_t entry = no_plugin;
+    uint32_t generation = 0;
+    int index = -1;
+    bool operator==(const PluginKnobTarget& other) const {
+        return entry == other.entry && generation == other.generation && index == other.index;
+    }
+};
+
 struct PluginPanel {
     uint8_t entry = no_plugin;     // Project::plugins
     PluginStatus status = PluginStatus::None;
@@ -67,6 +77,7 @@ struct PluginPanel {
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
     uint16_t programs = 0;         // its named programs (presets), for PRESETS
     std::array<PluginPanelParam, 3> params {};
+    std::array<PluginKnobTarget, 3> targets {};
     // Two rows of the row in hand's page, its own among them (the row after, or on the page's last row the one
     // before; one row alone on a page of one), for the page's arcs and list; `window_first` the first one's slot
     // (row * 3), `window_rows` how many rows it holds.
@@ -135,6 +146,13 @@ struct DrumVoices {
 };
 
 constexpr int plugin_param_max = 1000; // a card's range for a plug-in parameter
+// A stepped plug-in may return the selected choice after the host wrote a position between choices.
+inline bool plugin_same_value(int a, int b, unsigned steps) {
+    if (steps < 2) return a == b;
+    return (a * int(steps - 1) + plugin_param_max / 2) / plugin_param_max
+        == (b * int(steps - 1) + plugin_param_max / 2) / plugin_param_max;
+}
+
 // A plug-in card's binding id: the entry and the parameter's place in the plug-in's list of shown ones.
 constexpr int32_t plugin_binding(unsigned entry, unsigned shown) { return int32_t(entry << 16 | shown); }
 constexpr unsigned plugin_binding_entry(int32_t id) { return unsigned(id) >> 16; }

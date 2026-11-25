@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
         CHECK(std::abs(level->getValue() - (64.0f / 127.0f + 0.1f)) < 1e-3f);
         CHECK(sine->screenDraw(frame, changed) && changed && pixels[190] == 0xff8000u);
         melodee_screen_input_t step {MELODEE_SCREEN_STEP, 1, 0};
-        CHECK(sine->screenInput(step, used) && !used); // Minus / Plus are not its
+        CHECK(sine->screenInput(step, used) && !used); // Plus is not its
         std::array<int, 3> controls {};
         CHECK(sine->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1); // Level, Wave
         run(*sine);

@@ -66,6 +66,8 @@ All eleven plug-ins in the [hdslave MPC Sample Synths & Drum Machines](https://g
 
 On an instrument track, press **B1** on Stage to move from **PRESETS** to **PANEL** and open the plug-in’s custom screen. **EDIT** shows Melodee’s parameter pages. In an FX chain, select Cortex Filter to see its compact view. Push the encoder to open the full panel. **B3** or **Shift + Push** returns to the chain, and **Shift + B3** opens the slot sheet.
 
+On a plug-in panel, K1–K3 follow the knob takeover setting when you select another step or change which parameters a row controls.
+
 <p align="center">
   <img src="docs/images/plugins/cortex-filter-panel.png" alt="Cortex Filter below the selected Track FX slot, showing the morph cube, filter response and three knobs" width="400">
 </p>

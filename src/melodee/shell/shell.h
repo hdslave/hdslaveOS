@@ -130,7 +130,8 @@ private:
     void wheel(int delta);
     void pad(unsigned pad, uint8_t velocity, bool down);
     void hit(unsigned pad, uint8_t velocity, bool down); // pad() inside its undo step
-    void check_pickup(unsigned index, const Binding& binding);
+    std::array<PluginKnobTarget, 3> pot_targets {};
+    void check_pickup(unsigned index, const Binding& binding, int position);
     Takeover pot_takeover(const Binding& binding) const;
     std::string button_text() const; // the button lights for `status`
     std::string lit_pads_text() const; // and the lit pads

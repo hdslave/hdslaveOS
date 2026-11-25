@@ -629,6 +629,7 @@ public:
     bool has_screen = false;
     bool screen_drawn = false;
     std::array<int, 3> screen_controls {-1, -1, -1};
+    uint64_t controls_revision = 0;
     bool qlinks = false;
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
@@ -1002,6 +1003,7 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         size_t at = size_t(out.row) * 3 + k;
         if (at >= layout.slots.size()) break;
         read(at, out.params[k]);
+        out.targets[k] = {out.entry, h->generation, layout.at(at)};
     }
     // Two rows of the page in hand: its own and the next, or on the page's last row the one before.
     unsigned first = out.row;
@@ -1024,6 +1026,7 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         out.screen = true;
         for (unsigned k = 0; k < 3; ++k) {
             out.params[k] = {};
+            out.targets[k] = {out.entry, h->generation, h->screen_controls[k]};
             read_param(h->screen_controls[k], {}, out.params[k]);
         }
     }
@@ -1075,16 +1078,27 @@ void PluginRack::set_param(unsigned entry, unsigned shown_index, int value) {
     h->note_change(); // a block runs for it, asleep or not (a CLAP plug-in's setValue asks the same itself)
 }
 
-void PluginRack::set_screen_param(unsigned entry, unsigned k, int value) {
-    if (entry >= max_plugins || k >= 3) return;
+bool PluginRack::set_screen_param(const PluginPanel& panel, unsigned k, int value, bool relative) {
+    if (!panel.screen || k >= panel.targets.size()) return false;
+    const auto& target = panel.targets[k];
+    if (target.entry >= max_plugins || target.index < 0) return false;
     std::lock_guard<std::mutex> held(lock);
-    auto* h = entries[entry].live;
-    if (!h || !h->has_screen) return;
-    int index = h->screen_controls[k];
+    const auto& e = entries[target.entry];
+    auto* h = e.live;
+    if (!h || e.status != PluginStatus::Ready || !h->has_screen || h->generation != target.generation
+        || h->screen_controls[k] != target.index || h->controls_revision != screen_revision.load()) return false;
     const auto& params = h->instance->getParameters();
-    if (index < 0 || index >= params.size()) return;
-    params[index]->setValue(std::clamp(value, 0, plugin_param_max) / float(plugin_param_max));
+    if (target.index >= params.size()) return false;
+    auto* param = params[target.index];
+    // The screen thread can change the assignment or edit its value between panel refreshes.
+    if (relative) {
+        const auto& card = panel.params[k];
+        const int current = int(std::lround(std::clamp(param->getValue(), 0.0f, 1.0f) * plugin_param_max));
+        if (!plugin_same_value(current, card.value, card.steps)) return false;
+    }
+    param->setValue(std::clamp(value, 0, plugin_param_max) / float(plugin_param_max));
     h->note_change();
+    return true;
 }
 
 void PluginRack::set_param_index(unsigned entry, uint32_t generation, int index, int value) {
@@ -1941,6 +1955,7 @@ void PluginRack::screen_view(const ScreenView& view) {
         std::lock_guard<std::mutex> held(screen_lock);
         if (screen_stop) return;
         if (view.entry != no_plugin && !screen_thread.joinable()) screen_thread = std::thread([this] { screen_run(); });
+        if (view.entry != screen_now.entry || view.area != screen_now.area) ++screen_revision;
         poke = view != screen_now;
         screen_now = view;
         screen_poked = screen_poked || poke;
@@ -1953,6 +1968,7 @@ void PluginRack::screen_input(unsigned entry, const ScreenInput& input) {
         std::lock_guard<std::mutex> held(screen_lock);
         if (entry != screen_now.entry || screen_inputs.size() >= 64) return; // not the page in view; a flood: dropped
         screen_inputs.emplace_back(entry, input);
+        ++screen_revision;
     }
     screen_wake.notify_one();
 }
@@ -1991,6 +2007,7 @@ void PluginRack::screen_run() {
     };
     for (;;) {
         ScreenView view;
+        uint64_t revision;
         {
             std::unique_lock<std::mutex> held(screen_lock);
             screen_wake.wait_for(held, wait, [&] { return screen_stop || screen_poked || !screen_inputs.empty(); });
@@ -1998,6 +2015,7 @@ void PluginRack::screen_run() {
             owed = owed || screen_poked;
             screen_poked = false;
             view = screen_now;
+            revision = screen_revision.load();
             for (auto& in : screen_inputs) inputs.push_back(in);
             screen_inputs.clear();
         }
@@ -2106,6 +2124,7 @@ void PluginRack::screen_run() {
                 ask_controls = false;
                 std::lock_guard<std::mutex> held(lock);
                 h->screen_controls = controls;
+                if (inputs.empty()) h->controls_revision = revision;
             }
         }
     }

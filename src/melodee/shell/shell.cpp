@@ -601,13 +601,20 @@ Takeover Shell::pot_takeover(const Binding& binding) const {
     return binding.kind == Binding::Kind::KnobParam ? ui_.settings.knob_fx_takeover : ui_.settings.knob_takeover;
 }
 
-void Shell::check_pickup(unsigned n, const Binding& binding) {
+void Shell::check_pickup(unsigned n, const Binding& binding, int position) {
     auto& pot = ui_.pots[n];
     uint32_t key = binding.key(ui_.track);
-    if (pot.bound == key) return;
+    const bool plugin = binding.kind == Binding::Kind::PluginParam;
+    const auto target = plugin ? ui_.plugin_panel.targets[n] : PluginKnobTarget {};
+    if (pot.bound == key && pot_targets[n] == target) {
+        // A preset or the screen's own editor can move a caught value away from the stationary knob.
+        if (!plugin || !pot.engaged || pot_takeover(binding) == Takeover::Instant || takeover_meets(position, binding)
+            || plugin_same_value(binding.at(position), binding.value, ui_.plugin_panel.params[n].steps)) return;
+    }
+    pot_targets[n] = target;
     pot.bound = key;
     pot.scaled = -1;
-    pot.engaged = pot_takeover(binding) == Takeover::Instant || takeover_meets(pot.position, binding);
+    pot.engaged = pot_takeover(binding) == Takeover::Instant || takeover_meets(position, binding);
 }
 
 void Shell::pot(unsigned n, int position, bool syncing) {
@@ -623,7 +630,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     auto& pot = ui_.pots[n];
     int before = pot.position;
     pot.position = int16_t(position);
-    if (syncing) { pot.bound = 0; check_pickup(n, b); return; }
+    if (syncing) { pot.bound = 0; check_pickup(n, b, position); return; }
     if (ui_.seq_held) ui_.seq_used = true; // Seq + pot: the pattern's length, Q or swing; its release goes nowhere
     if (ui_.erase) ui_.erase_used = true; // Erase + pot: its release deletes nothing
     if (ui_.levels_held) ui_.levels_used = true; // 16 Levels + pot: its setting; the release toggles nothing
@@ -633,7 +640,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         context_.usage.nojob(context_.now, knobs[n % 3], ui_.page);
         return;
     }
-    check_pickup(n, b);
+    check_pickup(n, b, before);
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
     if (ui_.shift) ui_.shift_used = true;
     if (ui_.ask != UiState::Ask::None) return; // a question open: the pots wait
@@ -911,7 +918,7 @@ void sketch_of(const Pattern& pattern, PatternSketch& sketch) {
 void Shell::snapshot(Snapshot& out, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
-    for (unsigned n = 0; n < 3; ++n) if (bindings[n].bound()) check_pickup(n, bindings[n]);
+    for (unsigned n = 0; n < 3; ++n) if (bindings[n].bound()) check_pickup(n, bindings[n], ui_.pots[n].position);
     fader_check(context_);
     edit_loop_check(context_); // an editor's loop ends with the editor (shell/note_jobs.h)
     out.ui = ui_;

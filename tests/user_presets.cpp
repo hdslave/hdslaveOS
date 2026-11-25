@@ -4,6 +4,7 @@
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
 #include "runtime/controller.h"
 #include <chrono>
@@ -756,6 +757,60 @@ int main(int argc, char** argv) {
         return values;
     };
     wait([&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding; });
+    if (mode.rfind("knob-", 0) == 0) {
+        ui.settings.knob_takeover = mode == "knob-pickup" ? Takeover::Pickup
+                                  : mode == "knob-instant" ? Takeover::Instant : Takeover::Scaled;
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen);
+        c.open(PageId::Stage);
+        auto knob = [&](SurfaceControl k, int position, bool sync = false) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(k);
+            event.input.value = uint8_t(position);
+            event.syncing = sync;
+            shell->surface(event, ++now);
+        };
+        wait([&] { return ui.plugin_panel.screen && std::string(ui.plugin_panel.params[1].name) == "Wave"; });
+        auto k2 = [&](int position, bool sync = false) { knob(SurfaceControl::K2, position, sync); };
+        if (mode == "knob-scaled") {
+            knob(SurfaceControl::K1, 10, true);
+            knob(SurfaceControl::K1, 11);
+            wait([&] { return int(std::lround(state()[0] * 1000)) == 504; });
+        }
+        const auto level_pot = ui.pots[0];
+        k2(0, true);
+        k2(127);
+        wait([&] { return state()[1] == 2; });
+        const auto old = ui.plugin_panel;
+        tap(SurfaceButton::Minus);
+        CHECK(!rack->set_screen_param(old, 1, 0, false)); // navigation queued, the shell still shows the old card
+        wait([&] { return ui.plugin_panel.screen && std::string(ui.plugin_panel.params[1].name) == "Level"; });
+        CHECK(!rack->set_screen_param(old, 1, 0, false)); // the screen remapped K2 between the panel read and the write
+        auto snapshot = std::make_unique<Snapshot>();
+        shell->snapshot(*snapshot, now); // showing the reassignment must preserve K1's fractional Scaled travel
+        CHECK(ui.pots[0].scaled == level_pot.scaled);
+        CHECK(ui.plugin_panel.params[1].value == (mode == "knob-scaled" ? 504 : 500));
+        k2(126);
+        const int expected = mode == "knob-scaled" ? 500 : mode == "knob-pickup" ? 500 : 992;
+        CHECK(ui.plugin_panel.params[1].value == expected);
+        wait([&] { return int(std::lround(state()[0] * 1000)) == expected; });
+        CHECK(state()[1] == 2);
+        if (mode == "knob-scaled") {
+            k2(0); // catch Level at its minimum, then move it using the screen's editor
+            wait([&] { return state()[0] == 0; });
+            const auto before_wheel = ui.plugin_panel;
+            CHECK(c.plugin_screen_input(ScreenKey::Wheel, 60));
+            wait([&] { return ui.plugin_panel.params[1].value == 600; });
+            CHECK(!rack->set_screen_param(before_wheel, 1, 0, true)); // same assignment but the starting value went stale
+            k2(1);
+            CHECK(ui.plugin_panel.params[1].value == 603);
+            wait([&] { return int(std::lround(state()[0] * 1000)) == 603; });
+            CHECK(rack->set_screen_param(before_wheel, 1, 1000, false)); // an absolute edit only needs the same target
+            wait([&] { return state()[0] == 1; });
+        }
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // Rack slots follow each fixture's remote-controls page, which can differ from its parameter order.
     auto set_control = [&](const char* name, int value) {
         PluginPanel panel;

@@ -104,7 +104,7 @@ public:
     // the screen in view, null none (any thread). panel() gives `screen` once the plug-in has drawn and named K1-K3.
     void screen_view(const ScreenView& view);
     void screen_input(unsigned entry, const ScreenInput& input);
-    void set_screen_param(unsigned entry, unsigned k, int value);
+    bool set_screen_param(const PluginPanel& panel, unsigned k, int value, bool relative); // false when its card went stale
     ScreenPicturePtr screen_picture() const;
     // Companion screens (plugin/companion_screen.h, sdk/melodee-screen/melodee_companion.h). MIDI thread:
     // take_screen_requests() what the screens asked for since, to make as a pot turn does; set_param_index() one
@@ -246,6 +246,7 @@ private:
     std::condition_variable screen_wake;
     bool screen_stop = false, screen_poked = false;
     ScreenView screen_now;
+    std::atomic<uint64_t> screen_revision {0}; // inputs and page changes the controls must have caught up with
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
     std::mutex screen_calls;

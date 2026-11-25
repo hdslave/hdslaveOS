@@ -135,7 +135,9 @@ Lessons need the card and the MPC's factory kits on its internal storage.
 **K1**–**K3** are absolute knobs. When a knob is not at the value on its
 card, the card shows the value dim with a tick where the knob is. By
 default the knobs use **Scaled** takeover: the value moves toward the knob
-until they meet. Change this in [Settings](settings.md) (**KNOBS**).
+until they meet. On a plug-in panel, selecting another step or row starts
+takeover from the value assigned to each knob. A knob that still controls
+the same parameter keeps its place. Change this in [Settings](settings.md) (**KNOBS**).
 
 ## Undo
 

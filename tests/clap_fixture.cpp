@@ -59,6 +59,7 @@ struct Plugin {
     bool dynamicRing = false;
     int repeatIn = -1;
     std::atomic<uint32_t> ringTail {0};
+    bool secondBank = false;
     int drawnBar = -1;            // its screen's bar as last drawn, pixels
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
@@ -350,8 +351,8 @@ bool remotePage(const clap_plugin* p, uint32_t i, clap_remote_controls_page* pag
 const clap_plugin_remote_controls remoteControls {remoteCount, remotePage};
 
 // Its own screen: the bar; the wheel turns Level (Gain: Gain) a hundredth of its range a detent (it asks for a draw
-// and a block, and says its values moved), Push steps Wave, Minus / Plus are not its; Sine's K1 Level, K2 Wave, K3
-// nothing; Gain's K1 Gain.
+// and a block, and says its values moved), Push steps Wave. Minus switches K2 from Wave to Level while K1 keeps Level.
+// Gain's K1 is Gain.
 bool screenDraw(const void* p, const melodee_screen_frame_t* frame) {
     auto& s = of(static_cast<const clap_plugin*>(p));
     s.main();
@@ -369,6 +370,7 @@ bool screenInput(const void* p, const melodee_screen_input_t* in) {
     if (in->kind == MELODEE_SCREEN_WHEEL && s.instrument) s.level = std::clamp(s.level + in->value * 0.01, 0.0, 1.0);
     else if (in->kind == MELODEE_SCREEN_WHEEL) s.gain = std::clamp(s.gain + in->value * 0.02, 0.0, 2.0);
     else if (in->kind == MELODEE_SCREEN_PUSH && s.instrument) s.wave = std::fmod(s.wave + 1, 3);
+    else if (in->kind == MELODEE_SCREEN_STEP && in->value < 0 && s.instrument) s.secondBank = !s.secondBank;
     else return false;
     if (auto* told = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)))
         told->redraw(s.host, MELODEE_SCREEN_RUN);
@@ -382,6 +384,7 @@ void screenControls(const void* p, uint32_t ids[3]) {
     ids[0] = s.instrument ? 7 : 3;
     ids[1] = s.instrument ? 9 : MELODEE_SCREEN_NO_CONTROL;
     ids[2] = MELODEE_SCREEN_NO_CONTROL;
+    if (s.secondBank) ids[1] = 7;
 }
 const melodee_screen_t screen {screenDraw, screenInput, screenControls};
 

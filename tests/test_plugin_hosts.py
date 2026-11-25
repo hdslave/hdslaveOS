@@ -120,7 +120,7 @@ class PluginHostTests(unittest.TestCase):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), "ring-freeze",
                                     str(count), str(rate), str(mib)], check=True, timeout=90, env=env)
 
-    def run_freeze_transition(self, mode):
+    def run_rack_fixture(self, mode):
         subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
         with tempfile.TemporaryDirectory() as temp:
             card = Path(temp) / "card"
@@ -130,46 +130,51 @@ class PluginHostTests(unittest.TestCase):
             subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                            check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
+    def test_knob_takeover_on_plugin_screen_changes(self):
+        for mode in ("knob-scaled", "knob-pickup", "knob-instant"):
+            with self.subTest(mode=mode):
+                self.run_rack_fixture(mode)
+
     def test_deep_freeze_waits_for_its_pack_to_take_over(self):
         for mode in ("deep-freeze-live", "deep-freeze-replace"):
             with self.subTest(mode=mode):
-                self.run_freeze_transition(mode)
+                self.run_rack_fixture(mode)
 
     def test_deep_freeze_keeps_playback_when_tempo_changes_before_the_bar(self):
         for mode in ("deep-freeze-tempo", "deep-freeze-tempo-replace"):
             with self.subTest(mode=mode):
-                self.run_freeze_transition(mode)
+                self.run_rack_fixture(mode)
 
     def test_deep_freeze_keeps_playback_when_tempo_changes_during_unload_grace(self):
-        self.run_freeze_transition("deep-freeze-unload-grace")
+        self.run_rack_fixture("deep-freeze-unload-grace")
 
     def test_deep_freeze_keeps_playback_when_tempo_changes_after_unload(self):
         for mode in ("deep-freeze-active-tempo", "deep-freeze-active-lead", "deep-freeze-active-reload-fails"):
             with self.subTest(mode=mode):
-                self.run_freeze_transition(mode)
+                self.run_rack_fixture(mode)
 
     def test_deep_freeze_keeps_playback_when_tempo_returns_during_thaw(self):
-        self.run_freeze_transition("deep-freeze-active-clock-reverts")
+        self.run_rack_fixture("deep-freeze-active-clock-reverts")
 
     def test_deep_freeze_remains_audible_when_returning_from_an_empty_pattern(self):
         for mode in ("deep-freeze-empty-new-tempo", "deep-freeze-empty-steady", "deep-freeze-empty-pattern-tempo"):
             with self.subTest(mode=mode):
-                self.run_freeze_transition(mode)
+                self.run_rack_fixture(mode)
 
     def test_deep_freeze_remains_audible_when_another_track_leads_the_handoff(self):
         for mode in ("deep-freeze-lead-playing-stale", "deep-freeze-lead-off-stale",
                      "deep-freeze-lead-playing-clock-mismatch", "deep-freeze-lead-off-compatible"):
             with self.subTest(mode=mode):
-                self.run_freeze_transition(mode)
+                self.run_rack_fixture(mode)
 
     def test_recording_cannot_change_a_pending_freeze_snapshot(self):
-        self.run_freeze_transition("freeze-recording")
+        self.run_rack_fixture("freeze-recording")
 
     def test_freeze_replacement_reuses_pins_and_preserves_selection_on_failure(self):
-        self.run_freeze_transition("freeze-replace")
+        self.run_rack_fixture("freeze-replace")
 
     def test_freeze_and_unfreeze_retry_when_the_audio_queue_is_full(self):
-        self.run_freeze_transition("freeze-queue")
+        self.run_rack_fixture("freeze-queue")
 
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:

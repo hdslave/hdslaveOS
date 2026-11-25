@@ -206,8 +206,9 @@ void Context::set_plugin_param(int32_t id, int value) {
     }
     if (shown >= plugin_screen_slot) { // one of the three its own screen names
         unsigned k = shown - plugin_screen_slot;
-        plugins->set_screen_param(entry, k, value);
-        if (panel.entry == entry && panel.screen && k < 3) panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
+        const bool relative = !ui.erase && ui.settings.knob_takeover != Takeover::Instant;
+        if (panel.entry != entry || !plugins->set_screen_param(panel, k, value, relative)) return;
+        panel.params[k].value = int16_t(std::clamp(value, 0, plugin_param_max));
         dirty = true;
         return;
     }
