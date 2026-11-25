@@ -2057,6 +2057,7 @@ Slices Context::type_chop(bool* capped) const {
 void Context::rechop() {
     end_take(); ui.chop_more = false; ui.chop_take_from = 0; // a take in progress is kept as it was; no red left over
     if (!library || ui.chop_sample >= sample_slots) { ui.slices = {}; return; }
+    const Slices was = ui.slices; // its reversed slices stay where they start
     bool capped = false, full = false;
     const uint32_t frames = chop_frames(project, ui);
     uint32_t clear = 0; // Auto keeps an eighth note (or 150 ms) clear of a hand cut: no sliver beside one
@@ -2064,6 +2065,7 @@ void Context::rechop() {
     ui.slices = with_hand(type_chop(&capped), ui.chop_hand, frames, &full, clear); // the cuts made by hand stay
     if (capped || full) notice("128 slices, the most: the last runs to the end");
     snap_slices();
+    ui.slices.keep_reverse(was, hand_reach);
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_take_at = 0;
 }
@@ -2375,8 +2377,9 @@ void Context::play_continue(bool external) {
     if (external) send({Type::ExtSync, 0, 0, 3});
 }
 
-// Shift + Loop: the last pad plays backwards, or forwards again.
+// Shift + Loop: the last pad plays backwards, or forwards again. On Chop, the slice in hand alone.
 void Context::toggle_reverse() {
+    if (ui.page == PageId::Chop && ui.slices.count) { reverse_slice(); return; }
     auto& t = track();
     if (t.engine != EngineKind::Sampler || !pad().used()) { notice("Reverse: no sample"); return; }
     pad().reverse = !pad().reverse;

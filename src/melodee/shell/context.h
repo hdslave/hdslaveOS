@@ -189,7 +189,7 @@ public:
     void half_speed();        // Shift + Pad 6: every note twice as far apart (what falls past the end goes)
     void double_speed();      // Shift + Pad 7: every note half as far apart
     void time_correct();      // Time Correct's B3: the chosen notes onto Q, swung and shifted; one undo
-    void toggle_reverse();    // Shift + Loop: the last pad's reverse
+    void toggle_reverse();    // Shift + Loop: the last pad's reverse (on Chop, the slice in hand's)
     // Sample Mode jobs on the last pad hit (parity phase 4, shell/sample_mode.cpp).
     void toggle_loop();       // Loop
     void toggle_note_on();    // Shift + Chop: Note On (Gate) or One shot
@@ -612,12 +612,13 @@ public:
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
     void rechop();                                                     // Chop's slices from its type and amount
     Slices type_chop(bool* capped = nullptr) const;                    // what the type and amount cut now (no hand cuts)
-    void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
-    // Issue 24, slice hits (model/slice_hits.h). Chop's pads while Seq Record runs: the slice played through its pad and
-    // written as the pad's note with the slice's number; let go, as long as it was held. False: not recording (or no
-    // pad of the track holds Chop's sample), the pad auditions as ever.
+    void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (a slice through its kit pad, or Manual's taps)
+    // Issue 24, slice hits (model/slice_hits.h). Chop's pads: the slice played through its kit pad (all the pad has, and
+    // the slice's own Reverse); while Seq Record runs also written as the pad's note with the slice's number; let go,
+    // as long as it was held. False: no pad of the track holds Chop's sample (the pad auditions the file instead).
     bool slice_hit(unsigned pad, unsigned slice, uint8_t velocity);
     void slice_release(unsigned pad);
+    void reverse_slice();                                              // Shift + Loop on Chop: the slice in hand's own Reverse
     std::array<int32_t, 16> chop_held {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; // each pad's slice hit, held
     int chop_kit_pad() const;                                          // the kit pad slice hits on Chop's sample play (-1 none)
     const Slices& live_chop(unsigned sample) const;                      // a sample's chop as slice hits play it: Chop's own while it holds it

@@ -640,7 +640,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             bool shift_job = button_has_shift_job(project, ui, button, kit, keys);
             bool lit = button == B::Shift || (button == B::TapTempo && ui.settings.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
                     || (button == B::NoteRepeat && track.repeat) || (button == B::Mute && ui.mute_mode())
-                    || (track.engine == EngineKind::Sampler && button == B::Loop && track.pads[track.last_pad % sampler_pads].reverse)            // reverse on
+                    || (track.engine == EngineKind::Sampler && button == B::Loop && (ui.page == PageId::Chop && ui.chop_slice < ui.slices.count
+                            ? slice_heard_reversed(track, ui.chop_sample, ui.slices, ui.chop_slice)              // on Chop, the slice in hand's
+                            : track.pads[track.last_pad % sampler_pads].reverse))                                // reverse on
                     || (track.engine == EngineKind::Sampler && button == B::Chop && track.pads[track.last_pad % sampler_pads].play == PadPlay::Gate); // Note On
             set(button, !shift_job ? L::Off : lit ? L::Bright : L::Dim);
         }

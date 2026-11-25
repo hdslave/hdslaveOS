@@ -8173,6 +8173,29 @@ void pad_lights() {
     ui.chop_take_from = 30000; ui.chop_take_at = 500; ui.chop_slice = 3; // a lit pad redid it from slice 4: heard from there
     CHECK(chop_take_playing(*project, ui, 1000) && !chop_take_playing(*project, ui, 10000));
     ui.chop_take_at = 0; ui.chop_take_from = 0; ui.chop_more = false;
+    // A slice tapped plays through its kit pad (Context::slice_hit): that voice lights its slice's pad as the audition
+    // voice did; the kit pad playing its whole region lights none.
+    {
+        ui.chop_mode = ChopMode::Threshold; ui.chop_slice = 3;
+        kit.pads[1].sample = 200;
+        taps.track = 1; taps.count = 1; taps.voice[0] = VoiceTap {};
+        taps.voice[0].pad = 1; taps.voice[0].slot = 200; taps.voice[0].from = 50000; taps.voice[0].to = 60000;
+        taps.voice[0].at = 55000; taps.voice[0].step = -1; taps.voice[0].level = 1; // slice 6, reversed
+        light({}, 20000);
+        CHECK(is(5, Hue::Track, 4) && is(3, Hue::Track, 4) && is(4, Hue::Track, 2));
+        taps.voice[0].from = 0; taps.voice[0].to = 441000; light({}, 20000);
+        CHECK(is(5, Hue::Track, 2));
+        taps.voice[0].pad = 0; taps.voice[0].from = 50000; taps.voice[0].to = 60000; light({}, 20000); // another pad's
+        CHECK(is(5, Hue::Track, 2));
+        // Shift held: Loop lit while the slice in hand plays backwards (its own Reverse against the kit pad's).
+        CHECK(!slice_heard_reversed(kit, 200, ui.slices, 3));
+        ui.slices.reverse[3] = true;
+        CHECK(slice_heard_reversed(kit, 200, ui.slices, 3) && !slice_heard_reversed(kit, 200, ui.slices, 4));
+        kit.pads[1].reverse = true;
+        CHECK(!slice_heard_reversed(kit, 200, ui.slices, 3) && slice_heard_reversed(kit, 200, ui.slices, 4));
+        kit.pads[1].reverse = false; ui.slices.reverse[3] = false;
+        taps.count = 0; kit.pads[1].sample = 1; ui.chop_mode = ChopMode::Manual;
+    }
     // SHIFT + the wheel: a cut onto the next hit the way it turns, as strong as Threshold's amount, 10 ms clear of it.
     {
         std::array<Hit, max_hits> hits {};

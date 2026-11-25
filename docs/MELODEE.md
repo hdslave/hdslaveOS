@@ -135,7 +135,7 @@ cards.
 | Note Repeat | A tap latches, a hold lasts. Every pad held repeats together on each step; the arp is separate (Stage's ARP, Shift + K2). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
+| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad (on Chop, the slice in hand); held half a second: the Looper on or off (off asks first while a loop holds audio) |
 | 16 Levels | A tap: the last pad (or a synth's last note) on all sixteen pads, again off; the page stays. Held: K1–K3 are its settings on any page (the type, then the two ends or the key's root and scale) and − / + its octave or Zones' page; let go after a hold, nothing. Of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
 | Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
@@ -1674,10 +1674,22 @@ the file holds, to the bit.
     wave; CLOUD POSITION as a line, SIZE the band round it, Spread a paler
     band, Scan an arrow, its place in seconds at the line and its LED in
     the header.
-- **Loop, Shift + Loop, Shift + Chop** act on the last pad from any page;
+- **Loop, Shift + Loop, Shift + Chop** act on the last pad from any page
+  (on Chop, Shift + Loop reverses the slice in hand alone);
   the sample pages' title shows note, loop and reverse icons.
 - **Chop** (Chop): the last pad's region in slices that touch. Pads play and
-  pick slices; K1 start, K2 end, K3 type (Threshold, Regions, Beats,
+  pick slices: a slice's pad plays it through the kit pad holding the sample
+  (a slice hit, `Context::slice_hit`), so it sounds as its hits will, with
+  all the pad has (Mono / Poly, mute group, Note On, Loop, envelopes,
+  filter, Warp, pad FX); with no kit pad holding the sample, as the file
+  is. Shift + Loop reverses the slice in hand alone (`Slices::reverse`, its
+  own Reverse against the kit pad's: on a reversed pad it plays forwards);
+  a reversed slice shows the reverse arrow at its top left and, Shift held,
+  Loop lights while the slice in hand plays backwards; one undo step. A cut
+  inside a reversed slice leaves both halves reversed, Merge and Erase + pad
+  keep the slice before's, and a new chop by type or amount keeps it on a
+  slice starting within 10 ms. TO PADS and the MPC 3 export lay a reversed
+  slice as a reversed pad. K1 start, K2 end, K3 type (Threshold, Regions, Beats,
   Manual, Auto; the type picked last is kept in the settings as
   `chop_mode` and a sample with no chop opens on it), Shift + K3 its amount, Shift + K1 / K2 zoom. Auto
   (`engine/auto_chop.cpp`, read with the hits when a sample loads) cuts by
@@ -1752,8 +1764,9 @@ the file holds, to the bit.
   the chop. As on the MPC, slices belong to the sample and live in its WAV
   file (the `atem` and `slic` chunks, `shell/mpc_wav_slices.cpp`; beside
   them Melodee's own `mlch` chunk, JSON, which other software passes over:
-  the chop's Type and Amount, the hand cuts (Hand) and the cuts taken out by
-  hand (Out), at the file's rate; a file without it reads as Manual and its
+  the chop's Type and Amount, the hand cuts (Hand), the cuts taken out by
+  hand (Out) and the starts of the slices reversed on their own (Reverse),
+  at the file's rate; a file without it reads as Manual and its
   hand cuts are told from what its type cuts now, `infer_hand`; an automatic
   cut within a quarter of its own spacing of a hand cut gives way to it,
   `give_way_reach`): read

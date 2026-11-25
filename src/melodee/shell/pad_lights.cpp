@@ -27,6 +27,7 @@
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/model/slice_banks.h"
+#include "melodee/model/slice_hits.h"
 #include "melodee/shell/zoom_view.h"
 #include <algorithm>
 #include <cmath>
@@ -582,7 +583,8 @@ Look motion_look(const PadScene& s, const Heard& snd, const std::array<bool, 192
 // Chop: whether Manual's take still plays, and the slice whose bank the pads show (shell/zoom_view.h).
 bool chop_taking(const PadScene& s) { return chop_take_playing(s.project, s.ui, s.now); }
 unsigned chop_view(const PadScene& s) { return chop_bank_slice(s.project, s.ui, s.now); }
-// Chop: how strongly each slice of the bank in view sounds (the audition voice's place in the file), by pad.
+// Chop: how strongly each slice of the bank in view sounds (the audition voice's place in the file, or the kit pad's
+// voice playing that slice), by pad.
 std::array<float, 16> slices_sounding(const PadScene& s) {
     std::array<float, 16> out {};
     const auto& t = selected(s);
@@ -591,11 +593,15 @@ std::array<float, 16> slices_sounding(const PadScene& s) {
     uint32_t frames = sound.used() ? s.project.samples[sound.sample % sample_slots].frames : 0;
     const auto& slices = s.ui.slices;
     const unsigned first = pad_slice(chop_view(s), 0), last = std::min(slices.count, first + 16);
+    const int kit = chop_kit_pad(t, s.ui.chop_sample);
     for (unsigned n = 0; n < s.taps.count && n < TrackTaps::voices; ++n) {
         const auto& v = s.taps.voice[n];
-        if (v.pad != int(sampler_pads) || (v.flags & tap::Choked)) continue;
-        for (unsigned k = first; k < last; ++k)
+        const bool slice_voice = kit >= 0 && v.pad == kit && v.slot == s.ui.chop_sample; // a slice hit (its region one slice)
+        if ((v.pad != int(sampler_pads) && !slice_voice) || (v.flags & tap::Choked)) continue;
+        for (unsigned k = first; k < last; ++k) {
+            if (slice_voice && !(v.from >= slices.start[k] && v.to <= slices.end(k, frames))) continue;
             if (v.at >= slices.start[k] && v.at < slices.end(k, frames)) out[k - first] = std::max(out[k - first], v.level);
+        }
     }
     return out;
 }
