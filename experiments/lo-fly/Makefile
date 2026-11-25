@@ -13,7 +13,7 @@ LOFLY_DIR ?= $(ROOT)/../lo-fly
 LOFLY_REV ?= HEAD
 OUT ?= $(ROOT)/build/lo-fly
 CLAP_INCLUDE ?= $(ROOT)/build/deps/clap/include
-# Patrick Hand and Caveat (SIL OFL 1.1), from Google Fonts' repository: `make fonts`
+# Doto (SIL OFL 1.1), from Google Fonts' repository: `make fonts`
 FONT_DIR ?= $(OUT)/fonts
 FONTS_URL := https://raw.githubusercontent.com/google/fonts/main/ofl
 PYTHON ?= python3
@@ -59,18 +59,14 @@ endif
 $(SRC)/dsp/src/%.cpp: | $(SRC)/.exported ;
 .PRECIOUS: $(SRC)/dsp/src/%.cpp
 
-$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/PatrickHand-Regular.ttf $(FONT_DIR)/Caveat-VF.ttf
+$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/Doto-VF.ttf
 	$(PYTHON) fonts.py $(FONT_DIR) $@
 
-fonts: $(FONT_DIR)/PatrickHand-Regular.ttf $(FONT_DIR)/Caveat-VF.ttf
-$(FONT_DIR)/PatrickHand-Regular.ttf:
+fonts: $(FONT_DIR)/Doto-VF.ttf
+$(FONT_DIR)/Doto-VF.ttf:
 	@mkdir -p $(@D)
-	curl -sfL -o $@ $(FONTS_URL)/patrickhand/PatrickHand-Regular.ttf
-	curl -sfL -o $(@D)/PatrickHand-OFL.txt $(FONTS_URL)/patrickhand/OFL.txt
-$(FONT_DIR)/Caveat-VF.ttf:
-	@mkdir -p $(@D)
-	curl -sfL -o $@ "$(FONTS_URL)/caveat/Caveat%5Bwght%5D.ttf"
-	curl -sfL -o $(@D)/Caveat-OFL.txt $(FONTS_URL)/caveat/OFL.txt
+	curl -sfL -o $@ "$(FONTS_URL)/doto/Doto%5BROND%2Cwght%5D.ttf"
+	curl -sfL -o $(@D)/Doto-OFL.txt $(FONTS_URL)/doto/OFL.txt
 
 HEADERS := store.h panel.h $(ROOT)/sdk/melodee-screen/melodee_screen.h
 
@@ -90,12 +86,11 @@ $(OUT)/mpc/obj/%.o: %.cpp $(HEADERS) $(OUT)/gen/fonts.h | $(SRC)/.exported
 $(OUT)/mpc/lo-fly/lo-fly.clap: $(MPC_OBJ) lo-fly.map $(OUT)/mpc/lo-fly/FONTS.txt
 	@mkdir -p $(@D)/Presets
 	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-s $(MPC_OBJ) -o $@
-# The panel's faces are drawn from Patrick Hand and Caveat: their licences go with the plug-in.
-$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/PatrickHand-Regular.ttf $(FONT_DIR)/Caveat-VF.ttf
+# The panel's type is drawn from Doto: its licence goes with the plug-in.
+$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/Doto-VF.ttf
 	@mkdir -p $(@D)
-	{ echo "lo-fly's panel draws its text from Patrick Hand and Caveat, both under the SIL Open Font License 1.1."; \
-	  echo; echo "=== Patrick Hand ==="; cat $(FONT_DIR)/PatrickHand-OFL.txt; \
-	  echo; echo "=== Caveat ==="; cat $(FONT_DIR)/Caveat-OFL.txt; } > $@
+	{ echo "lo-fly's panel draws its text from Doto, under the SIL Open Font License 1.1."; \
+	  echo; echo "=== Doto ==="; cat $(FONT_DIR)/Doto-OFL.txt; } > $@
 
 $(BUNDLE)/Contents/MacOS/lo-fly: $(MAC_OBJ)
 	@mkdir -p $(@D)

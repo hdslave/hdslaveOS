@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 //
 // lo-fly's panel in Melodee (see panel.h). The look: night. Each picture sits on a night sky over a skyline with lit
-// windows, stars and a moon, with scan lines; curves are neon lines with a glow; knobs are LED rings. Type is
-// handwritten: titles and the wheel's value in Caveat Bold, glowing in the page's colour like neon; labels and values
-// in Patrick Hand. The LOFI page draws the tape's wobble as a moving line and the level on two LED columns.
+// windows, stars and a moon, with scan lines; curves are neon lines with a glow; knobs are LED rings. Type is Doto,
+// a dot matrix like an LED sign: titles and the wheel's value glowing in the page's colour, labels and values in its
+// dots drawn on whole pixels. The LOFI page draws the tape's wobble as a moving line and the level on two LED columns.
 // The pictures come from lo-fly's own code and values: the oscillator's cycle through the converter, the built-in
 // noises, the LoFi chain's response, the envelopes, the voices that sound.
 #include "panel.h"
@@ -39,18 +39,26 @@ struct Font {
     int height;
     int ascent;
 };
-#include "fonts.h" // ph_small/label/value: Patrick Hand 14/15/18; cv_title/big: Caveat Bold 22/27
+#include "fonts.h" // dm_label, dm_value: Doto's dots a pixel and 2 x 2; dt_title, dt_big: Doto at 22 and 28 px
 
 constexpr float pi = 3.14159265f;
 
 // --- type and colours ---
 
-const Font& small_font = ph_small_font;
-const Font& label_font = ph_label_font;
-const Font& value_font = ph_value_font;
-const Font& title_font = cv_title_font;
-const Font& big_font = cv_big_font;
-constexpr float title_y = -2, small_y = 2, label_dy = 20, value_dy = 35; // header text tops; under a knob's centre
+// The type: Doto. Titles and the wheel's value in Doto itself, glowing in the page's colour; labels, values and
+// small text in Doto's own dot grid drawn on whole pixels (fonts.py). Where each sits: the header's text tops, a
+// knob's label and value under its centre.
+struct Type {
+    const Font& small;
+    const Font& label;
+    const Font& value;
+    const Font& title;
+    const Font& big;
+    float title_y, small_y, label_dy, value_dy;
+    bool neon; // titles glow in the page's colour; else the video-tape colour fringe
+};
+const Type doto { dm_label_font, dm_label_font, dm_value_font, dt_title_font, dt_big_font, -2, 6, 21, 31, true };
+const Type* T = &doto;
 
 constexpr std::uint32_t ground = 0x100d1b, ink = 0xf4eaff, ink_dim = 0xb3a6d0, ink_faint = 0x6d628e, ink_ghost = 0x2f2848;
 constexpr std::uint32_t sky_top = 0x15112a, sky_bottom = 0x3d2654, card_edge = 0x5b4a86;
@@ -335,14 +343,37 @@ void text_neon(Canvas& g, const Font& f, float x, float y, std::string_view s, s
     text(g, f, x, y, s, lerp_colour(c, 0xffffff, 0.62f), track, a);
 }
 
-// The page's wheel control: its value in neon script, between two chevrons.
+// The colour fringe of a worn video tape, red one way and blue the other.
+void text_fringe(Canvas& g, const Font& f, float x, float y, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
+{
+    text(g, f, x - 1.0f, y, s, 0xff4f7a, track, 0.55f * a);
+    text(g, f, x + 1.0f, y, s, 0x4fd6ff, track, 0.55f * a);
+    text(g, f, x, y, s, c, track, a);
+}
+// A title: glowing in the page's colour, or fringed.
+void title_text(Canvas& g, const Font& f, float x, float y, std::string_view s, std::uint32_t accent, int track = 0, float a = 1.0f)
+{
+    if (T->neon)
+        text_neon(g, f, x, y, s, accent, track, a);
+    else
+        text_fringe(g, f, x, y, s, ink, track, a);
+}
+
+// The page's wheel control: its value large, between two chevrons (drawn and glowing, or pixel triangles).
 void selector(Canvas& g, float cx, float y, std::string_view s, std::uint32_t accent, float a)
 {
-    const float half = static_cast<float>(text_width(big_font, s)) * 0.5f;
-    text_neon(g, big_font, cx - half, y, s, accent, 0, a);
-    const float my = y + static_cast<float>(big_font.ascent) * 0.66f;
+    const float half = static_cast<float>(text_width(T->big, s)) * 0.5f;
+    title_text(g, T->big, cx - half, y, s, accent, 0, a);
+    const float my = y + static_cast<float>(T->big.ascent) * (T->neon ? 0.66f : 0.6f);
     for (float side : { -1.0f, 1.0f }) {
-        const float tip = cx + side * (half + 11.0f), back = tip - side * 5.0f;
+        const float tip = cx + side * (half + 14.0f), back = tip - side * 5.0f;
+        if (!T->neon) {
+            for (int i = 0; i < 7; ++i) {
+                const float len = 4.0f - static_cast<float>(std::abs(i - 3));
+                g.fill(side < 0 ? tip + 4.0f - len : tip - 4.0f, std::round(my) - 3.0f + static_cast<float>(i), len, 1.0f, accent, a);
+            }
+            continue;
+        }
         g.seg(back, my - 5.0f, tip, my, 4.5f, accent, 0.15f * a);
         g.seg(tip, my, back, my + 5.0f, 4.5f, accent, 0.15f * a);
         g.seg(back, my - 5.0f, tip, my, 1.8f, accent, a);
@@ -389,10 +420,10 @@ void knob(Canvas& g, float cx, float cy, ParamId id, const Store& s, const char*
         g.disc(px, py, 3.3f, ink, a);
         g.disc(px, py, 1.7f, ground, a);
     }
-    text_centre(g, label_font, cx, cy + label_dy, label, colour, 1, a);
+    text_centre(g, T->label, cx, cy + T->label_dy, label, colour, 1, a);
     const std::string v = value_text(id, s.get(id));
-    const Font& vf = text_width(value_font, v) <= 98 ? value_font : label_font;
-    text_centre(g, vf, cx, cy + value_dy, v, ink, 0, a);
+    const Font& vf = text_width(T->value, v) <= 98 ? T->value : T->label;
+    text_centre(g, vf, cx, cy + T->value_dy, v, ink, 0, a);
 }
 
 // The page's title (after the section's lamp: play while on, stop while off), the preset's name, the page dots.
@@ -406,12 +437,12 @@ void header(Canvas& g, const PageDef& p, int page, std::optional<bool> on, const
             g.fill(9.0f, 7.0f, 7.0f, 7.0f, ink_faint);
     }
     const float tx = on ? 22.0f : 10.0f;
-    text_neon(g, title_font, tx, title_y, p.title, p.accent, 1);
+    title_text(g, T->title, tx, T->title_y, p.title, p.accent, 1);
     float dx = 311.0f - static_cast<float>((page_total - 1) * 7 + 11);
-    const float title_end = tx + static_cast<float>(text_width(title_font, p.title, 1));
-    const float name_w = static_cast<float>(text_width(small_font, preset));
+    const float title_end = tx + static_cast<float>(text_width(T->title, p.title, 1));
+    const float name_w = static_cast<float>(text_width(T->small, preset));
     if (title_end + 10.0f + name_w <= dx - 8.0f) // shown whole or not at all
-        text(g, small_font, dx - 8.0f - name_w, small_y, preset, ink_dim);
+        text(g, T->small, dx - 8.0f - name_w, T->small_y, preset, ink_dim);
     for (int i = 0; i < page_total; ++i) {
         if (i == page) {
             g.fill(dx, 9.0f, 11.0f, 4.0f, p.accent, 0.25f);
@@ -426,7 +457,7 @@ void header(Canvas& g, const PageDef& p, int page, std::optional<bool> on, const
 
 // --- the background (built once a page) ---
 
-// Dark ground with scan lines; the card a night sky with stars, a moon (not where the effect slots run) and a skyline
+// Dark ground with scan lines; the card a night sky with stars, a moon (where nothing runs into it) and a skyline
 // with a few windows lit.
 void night_background(Canvas& g, bool strip, bool with_moon)
 {
@@ -574,7 +605,7 @@ void picture_tape(Canvas& g, const Store& s, std::uint32_t accent, float a)
     g.area(ys, x, curve_n, y + h, accent, fill_alpha * a);
     stroke(g, xs, ys, curve_n, accent, a);
     for (auto [hz, label] : { std::pair { 100.0f, "100" }, std::pair { 1000.0f, "1k" }, std::pair { 10000.0f, "10k" } })
-        text(g, small_font, x + curve_n * std::log10(hz / 20.0f) / 3.0f + 3.0f, y + h - 1.0f, label, ink_dim, 0, a);
+        text(g, T->small, x + curve_n * std::log10(hz / 20.0f) / 3.0f + 3.0f, y + h - 1.0f, label, ink_dim, 0, a);
 }
 
 void picture_engine(Canvas& g, const Store& s, int n, std::uint32_t accent, float a)
@@ -635,7 +666,7 @@ void picture_noise(Canvas& g, const Store& s, const std::array<std::array<float,
 {
     const int i = noise_index(s);
     selector(g, card_x + card_w * 0.5f, card_y + 5.0f, noise_name(i), accent, a);
-    text(g, small_font, card_x + 18.0f, card_y + 31.0f, i < 6 ? "TEXTURE" : "TRANSIENT", ink_dim, 1, a);
+    text(g, T->small, card_x + 18.0f, card_y + 31.0f, i < 6 ? "TEXTURE" : "TRANSIENT", ink_dim, 1, a);
     const float x = card_x + 18.0f, cy = card_y + 70.0f, amp = 22.0f;
     g.fill(x, cy, curve_n, 1.0f, ink_ghost, a);
     for (int c = 0; c < curve_n; ++c) {
@@ -673,7 +704,7 @@ void picture_filter(Canvas& g, const Store& s, std::uint32_t accent, float a)
         stroke(g, xs, ys, w, accent, a);
         return;
     }
-    text(g, small_font, card_x + 18.0f, card_y + 31.0f, mode == 0 ? "LOW-PASS" : mode == 1 ? "BAND-PASS" : mode == 2 ? "HIGH-PASS" : "NOTCH", ink_dim, 1, a);
+    text(g, T->small, card_x + 18.0f, card_y + 31.0f, mode == 0 ? "LOW-PASS" : mode == 1 ? "BAND-PASS" : mode == 2 ? "HIGH-PASS" : "NOTCH", ink_dim, 1, a);
     const int stages = type == 0 ? s.index(ParamId::FilterSlope) + 1 : 1;
     const float q = 0.707f + res * res * 9.0f, zero = y + 22.0f;
     freq_grid(g, x, y + 10.0f, w, h - 10.0f, zero, a);
@@ -764,13 +795,13 @@ void picture_fx(Canvas& g, const Store& s, int slot, std::uint32_t accent, float
         } else
             g.rrect_line(x, y, w, h, 2.0f, 1.2f, ink_faint, a);
         const char digit[2] { static_cast<char>('1' + i), 0 };
-        text_centre(g, label_font, x + w * 0.5f, y + 1.0f, digit, used ? ground : ink_dim, 0, a);
+        text_centre(g, T->value, x + w * 0.5f, y + 1.0f, digit, used ? ground : ink_dim, 0, a);
     }
     const auto type_id = lofly::fxParam(slot, lofly::FxCommon::Type);
     const int type = s.index(type_id);
     selector(g, card_x + card_w * 0.5f, card_y + 44.0f, choice_name(s, type_id), accent, a);
     if (lofly::isSpatial(static_cast<lofly::FxType>(type)))
-        text_centre(g, small_font, card_x + card_w * 0.5f, card_y + 78.0f, s.on(lofly::fxParam(slot, lofly::FxCommon::Send)) ? "SEND" : "INSERT",
+        text_centre(g, T->small, card_x + card_w * 0.5f, card_y + 78.0f, s.on(lofly::fxParam(slot, lofly::FxCommon::Send)) ? "SEND" : "INSERT",
             ink_dim, 1, a);
 }
 
@@ -961,7 +992,7 @@ void Panel::build_background(int area)
     Canvas g { background_.data(), MELODEE_SCREEN_WIDTH, h, MELODEE_SCREEN_WIDTH };
     const auto& p = pages[static_cast<std::size_t>(page_)];
     const bool strip = area == MELODEE_SCREEN_STRIP;
-    night_background(g, strip, p.pic != Pic::Fx);
+    night_background(g, strip, p.pic != Pic::Fx && p.pic != Pic::Env); // no moon where the slots or a long value run
     if (!strip && p.pic == Pic::Lofi)
         leds_static(g);
     background_page_ = page_;
