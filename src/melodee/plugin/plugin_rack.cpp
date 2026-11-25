@@ -43,6 +43,7 @@ namespace melodee {
 namespace fs = std::filesystem;
 
 namespace {
+constexpr char anvil_id[] = "com.hdslave.anvil";
 constexpr int bridge_block_ms = 40; // a 32-bit plug-in that has not answered by then counts as crashed
 
 // JUCE's message thread, for VST3 plug-ins: made and torn down on it.
@@ -830,12 +831,23 @@ void PluginRack::set_states(PluginStates states) {
 
 PluginStates PluginRack::states() const {
     PluginStates out;
+    snapshot_states(out, no_plugin);
+    return out;
+}
+
+bool PluginRack::snapshot_states(PluginStates& out, unsigned instrument) const {
     std::lock_guard<std::mutex> held(lock);
+    if (instrument < max_plugins) {
+        const auto& entry = entries[instrument];
+        if (entry.status == PluginStatus::Loading) return false;
+        if (entry.status == PluginStatus::Ready && entry.live && entry.live->clap &&
+            entry.live->clap->clapId() == anvil_id && entry.live->clap->parameterEditsPending()) return false;
+    }
     for (unsigned e = 0; e < max_plugins; ++e) {
         const auto& entry = entries[e];
         out[e] = entry.live && entry.status == PluginStatus::Ready ? state_now(entry.live, entry.state) : entry.state;
     }
-    return out;
+    return true;
 }
 
 bool PluginRack::anvil_sequencer_running(unsigned entry) const {
@@ -844,7 +856,7 @@ bool PluginRack::anvil_sequencer_running(unsigned entry) const {
     const auto& e = entries[entry];
     constexpr uint32_t run_id = 24; // Anvil's published RUN switch
     return e.status == PluginStatus::Ready && e.live && e.live->clap &&
-           e.live->clap->clapId() == "com.hdslave.anvil" && e.live->clap->parameterValue(run_id) >= 0.5f;
+           e.live->clap->clapId() == anvil_id && e.live->clap->parameterValue(run_id) >= 0.5f;
 }
 
 void PluginRack::clone(unsigned entry, unsigned copy) {

@@ -649,9 +649,19 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     }
 }
 
-static void anvil_freeze(const std::string& card, const std::string& plugin, bool with_note, unsigned rate) {
+static void anvil_freeze(const std::string& card, const std::string& plugin, const std::string& mode, unsigned rate, int run_index) {
     CHECK(rate == 44100 || rate == 48000);
+    const bool with_note = mode == "anvil-freeze-note";
+    const bool ring_launch = mode == "anvil-freeze-ring-launch";
+    const bool queued_run = mode == "anvil-freeze-queued-run";
+    struct Audio {
+        std::vector<float> left, right;
+        std::vector<int32_t> main;
+    };
+    SampleData ring_wav;
+    constexpr unsigned tap_after_unfreeze = 4;
     constexpr unsigned block = EngineHost::block;
+    const unsigned ring_blocks = rate / (block * 4);
     // Integer frames per tick and a bar divisible by the block size make the WAV comparison exact.
     const unsigned tempo = rate == 44100 ? 875 : 1250, bar_blocks = rate == 44100 ? 945 : 720;
     dsp::device_rate.store(rate);
@@ -716,6 +726,11 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, boo
         for (unsigned n = 0; n < 32; ++n) { tick(); render(); }
         const auto patch = rack->state(0);
         const uint32_t generation = rack->live_generation(0);
+        if (queued_run) {
+            rack->set_param_index(0, generation, run_index, 0);
+            render();
+            CHECK(!rack->anvil_sequencer_running(0));
+        }
         c.open(PageId::Stage);
         if (freeze && !with_note) {
             c.project.plugins[0].transport = false;
@@ -728,55 +743,87 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, boo
         }
 
         unsigned blocks = 0;
-        auto advance = [&](unsigned until, std::vector<float>* left = nullptr, std::vector<float>* right = nullptr) {
+        auto advance = [&](unsigned until, Audio* capture = nullptr) {
             for (; blocks < until; ++blocks) {
                 tick();
                 render();
-                if (left) left->insert(left->end(), host->print_left(), host->print_left() + block);
-                if (right) right->insert(right->end(), host->print_right(), host->print_right() + block);
+                if (!capture) continue;
+                capture->left.insert(capture->left.end(), host->print_left(), host->print_left() + block);
+                capture->right.insert(capture->right.end(), host->print_right(), host->print_right() + block);
+                capture->main.insert(capture->main.end(), audio.begin(), audio.end());
             }
         };
         tap(SurfaceButton::Play);
-        advance(bar_blocks / 2);
+        const unsigned requested = bar_blocks / 2;
+        advance(requested);
+        if (queued_run)
+            rack->set_param_index(0, generation, run_index, 1000);
         if (freeze) {
             tap(SurfaceButton::SampleRecord);
             const auto& sheet = shell->ui().print_sheet;
             CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
+            if (ring_launch) shell->ui().print_sheet.tail = PrintTail::Ring;
             tap(SurfaceButton::TopRight);
             CHECK(sheet.printing);
             c.print_tick();
+            if (queued_run) {
+                CHECK(c.freeze_pending(0) && !printer->busy());
+                advance(requested + 1);
+                c.print_tick();
+            }
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
             while (printer->busy() && std::chrono::steady_clock::now() < deadline)
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             CHECK(!printer->busy());
         }
+        if (queued_run) {
+            advance(requested + 1);
+            CHECK(rack->anvil_sequencer_running(0) && rack->state(0) == patch);
+        }
         advance(2 * bar_blocks);
         std::vector<uint8_t> saved;
+        Audio launch;
         if (freeze) {
             CHECK(c.frozen(0) && !c.deep(0) && (host->printing_tracks() & 1));
             CHECK(!(host->sleeping_tracks() & 1));
             const auto* record = c.prints.find(0, 0);
-            CHECK(record && record->tap == PrintTap::PostFx && record->tail == PrintTail::Loop);
+            CHECK(record && record->tap == PrintTap::PostFx &&
+                  record->tail == (ring_launch ? PrintTail::Ring : PrintTail::Loop));
             SampleData wav;
             CHECK(read_wav((fs::path(prints_folder(c.project_path)) / record->file).string(), wav).empty());
-            CHECK(wav.frames == bar_blocks * block);
             CHECK(std::any_of(wav.left.begin(), wav.left.end(), [](float f) { return std::fabs(f) > 0.001f; }));
-            std::vector<float> printed_left, printed_right;
-            advance(3 * bar_blocks, &printed_left, &printed_right);
-            CHECK(printed_left == wav.left && printed_right == wav.right); // the print alone, at the mixer input
-            if (!with_note) {
-                auto states = rack->states();
-                saved = save_project(c.project, c.patterns, &states, &c.prints);
+            if (ring_launch) {
+                CHECK(wav.frames >= (bar_blocks + ring_blocks) * block);
+                ring_wav = std::move(wav);
+            } else {
+                CHECK(wav.frames == bar_blocks * block);
+                Audio printed;
+                advance(3 * bar_blocks, &printed);
+                CHECK(printed.left == wav.left && printed.right == wav.right);
+                if (!with_note && !queued_run) {
+                    auto states = rack->states();
+                    saved = save_project(c.project, c.patterns, &states, &c.prints);
+                }
             }
+        }
+        const unsigned unfreeze = 3 * bar_blocks + (ring_launch ? ring_blocks : 0);
+        if (ring_launch) {
+            advance(2 * bar_blocks + bar_blocks / 2);
+            c.launch(0, 1);
+            advance(3 * bar_blocks);
+            advance(unfreeze, &launch);
+            CHECK(host->pattern_of(0) == 1 && !(host->printing_tracks() & 1));
+        }
+        if (freeze) {
             tap(SurfaceButton::SampleRecord);
             press(SurfaceButton::Shift, true);
             tap(SurfaceButton::TopLeft);
             press(SurfaceButton::Shift, false);
         }
-        advance(3 * bar_blocks + 4); // past the five-millisecond handoff
+        advance(unfreeze + tap_after_unfreeze); // past the five-millisecond handoff
         CHECK(!c.frozen(0) && !(host->printing_tracks() & 1));
-        std::pair<std::vector<float>, std::vector<float>> live;
-        advance(5 * bar_blocks, &live.first, &live.second);
+        Audio live;
+        advance(5 * bar_blocks, &live);
         CHECK(rack->state(0) == patch && rack->live_generation(0) == generation);
         CHECK(pattern == original);
         CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
@@ -798,10 +845,27 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, boo
             render();
             CHECK(host->printing_tracks() & 1);
         }
-        return live;
+        return std::make_pair(std::move(launch), std::move(live));
     };
-    const auto uninterrupted = play(false);
-    CHECK(play(true) == uninterrupted);
+    const auto [live_launch, uninterrupted] = play(false);
+    const auto [frozen_launch, resumed] = play(true);
+    if (ring_launch) {
+        const auto start = bar_blocks * block;
+        CHECK(frozen_launch.left.size() == size_t(ring_blocks) * block);
+        bool heard_live = false, heard_tail = false;
+        for (size_t n = 0; n < frozen_launch.left.size(); ++n) {
+            heard_live |= std::fabs(live_launch.left[n]) > 0.001f;
+            heard_tail |= std::fabs(ring_wav.left[start + n]) > 0.001f;
+            CHECK(frozen_launch.left[n] == live_launch.left[n] + ring_wav.left[start + n]);
+            CHECK(frozen_launch.right[n] == live_launch.right[n] + ring_wav.right[start + n]);
+        }
+        CHECK(heard_live && heard_tail);
+    }
+    auto same_bytes = [](const auto& a, const auto& b) {
+        return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) == 0;
+    };
+    CHECK(same_bytes(resumed.left, uninterrupted.left) && same_bytes(resumed.right, uninterrupted.right));
+    CHECK(same_bytes(resumed.main, uninterrupted.main));
 }
 
 // A separate invocation starts a fresh project and a new plug-in instance.
@@ -814,9 +878,10 @@ int main(int argc, char** argv) {
         freeze_ring_wavs(card, plugin, std::stoul(argv[4]), std::stoul(argv[5]), std::stoul(argv[6]));
         return 0;
     }
-    if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note") {
-        CHECK(argc == 4 || argc == 5);
-        anvil_freeze(card, plugin, mode == "anvil-freeze-note", argc == 5 ? std::stoul(argv[4]) : 44100);
+    if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note" ||
+        mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run") {
+        CHECK(argc <= 6);
+        anvil_freeze(card, plugin, mode, argc >= 5 ? std::stoul(argv[4]) : 44100, argc == 6 ? std::stoi(argv[5]) : 2);
         return 0;
     }
     CHECK(argc == 4);

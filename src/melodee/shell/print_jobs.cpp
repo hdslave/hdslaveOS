@@ -295,44 +295,44 @@ void Context::print_tick() {
     deep_now.store(deep_bits, std::memory_order_relaxed);
     thawing_now.store(thawing, std::memory_order_relaxed);
     thaw_took_now.store(thaw_took, std::memory_order_relaxed);
-    uint32_t waiting = freeze_waiting;
-    for (unsigned t = 0; t < track_count; ++t) {
-        const uint32_t bit = 1u << t;
-        if (!(waiting & bit)) continue;
-        const auto& tr = project.tracks[t];
-        // A restored ordinary freeze needs the reloaded instrument's identity and RUN value before admission.
-        if (freeze_submitted_serial[t] || (plugins && freeze_requested[t].state == FreezeState::Frozen &&
-            tr.engine == EngineKind::Plugin && tr.plugin < max_plugins &&
-            plugins->status(tr.plugin) == PluginStatus::Loading)) waiting &= ~bit;
-    }
-    if (waiting && !delivery_blocked && !printer->busy() && !project_path.empty()) {
-        unsigned t = 0;
-        while (!((waiting >> t) & 1)) ++t;
-        auto& f = freeze_requested[t];
-        const bool keep_live = f.state == FreezeState::Frozen && anvil_sequencing(t);
-        if (keep_live) f.tap = PrintTap::PostFx;
-        PrintJob job;
-        job.project_path = project_path;
-        job.track = t;
-        job.tap = f.tap;
-        job.tail = f.tail;
-        job.freeze = true;
-        job.deep = f.state == FreezeState::Deep; // freeze plan F2d
-        job.keep_live = keep_live;
-        job.serial = freeze_serial[t];
-        for (unsigned p = 0; p < pattern_count; ++p)
-            if (f.plays(p) && (keep_live || !patterns.at[t][p].empty())) job.patterns.push_back(uint8_t(p));
-        if (job.patterns.empty()) {
-            cancel_freeze_request(t);
-            reject_freeze(t, "no pattern with notes");
-        } else {
-            job.project = std::make_unique<Project>(project);
-            if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // issue 24
-            job.bank = std::make_unique<PatternBank>(patterns);
-            if (plugins) job.states = plugins->states();
-            if (library) job.card_top = library->card();
-            job.known = prints;
-            if (printer->start(std::move(job))) freeze_waiting &= ~(1u << t);
+    if (!delivery_blocked && !printer->busy() && !project_path.empty()) {
+        uint32_t waiting = freeze_waiting;
+        for (unsigned t = 0; waiting; ++t) {
+            const uint32_t bit = 1u << t;
+            if (!(waiting & bit)) continue;
+            waiting &= ~bit;
+            if (freeze_submitted_serial[t]) continue;
+            auto& f = freeze_requested[t];
+            const auto& tr = project.tracks[t];
+            const bool ordinary = f.state == FreezeState::Frozen;
+            const unsigned instrument = ordinary && tr.engine == EngineKind::Plugin ? tr.plugin : no_plugin;
+            PrintJob job;
+            // The print uses the state consumed by CLAP. Wait for a queued Anvil RUN or knob edit before taking it.
+            if (plugins && !plugins->snapshot_states(job.states, instrument)) continue;
+            const bool keep_live = ordinary && anvil_sequencing(t);
+            if (keep_live) f.tap = PrintTap::PostFx;
+            job.project_path = project_path;
+            job.track = t;
+            job.tap = f.tap;
+            job.tail = f.tail;
+            job.freeze = true;
+            job.deep = f.state == FreezeState::Deep;
+            job.keep_live = keep_live;
+            job.serial = freeze_serial[t];
+            for (unsigned p = 0; p < pattern_count; ++p)
+                if (f.plays(p) && (keep_live || !patterns.at[t][p].empty())) job.patterns.push_back(uint8_t(p));
+            if (job.patterns.empty()) {
+                cancel_freeze_request(t);
+                reject_freeze(t, "no pattern with notes");
+            } else {
+                job.project = std::make_unique<Project>(project);
+                if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // issue 24
+                job.bank = std::make_unique<PatternBank>(patterns);
+                if (library) job.card_top = library->card();
+                job.known = prints;
+                if (printer->start(std::move(job))) freeze_waiting &= ~bit;
+            }
+            break;
         }
     }
     PrintResult r;

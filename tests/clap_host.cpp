@@ -270,12 +270,15 @@ int main(int argc, char** argv) {
             melodee_screen_input_t push {MELODEE_SCREEN_PUSH, 0, 0};
             CHECK(sine->screenInput(push, used) && used); // changes Wave and requests a value rescan
             level->setValue(0.25f);
+            CHECK(sine->parameterEditsPending());
             auto blockDone = std::async(std::launch::async, [&] { run(*sine); });
             pause.entered.get_future().wait();
+            CHECK(sine->parameterEditsPending()); // dequeued, before the plug-in has applied it
             sine->idle();
             CHECK(level->getValue() == 0.25f);
             pause.resume.set_value();
             blockDone.get();
+            CHECK(!sine->parameterEditsPending());
             beforeEvents(nullptr, nullptr);
             sine->idle();
             CHECK(level->getValue() == 0.25f);

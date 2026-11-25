@@ -252,7 +252,7 @@ public:
         auto previous = value.load (std::memory_order_relaxed);
         while (! value.compare_exchange_weak (previous, { v, (previous.revision + 2u) | 1u },
                                                std::memory_order_release, std::memory_order_relaxed)) {}
-        owner.anyPending.store (true, std::memory_order_release);
+        owner.parameterEdits.fetch_or (editsQueued, std::memory_order_release);
     }
     float getDefaultValue() const override { return (float) initial; }
     String getName (int maximumLength) const override { return label.substring (0, maximumLength); }
@@ -452,7 +452,7 @@ void ClapInstance::refreshValues()
         auto previous = p->value.load (std::memory_order_acquire);
         if (previous.queued()) continue;
         // The audio thread can have taken an edit from the queue without its plug-in having consumed it yet.
-        if (applyingParams.load (std::memory_order_acquire)) {
+        if (parameterEdits.load (std::memory_order_acquire) & editsApplying) {
             host->rescan.store (true, std::memory_order_release);
             return;
         }
@@ -550,7 +550,12 @@ bool ClapInstance::takeRedraw() { return host->redraw.exchange (false, std::memo
 
 bool ClapInstance::wantsProcess() const
 {
-    return host->process.load (std::memory_order_acquire) || anyPending.load (std::memory_order_acquire);
+    return host->process.load (std::memory_order_acquire) || (parameterEdits.load (std::memory_order_acquire) & editsQueued);
+}
+
+bool ClapInstance::parameterEditsPending() const
+{
+    return parameterEdits.load (std::memory_order_acquire) != 0;
 }
 
 AudioProcessorParameter* ClapInstance::getBypassParameter() const { return bypass; }
@@ -662,10 +667,10 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         t.tsig_num = (uint16_t) time.numerator;
         t.tsig_denom = (uint16_t) time.denominator;
     }
-    const bool edits = anyPending.exchange (false, std::memory_order_acq_rel);
+    const bool edits = parameterEdits.load (std::memory_order_acquire) & editsQueued;
     if (edits)
     {
-        applyingParams.store (true, std::memory_order_release);
+        parameterEdits.exchange (editsApplying, std::memory_order_acq_rel);
         for (auto* p : parameters)
         {
             auto edit = p->value.load (std::memory_order_acquire);
@@ -684,7 +689,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
                                                   std::memory_order_release, std::memory_order_relaxed);
             }
             else // no room this block: still queued
-                anyPending.store (true, std::memory_order_release);
+                parameterEdits.fetch_or (editsQueued, std::memory_order_release);
         }
     }
     if (notePort >= 0 && midiNotes && queuedAllOff != 0)
@@ -848,7 +853,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
     process.in_events = &in;
     process.out_events = &out;
     const auto status = plugin->process (plugin, &process);
-    if (edits) applyingParams.store (false, std::memory_order_release);
+    if (edits) parameterEdits.fetch_and (~editsApplying, std::memory_order_release);
 
     const int mainOut = outCount > 0 ? (int) outputPorts[0].channels : 0;
     for (int c = 0; c < buffer.getNumChannels(); ++c)

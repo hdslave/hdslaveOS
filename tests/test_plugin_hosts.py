@@ -130,7 +130,7 @@ class PluginHostTests(unittest.TestCase):
             subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                            check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
-    def test_anvil_freezes_without_a_note_and_returns_to_the_same_live_audio(self):
+    def run_anvil_fixture(self, *modes):
         subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
         with tempfile.TemporaryDirectory() as temp:
             card = Path(temp) / "card"
@@ -138,10 +138,19 @@ class PluginHostTests(unittest.TestCase):
             plugin.parent.mkdir(parents=True)
             build_clap(plugin, "-DMELODEE_TEST_ANVIL")
             env = {**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")}
-            for mode, rate in itertools.product(("anvil-freeze-empty", "anvil-freeze-note"), (44100, 48000)):
+            for mode, rate in itertools.product(modes, (44100, 48000)):
                 with self.subTest(mode=mode, rate=rate):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode, str(rate)],
                                    check=True, timeout=90, env=env)
+
+    def test_anvil_freezes_without_a_note_and_returns_to_the_same_live_audio(self):
+        self.run_anvil_fixture("anvil-freeze-empty", "anvil-freeze-note")
+
+    def test_anvil_ring_tail_leaves_live_playback_audible_after_launch(self):
+        self.run_anvil_fixture("anvil-freeze-ring-launch")
+
+    def test_anvil_freeze_waits_for_queued_run_edit(self):
+        self.run_anvil_fixture("anvil-freeze-queued-run")
 
     def test_knob_takeover_on_plugin_screen_changes(self):
         for mode in ("knob-scaled", "knob-pickup", "knob-instant"):

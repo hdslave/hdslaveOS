@@ -83,6 +83,8 @@ public:
     // Saving: each entry's state as it is now (a plug-in still loading: what
     // it will load with). Any thread but audio.
     PluginStates states() const;
+    // Freeze snapshots can wait for an instrument to open and for host edits to reach Anvil.
+    bool snapshot_states(PluginStates& out, unsigned instrument) const;
     // A copy of `entry` onto `copy` (a track copy): the same plug-in and state.
     void clone(unsigned entry, unsigned copy);
     // The same plug-in opened again at the next sync() (picked again after it failed or stopped working), with the
