@@ -147,6 +147,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     send({Type::AllNotesOff, 255});
     import_unsaved = false; // an MPC project's load sets it again once this is done (Shell::lights)
     prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
+    anvil_freeze_requested = {};
     freeze_waiting = 0; // freeze plan F2b: its frozen tracks play live until their prints are checked and mapped again
     deep_hold = thawing = 0; // freeze plan F2d: its deep-frozen tracks' plug-ins are never loaded (plugins_asleep())
     deep_sent.fill(0);
@@ -539,7 +540,7 @@ void Context::record(int key, int velocity, int cutoff) {
     // end reached this thread), goes on the take's first tick, and is not played again there.
     const bool early = host.count_in() != 0;
     if (early && (host.song_playing() || host.count_in_ticks() > sixteenth_ticks)) return;
-    if (frozen(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
+    if (freeze_protects_track(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
     auto& p = pattern();
     int position = 0;
     uint32_t ticks = 0;
@@ -1400,7 +1401,7 @@ void Context::sync_pattern(unsigned t, unsigned p) {
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
 void Context::record_motion(int lane, int value) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
-    if (frozen(ui.track)) return; // freeze plan F2b
+    if (freeze_protects_track(ui.track)) return; // freeze plan F2b
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;

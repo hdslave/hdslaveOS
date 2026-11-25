@@ -92,6 +92,8 @@ public:
     std::vector<Preset> findPresets (const juce::File& cache) const;
     void setPresets (std::vector<Preset>);
     const std::string& clapId() const { return info.id; }
+    float parameterValue (uint32_t id) const;
+    bool parameterEditsPending() const;
     // Pages (plugin/plugin_pages.h). module(): the group of the parameter at `index` (its place in getParameters())
     // as clap_param_info.module gives it, "/" between levels ("" none). remotePages(): the plug-in's own pages of
     // up to eight controls (CLAP remote-controls), asked now, as parameter indices; empty with none.
@@ -166,7 +168,7 @@ private:
 
     std::vector<Parameter*> parameters;              // owned by the AudioProcessor
     std::vector<std::pair<uint32_t, int>> byId;      // clap_id to index in `parameters`, sorted
-    std::atomic<bool> anyPending { false };
+    std::atomic<bool> anyPending { false }, applyingEdits { false };
     Parameter* bypass = nullptr;
 
     struct Event;                   // room for any event this host sends

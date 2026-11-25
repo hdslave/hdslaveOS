@@ -30,7 +30,9 @@ bool none_of(const std::array<uint64_t, (pattern_count + 63) / 64>& bits) {
 
 // ---- the question before an edit of a frozen track
 
-bool Context::print_covers(const UndoScope& s) const { return melodee::print_covers(prints.freeze, s); } // shell/undo_scope.h
+bool Context::print_covers(const UndoScope& s) const {
+    return melodee::print_covers(prints.freeze, s) || melodee::print_covers(anvil_freeze_requested, s);
+}
 
 void Context::ask_unfreeze(unsigned track) {
     ask(*this, UiState::Ask::Unfreeze, int(track % track_count));
@@ -43,7 +45,7 @@ bool Context::frozen_edit(const UndoScope& scope) {
 }
 
 bool Context::frozen_edit(unsigned track) {
-    if (!frozen(track)) return false;
+    if (!freeze_protects_track(track)) return false;
     ask_unfreeze(track);
     return true;
 }
@@ -51,8 +53,11 @@ bool Context::frozen_edit(unsigned track) {
 bool Context::edit_covers(const Edit& e) const {
     if (e.swap_a >= 0 || e.track_before) return false; // a move or a copy: the tracks are printed again (freeze plan F2b)
     const unsigned t = e.track % track_count;
-    auto pattern_frozen = [&](unsigned track, unsigned p) { return frozen(track) && prints.freeze[track % track_count].plays(p); };
-    if (frozen(t)) {
+    auto pattern_frozen = [&](unsigned track, unsigned p) {
+        track %= track_count;
+        return prints.freeze[track].plays(p) || anvil_freeze_requested[track].plays(p);
+    };
+    if (freeze_protects_track(t)) {
         auto differ = [](const auto& a, const auto& b) { return std::memcmp(&a, &b, sizeof(a)) != 0; }; // copies of model data, as undo compares them
         if (e.pad >= 0 && (differ(e.pad_after.sound, e.pad_before.sound) || differ(e.pad_after.chain, e.pad_before.chain) || !same_trims(e.pad_after, e.pad_before)))
             return true;
@@ -71,12 +76,12 @@ bool Context::edit_covers(const Edit& e) const {
 
 unsigned Context::edit_track(const Edit& edit) const {
     unsigned t = edit.track % track_count;
-    if (!frozen(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
-    if (!frozen(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
-    if (!frozen(t))
-        for (const auto& p : edit.patterns_before) if (frozen(p.track)) { t = p.track; break; }
-    if (!frozen(t) && edit.column >= 0)
-        for (const auto& [track, value] : edit.column_before) if (frozen(track)) { t = track; break; }
+    if (!freeze_protects_track(t) && edit.chain >= int(pad_chain_base)) t = unsigned(edit.chain - int(pad_chain_base)) / sampler_pads % track_count;
+    if (!freeze_protects_track(t) && edit.chain >= 0 && edit.chain < int(track_count)) t = unsigned(edit.chain);
+    if (!freeze_protects_track(t))
+        for (const auto& p : edit.patterns_before) if (freeze_protects_track(p.track)) { t = p.track; break; }
+    if (!freeze_protects_track(t) && edit.column >= 0)
+        for (const auto& [track, value] : edit.column_before) if (freeze_protects_track(track)) { t = track; break; }
     return t;
 }
 
@@ -91,42 +96,95 @@ bool Context::edit_gate(void* owner, Edit& edit) {
 
 // ---- the PRINT sheet
 
+namespace {
+unsigned clocked_pattern(const Context& c, unsigned t) {
+    return (c.host.playing() ? c.host.pattern_of(t) : c.project.tracks[t].pattern) % pattern_count;
+}
+
+auto eligible_patterns(const Context& c, unsigned t, unsigned anvil_pattern) {
+    auto eligible = with_notes(c.patterns, t);
+    if (anvil_pattern < pattern_count) {
+        // The playing pattern can carry Anvil's sequence with zero MPC notes. Retain previously
+        // frozen empty patterns so the sheet can show and unpick them after a launch.
+        eligible[anvil_pattern / 64] |= uint64_t(1) << (anvil_pattern % 64);
+        for (size_t i = 0; i < eligible.size(); ++i) eligible[i] |= c.prints.freeze[t].patterns[i];
+    }
+    return eligible;
+}
+} // namespace
+
+std::array<uint64_t, (pattern_count + 63) / 64> Context::freeze_patterns(unsigned track, bool deep) const {
+    const unsigned t = track % track_count;
+    const bool clocked = !deep && anvil_sequencing(t);
+    return eligible_patterns(*this, t, clocked ? clocked_pattern(*this, t) : pattern_count);
+}
+
 void Context::open_print_sheet() {
     const unsigned t = ui.track % track_count;
     const auto& tr = project.tracks[t];
     if (!tr.used()) { notice("Empty track"); return; }
     auto& sheet = ui.print_sheet;
-    if (!(sheet.track == t && sheet.printing)) { // a sheet under way comes back as it is
+    const bool printing = sheet.track == t && sheet.printing;
+    const bool clocked = printing ? sheet.clocked_anvil() : anvil_sequencing(t);
+    const unsigned shown = clocked ? clocked_pattern(*this, t) : tr.pattern % pattern_count;
+    if (!printing) { // a sheet under way comes back as it is
         sheet = UiState::PrintSheet {};
         sheet.track = uint8_t(t);
         const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
-        sheet.tap = f.tap;
+        sheet.anvil_pattern = uint8_t(clocked ? shown : pattern_count);
+        sheet.tap = clocked ? PrintTap::PostFx : f.tap;
         sheet.tail = f.tail;
-        sheet.picks = frozen(t) ? f.patterns : with_notes(patterns, t); // as it is frozen, else every pattern with notes
-        auto notes = with_notes(patterns, t);
-        for (size_t n = 0; n < notes.size(); ++n) sheet.picks[n] &= notes[n];
+        sheet.eligible = eligible_patterns(*this, t, sheet.anvil_pattern);
+        sheet.picks = frozen(t) ? f.patterns : sheet.eligible;
+        for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
     }
     // The bank in view: the one the track plays.
-    ui.pattern_bank = uint8_t(tr.pattern % pattern_count / pattern_pads);
+    ui.pattern_bank = sheet.default_bank = uint8_t(shown / pattern_pads);
     if (ui.page != PageId::Print) open(PageId::Print);
 }
 
+void Context::refresh_print_sheet() {
+    auto& sheet = ui.print_sheet;
+    if (ui.page != PageId::Print || sheet.printing) return;
+    const unsigned t = sheet.track % track_count;
+    const unsigned anvil_pattern = anvil_sequencing(t) ? clocked_pattern(*this, t) : pattern_count;
+    if (anvil_pattern == sheet.anvil_pattern) return;
+    sheet.anvil_pattern = uint8_t(anvil_pattern);
+    if (sheet.clocked_anvil()) sheet.tap = PrintTap::PostFx;
+    sheet.eligible = eligible_patterns(*this, t, anvil_pattern);
+    if (!sheet.picks_touched) sheet.picks = frozen(t) ? prints.freeze[t].patterns : sheet.eligible;
+    // A manually picked empty pattern can still carry Anvil's sequence after the track launches another.
+    if (!sheet.clocked_anvil() || !sheet.picks_touched)
+        for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
+    // Follow the automatic pick when RUN arrives or a queued pattern takes over.
+    if (sheet.clocked_anvil() && !sheet.picks_touched && ui.pattern_bank == sheet.default_bank && sheet.picked(anvil_pattern))
+        ui.pattern_bank = sheet.default_bank = uint8_t(anvil_pattern / pattern_pads);
+}
+
 void Context::print_sheet_pad(unsigned pad) {
+    const unsigned p = ui.pad_pattern(pad); // the pattern under the pad as pressed
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
-    unsigned p = ui.pad_pattern(pad);
-    if (patterns.at[sheet.track % track_count][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
+    if (!sheet.can_pick(p)) { notice(pattern_word(p) + " is empty"); return; }
     sheet.pick(p, !sheet.picked(p));
+    sheet.picks_touched = true;
 }
 
 void Context::print_sheet_all() {
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
-    auto notes = with_notes(patterns, sheet.track);
-    sheet.picks = sheet.picks == notes ? decltype(notes) {} : notes; // all, or (all lit already) none
+    auto eligible = sheet.eligible;
+    if (sheet.clocked_anvil())
+        for (size_t n = 0; n < eligible.size(); ++n) eligible[n] |= sheet.picks[n];
+    if (none_of(eligible)) return;
+    sheet.picks = sheet.picks == eligible ? decltype(sheet.picks) {} : eligible;
+    sheet.picks_touched = true;
 }
 
 void Context::print_sheet_go(bool deep_freeze) {
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     const unsigned t = sheet.track % track_count;
     if (sheet.printing) return;
@@ -148,9 +206,8 @@ void Context::print_sheet_go(bool deep_freeze) {
     ask.deep = deep_freeze;
     if (deep_freeze) { sheet.picks = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
-    freeze(ask);
-    if (!frozen(t)) return; // refused (notes went with the printer)
-    freeze_last[t] = prints.freeze[t];
+    if (!freeze(ask, &sheet)) return;
+    if (!anvil_freeze_requested[t].frozen()) freeze_last[t] = prints.freeze[t];
     sheet.printing = true;
     sheet.serial = freeze_serial[t];
 }
@@ -162,6 +219,7 @@ void Context::print_sheet_cancel() {
     // The prints called off: the freeze as it was before B3 (still playing, if it was frozen), else live.
     ++freeze_serial[t];
     freeze_waiting &= ~(1u << t);
+    anvil_freeze_requested[t] = {};
     if (printer && printer->busy()) {
         auto now = printer->progress();
         if (now.track == t && now.freeze) printer->cancel();
@@ -202,8 +260,8 @@ void Context::seq_print_start() {
 void Context::seq_print_pad(unsigned pad) {
     const unsigned t = ui.track % track_count, p = ui.pad_pattern(pad);
     ui.seq_used = true;
-    if (patterns.at[t][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
     uint64_t bit = uint64_t(1) << (p % 64);
+    if (!(freeze_patterns(t)[p / 64] & bit)) { notice(pattern_word(p) + " is empty"); return; }
     ui.seq_frozen[p / 64] ^= bit;
 }
 
@@ -212,8 +270,8 @@ void Context::seq_print_end() {
     ui.seq_print = false;
     const unsigned t = ui.track % track_count;
     auto want = ui.seq_frozen;
-    auto notes = with_notes(patterns, t);
-    for (size_t n = 0; n < want.size(); ++n) want[n] &= notes[n];
+    auto eligible = freeze_patterns(t);
+    for (size_t n = 0; n < want.size(); ++n) want[n] &= eligible[n];
     if (frozen(t) && want == prints.freeze[t].patterns) return; // as it was
     if (none_of(want)) {
         if (frozen(t)) { unfreeze(t); notice(track_word(t) + " live"); }
@@ -227,8 +285,10 @@ void Context::seq_print_end() {
     ask.tail = f.tail;
     ask.mode = PrintAsk::Freeze;
     if (!frozen(t)) live_load[t] = host.track_load(t);
-    freeze(ask);
-    if (frozen(t)) { freeze_last[t] = prints.freeze[t]; notice("Printing " + track_word(t)); }
+    if (freeze(ask)) {
+        if (!anvil_freeze_requested[t].frozen()) freeze_last[t] = prints.freeze[t];
+        notice("Printing " + track_word(t));
+    }
 }
 
 // ---- freeze plan F2d: Shift + B3 DEEP FREEZE on a frozen track's Stage

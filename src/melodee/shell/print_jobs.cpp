@@ -44,32 +44,47 @@ void Context::print(const PrintAsk& ask) {
     if (!printer->start(std::move(job))) printer->note("busy: a print is under way");
 }
 
-void Context::freeze(const PrintAsk& ask) {
-    if (!printer) return;
+bool Context::anvil_sequencing(unsigned track) const {
+    const auto& tr = project.tracks[track % track_count];
+    return plugins && tr.engine == EngineKind::Plugin && tr.plugin < max_plugins &&
+           project.plugins[tr.plugin].transport && plugins->anvil_sequencer_running(tr.plugin);
+}
+
+bool Context::freeze(const PrintAsk& ask, const UiState::PrintSheet* sheet) {
+    if (!printer) return false;
     const unsigned t = ask.track % track_count;
     const auto& tr = project.tracks[t];
-    if (project_path.empty()) { printer->note("save the project first: its prints go beside its file"); return; }
-    if (!tr.used() || tr.engine == EngineKind::Midi) { printer->note("track " + std::to_string(t + 1) + " has no sound to freeze"); return; }
-    if (tr.engine == EngineKind::Sampler) // a print holds the kit, not pads sent to submixes
+    if (project_path.empty()) { printer->note("save the project first: its prints go beside its file"); return false; }
+    if (!tr.used() || tr.engine == EngineKind::Midi) { printer->note("track " + std::to_string(t + 1) + " has no sound to freeze"); return false; }
+    if (tr.engine == EngineKind::Sampler)
         for (const auto& pad : tr.pads)
-            if (pad.used() && pad.out) { printer->note("track " + std::to_string(t + 1) + " has pads sent to submixes: set them to KIT to freeze it"); return; }
+            if (pad.used() && pad.out) { printer->note("track " + std::to_string(t + 1) + " has pads sent to submixes: set them to KIT to freeze it"); return false; }
+    const bool clocked = !ask.deep && (sheet ? sheet->clocked_anvil() : anvil_sequencing(t));
     TrackFreeze f;
     f.state = ask.deep ? FreezeState::Deep : FreezeState::Frozen;
-    f.tap = ask.deep ? PrintTap::PostFx : ask.tap; // freeze plan F2d: the chain's plug-ins go too, so the print holds them
+    f.tap = ask.deep || clocked ? PrintTap::PostFx : ask.tap;
     f.tail = ask.tail;
     bool none = !ask.all;
     for (auto bits : ask.patterns) none &= bits == 0;
-    for (unsigned p = 0; p < pattern_count; ++p) // a deep freeze: the whole track, as nothing of it plays live
-        if (!patterns.at[t][p].empty() && (none || ask.all || ask.deep || ((ask.patterns[p / 64] >> (p % 64)) & 1))) f.set(p, true);
+    // B3 uses the sheet's just-refreshed selection even if a new bar starts here.
+    f.patterns = clocked && sheet ? sheet->picks : freeze_patterns(t, ask.deep);
+    if (!(none || ask.all || ask.deep))
+        for (size_t n = 0; n < f.patterns.size(); ++n) f.patterns[n] &= ask.patterns[n];
     bool any = false;
     for (auto bits : f.patterns) any |= bits != 0;
-    if (!any) { printer->note("track " + std::to_string(t + 1) + " has no pattern with notes to freeze"); return; }
-    const uint32_t bit = 1u << t;
-    if (ask.deep && !deep(t)) { deep_hold |= bit; deep_sent[t] = 0; } // its plug-ins stay until the print plays
-    thawing &= ~bit;
-    prints.freeze[t] = f;
-    dirty = true;
+    if (!any) { printer->note("track " + std::to_string(t + 1) + " has no pattern with notes to freeze"); return false; }
+    if (clocked && !deep(t)) {
+        anvil_freeze_requested[t] = f;
+    } else {
+        const uint32_t bit = 1u << t;
+        if (ask.deep && !deep(t)) { deep_hold |= bit; deep_sent[t] = 0; }
+        thawing &= ~bit;
+        anvil_freeze_requested[t] = {};
+        prints.freeze[t] = f;
+        dirty = true;
+    }
     refreeze(t);
+    return true;
 }
 
 uint32_t Context::plugins_asleep() const {
@@ -81,7 +96,7 @@ uint32_t Context::plugins_asleep() const {
 
 void Context::refreeze(unsigned track) {
     const unsigned t = track % track_count;
-    if (!frozen(t)) return;
+    if (!frozen(t) && !anvil_freeze_requested[t].frozen()) return;
     ++freeze_serial[t];        // what an earlier ask is still making is dropped
     freeze_waiting |= 1u << t; // started from print_tick() once the print engine is free
 }
@@ -106,6 +121,7 @@ void Context::go_live(unsigned track) {
     deep_sent[t] = 0;
     ++freeze_serial[t];
     freeze_waiting &= ~(1u << t);
+    anvil_freeze_requested[t] = {};
     bool was = frozen(t);
     prints.freeze[t] = TrackFreeze {};
     Command c {Command::Type::Freeze, uint8_t(t)}; // none: live again at once
@@ -116,6 +132,7 @@ void Context::go_live(unsigned track) {
 void Context::print_tick() {
     audio_tick(); // freeze plan F3: audio tracks' regions and takes (shell/audio_jobs.cpp)
     if (!printer) return;
+    refresh_print_sheet();
     autosample_tick();
     // Freeze plan F2b: packs the audio thread is done with, freed on the print thread; prints ready to play, sent to
     // switch on the next bar; and the next track waiting for its prints, started once the print engine is free.
@@ -124,7 +141,9 @@ void Context::print_tick() {
     FreezeReady ready;
     while (printer->take_ready(ready)) {
         const unsigned t = ready.track % track_count;
-        bool wanted = ready.project_path == project_path && ready.serial == freeze_serial[t] && frozen(t);
+        auto& requested = anvil_freeze_requested[t];
+        bool wanted = ready.project_path == project_path && ready.serial == freeze_serial[t] &&
+                      (frozen(t) || requested.frozen());
         // Freeze plan F2c: the PRINT sheet waiting for this freeze closes once it is sent (or says why not).
         auto& sheet = ui.print_sheet;
         bool sheet_waits = wanted && sheet.printing && sheet.track == t && sheet.serial == ready.serial;
@@ -134,15 +153,28 @@ void Context::print_tick() {
         }
         if (!wanted || !ready.pack) {
             printer->discard(ready.pack);
-            if (wanted) notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
+            if (wanted) {
+                requested = {};
+                notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
+            }
             continue;
         }
         print_peaks[t] = std::move(ready.peaks); // freeze plan F2c: Stage's picture of each print
         Command c {Command::Type::Freeze, uint8_t(t), 0, 0, 1}; // on the next bar while playing
         c.freeze = ready.pack;
         const bool deep_pack = ready.pack->deep;
-        if (!host.send(c)) printer->discard(ready.pack);
-        else {
+        if (!host.send(c)) {
+            printer->discard(ready.pack);
+            if (requested.frozen()) {
+                requested = {};
+                notice("Freeze queue full");
+            }
+        } else {
+            if (requested.frozen()) {
+                prints.freeze[t] = freeze_last[t] = requested;
+                requested = {};
+                dirty = true;
+            }
             if (deep_pack) deep_sent[t] = now ? now : 1; // freeze plan F2d: its plug-ins go once the engine sleeps
             if (sheet_waits) notice("Track " + std::to_string(t + 1) + (deep_pack ? " deep frozen" : " frozen"));
         }
@@ -167,27 +199,40 @@ void Context::print_tick() {
     if (freeze_waiting && !printer->busy() && !project_path.empty()) {
         unsigned t = 0;
         while (!((freeze_waiting >> t) & 1)) ++t;
-        const auto& f = prints.freeze[t];
+        auto& requested = anvil_freeze_requested[t];
+        const auto& f = requested.frozen() ? requested : prints.freeze[t];
+        const auto& tr = project.tracks[t];
         PrintJob job;
+        const unsigned instrument = f.state == FreezeState::Frozen && tr.engine == EngineKind::Plugin
+                                  && tr.plugin < max_plugins && project.plugins[tr.plugin].transport ? tr.plugin : no_plugin;
+        if (plugins && !plugins->freeze_states(job.states, instrument, job.keep_live)) return;
         job.project_path = project_path;
         job.track = t;
-        job.tap = f.tap;
+        job.tap = job.keep_live ? PrintTap::PostFx : f.tap;
         job.tail = f.tail;
         job.freeze = true;
         job.deep = f.state == FreezeState::Deep; // freeze plan F2d
         job.serial = freeze_serial[t];
-        for (unsigned p = 0; p < pattern_count; ++p)
-            if (f.plays(p) && !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
+        for (unsigned p = 0; p < pattern_count; ++p) {
+            if (!f.plays(p)) continue;
+            if (job.keep_live || !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
+            else if (requested.frozen()) {
+                job.patterns.clear(); // the live sequencer stopped before any print could be made
+                break;
+            }
+        }
         job.project = std::make_unique<Project>(project);
         if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // slice hits as Chop has them (issue 24)
         job.bank = std::make_unique<PatternBank>(patterns);
-        if (plugins) job.states = plugins->states();
         if (library) job.card_top = library->card();
         job.known = prints;
         bool empty = job.patterns.empty();
         if (empty || printer->start(std::move(job))) freeze_waiting &= ~(1u << t);
         if (empty) {
-            unfreeze(t); // its patterns have no notes left
+            if (requested.frozen()) {
+                requested = {};
+                notice(frozen(t) ? "Previous freeze kept" : "Cannot freeze: empty pattern");
+            } else unfreeze(t); // its patterns have no notes left
             if (ui.print_sheet.printing && ui.print_sheet.track == t) { ui.print_sheet.printing = false; if (ui.page == PageId::Print) back(); }
         }
     }

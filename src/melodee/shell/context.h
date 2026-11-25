@@ -451,12 +451,20 @@ public:
     // Each freeze asked has a serial: the prints of one a later ask replaced are dropped. `freeze_waiting`: a bit a
     // track whose prints wait for the print engine. refreeze(): the track's prints checked and played again (after
     // the audio thread took the track anew: a copy, an undo, a move).
-    void freeze(const PrintAsk& ask);
+    bool freeze(const PrintAsk& ask, const UiState::PrintSheet* sheet = nullptr);
+    bool anvil_sequencing(unsigned track) const;
+    std::array<uint64_t, (pattern_count + 63) / 64> freeze_patterns(unsigned track, bool deep = false) const;
+    void refresh_print_sheet();
     void unfreeze(unsigned track);
     void refreeze(unsigned track);
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
     uint32_t freeze_waiting = 0;
+    // Anvil keeps its previous selection until a complete replacement has been accepted.
+    std::array<TrackFreeze, track_count> anvil_freeze_requested {};
+    bool freeze_protects_track(unsigned track) const {
+        return frozen(track) || anvil_freeze_requested[track % track_count].frozen();
+    }
     // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's
     // `asleep`): its pads play nothing and only its prints sound. `deep_hold`: deep-frozen tracks whose plug-ins stay
     // until their prints play and the engine sleeps (`deep_sent`: when their pack went, ms). Unfreezing one thaws it:

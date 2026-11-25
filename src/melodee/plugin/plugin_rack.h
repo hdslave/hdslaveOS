@@ -38,6 +38,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginHandle;
+class ClapInstance;
 class CompanionHost;
 struct PluginSkin;
 
@@ -83,6 +84,8 @@ public:
     // Saving: each entry's state as it is now (a plug-in still loading: what
     // it will load with). Any thread but audio.
     PluginStates states() const;
+    bool freeze_states(PluginStates& out, unsigned instrument, bool& keep_live) const;
+    bool anvil_sequencer_running(unsigned entry) const;
     // A copy of `entry` onto `copy` (a track copy): the same plug-in and state.
     void clone(unsigned entry, unsigned copy);
     // The same plug-in opened again at the next sync() (picked again after it failed or stopped working), with the
@@ -102,7 +105,7 @@ public:
     // no_plugin: none); screen_input() an input on that page, handed to the plug-in by the screen thread;
     // set_screen_param() a value for the parameter its screen puts on K`k`. screen_picture(): the newest picture of
     // the screen in view, null none (any thread). panel() gives `screen` once the plug-in has drawn and named K1-K3.
-    void screen_view(const ScreenView& view);
+    void screen_view(ScreenView view, unsigned print_instrument = no_plugin);
     void screen_input(unsigned entry, const ScreenInput& input);
     void set_screen_param(unsigned entry, unsigned k, int value);
     ScreenPicturePtr screen_picture() const;
@@ -158,6 +161,7 @@ public:
     Usage usage() const;
 
 private:
+    const ClapInstance* anvil_locked(unsigned entry) const; // with the rack lock held
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
@@ -227,7 +231,7 @@ private:
     ScreenView screen_now;
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
-    std::mutex screen_calls;
+    mutable std::mutex screen_calls;
     // The companion screens' process (plugin/companion_host.h), used under `screen_calls` only; a session number for
     // each screen made (rack's thread); folders whose screen stopped this run, not tried again, and why screens
     // stopped, for the shell's notice (under `lock`); problems by folder, as written (rack's thread).

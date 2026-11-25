@@ -787,7 +787,20 @@ void PluginRack::set_states(PluginStates states) {
 
 PluginStates PluginRack::states() const {
     PluginStates out;
+    bool keep_live = false;
+    freeze_states(out, no_plugin, keep_live);
+    return out;
+}
+
+bool PluginRack::freeze_states(PluginStates& out, unsigned instrument, bool& keep_live) const {
+    // The native panel and the plug-in state must agree on RUN at the snapshot.
+    std::unique_lock<std::mutex> panel(screen_calls, std::defer_lock);
+    if (instrument < max_plugins) panel.lock();
     std::lock_guard<std::mutex> held(lock);
+    const auto* anvil = anvil_locked(instrument);
+    if (instrument < max_plugins && entries[instrument].status == PluginStatus::Loading) return false;
+    if (anvil && anvil->parameterEditsPending()) return false;
+    keep_live = anvil && anvil->parameterValue(24) >= 0.5f;
     for (unsigned e = 0; e < max_plugins; ++e) {
         const auto& entry = entries[e];
         if (entry.live && entry.status == PluginStatus::Ready) {
@@ -798,7 +811,20 @@ PluginStates PluginRack::states() const {
             out[e] = entry.state;
         }
     }
-    return out;
+    return true;
+}
+
+const ClapInstance* PluginRack::anvil_locked(unsigned entry) const {
+    if (entry >= max_plugins) return nullptr;
+    const auto& e = entries[entry];
+    auto* clap = e.status == PluginStatus::Ready && e.live ? e.live->clap : nullptr;
+    return clap && clap->clapId() == "com.hdslave.anvil" ? clap : nullptr;
+}
+
+bool PluginRack::anvil_sequencer_running(unsigned entry) const {
+    std::lock_guard<std::mutex> held(lock);
+    const auto* anvil = anvil_locked(entry);
+    return anvil && anvil->parameterValue(24) >= 0.5f;
 }
 
 void PluginRack::clone(unsigned entry, unsigned copy) {
@@ -1801,11 +1827,20 @@ void PluginRack::idle_plugins() {
 
 // --- A plug-in's own screen (plugin/plugin_screen.h, sdk/melodee-screen/melodee_screen.h) ---
 
-void PluginRack::screen_view(const ScreenView& view) {
+void PluginRack::screen_view(ScreenView view, unsigned print_instrument) {
+    if (print_instrument < max_plugins) {
+        std::lock_guard<std::mutex> held(lock);
+        if (!anvil_locked(print_instrument)) print_instrument = no_plugin;
+    }
     bool poke = false;
     {
         std::lock_guard<std::mutex> held(screen_lock);
         if (screen_stop) return;
+        if (print_instrument < max_plugins && print_instrument == screen_now.entry) {
+            view.entry = screen_now.entry;
+            view.area = screen_now.area;
+            view.input_only = true;
+        }
         if (view.entry != no_plugin && !screen_thread.joinable()) screen_thread = std::thread([this] { screen_run(); });
         poke = view != screen_now;
         screen_now = view;
@@ -1817,7 +1852,7 @@ void PluginRack::screen_view(const ScreenView& view) {
 void PluginRack::screen_input(unsigned entry, const ScreenInput& input) {
     {
         std::lock_guard<std::mutex> held(screen_lock);
-        if (entry != screen_now.entry || screen_inputs.size() >= 64) return; // not the page in view; a flood: dropped
+        if (entry != screen_now.entry || screen_now.input_only || screen_inputs.size() >= 64) return; // not the page in view; a flood: dropped
         screen_inputs.emplace_back(entry, input);
     }
     screen_wake.notify_one();
@@ -1825,7 +1860,7 @@ void PluginRack::screen_input(unsigned entry, const ScreenInput& input) {
 
 ScreenPicturePtr PluginRack::screen_picture() const {
     std::lock_guard<std::mutex> held(screen_lock);
-    if (!screen_latest || screen_latest->entry != screen_now.entry || screen_latest->area != screen_now.area) return nullptr;
+    if (screen_now.input_only || !screen_latest || screen_latest->entry != screen_now.entry || screen_latest->area != screen_now.area) return nullptr;
     return screen_latest;
 }
 
@@ -1918,6 +1953,11 @@ void PluginRack::screen_run() {
             owed = ask_controls = true;
         }
         if (stopped()) { drawn = nullptr; wait = missing; inputs.clear(); continue; }
+        if (view.input_only) {
+            drawn = nullptr;
+            wait = inputs.empty() ? rest : tick;
+            continue;
+        }
         const auto now = Clock::now();
         if (owed && now - last < gap) {
             wait = std::chrono::duration_cast<milliseconds>(gap - (now - last)) + milliseconds(1);

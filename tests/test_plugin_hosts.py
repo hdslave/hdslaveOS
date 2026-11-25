@@ -58,6 +58,23 @@ class PluginHostTests(unittest.TestCase):
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
 
+    def test_anvil_freeze(self):
+        subprocess.run(["make", "-s", "build/test-anvil-freeze"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Clocked.clap"
+            plugin.parent.mkdir(parents=True)
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-DMELODEE_TEST_ANVIL", "-shared", "-fPIC",
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            env = {**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")}
+            modes = ("empty", "note", "ring-launch", "queued-run", "run-stops", "panel-run", "panel-pending",
+                     "panel-bank", "panel-bank-manual", "panel-handoff", "panel-handoff-bank", "panel-handoff-picks")
+            for rate in (44100, 48000):
+                for mode in modes:
+                    with self.subTest(rate=rate, mode=mode):
+                        subprocess.run([str(ROOT / "build/test-anvil-freeze"), str(card), str(plugin),
+                                        "anvil-freeze-" + mode, str(rate)], check=True, timeout=60, env=env)
+
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.so"

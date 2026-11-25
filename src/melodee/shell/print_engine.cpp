@@ -449,7 +449,8 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     auto pack = std::make_unique<FreezePack>();
     pack->track = uint8_t(job.track);
     pack->tap = job.tap;
-    pack->deep = job.deep; // freeze plan F2d
+    pack->deep = job.deep;
+    pack->keep_live = job.keep_live; // freeze plan F2d
     { // freeze plan F2c: what its prints were made at (a print whose hash still matches was made at these too)
         Mix m = print_mix(job.project->tracks[job.track % track_count]);
         pack->level = m.level; pack->pan = m.pan;
@@ -478,6 +479,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         clip->frames = uint32_t(std::min<uint64_t>(bytes / (4 * s), rec->frames));
         clip->rate = rate;
         clip->tail = rec->tail;
+        clip->replaces_live = job.keep_live;
         clip->pass = uint32_t(std::llround(double(rec->pass) * rate / dsp::model_rate));
         part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
         part.total = s * clip->frames;

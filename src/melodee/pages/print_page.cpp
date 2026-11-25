@@ -57,8 +57,9 @@ void draw(Paint& p, const Snapshot& s) {
     // Freeze plan F2d: with Shift held (DEEP FREEZE on B3) every pattern with notes is lit, as a deep freeze takes them all.
     const bool all_lit = s.ui.shift && !printing;
     auto lit_at = [&](unsigned n) { return all_lit || sheet.picked(n); };
-    unsigned picked = 0, notes = 0;
-    for (unsigned n = 0; n < pattern_count; ++n) { notes += s.sketches[t][n].notes; picked += s.sketches[t][n].notes && lit_at(n); }
+    auto eligible = [&](unsigned n) { return all_lit ? s.sketches[t][n].notes : sheet.can_pick(n); };
+    unsigned picked = 0, count = 0;
+    for (unsigned n = 0; n < pattern_count; ++n) { count += eligible(n); picked += eligible(n) && lit_at(n); }
 
     Header h = header_of(s);
     if (printing) h.left.push_back(pill(Icon::Snow, ours ? "PRINTING " + juce::String(job.through + (job.pattern >= 0)) + "/" + juce::String(job.count)
@@ -75,7 +76,7 @@ void draw(Paint& p, const Snapshot& s) {
             keys.labels = {frozen ? "UNFREEZE" : "", "", "DEEP FREEZE"};
             keys.icons = {};
             keys.glyphs[2] = Icon::DeepSnow;
-            keys.tints[2] = midi || !notes || deep ? colour::dim : colour::ice;
+            keys.tints[2] = midi || !count || deep ? colour::dim : colour::ice;
         }
     }
     frame(p, s, keys, h);
@@ -86,7 +87,7 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned k = 0; k < pattern_pads; ++k) {
         unsigned n = s.ui.pad_pattern(k), row = 3 - k / 4, column = k % 4;
         float x = gx + column * (cell + gap), y = gy + row * (cell + gap);
-        bool has = s.sketches[t][n].notes, lit = has && lit_at(n);
+        bool has = eligible(n), lit = has && lit_at(n);
         juce::Colour text = colour::dim;
         bool snow = false;
         if (printing && lit && ours && job.is_done(n)) { p.fill(x, y, cell, cell, c.withAlpha(0.8f), 5); text = colour::bg; snow = true; }
@@ -129,12 +130,12 @@ void draw(Paint& p, const Snapshot& s) {
         float done = ours && job.count ? (float(job.through) + (job.pattern >= 0 ? job.fraction : 0)) / float(job.count) : 0;
         if (done > 0) p.fill(x, by, bw * std::clamp(done, 0.0f, 1.0f), 6, colour::ice, 3);
     } else {
-        block(p, x, y, w, "PATTERNS", juce::String(picked), "of " + juce::String(notes), colour::text);
+        block(p, x, y, w, "PATTERNS", juce::String(picked), "of " + juce::String(count), colour::text);
         if (midi) {
             block(p, x, y + 44, w, "MIDI TRACKS", "Later", "", colour::amber);
         } else {
             double bytes = 0;
-            for (unsigned n = 0; n < pattern_count; ++n) if (s.sketches[t][n].notes && lit_at(n)) bytes += print_bytes(s, t, n, sheet.tail);
+            for (unsigned n = 0; n < pattern_count; ++n) if (eligible(n) && lit_at(n)) bytes += print_bytes(s, t, n, sheet.tail);
             double mb = bytes / (1024.0 * 1024.0);
             block(p, x, y + 44, w, "CARD", mb >= 10 ? juce::String(int(std::lround(mb))) : juce::String(mb, 1), "MB", colour::text);
             float load = s.machine.track_load[t];

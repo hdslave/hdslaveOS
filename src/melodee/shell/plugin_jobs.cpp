@@ -372,7 +372,9 @@ void Context::plugins_tick(uint32_t at) {
             view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;
             for (unsigned k = 0; k < 3; ++k) { view.pots[k] = ui.pots[k].position; view.live[k] = ui.pots[k].engaged ? 1 : 0; }
         }
-        plugins->screen_view(view);
+        const auto& print_track = project.tracks[ui.print_sheet.track % track_count];
+        plugins->screen_view(view, ui.page == PageId::Print && print_track.engine == EngineKind::Plugin
+                                   ? print_track.plugin : no_plugin);
     }
     companion_requests();
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second

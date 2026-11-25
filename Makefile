@@ -101,3 +101,7 @@ STEMS := build/stems/melodee-stems
 stems: $(STEMS)
 $(STEMS): tools/stems/build.py tools/stems/stems_engine.c tools/stems/convert_model.py
 	python3 tools/stems/build.py build/stems
+
+# Anvil's clocked instrument path through PRINT, the rack, and the audio engine.
+build/test-anvil-freeze: tests/anvil_freeze.cpp $(OBJECTS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror $< $(filter-out build/obj/main.o,$(OBJECTS)) $(LDLIBS) -o $@

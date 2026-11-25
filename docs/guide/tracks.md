@@ -107,6 +107,13 @@ prints take on the card, and the CPU the freeze saves. While the prints
 are made, **B1** (**CANCEL**) calls them off. The track plays live until the
 prints are ready, then switches on a bar line.
 
+Anvil can freeze its built-in sequencer in a pattern without MPC notes. Turn
+on **RUN** and the track's **TRANSPORT**, open PRINT, and press **B3** once the
+pattern lights. On a live track, the default selection follows queued
+launches. A manual selection stays in place while RUN is on. Freeze takes
+the output after the track effects. Unfreeze fades back to the live chain
+that kept running.
+
 To freeze single patterns, hold **SEQ** and press **SAMPLE RECORD**: each
 pattern pad freezes or thaws that pattern. The prints are made when you let
 go of **SEQ**. The other patterns play live.

@@ -411,6 +411,23 @@ ClapInstance::~ClapInstance()
     Library::release (library);
 }
 
+float ClapInstance::parameterValue (uint32_t id) const
+{
+    const auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, -1));
+    if (it == byId.end() || it->first != id) return 0.0f;
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    const auto* p = parameters[size_t (it->second)];
+    if (p->pending.load (std::memory_order_acquire) || applyingEdits.load (std::memory_order_acquire))
+        return p->getValue();
+    double value;
+    return params->get_value (plugin, id, &value) ? float (p->normalise (value)) : p->getValue();
+}
+
+bool ClapInstance::parameterEditsPending() const
+{
+    return anyPending.load (std::memory_order_acquire) || applyingEdits.load (std::memory_order_acquire);
+}
+
 void ClapInstance::readParameters()
 {
     if (params == nullptr) return;
@@ -628,7 +645,11 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         t.tsig_num = (uint16_t) time.numerator;
         t.tsig_denom = (uint16_t) time.denominator;
     }
-    if (anyPending.exchange (false, std::memory_order_acq_rel))
+    const bool applying = anyPending.load (std::memory_order_acquire);
+    if (applying)
+    {
+        applyingEdits.store (true, std::memory_order_release);
+        anyPending.exchange (false, std::memory_order_acq_rel);
         for (auto* p : parameters)
             if (p->pending.exchange (false, std::memory_order_acq_rel))
                 if (auto* e = add())
@@ -641,6 +662,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
                     v.note_id = -1; v.port_index = -1; v.channel = -1; v.key = -1;
                     v.value = p->plain (p->value.load (std::memory_order_relaxed));
                 }
+    }
     if (notePort >= 0)
     {
         for (const auto m : midi)
@@ -743,6 +765,7 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
     process.in_events = &in;
     process.out_events = &out;
     const auto status = plugin->process (plugin, &process);
+    if (applying) applyingEdits.store (false, std::memory_order_release);
 
     const int mainOut = outCount > 0 ? (int) outputPorts[0].channels : 0;
     for (int c = 0; c < buffer.getNumChannels(); ++c)
