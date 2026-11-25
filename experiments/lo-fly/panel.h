@@ -6,10 +6,10 @@
 //   Minus / Plus   previous / next page
 //   wheel          the page's wheel control (SHIFT: finer steps)
 //   Push           the page's section on or off
-// FX is the effect chain, as Melodee's chains work: the wheel walks the four slots and K1-K3 set the lit one; Push
-// opens the picker (on an empty slot to add, on an effect to change it): the wheel walks the families, Push enters
-// one, the wheel walks its effects, Push picks; Minus goes back. MUTE switches the lit effect off or on, ERASE
-// removes it (Melodee with keys(), melodee_screen.h).
+// FX is lo-fly's rack, FX 1 to FX 4: the wheel walks the slots and K1-K3 set the lit one; Push opens the effect menu
+// (None, then the effects by category, in lo-fly's order): the wheel walks it, Push picks, Minus goes back. SHIFT +
+// Push switches a spatial effect between Insert and Send. MUTE switches the lit effect off or on, ERASE empties its
+// slot (Melodee with keys(), melodee_screen.h).
 // Calls come from Melodee's screen thread only (never the audio thread).
 #pragma once
 
@@ -54,18 +54,17 @@ private:
 
     bool fx_page() const;
     int fx_type(int slot) const;
-    void close_picker();
+    void close_menu();
 
     Store& store_;
     void (*redraw_)(void*);
     void* context_;
     int page_ = 0;
 
-    // FX: the lit slot, and the picker over the page (families, then a family's effects; `picker_change_`: the lit
-    // slot holds an effect, which the pick replaces).
+    // FX: the lit slot, and the effect menu over the page with its lit entry (an effect type, 0 None).
     int fx_slot_ = 0;
-    bool picker_ = false, picker_items_ = false, picker_change_ = false;
-    int picker_family_ = 0, picker_item_ = 0;
+    bool menu_ = false;
+    int menu_item_ = 0;
 
     // What it drew last, and the background (the paper) of the page and area it drew.
     std::uint64_t drawn_ = 0;

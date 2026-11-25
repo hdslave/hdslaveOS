@@ -72,20 +72,20 @@ Stage **B1** to **PANEL**. The page's header shows the loaded preset's name.
 | Push | the page's section on or off (pink dot left of the title: on; pink ring: off) |
 | **K1**–**K3** | the three knobs at the bottom of the page |
 
-FX is lo-fly's effect chain, and works as Melodee's chains do:
+FX is lo-fly's rack: FX 1 to FX 4, left to right as the sound runs, each
+with its on/off lamp (pink: on; a ring: off).
 
 | Control | Action |
 |---------|--------|
-| Wheel | the lit slot of the four |
-| **K1**–**K3** | the lit effect's Mix and two of its values |
-| Push | the picker: on an empty slot (**+**) to add, on an effect to change it |
+| Wheel | the lit slot |
+| **K1**–**K3** | the lit effect: Mix (Amount on Multiband and Auto Pan, Level for a spatial effect on Send, Scale on the EQ) and two of its values |
+| Push | the effect menu: None, then the effects by category (Spatial, Dynamics, Filter / EQ, Distortion, Modulation); the wheel walks it, Push picks, **−** goes back |
+| **SHIFT** + Push | a spatial effect (Reverb, Delay, Tape Echo, Pitch Delay) between Insert and Send |
 | **MUTE** | the lit effect off or on (held with pads, it mutes tracks as always) |
-| **ERASE** | the lit effect out of its slot; **ERASE** lights while there is one |
+| **ERASE** | the lit slot back to None; **ERASE** lights while there is an effect |
 
-In the picker the wheel walks the families (Space, Time, Motion, Dirt, Tone,
-Dynamics), Push opens one, the wheel walks its effects and Push picks;
-**−** goes back. **MUTE** and **ERASE** need a Melodee that hands them to a
-plug-in's page (`melodee.screen-host/2`, `docs/PLUGIN_SCREENS.md`).
+**MUTE** and **ERASE** need a Melodee that hands them to a plug-in's page
+(`melodee.screen-host/2`, `docs/PLUGIN_SCREENS.md`).
 
 | Page | Wheel | K1 | K2 | K3 | Push |
 |------|-------|----|----|----|------|
@@ -95,7 +95,7 @@ plug-in's page (`melodee.screen-host/2`, `docs/PLUGIN_SCREENS.md`).
 | NOISE | 6 textures, then 6 transients | Level | Tune | Stereo | noise on/off |
 | FILTER | Type | Cutoff | Resonance | Env Amount | filter on/off |
 | FILTER ENV, AMP ENV | Sustain | Attack | Decay | Release | |
-| FX | the lit slot | Mix | by type | by type | the picker |
+| FX | the lit slot | Mix | by type | by type | the effect menu |
 | VOICE | Voice Mode | Glide | Vintage | Volume | |
 
 Every lo-fly parameter (956) is a CLAP parameter: Melodee's **EDIT** pages

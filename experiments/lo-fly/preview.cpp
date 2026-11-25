@@ -223,9 +223,9 @@ struct Session {
         }
         time_ms += static_cast<std::uint64_t>(seconds * 1000.0);
     }
-    void input(uint32_t kind, int32_t value = 1)
+    void input(uint32_t kind, int32_t value = 1, uint32_t shift = 0)
     {
-        const melodee_screen_input_t in { kind, value, 0 };
+        const melodee_screen_input_t in { kind, value, shift };
         screen->input(plugin, &in);
     }
     void page(int n) // from wherever it is: back to the first, then forward
@@ -350,8 +350,9 @@ int shots(const std::string& dir)
     shot("07-filter-env");
     s.page(7);
     shot("08-amp-env");
-    // FX: the chain (Chorus, Reverb, two empty slots); the wheel to slot 2, then 3; Push on the empty slot: the picker;
-    // Time, its Tape Echo added; MUTE switches it off, ERASE takes it out.
+    // FX: the rack (Chorus, Reverb, two empty slots); the wheel to FX 2, then 3; Push on the empty slot: the effect
+    // menu on None; three down, Tape Echo, added; MUTE switches it off, ERASE empties the slot; Push on Reverb: the menu
+    // on Reverb; Minus back; SHIFT + Push: Reverb to Send.
     s.page(8);
     shot("09-fx");
     s.input(MELODEE_SCREEN_WHEEL, 1);
@@ -363,11 +364,9 @@ int shots(const std::string& dir)
         ++failed;
     }
     s.input(MELODEE_SCREEN_PUSH);
-    s.input(MELODEE_SCREEN_WHEEL, 1);
-    shot("11b-fx-picker");
-    s.input(MELODEE_SCREEN_PUSH);
-    s.input(MELODEE_SCREEN_WHEEL, 1);
-    shot("11c-fx-picker-time");
+    shot("11b-fx-menu");
+    s.input(MELODEE_SCREEN_WHEEL, 3);
+    shot("11c-fx-menu-tape-echo");
     s.input(MELODEE_SCREEN_PUSH);
     shot("11d-fx-added");
     if (s.host.keys != (MELODEE_SCREEN_KEY_MUTE | MELODEE_SCREEN_KEY_ERASE)) {
@@ -381,7 +380,9 @@ int shots(const std::string& dir)
     s.input(MELODEE_SCREEN_WHEEL, -1);
     s.input(MELODEE_SCREEN_PUSH);
     shot("11g-fx-change");
-    s.input(MELODEE_SCREEN_STEP, -1); // Minus: the picker closes
+    s.input(MELODEE_SCREEN_STEP, -1); // Minus: the menu closes
+    s.input(MELODEE_SCREEN_PUSH, 1, 1);
+    shot("11h-fx-send");
     s.preset(sound);
     s.page(9);
     shot("13-voice");
