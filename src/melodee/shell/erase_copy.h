@@ -21,16 +21,18 @@
 //
 // Shift + Erase copies what the page holds. Pad Bank held: tracks; Seq
 // held: patterns. Then by page: Tracks the tracks, Patterns the patterns,
-// Steps a step, Roll and Step Edit a key's notes, Song the clip (after
-// itself), Project the project, a chain the effect (after itself), Chop the
-// slice (onto the next empty pad). Else a kit's pads, or a synth's keys.
+// Sequences a sequence (its patterns copied: model/scene_links.h
+// copy_scene_links), Steps a step, Roll and Step Edit a key's notes, Song the
+// clip (after itself), Project the project, a chain the effect (after itself),
+// Chop the slice (onto the next empty pad). Else a kit's pads, or a synth's
+// keys.
 namespace melodee {
 
 class Context;
 
-// What Shift + Erase copies here. The first five arm a copy (the source, then
+// What Shift + Erase copies here. The first six arm a copy (the source, then
 // where); the rest copy at once.
-enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Clip, Project, Effect, Slice };
+enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Scenes, Clip, Project, Effect, Slice };
 
 // `kit_pads`: the pads play the selected kit (Shell::kit_pads); `key_pads`: they play a synth's keys (Shell::key_pads).
 inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pads, bool key_pads) {
@@ -39,6 +41,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
     const auto& t = project.tracks[ui.track % track_count];
     switch (ui.page) {
     case PageId::Patterns: return CopyHere::Patterns;
+    case PageId::Scenes: return ui.scene_capture ? CopyHere::None : CopyHere::Scenes;
     case PageId::StepEdit: return !t.used() ? CopyHere::None : ui.step_pads ? CopyHere::Steps : CopyHere::Keys; // the bar's steps, or keys
     case PageId::Roll: return t.used() ? CopyHere::Keys : CopyHere::None;
     case PageId::Song:
@@ -88,6 +91,8 @@ void copy_press(Context& c, bool kit_pads, bool key_pads);
 void key_copy_pad(Context& c, unsigned pad);
 // A pad on Steps while a step copy waits (Copying::Steps): the step to copy, then where.
 void step_copy_pad(Context& c, unsigned pad);
+// A pad on Sequences while a sequence copy waits (Copying::Scenes): the sequence to copy, then where.
+void scene_copy_pad(Context& c, unsigned pad);
 // Erase + Seq Record on a kit: every note of the selected pad (the 16 Levels pad under 16 Levels, else the last
 // pad) out of the pattern, once B3 says so. False when there is none to erase.
 bool erase_selected_pad(Context& c);

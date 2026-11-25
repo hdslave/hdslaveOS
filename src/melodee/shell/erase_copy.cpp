@@ -14,6 +14,7 @@
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/model/scene_links.h"
 #include <algorithm>
 #include <string>
 
@@ -116,6 +117,7 @@ void copy_press(Context& c, bool kit_pads, bool key_pads) {
     case CopyHere::Pads: arm(UiState::Copying::Pads); return;
     case CopyHere::Keys: arm(UiState::Copying::Keys); ui.sheet_open = false; return;
     case CopyHere::Steps: arm(UiState::Copying::Steps); ui.sheet_open = false; return;
+    case CopyHere::Scenes: arm(UiState::Copying::Scenes); return;
     case CopyHere::Clip: song_copy(c); return;
     case CopyHere::Project: if (!project_copy(c)) c.notice("Copy: pick a project"); return;
     case CopyHere::Effect: chain_copy(c); return;
@@ -169,6 +171,19 @@ void step_copy_pad(Context& c, unsigned pad) {
     });
     ui.step_cursor = int16_t(st);
     c.notice(all ? what : std::string("The pattern is full"));
+    ui.stop_copying();
+}
+
+void scene_copy_pad(Context& c, unsigned pad) {
+    auto& ui = c.ui;
+    const unsigned n = ui.pad_pattern(pad); // in the bank in view: Pad Bank between the two takes it to another
+    if (ui.copy_from < 0) { // first the sequence to copy
+        if (c.project.scenes[n].plain() && !scene_kept(c.project, n)) { c.notice("SEQ " + std::to_string(n + 1) + " is empty"); return; }
+        ui.copy_from = int16_t(n);
+        return;
+    }
+    if (unsigned(ui.copy_from) == n) return; // then where
+    c.copy_scene(unsigned(ui.copy_from), n);
     ui.stop_copying();
 }
 

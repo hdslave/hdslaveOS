@@ -17,9 +17,14 @@ the stock app.
 - **SEQ** + **STOP** turns the selected track off in the sequence in hand.
   It stops at the next bar. Press **SEQ** + **STOP** again, or launch one of
   its patterns, to turn it back on.
+- A sequence keeps track mutes. Mute a track (**MUTE** + pad) and the
+  sequence in hand keeps it muted. Launching a sequence mutes and unmutes
+  its tracks as it keeps them, at the next bar. A track the sequence keeps
+  nothing for keeps its mute.
 - Patterns are shared. When two sequences keep the same pattern, an edit
   changes both. To change one of them, copy the pattern (hold a pad and
-  press another) and launch the copy.
+  press another) and launch the copy. A sequence copy (**SHIFT** + **ERASE**
+  on Sequences) gets copies of the patterns.
 - Follow actions, chains and the song do not change what a sequence keeps.
 
 Press **SEQ** to open the sequence pages. **B1**–**B3** are **SEQUENCES**,
@@ -550,6 +555,13 @@ pattern: what the pattern does after it has played for a while.
   track off or on an empty pattern.
 - **ERASE** + pad clears the sequence: it keeps nothing again and loses its
   name, tempo and colour. Undo brings it back.
+- **SHIFT** + **ERASE**, then two pads: copy the first sequence onto the
+  second. The copy gets the name, tempo, colour and mutes. Each pattern the
+  sequence keeps is copied into the track's next free pattern (empty, kept
+  by no other sequence and not in the song), so the two sequences can be
+  edited apart. A track with no free pattern keeps the same pattern in both:
+  the notice says how many (**2 shared**). One undo. Press **ERASE** to
+  stop.
 - The sequence launched last is the sequence in hand. The encoder sets its tempo
   (below 30 is None). **SHIFT** + encoder sets its colour: its cell and its pad
   light in it. Push the encoder to name it. **ERASE** clears it.
@@ -560,7 +572,8 @@ pattern: what the pattern does after it has played for a while.
   of the selected track's pattern, as on Patterns.
 - **−** / **+** select the track. The marks on the right are the tracks:
   bright on the pattern the sequence in hand keeps, dim on another pattern,
-  a square when off, a red ring when stopped by a follow action.
+  red when muted, a square when off, a red ring when stopped by a follow
+  action.
 - **SHIFT** + **B2** (**CAPTURE**), then a pad: that sequence keeps the
   patterns playing now (a stopped track is kept off), as one undo. No notes
   are copied. **B1** (**CANCEL**) stops before a pad.

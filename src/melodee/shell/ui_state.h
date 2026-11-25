@@ -449,9 +449,9 @@ struct UiState {
     // Tracks), one key's notes onto another key (a synth's play pages, Roll,
     // Step Edit), or one step onto another (Steps). Armed, then the source,
     // then the target (shell/erase_copy.h).
-    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes }; // Notes: Roll's marked notes, Push pastes
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes, Scenes }; // Notes: Roll's marked notes, Push pastes; Scenes: Sequences' pads
     Copying copying = Copying::Off;
-    int16_t copy_from = -1;   // the kit pad, pattern, track, key or step picked first, -1 until then
+    int16_t copy_from = -1;   // the kit pad, pattern, track, key, step or sequence picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
     bool moving = false;      // Tracks: a move (B2 MOVE: the two trade places) instead of a copy (shell/track_swap.h)
     void stop_copying() { copying = Copying::Off; copy_from = -1; moving = false; }

@@ -23,6 +23,7 @@
 #include "melodee/shell/progression_jobs.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/project_file.h"
+#include "melodee/model/scene_links.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/record_place.h"
@@ -1329,6 +1330,7 @@ void Context::pressure(unsigned pad, uint8_t value) {
 void Context::set_mute(unsigned t, bool on) {
     project.tracks[t % track_count].mix.mute = on;
     send({Type::Mute, uint8_t(t), 0, 0, int16_t(on)});
+    keep_mute(t, on); // kept in the sequence in hand (model/scene_links.h)
 }
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
@@ -1797,7 +1799,10 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.jams_after : e.jams_before) { jams = *m; publish_jams(); } // a jam deleted (JAMS' ERASE)
     if (const auto& m = after ? e.scene_after : e.scene_before) { // a sequence kept or cleared
         project.scenes[m->index % pattern_count] = m->scene;
-        for (unsigned t = 0; t < track_count; ++t) project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
+        for (unsigned t = 0; t < track_count; ++t) {
+            project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
+            set_scene_muted(project.tracks[t], m->index, m->muted >> t & 1);
+        }
     }
     if (const auto& m = after ? e.tempo_after : e.tempo_before) {
         for (unsigned n = 0; n < pattern_count; ++n)

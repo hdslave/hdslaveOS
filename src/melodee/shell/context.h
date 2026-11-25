@@ -344,6 +344,8 @@ public:
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
     void follow_to_column();                          // and onto the pattern every other track is on, one undo
     void capture_scene(unsigned scene);               // CAPTURE: what every track is on kept in the sequence, one undo
+    void copy_scene(unsigned from, unsigned to);      // Shift + Erase on Sequences: `to` a copy, its patterns copied; one undo
+    void keep_mute(unsigned track, bool on);          // a mute by hand, kept in the sequence in hand (not while the song plays)
     void follow_tick();                               // MIDI thread, often: chains told, what came followed
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
