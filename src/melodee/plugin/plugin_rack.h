@@ -138,6 +138,7 @@ public:
     bool take_preset_result(PresetResult& result);
     PluginStatus status(unsigned entry) const;
     bool idling(unsigned entry) const; // last render skipped as silent (plugin/idle_gate.h)
+    bool anvil_sequencer_running(unsigned entry) const; // Anvil can play from transport alone
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
     // A drum plug-in's voices (plugin/drum_map.h) on `entry`; none for any other.
     void drum_voices(unsigned entry, DrumVoices& out) const;

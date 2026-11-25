@@ -98,6 +98,7 @@ public:
     std::vector<Preset> findPresets (const juce::File& cache) const;
     void setPresets (std::vector<Preset>);
     const std::string& clapId() const { return info.id; }
+    float parameterValue (uint32_t id) const; // normalized host value by stable CLAP ID, or zero if missing
     // Pages (plugin/plugin_pages.h). module(): the group of the parameter at `index` (its place in getParameters())
     // as clap_param_info.module gives it, "/" between levels ("" none). remotePages(): the plug-in's own pages of
     // up to eight controls (CLAP remote-controls), asked now, as parameter indices; empty with none.

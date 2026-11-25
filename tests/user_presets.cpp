@@ -649,6 +649,161 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     }
 }
 
+static void anvil_freeze(const std::string& card, const std::string& plugin, bool with_note, unsigned rate) {
+    CHECK(rate == 44100 || rate == 48000);
+    constexpr unsigned block = EngineHost::block;
+    // Integer frames per tick and a bar divisible by the block size make the WAV comparison exact.
+    const unsigned tempo = rate == 44100 ? 875 : 1250, bar_blocks = rate == 44100 ? 945 : 720;
+    dsp::device_rate.store(rate);
+    auto play = [&](bool freeze) {
+        auto host = std::make_unique<EngineHost>();
+        host->set_render_threads(0);
+        auto rack = std::make_unique<PluginRack>(*host, freeze ? "frozen-" : "live-");
+        rack->set_card(card);
+        auto printer = std::make_unique<PrintEngine>(nullptr);
+        printer->set_pager(&host->streams());
+        auto shell = std::make_unique<Shell>(*host);
+        shell->set_printer(printer.get());
+        shell->set_plugins(rack.get());
+        auto& c = shell->context();
+        c.project_path = (fs::path(card) / (with_note ? "anvil-note.mldp" : "anvil-empty.mldp")).string();
+        c.now = 1000;
+        c.project.tempo = tempo;
+        c.project.signature = common_time;
+        auto& track = c.project.tracks[0];
+        load_sound(track, EngineKind::Plugin, 0);
+        track.plugin = 0;
+        std::snprintf(c.project.plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
+        track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 35, 60, 9, 0}};
+        auto& pattern = c.patterns.at[0][0];
+        pattern.length = c.project.bar_ticks();
+        if (with_note) {
+            Step hit;
+            hit.notes[0] = {38, 85};
+            hit.length = 5;
+            pattern.set_step(3, hit);
+        }
+        const Pattern original = pattern;
+        host->load(c.project, c.patterns);
+        host->set_audio_format(rate, block);
+        host->set_print_tap(0, true);
+        std::array<int32_t, block * 2> audio {};
+        auto render = [&] {
+            while (host->streams().pump()) {}
+            host->render(audio.data(), block, 0.7f);
+        };
+        auto tick = [&] {
+            c.plugins_tick(++c.now);
+            c.print_tick();
+        };
+        auto press = [&](SurfaceButton button, bool pressed) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Button;
+            event.input.index = uint8_t(button);
+            event.input.pressed = pressed;
+            shell->surface(event, c.now + 1);
+        };
+        auto tap = [&](SurfaceButton button) { press(button, true); press(button, false); };
+        auto spin = [&](auto done) {
+            for (unsigned n = 0; n < 3000 && !done(); ++n) {
+                tick();
+                render();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            CHECK(done());
+        };
+        spin([&] { return rack->status(0) == PluginStatus::Ready; });
+        for (unsigned n = 0; n < 32; ++n) { tick(); render(); }
+        const auto patch = rack->state(0);
+        const uint32_t generation = rack->live_generation(0);
+        c.open(PageId::Stage);
+        if (freeze && !with_note) {
+            c.project.plugins[0].transport = false;
+            tap(SurfaceButton::SampleRecord);
+            CHECK(!shell->ui().print_sheet.picked(0));
+            tap(SurfaceButton::TopRight);
+            CHECK(!shell->ui().print_sheet.printing);
+            tap(SurfaceButton::TopLeft);
+            c.project.plugins[0].transport = true;
+        }
+
+        unsigned blocks = 0;
+        auto advance = [&](unsigned until, std::vector<float>* left = nullptr, std::vector<float>* right = nullptr) {
+            for (; blocks < until; ++blocks) {
+                tick();
+                render();
+                if (left) left->insert(left->end(), host->print_left(), host->print_left() + block);
+                if (right) right->insert(right->end(), host->print_right(), host->print_right() + block);
+            }
+        };
+        tap(SurfaceButton::Play);
+        advance(bar_blocks / 2);
+        if (freeze) {
+            tap(SurfaceButton::SampleRecord);
+            const auto& sheet = shell->ui().print_sheet;
+            CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
+            tap(SurfaceButton::TopRight);
+            CHECK(sheet.printing);
+            c.print_tick();
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+            while (printer->busy() && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            CHECK(!printer->busy());
+        }
+        advance(2 * bar_blocks);
+        std::vector<uint8_t> saved;
+        if (freeze) {
+            CHECK(c.frozen(0) && !c.deep(0) && (host->printing_tracks() & 1));
+            CHECK(!(host->sleeping_tracks() & 1));
+            const auto* record = c.prints.find(0, 0);
+            CHECK(record && record->tap == PrintTap::PostFx && record->tail == PrintTail::Loop);
+            SampleData wav;
+            CHECK(read_wav((fs::path(prints_folder(c.project_path)) / record->file).string(), wav).empty());
+            CHECK(wav.frames == bar_blocks * block);
+            CHECK(std::any_of(wav.left.begin(), wav.left.end(), [](float f) { return std::fabs(f) > 0.001f; }));
+            std::vector<float> printed_left, printed_right;
+            advance(3 * bar_blocks, &printed_left, &printed_right);
+            CHECK(printed_left == wav.left && printed_right == wav.right); // the print alone, at the mixer input
+            if (!with_note) {
+                auto states = rack->states();
+                saved = save_project(c.project, c.patterns, &states, &c.prints);
+            }
+            tap(SurfaceButton::SampleRecord);
+            press(SurfaceButton::Shift, true);
+            tap(SurfaceButton::TopLeft);
+            press(SurfaceButton::Shift, false);
+        }
+        advance(3 * bar_blocks + 4); // past the five-millisecond handoff
+        CHECK(!c.frozen(0) && !(host->printing_tracks() & 1));
+        std::pair<std::vector<float>, std::vector<float>> live;
+        advance(5 * bar_blocks, &live.first, &live.second);
+        CHECK(rack->state(0) == patch && rack->live_generation(0) == generation);
+        CHECK(pattern == original);
+        CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+        if (!saved.empty()) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            PrintTable prints;
+            PluginStates states;
+            CHECK(load_project(saved, *project, *bank, nullptr, &states, &prints).empty());
+            CHECK(bank->at[0][0].empty() && prints.freeze[0].plays(0));
+            c.stop();
+            render();
+            c.switch_to(*project, *bank, c.project_path, &states, &prints);
+            spin([&] { return rack->status(0) == PluginStatus::Ready && (host->frozen_tracks() & 1); });
+            c.open_print_sheet();
+            CHECK(shell->ui().print_sheet.picked(0));
+            c.play();
+            tick();
+            render();
+            CHECK(host->printing_tracks() & 1);
+        }
+        return live;
+    };
+    const auto uninterrupted = play(false);
+    CHECK(play(true) == uninterrupted);
+}
+
 // A separate invocation starts a fresh project and a new plug-in instance.
 // The simulated SD card is the only thing shared by the two invocations.
 int main(int argc, char** argv) {
@@ -657,6 +812,11 @@ int main(int argc, char** argv) {
     if (mode == "ring-freeze") {
         CHECK(argc == 7);
         freeze_ring_wavs(card, plugin, std::stoul(argv[4]), std::stoul(argv[5]), std::stoul(argv[6]));
+        return 0;
+    }
+    if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note") {
+        CHECK(argc == 4 || argc == 5);
+        anvil_freeze(card, plugin, mode == "anvil-freeze-note", argc == 5 ? std::stoul(argv[4]) : 44100);
         return 0;
     }
     CHECK(argc == 4);

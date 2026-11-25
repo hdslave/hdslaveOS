@@ -26,8 +26,8 @@ FLAGS = ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", *["-I" + str(ROOT /
          "-isystem", str(ROOT / LV2_SDK / "lv2"), *DEFINES]  # the LV2 headers as JUCE ships them: their warnings are not ours
 
 
-def build_clap(path):
-    subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+def build_clap(path, *defines):
+    subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, *defines, "-shared", "-fPIC",
                     str(ROOT / "tests/clap_fixture.cpp"), "-o", str(path)], check=True)
 
 
@@ -129,6 +129,19 @@ class PluginHostTests(unittest.TestCase):
             build_clap(plugin)
             subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
                            check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+
+    def test_anvil_freezes_without_a_note_and_returns_to_the_same_live_audio(self):
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            plugin = card / "Melodee/Plugins/Clocked.clap"
+            plugin.parent.mkdir(parents=True)
+            build_clap(plugin, "-DMELODEE_TEST_ANVIL")
+            env = {**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")}
+            for mode, rate in itertools.product(("anvil-freeze-empty", "anvil-freeze-note"), (44100, 48000)):
+                with self.subTest(mode=mode, rate=rate):
+                    subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode, str(rate)],
+                                   check=True, timeout=90, env=env)
 
     def test_knob_takeover_on_plugin_screen_changes(self):
         for mode in ("knob-scaled", "knob-pickup", "knob-instant"):

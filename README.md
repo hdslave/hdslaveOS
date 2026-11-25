@@ -16,6 +16,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 - **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black with dark violet contours on selected list rows, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
 - **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
 - **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time; kit pads assigned any of the 16 colours light more vividly; and a custom **hdslave intro** boot film replaces the default splash.
+- **Anvil sequencer Freeze** renders the current pattern directly from Anvil's built-in sequencer. Unfreeze returns to the running synth and its effect chain. [Freeze controls](docs/guide/tracks.md#freeze-a-track)
 
 ### Mixer
 

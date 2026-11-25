@@ -120,6 +120,13 @@ the requested starts, Freeze reports the error and keeps the previous selection 
 freeze that fails leaves the track live. A track cannot record notes or Motion while
 its freeze is pending. Cancel the request or unfreeze the track to resume recording.
 
+**Anvil's built-in sequencer.** With Anvil's **RUN** and the track's **TRANSPORT**
+on, the PRINT sheet can select the current pattern even when it has zero MPC
+notes. Use **B3** to freeze it. The print holds one pattern's audio with its
+track effects. While it plays, Anvil and its live track effects keep running
+silently so Unfreeze can crossfade back to the same live sound. For this mode,
+only the print is heard on a frozen pattern and the live DSP still uses CPU.
+
 To freeze single patterns, hold **SEQ** and press **SAMPLE RECORD**: each
 pattern pad freezes or thaws that pattern. The prints are made when you let
 go of **SEQ**. The other patterns play live.

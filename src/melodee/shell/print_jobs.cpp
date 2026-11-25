@@ -44,6 +44,12 @@ void Context::print(const PrintAsk& ask) {
     if (!printer->start(std::move(job))) printer->note("busy: a print is under way");
 }
 
+bool Context::anvil_sequencing(unsigned track) const {
+    const auto& tr = project.tracks[track % track_count];
+    return plugins && tr.engine == EngineKind::Plugin && tr.plugin < max_plugins &&
+           project.plugins[tr.plugin].transport && plugins->anvil_sequencer_running(tr.plugin);
+}
+
 bool Context::freeze(const PrintAsk& ask) {
     if (!printer) return false;
     const unsigned t = ask.track % track_count;
@@ -56,12 +62,14 @@ bool Context::freeze(const PrintAsk& ask) {
             if (pad.used() && pad.out) { printer->note("track " + std::to_string(t + 1) + " has pads sent to submixes: set them to KIT to freeze it"); return false; }
     TrackFreeze f;
     f.state = ask.deep ? FreezeState::Deep : FreezeState::Frozen;
-    f.tap = ask.deep ? PrintTap::PostFx : ask.tap; // freeze plan F2d: the chain's plug-ins go too, so the print holds them
+    // A transport-driven Anvil keeps its live chain running silently. Its print goes after the chain.
+    f.tap = ask.deep || anvil_sequencing(t) ? PrintTap::PostFx : ask.tap;
     f.tail = ask.tail;
     bool none = !ask.all;
     for (auto bits : ask.patterns) none &= bits == 0;
-    for (unsigned p = 0; p < pattern_count; ++p) // a deep freeze: the whole track, as nothing of it plays live
-        if (!patterns.at[t][p].empty() && (none || ask.all || ask.deep || ((ask.patterns[p / 64] >> (p % 64)) & 1))) f.set(p, true);
+    f.patterns = freeze_patterns(t, ask.deep);
+    if (!(none || ask.all || ask.deep))
+        for (size_t n = 0; n < f.patterns.size(); ++n) f.patterns[n] &= ask.patterns[n];
     bool any = false;
     for (auto bits : f.patterns) any |= bits != 0;
     if (!any) { printer->note("track " + std::to_string(t + 1) + " has no pattern with notes to freeze"); return false; }
@@ -288,12 +296,21 @@ void Context::print_tick() {
     thawing_now.store(thawing, std::memory_order_relaxed);
     thaw_took_now.store(thaw_took, std::memory_order_relaxed);
     uint32_t waiting = freeze_waiting;
-    for (unsigned t = 0; t < track_count; ++t)
-        if (freeze_submitted_serial[t]) waiting &= ~(1u << t);
+    for (unsigned t = 0; t < track_count; ++t) {
+        const uint32_t bit = 1u << t;
+        if (!(waiting & bit)) continue;
+        const auto& tr = project.tracks[t];
+        // A restored ordinary freeze needs the reloaded instrument's identity and RUN value before admission.
+        if (freeze_submitted_serial[t] || (plugins && freeze_requested[t].state == FreezeState::Frozen &&
+            tr.engine == EngineKind::Plugin && tr.plugin < max_plugins &&
+            plugins->status(tr.plugin) == PluginStatus::Loading)) waiting &= ~bit;
+    }
     if (waiting && !delivery_blocked && !printer->busy() && !project_path.empty()) {
         unsigned t = 0;
         while (!((waiting >> t) & 1)) ++t;
-        const auto& f = freeze_requested[t];
+        auto& f = freeze_requested[t];
+        const bool keep_live = f.state == FreezeState::Frozen && anvil_sequencing(t);
+        if (keep_live) f.tap = PrintTap::PostFx;
         PrintJob job;
         job.project_path = project_path;
         job.track = t;
@@ -301,9 +318,10 @@ void Context::print_tick() {
         job.tail = f.tail;
         job.freeze = true;
         job.deep = f.state == FreezeState::Deep; // freeze plan F2d
+        job.keep_live = keep_live;
         job.serial = freeze_serial[t];
         for (unsigned p = 0; p < pattern_count; ++p)
-            if (f.plays(p) && !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
+            if (f.plays(p) && (keep_live || !patterns.at[t][p].empty())) job.patterns.push_back(uint8_t(p));
         if (job.patterns.empty()) {
             cancel_freeze_request(t);
             reject_freeze(t, "no pattern with notes");

@@ -494,6 +494,8 @@ public:
     // Freeze plan F2c (shell/print_sheet.cpp). The PRINT sheet: opened by Sample Record on a PLUGIN or MIDI track (B3
     // PRINT on a kit's Record), its pads the patterns of the bank in view (a tap lights or leaves one out, B2 ALL), B3
     // FREEZE prints and freezes them, B1 CANCEL closes it or calls the prints off with nothing changed.
+    bool anvil_sequencing(unsigned track) const;
+    std::array<uint64_t, (pattern_count + 63) / 64> freeze_patterns(unsigned track, bool deep = false) const;
     void open_print_sheet();
     void print_sheet_pad(unsigned pad);
     void print_sheet_all();

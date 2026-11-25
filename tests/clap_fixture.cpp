@@ -45,6 +45,13 @@ std::atomic<int> tailSamples {0}; // the tail Test Gain reports, set by fixture_
 bool choked[16][128] {}; // (channel, key) NOTE_CHOKEs taken, for fixture_chokes()
 std::atomic<int> chokeCount {0};
 std::string libraryPath;
+#ifdef MELODEE_TEST_ANVIL
+constexpr bool clockedInstrument = true;
+constexpr char sineId[] = "com.hdslave.anvil";
+#else
+constexpr bool clockedInstrument = false;
+constexpr char sineId[] = "org.melodee.test.sine";
+#endif
 
 struct Plugin {
     clap_plugin plugin {};
@@ -55,6 +62,7 @@ struct Plugin {
     std::map<int, double> phases; // key: phase of its sine
     std::atomic<uint32_t> tailFrames {0};
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
+    uint32_t clockFrames = 0;
     int pulse = 0;                // Sine's SC Key: frames of its pulse still to play
     bool dynamicRing = false;
     int repeatIn = -1;
@@ -69,7 +77,7 @@ Plugin& of(const clap_plugin* p) { return *static_cast<Plugin*>(p->plugin_data);
 
 const char* sineFeatures[] {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SYNTHESIZER, nullptr};
 const char* gainFeatures[] {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, nullptr};
-const clap_plugin_descriptor sineDescriptor {CLAP_VERSION_INIT, "org.melodee.test.sine", "Test Sine", "Melodee", "", "", "", "1",
+const clap_plugin_descriptor sineDescriptor {CLAP_VERSION_INIT, sineId, "Test Sine", "Melodee", "", "", "", "1",
                                             "", sineFeatures};
 const clap_plugin_descriptor gainDescriptor {CLAP_VERSION_INIT, "org.melodee.test.gain", "Test Gain", "Melodee", "", "", "", "1",
                                             "", gainFeatures};
@@ -77,18 +85,24 @@ const clap_plugin_descriptor gainDescriptor {CLAP_VERSION_INIT, "org.melodee.tes
 // Parameters: Sine's Level (id 7, module "Voice/Amp") and Wave (id 9, stepped 0-2, no module); Gain's Gain (id 3,
 // 0-2, module "Out"). Sine has one remote-controls page, Main: Wave, Level, the rest of its eight unused; its
 // on_main_thread says its pages changed.
-uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? 2 : 1; }
+uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? (clockedInstrument ? 3 : 2) : 1; }
 bool paramInfo(const clap_plugin* p, uint32_t i, clap_param_info* info) {
     of(p).main();
     *info = {};
     if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); std::strcpy(info->module, "Voice/Amp/"); info->max_value = 1; info->default_value = 0.5; }
     else if (of(p).instrument && i == 1) { info->id = 9; std::strcpy(info->name, "Wave"); info->max_value = 2; info->flags = CLAP_PARAM_IS_STEPPED; }
-    else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); std::strcpy(info->module, "Out"); info->max_value = 2; info->default_value = 1; }
+    else if (clockedInstrument && of(p).instrument && i == 2) {
+        info->id = 24; std::strcpy(info->name, "Run"); info->max_value = 1; info->default_value = 1;
+        info->flags = CLAP_PARAM_IS_STEPPED;
+    } else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); std::strcpy(info->module, "Out"); info->max_value = 2; info->default_value = 1; }
     else return false;
     info->flags |= CLAP_PARAM_IS_AUTOMATABLE;
     return true;
 }
-double* field(Plugin& s, clap_id id) { return id == 7 ? &s.level : id == 9 ? &s.wave : id == 3 ? &s.gain : nullptr; }
+double* field(Plugin& s, clap_id id) {
+    if (clockedInstrument && s.instrument && id == 24) return &s.gain;
+    return id == 7 ? &s.level : id == 9 ? &s.wave : id == 3 ? &s.gain : nullptr;
+}
 bool paramValue(const clap_plugin* p, clap_id id, double* v) {
     of(p).main();
     auto* f = field(of(p), id);
@@ -231,7 +245,7 @@ bool providerMetadata(const clap_preset_discovery_provider*, uint32_t kind, cons
         auto key = std::to_string(n);
         if (!r->begin_preset(r, lines[n].name.c_str(), lines.size() > 1 ? key.c_str() : nullptr)) return false;
         if (lines[n].forWhom == "-") continue;
-        clap_universal_plugin_id id {"clap", lines[n].forWhom == "gain" ? "org.melodee.test.gain" : "org.melodee.test.sine"};
+        clap_universal_plugin_id id {"clap", lines[n].forWhom == "gain" ? "org.melodee.test.gain" : sineId};
         r->add_plugin_id(r, &id);
     }
     return true;
@@ -307,12 +321,18 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     }
     float** out = proc->audio_outputs[0].data32;
     const uint32_t outCh = proc->audio_outputs[0].channel_count;
+    const bool clocked = clockedInstrument && s.instrument && s.gain >= 0.5 && proc->transport &&
+                         (proc->transport->flags & CLAP_TRANSPORT_IS_PLAYING);
     for (uint32_t f = 0; f < proc->frames_count; ++f) {
         float x = 0;
         if (s.instrument) {
             for (auto& [key, phase] : s.phases) {
                 x += float(s.level * std::sin(phase));
                 phase += 2 * M_PI * 440.0 * std::pow(2.0, (key - 69) / 12.0) / s.rate;
+            }
+            if (clocked) {
+                // A free-running voice with a cycle shorter than the pattern and a phase that survives each hit.
+                x += float(int(s.clockFrames++ % 997) - 498) / 4096.f;
             }
             if (s.dynamicRing) {
                 x = s.repeatIn == 0 ? 0.75f : 0.0f;

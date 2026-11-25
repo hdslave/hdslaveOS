@@ -50,6 +50,7 @@ struct PrintJob {
     // Freeze plan F2b: once printed, the patterns' prints mapped for the audio thread to play (a FreezeReady).
     bool freeze = false;
     bool deep = false;                   // freeze plan F2d: its pack plays as a deep freeze (FreezePack::deep)
+    bool keep_live = false;              // a Post FX replacement print with a continuously running live path
     uint32_t serial = 0;                 // the freeze it is for (the shell drops one a later freeze replaced)
     // The auto sampler: the track's instrument played a note at a time into `sample_folder` as `sample_name`.xpm
     // and its WAVs, not its patterns printed.

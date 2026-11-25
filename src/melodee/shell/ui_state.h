@@ -494,12 +494,14 @@ struct UiState {
     // until they are ready, B1 calls them off), for the freeze `print_serial` names.
     struct PrintSheet {
         uint8_t track = 0;
-        std::array<uint64_t, (pattern_count + 63) / 64> picks {};
+        std::array<uint64_t, (pattern_count + 63) / 64> picks {}, eligible {};
+        bool clocked_anvil = false;
         PrintTap tap = PrintTap::PostFx;
         PrintTail tail = PrintTail::Loop;
         bool printing = false;
         uint32_t serial = 0;
         bool picked(unsigned p) const { p %= pattern_count; return (picks[p / 64] >> (p % 64)) & 1; }
+        bool can_pick(unsigned p) const { return (eligible[p / 64] >> (p % 64)) & 1; }
         void pick(unsigned p, bool on) {
             p %= pattern_count;
             uint64_t bit = uint64_t(1) << (p % 64);

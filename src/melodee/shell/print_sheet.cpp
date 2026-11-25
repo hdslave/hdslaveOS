@@ -97,6 +97,19 @@ bool Context::edit_gate(void* owner, Edit& edit) {
 
 // ---- the PRINT sheet
 
+std::array<uint64_t, (pattern_count + 63) / 64> Context::freeze_patterns(unsigned track, bool deep) const {
+    const unsigned t = track % track_count;
+    auto eligible = with_notes(patterns, t);
+    if (!deep && anvil_sequencing(t)) {
+        // The pattern playing now can carry Anvil's sequence with zero MPC notes. Retain previously selected
+        // empty clips so the sheet can still show and unpick them after another pattern is launched.
+        const unsigned p = (host.playing() ? host.pattern_of(t) : project.tracks[t].pattern) % pattern_count;
+        eligible[p / 64] |= uint64_t(1) << (p % 64);
+        for (size_t i = 0; i < eligible.size(); ++i) eligible[i] |= prints.freeze[t].patterns[i];
+    }
+    return eligible;
+}
+
 void Context::open_print_sheet() {
     const unsigned t = ui.track % track_count;
     const auto& tr = project.tracks[t];
@@ -106,14 +119,16 @@ void Context::open_print_sheet() {
         sheet = UiState::PrintSheet {};
         sheet.track = uint8_t(t);
         const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
-        sheet.tap = f.tap;
+        sheet.clocked_anvil = anvil_sequencing(t);
+        sheet.tap = sheet.clocked_anvil ? PrintTap::PostFx : f.tap;
         sheet.tail = f.tail;
-        sheet.picks = frozen(t) ? f.patterns : with_notes(patterns, t); // as it is frozen, else every pattern with notes
-        auto notes = with_notes(patterns, t);
-        for (size_t n = 0; n < notes.size(); ++n) sheet.picks[n] &= notes[n];
+        sheet.eligible = freeze_patterns(t);
+        sheet.picks = frozen(t) ? f.patterns : sheet.eligible;
+        for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
     }
     // The bank in view: the one the track plays.
-    ui.pattern_bank = uint8_t(tr.pattern % pattern_count / pattern_pads);
+    const unsigned shown = sheet.clocked_anvil && host.playing() ? host.pattern_of(t) : tr.pattern;
+    ui.pattern_bank = uint8_t(shown % pattern_count / pattern_pads);
     if (ui.page != PageId::Print) open(PageId::Print);
 }
 
@@ -121,15 +136,14 @@ void Context::print_sheet_pad(unsigned pad) {
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
     unsigned p = ui.pad_pattern(pad);
-    if (patterns.at[sheet.track % track_count][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
+    if (!sheet.can_pick(p)) { notice(pattern_word(p) + " is empty"); return; }
     sheet.pick(p, !sheet.picked(p));
 }
 
 void Context::print_sheet_all() {
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
-    auto notes = with_notes(patterns, sheet.track);
-    sheet.picks = sheet.picks == notes ? decltype(notes) {} : notes; // all, or (all lit already) none
+    sheet.picks = sheet.picks == sheet.eligible ? decltype(sheet.picks) {} : sheet.eligible;
 }
 
 void Context::print_sheet_go(bool deep_freeze) {
@@ -151,7 +165,7 @@ void Context::print_sheet_go(bool deep_freeze) {
     ask.tail = sheet.tail;
     ask.mode = PrintAsk::Freeze;
     ask.deep = deep_freeze;
-    if (deep_freeze) { sheet.picks = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
+    if (deep_freeze) { sheet.picks = sheet.eligible = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
     if (!freeze(ask)) return;
     sheet.printing = true;
@@ -199,8 +213,8 @@ void Context::seq_print_start() {
 void Context::seq_print_pad(unsigned pad) {
     const unsigned t = ui.track % track_count, p = ui.pad_pattern(pad);
     ui.seq_used = true;
-    if (patterns.at[t][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
     uint64_t bit = uint64_t(1) << (p % 64);
+    if (!(freeze_patterns(t)[p / 64] & bit)) { notice(pattern_word(p) + " is empty"); return; }
     ui.seq_frozen[p / 64] ^= bit;
 }
 
@@ -209,8 +223,8 @@ void Context::seq_print_end() {
     ui.seq_print = false;
     const unsigned t = ui.track % track_count;
     auto want = ui.seq_frozen;
-    auto notes = with_notes(patterns, t);
-    for (size_t n = 0; n < want.size(); ++n) want[n] &= notes[n];
+    auto eligible = freeze_patterns(t);
+    for (size_t n = 0; n < want.size(); ++n) want[n] &= eligible[n];
     if (frozen(t) && want == prints.freeze[t].patterns) return; // as it was
     if (none_of(want)) {
         unfreeze(t);

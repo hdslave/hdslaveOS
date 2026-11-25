@@ -419,6 +419,12 @@ ClapInstance::~ClapInstance()
     Library::release (library);
 }
 
+float ClapInstance::parameterValue (uint32_t id) const
+{
+    const auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, -1));
+    return it != byId.end() && it->first == id ? parameters[size_t (it->second)]->getValue() : 0.0f;
+}
+
 void ClapInstance::readParameters()
 {
     if (params == nullptr) return;

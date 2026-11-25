@@ -838,6 +838,15 @@ PluginStates PluginRack::states() const {
     return out;
 }
 
+bool PluginRack::anvil_sequencer_running(unsigned entry) const {
+    if (entry >= max_plugins) return false;
+    std::lock_guard<std::mutex> held(lock);
+    const auto& e = entries[entry];
+    constexpr uint32_t run_id = 24; // Anvil's published RUN switch
+    return e.status == PluginStatus::Ready && e.live && e.live->clap &&
+           e.live->clap->clapId() == "com.hdslave.anvil" && e.live->clap->parameterValue(run_id) >= 0.5f;
+}
+
 void PluginRack::clone(unsigned entry, unsigned copy) {
     if (entry >= max_plugins || copy >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);
