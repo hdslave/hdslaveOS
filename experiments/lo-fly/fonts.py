@@ -1,37 +1,26 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-"""The panel's type as a C header: Doto (SIL OFL 1.1, Google Fonts; `make fonts` fetches it) for titles and values,
-Rubik (SIL OFL 1.1, Melodee's own face, build/deps/rubik) for labels and small text.
+"""The panel's type as a C header (`make fonts` fetches both faces):
+  Doto (SIL OFL 1.1, Google Fonts), a dot matrix, for titles and the wheel's value (dt_title, dt_big);
+  Spleen (BSD 2-Clause, Frederic Cambus), a bitmap face, for labels, values and small text at its own sizes,
+  6 x 12 (sp_label) and 8 x 16 (sp_value), drawn without smoothing so every pixel stays sharp.
 
-    python3 fonts.py FONTDIR RUBIK fonts.h
+    python3 fonts.py FONTDIR fonts.h
 
-Doto draws every letter on a grid of dots: 5 columns, 7 rows for a capital, one row above and two below, 6 columns
-from one letter to the next. Large, it is rasterised as it is (dt_title, dt_big; its stop a single round dot). Small, its dots blur between
-pixels, so for values the grid is read from the font and each dot drawn as 2 x 2 whole pixels (dm_value). Printable ASCII; each glyph an 8-bit coverage map of its ink, one row
-per pixel of the font's height. Rubik is drawn as it is (rb_label, rb_small): at a knob's label size Doto's dots
-would not fit "ENV AMOUNT" under a knob. Needs Pillow."""
+Printable ASCII; each glyph an 8-bit coverage map of its ink (which may reach past its advance), one row per pixel
+of the font's height. Needs Pillow."""
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-font_dir, rubik, output = map(Path, sys.argv[1:])
-DOTO = str(font_dir / 'Doto-VF.ttf')
+font_dir, output = map(Path, sys.argv[1:])
 
 
-def doto(size, roundness):
-    font = ImageFont.truetype(DOTO, size)
-    font.set_variation_by_axes([roundness, 900])  # Roundness, Weight
-    return font
-
-
-def outline_face(name, size, roundness=None, weight=None):
-    """A face as FreeType draws it: Doto at the large sizes (roundness), or Rubik (weight)."""
-    if weight is None:
-        font = doto(size, roundness)
-    else:
-        font = ImageFont.truetype(str(rubik), size)
-        font.set_variation_by_axes([weight])
+def face(name, file, size, axes=None, stop=False, sharp=False):
+    font = ImageFont.truetype(str(font_dir / file), size)
+    if axes:
+        font.set_variation_by_axes(axes)
     ascent, descent = font.getmetrics()
     height = ascent + descent
     glyphs, pixels = [], []
@@ -41,70 +30,30 @@ def outline_face(name, size, roundness=None, weight=None):
         left, _, right, _ = font.getbbox(ch) if ch != ' ' else (0, 0, advance, 0)
         x0, x1 = min(0, left), max(advance, right)
         width = max(1, x1 - x0)
-        if ch == '.' and weight is None:  # one round dot on the line (Doto's own stop is a cross of five), drawn 4x and scaled down
+        if ch == '.' and stop:  # Doto's own stop is a cross of five dots below the line: one round dot on it reads better
             big = Image.new('L', (width * 4, height * 4))
-            cx, cy, r = (x0 * -1 + size * 0.25) * 4, size * 0.9 * 4, size * 0.05 * 4
+            cx, cy, r = (-x0 + size * 0.25) * 4, size * 0.9 * 4, size * 0.05 * 4
             ImageDraw.Draw(big).ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
             image = big.resize((width, height), Image.BOX)
         else:
             image = Image.new('L', (width, height))
-            ImageDraw.Draw(image).text((-x0, 0), ch, font=font, fill=255)
+            draw = ImageDraw.Draw(image)
+            if sharp:
+                draw.fontmode = '1'
+            draw.text((-x0, 0), ch, font=font, fill=255)
         glyphs.append((len(pixels), width, advance, x0))
         pixels.extend(image.getdata())
     return name, glyphs, pixels, height, ascent
 
 
-# Doto's dot grid, read at 400 px: a dot every 40 px; column 0's centre 20 px right of the pen, the capital's top
-# row's centre 120 px below the top. Rows -1 (accents) to 8 (descenders).
-SIZE, PITCH, COL0, ROW0 = 400, 40, 20, 120
-ROWS = range(-1, 9)
-
-
-def dot_grid():
-    font = doto(SIZE, 0)
-    grids = {}
-    for code in range(32, 127):
-        image = Image.new('L', (SIZE * 2, int(SIZE * 1.8)))
-        ImageDraw.Draw(image).text((0, 0), chr(code), font=font, fill=255)
-        px = image.load()
-        grids[chr(code)] = [[px[COL0 + PITCH * c, ROW0 + PITCH * r] > 128 for c in range(5)] for r in ROWS]
-    # Doto's full stop is a cross of five dots below the line; small, a single dot on the line reads better.
-    stop = [[False] * 5 for _ in ROWS]
-    stop[ROWS.index(6)][2] = True
-    grids['.'] = stop
-    return grids
-
-
-def dot_face(name, grids, cell):
-    """Each dot as `cell`, rows of coverage; the cell's size is the pitch."""
-    pitch = len(cell)
-    height, ascent = len(ROWS) * pitch, ROWS.index(7) * pitch
-    glyphs, pixels = [], []
-    for code in range(32, 127):
-        grid = grids[chr(code)]
-        width = 5 * pitch
-        image = [0] * (width * height)
-        for r, row in enumerate(grid):
-            for c, on in enumerate(row):
-                if on:
-                    for dy, line in enumerate(cell):
-                        for dx, cover in enumerate(line):
-                            image[(r * pitch + dy) * width + c * pitch + dx] = cover
-        glyphs.append((len(pixels), width, (4 if code == 32 else 6) * pitch, 0))  # a narrower space keeps values apart
-        pixels.extend(image)
-    return name, glyphs, pixels, height, ascent
-
-
-grids = dot_grid()
 FACES = [
-    dot_face('dm_value', grids, [[255, 255], [255, 255]]),
-    outline_face('rb_label', 12, weight=600),
-    outline_face('rb_small', 11, weight=500),
-    outline_face('dt_title', 22, 100),
-    outline_face('dt_big', 24, 100),
+    face('dt_title', 'Doto-VF.ttf', 22, axes=[100, 900], stop=True),  # Roundness, Weight
+    face('dt_big', 'Doto-VF.ttf', 24, axes=[100, 900], stop=True),
+    face('sp_label', 'spleen-6x12.otf', 12, sharp=True),
+    face('sp_value', 'spleen-8x16.otf', 16, sharp=True),
 ]
 
-parts = ['// Generated by experiments/lo-fly/fonts.py from Doto and Rubik (SIL OFL 1.1). Do not edit.']
+parts = ['// Generated by experiments/lo-fly/fonts.py from Doto (SIL OFL 1.1) and Spleen (BSD 2-Clause). Do not edit.']
 for name, glyphs, pixels, height, ascent in FACES:
     parts.append(f'static constexpr Glyph {name}_glyphs[] = {{' + ','.join('{%d,%d,%d,%d}' % g for g in glyphs) + '};')
     parts.append(f'static constexpr unsigned char {name}_pixels[] = {{' + ','.join(map(str, pixels)) + '};')

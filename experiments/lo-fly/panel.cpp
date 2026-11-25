@@ -3,8 +3,8 @@
 //
 // lo-fly's panel in Melodee (see panel.h). The look: night. Each picture sits on a night sky over a skyline with lit
 // windows, stars and a moon, with scan lines; curves are neon lines with a glow; knobs are LED rings. Type is Doto,
-// a dot matrix like an LED sign: titles and the wheel's value glowing in the page's colour, labels and values in its
-// dots drawn on whole pixels. The LOFI page draws the tape's wobble as a moving line and the level on two LED columns.
+// a dot matrix like an LED sign, for titles and the wheel's value, glowing in the page's colour; labels and values
+// are in Spleen, a sharp bitmap face. The LOFI page draws the tape's wobble as a moving line and the level on two LED columns.
 // The pictures come from lo-fly's own code and values: the oscillator's cycle through the converter, the built-in
 // noises, the LoFi chain's response, the envelopes, the voices that sound.
 #include "panel.h"
@@ -39,15 +39,15 @@ struct Font {
     int height;
     int ascent;
 };
-#include "fonts.h" // dm_value: Doto's dots 2 x 2; dt_title, dt_big: Doto at 22 and 24 px; rb_label, rb_small: Rubik 12, 11
+#include "fonts.h" // dt_title, dt_big: Doto at 22 and 24 px; sp_label, sp_value: Spleen 6 x 12 and 8 x 16
 
 constexpr float pi = 3.14159265f;
 
 // --- type and colours ---
 
-// The type: titles and the wheel's value in Doto, glowing in the page's colour; values in Doto's own dot grid drawn
-// on whole pixels; labels and small text in Rubik, Melodee's face, where Doto's dots would not fit (fonts.py). Where
-// each sits: the header's text tops, a knob's label and value under its centre.
+// The type: titles and the wheel's value in Doto, a dot matrix, glowing in the page's colour; labels, values and
+// small text in Spleen, a bitmap face, at its own sizes so every pixel is sharp (fonts.py). Where each sits: the
+// header's text tops, a knob's label and value under its centre.
 struct Type {
     const Font& small;
     const Font& label;
@@ -57,7 +57,7 @@ struct Type {
     float title_y, small_y, label_dy, value_dy;
     bool neon; // titles glow in the page's colour; else the video-tape colour fringe
 };
-const Type doto { rb_small_font, rb_label_font, dm_value_font, dt_title_font, dt_big_font, -2, 3, 19, 33, true };
+const Type doto { sp_label_font, sp_label_font, sp_value_font, dt_title_font, dt_big_font, -2, 6, 21, 32, true };
 const Type* T = &doto;
 
 constexpr std::uint32_t ground = 0x100d1b, ink = 0xf4eaff, ink_dim = 0xb3a6d0, ink_faint = 0x6d628e, ink_ghost = 0x2f2848;
