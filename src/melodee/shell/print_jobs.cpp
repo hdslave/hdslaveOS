@@ -50,7 +50,7 @@ bool Context::anvil_sequencing(unsigned track) const {
            project.plugins[tr.plugin].transport && plugins->anvil_sequencer_running(tr.plugin);
 }
 
-bool Context::freeze(const PrintAsk& ask) {
+bool Context::freeze(const PrintAsk& ask, const UiState::PrintSheet* sheet) {
     if (!printer) return false;
     const unsigned t = ask.track % track_count;
     const auto& tr = project.tracks[t];
@@ -63,11 +63,13 @@ bool Context::freeze(const PrintAsk& ask) {
     TrackFreeze f;
     f.state = ask.deep ? FreezeState::Deep : FreezeState::Frozen;
     // A transport-driven Anvil keeps its live chain running silently. Its print goes after the chain.
-    f.tap = ask.deep || anvil_sequencing(t) ? PrintTap::PostFx : ask.tap;
+    const bool clocked_anvil = !ask.deep && (sheet ? sheet->clocked_anvil() : anvil_sequencing(t));
+    f.tap = ask.deep || clocked_anvil ? PrintTap::PostFx : ask.tap;
     f.tail = ask.tail;
     bool none = !ask.all;
     for (auto bits : ask.patterns) none &= bits == 0;
-    f.patterns = freeze_patterns(t, ask.deep);
+    // The sheet just refreshed its selection. A bar line may have passed since that read.
+    f.patterns = clocked_anvil && sheet ? sheet->picks : freeze_patterns(t, ask.deep);
     if (!(none || ask.all || ask.deep))
         for (size_t n = 0; n < f.patterns.size(); ++n) f.patterns[n] &= ask.patterns[n];
     bool any = false;
@@ -320,11 +322,20 @@ void Context::print_tick() {
             job.deep = f.state == FreezeState::Deep;
             job.keep_live = keep_live;
             job.serial = freeze_serial[t];
-            for (unsigned p = 0; p < pattern_count; ++p)
-                if (f.plays(p) && (keep_live || !patterns.at[t][p].empty())) job.patterns.push_back(uint8_t(p));
-            if (job.patterns.empty()) {
+            const char* error = nullptr;
+            for (unsigned p = 0; p < pattern_count; ++p) {
+                if (!f.plays(p)) continue;
+                // A queued RUN edit can make an empty Anvil pattern ineligible after B3.
+                // Refuse the selection before rendering so every frozen pattern has a print.
+                if (!keep_live && patterns.at[t][p].empty()) {
+                    error = "empty pattern";
+                    break;
+                }
+                job.patterns.push_back(uint8_t(p));
+            }
+            if (error || job.patterns.empty()) {
                 cancel_freeze_request(t);
-                reject_freeze(t, "no pattern with notes");
+                reject_freeze(t, error ? error : "no pattern with notes");
             } else {
                 job.project = std::make_unique<Project>(project);
                 if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // issue 24

@@ -454,7 +454,7 @@ public:
     // Each freeze asked has a serial: the prints of one a later ask replaced are dropped. `freeze_waiting`: a bit a
     // track whose prints wait for the print engine. refreeze(): the track's prints checked and played again (after
     // the audio thread took the track anew: a copy, an undo, a move).
-    bool freeze(const PrintAsk& ask);
+    bool freeze(const PrintAsk& ask, const UiState::PrintSheet* sheet = nullptr);
     void request_freeze(unsigned track, const TrackFreeze& selection);
     void cancel_freeze_request(unsigned track);
     void finish_freeze_sheet(unsigned track);

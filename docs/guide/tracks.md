@@ -123,8 +123,10 @@ its freeze is pending. Cancel the request or unfreeze the track to resume record
 **Anvil's built-in sequencer.** With Anvil's **RUN** and the track's **TRANSPORT**
 on, the PRINT sheet can select the current pattern even when it has zero MPC
 notes. If you open PRINT as you turn on RUN from Anvil's panel, the pattern
-lights as soon as Anvil receives the edit, and PRINT shows its bank. Use **B3**
-to freeze it. The print holds one pattern's audio with its track effects. Anvil
+lights as soon as Anvil receives the edit, and PRINT shows its bank. On a live
+track, the default selection follows a queued pattern when it takes over.
+Patterns you pick yourself stay selected while RUN is on. Use **B3** to freeze
+your selection. The print holds one pattern's audio with its track effects. Anvil
 and its live effects keep running silently so Unfreeze can crossfade back to
 the same live sound.
 While the print plays, the live DSP still uses CPU.

@@ -126,16 +126,16 @@ void Context::open_print_sheet() {
     if (!tr.used()) { notice("Empty track"); return; }
     auto& sheet = ui.print_sheet;
     const bool printing = sheet.track == t && sheet.printing;
-    const bool clocked = printing ? sheet.clocked_anvil : anvil_sequencing(t);
+    const bool clocked = printing ? sheet.clocked_anvil() : anvil_sequencing(t);
     const unsigned shown = clocked ? clocked_pattern(*this, t) : tr.pattern % pattern_count;
     if (!printing) { // a sheet under way comes back as it is
         sheet = UiState::PrintSheet {};
         sheet.track = uint8_t(t);
         const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
-        sheet.clocked_anvil = clocked;
+        sheet.anvil_pattern = uint8_t(clocked ? shown : pattern_count);
         sheet.tap = clocked ? PrintTap::PostFx : f.tap;
         sheet.tail = f.tail;
-        sheet.eligible = eligible_patterns(*this, t, clocked ? shown : pattern_count);
+        sheet.eligible = eligible_patterns(*this, t, sheet.anvil_pattern);
         sheet.picks = frozen(t) ? f.patterns : sheet.eligible;
         for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
     }
@@ -148,17 +148,17 @@ void Context::refresh_print_sheet() {
     auto& sheet = ui.print_sheet;
     if (ui.page != PageId::Print || sheet.printing) return;
     const unsigned t = sheet.track % track_count;
-    const bool clocked = anvil_sequencing(t);
-    if (clocked == sheet.clocked_anvil) return;
-    sheet.clocked_anvil = clocked;
-    if (clocked) sheet.tap = PrintTap::PostFx;
-    const unsigned anvil_pattern = clocked ? clocked_pattern(*this, t) : pattern_count;
+    const unsigned anvil_pattern = anvil_sequencing(t) ? clocked_pattern(*this, t) : pattern_count;
+    if (anvil_pattern == sheet.anvil_pattern) return;
+    sheet.anvil_pattern = uint8_t(anvil_pattern);
+    if (sheet.clocked_anvil()) sheet.tap = PrintTap::PostFx;
     sheet.eligible = eligible_patterns(*this, t, anvil_pattern);
     if (!sheet.picks_touched) sheet.picks = frozen(t) ? prints.freeze[t].patterns : sheet.eligible;
-    for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
-    // RUN can arrive after PRINT opened on a queued pattern's bank. Follow the automatic pick
-    // while the sheet is still on its default bank.
-    if (clocked && !sheet.picks_touched && ui.pattern_bank == sheet.default_bank && sheet.picked(anvil_pattern))
+    // A manually picked empty pattern can still carry Anvil's sequence after the track launches another.
+    if (!sheet.clocked_anvil() || !sheet.picks_touched)
+        for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
+    // Follow the automatic pick when RUN arrives or a queued pattern takes over.
+    if (sheet.clocked_anvil() && !sheet.picks_touched && ui.pattern_bank == sheet.default_bank && sheet.picked(anvil_pattern))
         ui.pattern_bank = sheet.default_bank = uint8_t(anvil_pattern / pattern_pads);
 }
 
@@ -176,8 +176,11 @@ void Context::print_sheet_all() {
     refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
-    if (none_of(sheet.eligible)) return;
-    sheet.picks = sheet.picks == sheet.eligible ? decltype(sheet.picks) {} : sheet.eligible;
+    auto eligible = sheet.eligible;
+    if (sheet.clocked_anvil())
+        for (size_t n = 0; n < eligible.size(); ++n) eligible[n] |= sheet.picks[n];
+    if (none_of(eligible)) return;
+    sheet.picks = sheet.picks == eligible ? decltype(sheet.picks) {} : eligible;
     sheet.picks_touched = true;
 }
 
@@ -203,7 +206,7 @@ void Context::print_sheet_go(bool deep_freeze) {
     ask.deep = deep_freeze;
     if (deep_freeze) { sheet.picks = sheet.eligible = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
-    if (!freeze(ask)) return;
+    if (!freeze(ask, &sheet)) return;
     sheet.printing = true;
     sheet.serial = freeze_serial[t];
 }

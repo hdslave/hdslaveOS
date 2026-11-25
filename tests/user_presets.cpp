@@ -654,8 +654,11 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
     const bool with_note = mode == "anvil-freeze-note";
     const bool ring_launch = mode == "anvil-freeze-ring-launch";
     const bool queued_run = mode == "anvil-freeze-queued-run";
-    const bool manual_bank = mode == "anvil-freeze-panel-bank-manual";
-    const bool queued_bank = manual_bank || mode == "anvil-freeze-panel-bank";
+    const bool run_stops = mode == "anvil-freeze-run-stops";
+    const bool manual_bank = mode == "anvil-freeze-panel-bank-manual" || mode == "anvil-freeze-panel-handoff-bank";
+    const bool manual_picks = mode == "anvil-freeze-panel-handoff-picks";
+    const bool handoff = manual_picks || mode == "anvil-freeze-panel-handoff" || mode == "anvil-freeze-panel-handoff-bank";
+    const bool queued_bank = handoff || manual_bank || mode == "anvil-freeze-panel-bank";
     const bool panel_pending = queued_bank || mode == "anvil-freeze-panel-pending";
     const bool panel_run = panel_pending || mode == "anvil-freeze-panel-run";
     struct Audio {
@@ -689,13 +692,20 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         track.plugin = 0;
         std::snprintf(c.project.plugins[0].path, sizeof(PluginRef::path), "%s", plugin.c_str());
         track.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 0, 35, 60, 9, 0}};
-        auto& pattern = c.patterns.at[0][0];
+        const unsigned printed_pattern = handoff && !manual_picks ? pattern_pads : 0;
+        auto& pattern = c.patterns.at[0][printed_pattern];
         pattern.length = c.project.bar_ticks();
         if (with_note) {
             Step hit;
             hit.notes[0] = {38, 85};
             hit.length = 5;
             pattern.set_step(3, hit);
+        }
+        if (run_stops) {
+            Step hit;
+            hit.notes[0] = {38, 85};
+            hit.length = 5;
+            c.patterns.at[0][1].set_step(3, hit);
         }
         const Pattern original = pattern;
         host->load(c.project, c.patterns);
@@ -736,7 +746,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             CHECK(!rack->anvil_sequencer_running(0));
         }
         c.open(PageId::Stage);
-        if (freeze && !with_note) {
+        if (freeze && !with_note && !run_stops) {
             c.project.plugins[0].transport = false;
             tap(SurfaceButton::SampleRecord);
             CHECK(!shell->ui().print_sheet.picked(0));
@@ -773,6 +783,20 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         advance(requested);
         if (queued_run)
             rack->set_param_index(0, generation, run_index, 1000);
+        if (run_stops) {
+            tap(SurfaceButton::SampleRecord);
+            CHECK(shell->ui().print_sheet.picked(0) && shell->ui().print_sheet.picked(1));
+            tap(SurfaceButton::TopRight);
+            CHECK(shell->ui().print_sheet.printing && c.freeze_pending(0));
+            rack->set_param_index(0, generation, run_index, 0);
+            render();
+            CHECK(!rack->anvil_sequencer_running(0));
+            c.print_tick();
+            CHECK(!printer->busy() && !c.freeze_pending(0) && !c.frozen(0));
+            CHECK(!c.prints.find(0, 0) && !c.prints.find(0, 1));
+            CHECK(std::string(shell->ui().notice) == "Track 1 live: empty pattern");
+            return std::make_pair(Audio {}, Audio {});
+        }
         if (queued_bank) {
             c.launch(0, pattern_pads); // B1 is queued while A1 still plays.
             advance(requested + 1);
@@ -797,6 +821,18 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             CHECK(rack->state(0) == patch);
         }
+        if (handoff) {
+            if (freeze) {
+                c.print_tick(); // RUN landed while A1 was still playing.
+                CHECK(shell->ui().print_sheet.picked(0) && !shell->ui().print_sheet.picked(pattern_pads));
+                if (manual_picks) {
+                    c.print_sheet_pad(0);
+                    c.print_sheet_pad(0); // Explicitly keep A1 selected.
+                }
+            }
+            while (host->pattern_of(0) == 0 && blocks < 2 * bar_blocks) advance(blocks + 1);
+            CHECK(host->pattern_of(0) == pattern_pads);
+        }
         if (freeze) {
             if (!panel_pending) tap(SurfaceButton::SampleRecord);
             const auto& sheet = shell->ui().print_sheet;
@@ -804,13 +840,14 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
                 // At 44.1 kHz exercise the periodic sheet refresh. At 48 kHz press B3 before
                 // any print tick can refresh the already open sheet.
                 if (panel_pending) c.print_tick();
-                CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
-                if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : 0));
+                CHECK(shell->ui().page == PageId::Print && sheet.picked(printed_pattern) && !sheet.picked(1));
+                if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : printed_pattern));
             }
             if (ring_launch) shell->ui().print_sheet.tail = PrintTail::Ring;
             tap(SurfaceButton::TopRight);
-            CHECK(sheet.printing && sheet.picked(0) && !sheet.picked(1));
-            if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : 0));
+            CHECK(sheet.printing && sheet.picked(printed_pattern) && !sheet.picked(1));
+            if (handoff) CHECK(!sheet.picked(printed_pattern == 0 ? pattern_pads : 0));
+            if (queued_bank) CHECK(shell->ui().pad_pattern(0) == (manual_bank ? 2 * pattern_pads : printed_pattern));
             c.print_tick();
             if (queued_run) {
                 CHECK(c.freeze_pending(0) && !printer->busy());
@@ -826,14 +863,17 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             advance(requested + 1);
             CHECK(rack->anvil_sequencer_running(0) && rack->state(0) == patch);
         }
-        if (queued_bank) c.launch(0, 0); // Keep A1 through the printed and live comparison bars.
-        advance(2 * bar_blocks);
+        if (queued_bank && printed_pattern == 0)
+            c.launch(0, 0); // Keep or return to A1 for the printed and live comparison bars.
+        // A request made after the launch reaches the next bar later than the other cases.
+        const unsigned printed_bar = handoff ? 3 : 2;
+        advance(printed_bar * bar_blocks);
         std::vector<uint8_t> saved;
         Audio launch;
         if (freeze) {
             CHECK(c.frozen(0) && !c.deep(0) && (host->printing_tracks() & 1));
             CHECK(!(host->sleeping_tracks() & 1));
-            const auto* record = c.prints.find(0, 0);
+            const auto* record = c.prints.find(0, printed_pattern);
             CHECK(record && record->tap == PrintTap::PostFx &&
                   record->tail == (ring_launch ? PrintTail::Ring : PrintTail::Loop));
             SampleData wav;
@@ -845,7 +885,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             } else {
                 CHECK(wav.frames == bar_blocks * block);
                 Audio printed;
-                advance(3 * bar_blocks, &printed);
+                advance((printed_bar + 1) * bar_blocks, &printed);
                 CHECK(printed.left == wav.left && printed.right == wav.right);
                 if (!with_note && !queued_run) {
                     auto states = rack->states();
@@ -853,7 +893,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
                 }
             }
         }
-        const unsigned unfreeze = 3 * bar_blocks + (ring_launch ? ring_blocks : 0);
+        const unsigned unfreeze = (printed_bar + 1) * bar_blocks + (ring_launch ? ring_blocks : 0);
         if (ring_launch) {
             advance(2 * bar_blocks + bar_blocks / 2);
             c.launch(0, 1);
@@ -880,13 +920,13 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             PrintTable prints;
             PluginStates states;
             CHECK(load_project(saved, *project, *bank, nullptr, &states, &prints).empty());
-            CHECK(bank->at[0][0].empty() && prints.freeze[0].plays(0));
+            CHECK(bank->at[0][printed_pattern].empty() && prints.freeze[0].plays(printed_pattern));
             c.stop();
             render();
             c.switch_to(*project, *bank, c.project_path, &states, &prints);
             spin([&] { return rack->status(0) == PluginStatus::Ready && (host->frozen_tracks() & 1); });
             c.open_print_sheet();
-            CHECK(shell->ui().print_sheet.picked(0));
+            CHECK(shell->ui().print_sheet.picked(printed_pattern));
             c.play();
             tick();
             render();
@@ -894,6 +934,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         }
         return std::make_pair(std::move(launch), std::move(live));
     };
+    if (run_stops) { play(true); return; }
     const auto [live_launch, uninterrupted] = play(false);
     const auto [frozen_launch, resumed] = play(true);
     if (ring_launch) {
@@ -926,9 +967,11 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note" ||
-        mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run" ||
+        mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run" || mode == "anvil-freeze-run-stops" ||
         mode == "anvil-freeze-panel-run" || mode == "anvil-freeze-panel-pending" ||
-        mode == "anvil-freeze-panel-bank" || mode == "anvil-freeze-panel-bank-manual") {
+        mode == "anvil-freeze-panel-bank" || mode == "anvil-freeze-panel-bank-manual" ||
+        mode == "anvil-freeze-panel-handoff" || mode == "anvil-freeze-panel-handoff-bank" ||
+        mode == "anvil-freeze-panel-handoff-picks") {
         CHECK(argc <= 6);
         anvil_freeze(card, plugin, mode, argc >= 5 ? std::stoul(argv[4]) : 44100, argc == 6 ? std::stoi(argv[5]) : 2);
         return 0;

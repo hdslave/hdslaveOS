@@ -152,11 +152,18 @@ class PluginHostTests(unittest.TestCase):
     def test_anvil_freeze_waits_for_queued_run_edit(self):
         self.run_anvil_fixture("anvil-freeze-queued-run")
 
+    def test_anvil_freeze_refuses_a_partial_print_if_run_turns_off(self):
+        self.run_anvil_fixture("anvil-freeze-run-stops")
+
     def test_anvil_print_opens_after_native_panel_run_without_reopening(self):
         self.run_anvil_fixture("anvil-freeze-panel-run", "anvil-freeze-panel-pending")
 
     def test_anvil_print_shows_the_selected_bank_when_panel_run_arrives_late(self):
         self.run_anvil_fixture("anvil-freeze-panel-bank", "anvil-freeze-panel-bank-manual")
+
+    def test_anvil_print_stays_usable_across_a_queued_pattern_handoff(self):
+        self.run_anvil_fixture("anvil-freeze-panel-handoff", "anvil-freeze-panel-handoff-bank",
+                               "anvil-freeze-panel-handoff-picks")
 
     def test_knob_takeover_on_plugin_screen_changes(self):
         for mode in ("knob-scaled", "knob-pickup", "knob-instant"):
