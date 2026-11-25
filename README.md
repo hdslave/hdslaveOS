@@ -5,7 +5,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 
 <p align="center">
   <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Mixer, Step Edit, and Deep Freeze screens" width="760">
-  <br><sub>Screenshots from the hdslaveOS 0.8.1 development build.</sub>
+  <br><sub>hdslaveOS 0.8.1 screenshots.</sub>
 </p>
 
 ## What hdslaveOS adds over stock Melodee
@@ -62,7 +62,7 @@ All eleven plug-ins in the [hdslave MPC Sample Synths & Drum Machines](https://g
 
 #### Opening a plug-in screen
 
-On an instrument track, Edit opens the custom screen. On Stage, press **B1** to move from **PRESETS** to **PANEL**. In an FX chain, select Cortex Filter to see its compact view. Push the encoder to open the full panel. **B3** or **Shift + Push** returns to the chain, and **Shift + B3** opens the slot sheet.
+On an instrument track, press **B1** on Stage to move from **PRESETS** to **PANEL** and open the plug-in’s custom screen. **EDIT** shows Melodee’s parameter pages. In an FX chain, select Cortex Filter to see its compact view. Push the encoder to open the full panel. **B3** or **Shift + Push** returns to the chain, and **Shift + B3** opens the slot sheet.
 
 <p align="center">
   <img src="docs/images/plugins/cortex-filter-panel.png" alt="Cortex Filter below the selected Track FX slot, showing the morph cube, filter response and three knobs" width="400">
