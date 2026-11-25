@@ -160,6 +160,16 @@ void Context::refreeze(unsigned track) {
     request_freeze(t, prints.freeze[t]);
 }
 
+static void begin_thaw(Context& context, unsigned t) {
+    const uint32_t bit = 1u << t;
+    if (!(context.thawing & bit)) {
+        context.thawing |= bit;
+        context.thaw_since[t] = context.now ? context.now : 1;
+        context.thaw_ready[t] = 0;
+    }
+    context.notice("Thawing track " + std::to_string(t + 1));
+}
+
 void Context::unfreeze(unsigned track) {
     const unsigned t = track % track_count;
     const uint32_t bit = 1u << t;
@@ -169,8 +179,7 @@ void Context::unfreeze(unsigned track) {
     clock_thawing &= ~bit;
     // A sleeping plug-in reloads beside its prints and goes live once ready (thaw_tick).
     if (deep(t) && !(deep_hold & bit)) {
-        if (!(thawing & bit)) { thawing |= bit; thaw_since[t] = now ? now : 1; thaw_ready[t] = 0; }
-        notice("Thawing track " + std::to_string(t + 1));
+        begin_thaw(*this, t);
     } else if (go_live(t)) {
         notice(name + " live");
     } else {
@@ -230,8 +239,9 @@ void Context::print_tick() {
         if (clock && clock != clock_thaw_seen[t] && clock == host.active_freeze_serial(t) &&
             deep(t) && !freeze_pending(t) && !((thawing | unfreeze_waiting) & bit)) {
             clock_thaw_seen[t] = clock;
-            unfreeze(t);
-            clock_thawing |= thawing & bit;
+            // Even while the plug-ins are still loaded, the print has already taken over the pattern's notes.
+            clock_thawing |= bit;
+            begin_thaw(*this, t);
         }
     }
     bool delivery_blocked = false;

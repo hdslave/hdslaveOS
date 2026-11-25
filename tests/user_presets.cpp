@@ -282,7 +282,8 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const bool reload_fails = mode == "deep-freeze-active-reload-fails";
     const bool clock_reverts = mode == "deep-freeze-active-clock-reverts";
     const bool active_clock = active_lead || reload_fails || clock_reverts || mode == "deep-freeze-active-tempo";
-    const bool short_bar = change_tempo || empty_handoff || other_lead || active_clock;
+    const bool unload_grace = mode == "deep-freeze-unload-grace";
+    const bool short_bar = change_tempo || empty_handoff || other_lead || active_clock || unload_grace;
     const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
     if (memory) {
@@ -336,11 +337,12 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     for (unsigned p = 0; p < count; ++p) {
         auto& pattern = c.patterns.at[0][p];
         pattern.length = c.project.bar_ticks() * (clock_reverts ? 4 : 1);
-        const unsigned steps = deep ? pattern.length / sixteenth_ticks : 1;
+        const unsigned steps = deep && !unload_grace ? pattern.length / sixteenth_ticks : 1;
         for (unsigned i = 0; i < steps; ++i) {
             Step note;
             note.notes[0] = {uint8_t(60 + p), 110};
             note.length = deep ? 2 : 1;
+            if (unload_grace) note.length = 12; // a single note should sustain through the tempo change
             pattern.set_step(i, note);
         }
     }
@@ -441,18 +443,56 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
             deliver();
             selected(2);
         }
+        constexpr unsigned empty = 2;
+        if (unload_grace) {
+            CHECK(c.patterns.at[0][empty].empty());
+            c.launch(0, empty);
+            render();
+            CHECK(host->pattern_of(0) == empty);
+        }
         CHECK(host->send({Command::Type::Play}));
         for (unsigned i = 0; i < 96; ++i) render(); // ask in the body of the bar
         const auto previous = host->active_freeze_serial(0);
         prepare(1, true);
         deliver();
         CHECK(!c.deep(0) && !(host->printing_tracks() & 1));
+        if (unload_grace) {
+            c.launch(0, 0); // the print wins the first note of the filled pattern at the handoff bar
+            for (unsigned n = 0; n < 4 * rate / block && !(host->printing_tracks() & 1); ++n) render();
+            CHECK(host->pattern_of(0) == 0 && (host->printing_tracks() & 1));
+            c.print_tick();
+            CHECK(c.deep(0) && (c.deep_hold & 1));
+            CHECK(rack->status(0) == PluginStatus::Ready && !rack->asleep(0));
+
+            for (unsigned n = 0; n < 24; ++n) render(); // move past the first note-on while the plug-in is still held
+            const auto audible = [&] { return std::any_of(audio.begin(), audio.end(), [](int32_t v) { return v != 0; }); };
+            CHECK(host->position_of(0) > 2 && audible());
+            c.set_tempo(1260);
+
+            const uint32_t since = c.now;
+            bool went_live = false;
+            for (unsigned n = 0; n < 4 * rate / block; ++n) {
+                c.now = since + uint32_t(uint64_t(n) * block * 1000 / rate);
+                c.plugins_tick(c.now);
+                c.print_tick();
+                render();
+                if (n < 160) CHECK(audible()); // the printed note has not reached its end
+                if (host->frozen_tracks() & 1) continue;
+                CHECK(n >= 160 && rack->status(0) == PluginStatus::Ready);
+                CHECK(host->position_of(0) >= 0 && host->position_of(0) <= 2);
+                went_live = true;
+                c.print_tick();
+                break;
+            }
+            CHECK(host->tempo_now() == 1260 && went_live && !c.frozen(0));
+            CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+            return;
+        }
         if (change_tempo || stale_launch) c.set_tempo(1260); // after the audio engine has queued the 120 BPM pack
         if (other_lead) {
             if (switched_off) c.track_off(0);
             c.launch(1, 1); // another track leads the handoff bar at 120 BPM
         }
-        constexpr unsigned empty = 2;
         if (empty_handoff) {
             CHECK(c.patterns.at[0][empty].empty());
             c.launch(0, empty);

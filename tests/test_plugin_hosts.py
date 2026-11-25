@@ -140,6 +140,9 @@ class PluginHostTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_freeze_transition(mode)
 
+    def test_deep_freeze_keeps_playback_when_tempo_changes_during_unload_grace(self):
+        self.run_freeze_transition("deep-freeze-unload-grace")
+
     def test_deep_freeze_keeps_playback_when_tempo_changes_after_unload(self):
         for mode in ("deep-freeze-active-tempo", "deep-freeze-active-lead", "deep-freeze-active-reload-fails"):
             with self.subTest(mode=mode):
