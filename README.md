@@ -92,6 +92,10 @@ page and control, read the [user guide](docs/GUIDE.md).
   **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
 
+On firmware 1.4, each Melodee start clears the `imb-dev-mode-used` record
+after the stock app stops, if the record exists. Returning to stock can
+set it again. This does not change Developer Mode or LoadPin.
+
 ## Install
 
 1. Download the latest `Melodee-MPC-Sample-<version>.zip` from
