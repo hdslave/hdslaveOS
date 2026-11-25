@@ -231,12 +231,16 @@ intptr_t Vst2Instance::hostCallback (vst2::Effect* effect, int32_t opcode, int32
         {
             const char* asked = (const char*) ptr;
             for (const char* yes : { "sendVstEvents", "sendVstMidiEvent", "sendVstTimeInfo", "receiveVstEvents", "receiveVstMidiEvent",
-                                     MELODEE_SCREEN_VST2_CANDO })
+                                     MELODEE_SCREEN_VST2_CANDO, MELODEE_SCREEN_VST2_KEYS_CANDO })
                 if (asked != nullptr && std::strcmp (asked, yes) == 0)
                     return 1;
             return 0;
         }
-        case vst2::host::vendorSpecific: // its own screen: a draw asked for, and maybe a block run (any thread)
+        case vst2::host::vendorSpecific: // its own screen: a draw asked for, and maybe a block run; the keys it takes (any thread)
+            if (index == MELODEE_SCREEN_VST2_KEYS && self != nullptr) {
+                self->keys.store (uint32_t (value), std::memory_order_release);
+                return 1;
+            }
             if (index != MELODEE_SCREEN_VST2 || self == nullptr) return 0;
             self->redraw.store (true, std::memory_order_release);
             if ((value & MELODEE_SCREEN_RUN) != 0) self->runAsked.store (true, std::memory_order_release);

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include "melodee/plugin/plugin_screen.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/ui_state.h"
 #include "melodee/shell/mixer_channels.h"
@@ -64,6 +65,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 // Whether Erase tapped on its own has a job on the page in view (its light; the tap itself checks there is
 // something to erase and says so when there is not).
 inline bool erase_tap_page(const UiState& ui) {
+    if (ui.plugin_panel.screen && (ui.plugin_panel.screen_keys & screen_key_erase)) return true; // a plug-in's page that takes it
     switch (ui.page) {
     case PageId::Mixer: return mixer_fx_lit(ui); // its FX block: the lit effect
     case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes:

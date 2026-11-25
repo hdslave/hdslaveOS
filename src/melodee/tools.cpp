@@ -3512,7 +3512,7 @@ static int project_export(bool live, const char* path, const char* folder, const
 namespace {
 // A plug-in's own screen (sdk/melodee-screen/melodee_screen.h) for its maker, without an MPC: opens the plug-in at
 // `path` (a CLAP library's first, or a VST2 .so) as Edit on its PLUGIN track shows it and writes the screen into
-// `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, shift (held until shift again), k1:V, k2:V,
+// `folder` as PNGs, 0.png and one after each step but wait. Steps: wheel:N, push, minus, plus, mute, erase, shift (held until shift again), k1:V, k2:V,
 // k3:V (a pot to V, 0..127, driving its parameter from then), play, stop, wait:MS.
 std::unique_ptr<juce::AudioPluginInstance> open_plugin(const char* path, juce::String& error) {
     const juce::File file {juce::String(path)};
@@ -3704,6 +3704,8 @@ int plugin_screen(const char* path, const std::string& folder, const std::vector
         else if (word == "push") send(MELODEE_SCREEN_PUSH, 1);
         else if (word == "minus") send(MELODEE_SCREEN_STEP, -1);
         else if (word == "plus") send(MELODEE_SCREEN_STEP, 1);
+        else if (word == "mute") send(MELODEE_SCREEN_MUTE, 1);   // sent whatever keys() says: the plug-in's answer is what is tried
+        else if (word == "erase") send(MELODEE_SCREEN_ERASE, 1);
         else if (word == "shift") frame.shift = frame.shift ? 0 : 1;
         else if (word == "play" || word == "stop") frame.playing = word == "play" ? 1 : 0;
         else if (word.size() == 2 && word[0] == 'k' && word[1] >= '1' && word[1] <= '3') {

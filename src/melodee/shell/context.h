@@ -374,6 +374,7 @@ public:
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
+    bool plugin_screen_key(ScreenKey key); // MUTE or ERASE tapped: to the plug-in's own page when it takes the key; false: Melodee's job
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

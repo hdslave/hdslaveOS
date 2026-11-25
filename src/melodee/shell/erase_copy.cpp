@@ -63,6 +63,7 @@ void ask_clear_track(Context& c) {
 bool erase_tap(Context& c) {
     auto& ui = c.ui;
     if (ui.ask != UiState::Ask::None || ui.name.open() || ui.exit_open || ui.seq_held || ui.pad_bank || ui.mute_mode()) return false;
+    if (c.plugin_screen_key(ScreenKey::Erase)) return true; // a plug-in's own page that takes Erase (melodee_screen.h)
     unsigned t = ui.track % track_count;
     switch (ui.page) {
     case PageId::Roll: return !ui.sheet_open && roll_erase(c);

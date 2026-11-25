@@ -37,6 +37,7 @@ struct PluginPanel {
     // drawn at least once, and `params` hold the three it puts on K1-K3 (bound as plugin_screen_slot + k).
     bool has_screen = false;
     bool screen = false;
+    uint8_t screen_keys = 0;       // the printed buttons that screen's page takes (screen_key_mute, screen_key_erase)
     char name[32] {};
     char format[8] {};             // VST3, VST2, ARMV7
     char error[64] {};             // why it failed

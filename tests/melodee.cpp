@@ -8358,6 +8358,10 @@ void erase_copy_everywhere() {
     ui.page = PageId::Project; ui.project_list = false; CHECK(!erase_tap_page(ui));
     ui.project_list = true; CHECK(erase_tap_page(ui));
     ui.page = PageId::Stage; CHECK(!erase_tap_page(ui));
+    ui.plugin_panel.screen = true; CHECK(!erase_tap_page(ui)); // a plug-in's own page: only when it takes Erase
+    ui.plugin_panel.screen_keys = screen_key_mute; CHECK(!erase_tap_page(ui));
+    ui.plugin_panel.screen_keys = screen_key_mute | screen_key_erase; CHECK(erase_tap_page(ui));
+    ui.plugin_panel = PluginPanel {};
 
     // Erase lit wherever it has a job, Shift + Erase wherever Copy does.
     using B = SurfaceButton;
