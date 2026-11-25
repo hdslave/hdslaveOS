@@ -84,9 +84,11 @@ $(OUT)/mpc/obj/%.o: %.cpp $(HEADERS) $(OUT)/gen/fonts.h | $(SRC)/.exported
 	@mkdir -p $(@D)
 	$(ZIG) c++ $(MPC_FLAGS) $(FLAGS) $(WARN) -c $< -o $@
 
+# -z nodelete: the library stays mapped after the host's dlclose. Its statically linked libc++ leaves exit handlers
+# behind that would otherwise call into unmapped code when the host exits (a crash, seen with any zig-built CLAP).
 $(OUT)/mpc/lo-fly/lo-fly.clap: $(MPC_OBJ) lo-fly.map $(OUT)/mpc/lo-fly/FONTS.txt
 	@mkdir -p $(@D)/Presets
-	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-s $(MPC_OBJ) -o $@
+	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-z,nodelete -Wl,-s $(MPC_OBJ) -o $@
 # The panel's type is drawn from National Park: its licence goes with the plug-in.
 $(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/NationalPark.ttf
 	@mkdir -p $(@D)
