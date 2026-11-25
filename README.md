@@ -205,6 +205,8 @@ the `Melodee` folder at the top level), in any subfolders. Melodee loads:
 Plug-ins built only for Windows or macOS do not run on the MPC. The
 plug-in picker shows them dimmed, with the reason.
 
+The [MPC plug-in collection with Slink 0.6.0](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/tag/v0.8.2-slink.1) updates the acid synth bundled with hdslaveOS 0.8.2. For an existing setup, the [Slink MPC Sample download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) updates just that instrument. Extract its Melodee folder over the existing one, select **hdslave Slink**, and open **Stage → Panel**. The plug-in keeps its original device filename for saved projects.
+
 The Melodee synths are free downloads:
 [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
 [Melodee Chip](https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest). From each release, download the
