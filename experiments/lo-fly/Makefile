@@ -13,10 +13,9 @@ LOFLY_DIR ?= $(ROOT)/../lo-fly
 LOFLY_REV ?= HEAD
 OUT ?= $(ROOT)/build/lo-fly
 CLAP_INCLUDE ?= $(ROOT)/build/deps/clap/include
-# Doto (SIL OFL 1.1, Google Fonts' repository) and Spleen (BSD 2-Clause, its GitHub release): `make fonts`
+# Spleen (BSD 2-Clause), from its GitHub release: `make fonts`
 FONT_DIR ?= $(OUT)/fonts
 SPLEEN := 2.3.0
-FONTS_URL := https://raw.githubusercontent.com/google/fonts/main/ofl
 PYTHON ?= python3
 ZIG ?= zig
 CXX_MAC ?= clang++
@@ -60,20 +59,17 @@ endif
 $(SRC)/dsp/src/%.cpp: | $(SRC)/.exported ;
 .PRECIOUS: $(SRC)/dsp/src/%.cpp
 
-$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/Doto-VF.ttf $(FONT_DIR)/spleen-6x12.otf
+$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/spleen-6x12.otf
 	$(PYTHON) fonts.py $(FONT_DIR) $@
 
-fonts: $(FONT_DIR)/Doto-VF.ttf $(FONT_DIR)/spleen-6x12.otf
+fonts: $(FONT_DIR)/spleen-6x12.otf
 $(FONT_DIR)/spleen-6x12.otf:
 	@mkdir -p $(FONT_DIR)/spleen
 	curl -sfL -o $(FONT_DIR)/spleen/spleen-$(SPLEEN).tar.gz https://github.com/fcambus/spleen/releases/download/$(SPLEEN)/spleen-$(SPLEEN).tar.gz
-	tar -xzf $(FONT_DIR)/spleen/spleen-$(SPLEEN).tar.gz -C $(FONT_DIR)/spleen spleen-$(SPLEEN)/spleen-6x12.otf spleen-$(SPLEEN)/spleen-8x16.otf spleen-$(SPLEEN)/LICENSE
-	cp $(FONT_DIR)/spleen/spleen-$(SPLEEN)/spleen-6x12.otf $(FONT_DIR)/spleen/spleen-$(SPLEEN)/spleen-8x16.otf $(FONT_DIR)/
+	tar -xzf $(FONT_DIR)/spleen/spleen-$(SPLEEN).tar.gz -C $(FONT_DIR)/spleen spleen-$(SPLEEN)/spleen-6x12.otf spleen-$(SPLEEN)/spleen-8x16.otf \
+		spleen-$(SPLEEN)/spleen-12x24.otf spleen-$(SPLEEN)/LICENSE
+	cp $(FONT_DIR)/spleen/spleen-$(SPLEEN)/spleen-*.otf $(FONT_DIR)/
 	cp $(FONT_DIR)/spleen/spleen-$(SPLEEN)/LICENSE $(FONT_DIR)/Spleen-LICENSE.txt
-$(FONT_DIR)/Doto-VF.ttf:
-	@mkdir -p $(@D)
-	curl -sfL -o $@ "$(FONTS_URL)/doto/Doto%5BROND%2Cwght%5D.ttf"
-	curl -sfL -o $(@D)/Doto-OFL.txt $(FONTS_URL)/doto/OFL.txt
 
 HEADERS := store.h panel.h $(ROOT)/sdk/melodee-screen/melodee_screen.h
 
@@ -93,12 +89,11 @@ $(OUT)/mpc/obj/%.o: %.cpp $(HEADERS) $(OUT)/gen/fonts.h | $(SRC)/.exported
 $(OUT)/mpc/lo-fly/lo-fly.clap: $(MPC_OBJ) lo-fly.map $(OUT)/mpc/lo-fly/FONTS.txt
 	@mkdir -p $(@D)/Presets
 	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-s $(MPC_OBJ) -o $@
-# The panel's type is drawn from Doto and Spleen: their licences go with the plug-in.
-$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/Doto-VF.ttf $(FONT_DIR)/spleen-6x12.otf
+# The panel's type is drawn from Spleen: its licence goes with the plug-in.
+$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/spleen-6x12.otf
 	@mkdir -p $(@D)
-	{ echo "lo-fly's panel draws its text from Doto (SIL Open Font License 1.1) and Spleen (BSD 2-Clause License)."; \
-	  echo; echo "=== Doto ==="; cat $(FONT_DIR)/Doto-OFL.txt; \
-	  echo; echo "=== Spleen ==="; cat $(FONT_DIR)/Spleen-LICENSE.txt; } > $@
+	{ echo "lo-fly's panel draws its text from Spleen, under the BSD 2-Clause License."; \
+	  echo; cat $(FONT_DIR)/Spleen-LICENSE.txt; } > $@
 
 $(BUNDLE)/Contents/MacOS/lo-fly: $(MAC_OBJ)
 	@mkdir -p $(@D)
