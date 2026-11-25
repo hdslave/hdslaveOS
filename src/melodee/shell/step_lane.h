@@ -88,6 +88,17 @@ inline bool lock_in(const Pattern& p, uint32_t from, uint32_t to, int pad) {
     return false;
 }
 
+// Erase + pot on a lock card: the lock on lane (`param`, `pad`) that starts at `tick` out, the notes and the lane's
+// recorded moves kept; false when there was none.
+inline bool remove_lock(Pattern& p, uint32_t tick, unsigned param, unsigned pad) {
+    for (size_t n = p.motion_lower(tick); n < p.motion.size() && p.motion[n].tick == tick; ++n)
+        if (p.motion[n].on(param, pad) && p.motion[n].lock()) {
+            p.motion.erase(p.motion.begin() + std::ptrdiff_t(n));
+            return true;
+        }
+    return false;
+}
+
 // A note of `lane` at the start of step `s`, a step long; false when the pattern is full.
 inline bool add_lane_note(Pattern& p, unsigned s, uint8_t lane, uint8_t velocity) {
     Event e;

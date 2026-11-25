@@ -759,11 +759,13 @@ hold to steer, Shift + Seq to zoom in**.
     the cards are the Motion page's three lanes, each showing its lock on
     that step (else the track's own value), and a turn writes a lock
     there, for as long as the step's longest note on its lane (a step at
-    least); a locked step has a square at its top. The wheel changes a
+    least); a locked step has a square at its top; Erase + that pot takes
+    the lane's lock out, the notes kept ("Erase <lane> lock", in the
+    hold's undo step; "No lock on <lane>" where none). The wheel changes a
     held step's pitch (a kit: moves the note to the next pad, the lane with
     it). Erase + pad clears the step.
   B1 steps through the card sets: NOTE, LOCK (the Motion lanes locked on
-  the caret's step), TRIG (ratchet, ramp, condition; Shift + K2 a kit
+  the caret's step; Erase + pot takes one out), TRIG (ratchet, ramp, condition; Shift + K2 a kit
   pad's pitch ramp), and on a kit or Drums lane EUCLID: K1 hits, K2 steps
   (1–64), K3 rotation, Shift + K1 the lane length; each turn lays that
   rhythm on the lane at once as notes a step of Q each (its old notes go,
@@ -820,7 +822,7 @@ hold to steer, Shift + Seq to zoom in**.
   the header; K1 its length, K2 velocity, K3 chance, Shift + K1 NUDGE (how
   many ticks it sits early or late of its nearest grid line; the cursor
   follows it) (ROLL again: its ratchet, drawn as its hits along the note). A pad held on the note in
-  focus turns the cards to locks on it, as a step held on Step Edit's STEPS mode (header
+  focus turns the cards to locks on it (Erase + pot: that lock out), as a step held on Step Edit's STEPS mode (header
   LOCK; a locked note has a square at its start). A pad writes its note
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in

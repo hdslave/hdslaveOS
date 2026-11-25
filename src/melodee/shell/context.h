@@ -232,6 +232,10 @@ public:
     // held writes a lock there: `lane` holds `value` from `tick` for `hold` ticks. Recorded moves reach the audio
     // thread at most every motion_sync_ms (a pattern copy each), flush_motion() sending the last when it is due.
     void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
+    // Erase + pot on a lock card (Binding::Kind::Lock): that lane's lock on the held step or note (or the caret's step
+    // on LOCK) out, its notes kept, in the same undo step as a turn. False when it held none ("No lock on ..." when
+    // `say_none`).
+    bool clear_lock(const Binding& b, bool say_none);
     void sync_motion(unsigned track, unsigned pattern);
     void flush_motion();
     void take_arp_notes(); // Seq Record: the arp's (Note Repeat's) notes as they played, into their patterns

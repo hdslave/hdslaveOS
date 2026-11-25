@@ -425,6 +425,7 @@ void Shell::press(Button b, bool pressed) {
             return;
         }
         ui.erase_used = ui.shift || ui.copying != UiState::Copying::Off; // Copy, or leaving it, is the press's job
+        ui.erase_cleared = 0;
         if (ui.shift) { // Shift + Erase: Copy, as printed, of what the page holds (shell/erase_copy.h; again: off)
             ui.shift_used = true;
             if (ui.pad_bank) ui.pad_bank_used = true;
@@ -644,6 +645,12 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         int lane = motion_lanes(*project_, ui_, context_.pattern())[n];
         if (lane >= 0 && context_.pattern().has_lane(lane_param(lane), lane_pad(lane) % sampler_pads)) ask(context_, UiState::Ask::EraseLane, lane);
         else context_.notice("No motion on " + lane_name(context_.track(), lane, project_.get()));
+        return;
+    }
+    if (ui_.erase && b.kind == Binding::Kind::Lock) { // Erase + pot on a lock card: that lane's lock out, the notes kept
+        const auto bit = uint8_t(1u << n);
+        if (context_.clear_lock(b, !(ui_.erase_cleared & bit))) ui_.erase_cleared |= bit; // the rest of the turn: quiet
+        pot.engaged = false; pot.bound = 0;
         return;
     }
     if (ui_.erase && b.kind == Binding::Kind::Param) { // Erase + pot: back to the initial value

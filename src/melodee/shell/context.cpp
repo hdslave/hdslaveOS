@@ -1421,6 +1421,26 @@ void Context::write_lock(int lane, uint32_t tick, uint16_t hold, int value) {
     sync_motion(ui.track, t.pattern);
 }
 
+bool Context::clear_lock(const Binding& b, bool say_none) {
+    uint32_t tick = 0, hold = 0;
+    if (b.kind != Binding::Kind::Lock || b.id < 0 || !lock_place(project, ui, pattern(), tick, hold)) return false;
+    const int lane = int(b.id);
+    const unsigned param = lane_param(lane), pad = lane_pad(lane) % sampler_pads;
+    tick %= std::max<uint32_t>(pattern().length, 1);
+    const std::string name = lane_name(track(), lane, &project);
+    if (!pattern().lock_at(tick, param, pad)) {
+        if (say_none) notice("No lock on " + name);
+        return false;
+    }
+    if (frozen_edit(freeze_scope(project, ui, b))) return false; // a frozen track's prints hold it: "Unfreeze track N?" first
+    touch_gesture(b); // as a turn of the card: a held step's undo step takes it in
+    remove_lock(pattern(), tick, param, pad);
+    sync_motion(ui.track, track().pattern);
+    ui.held_edited = true; // Steps: letting the step go keeps it
+    notice("Erase " + name + " lock");
+    return true;
+}
+
 void Context::sync_motion(unsigned t, unsigned p) {
     int which = int((t % track_count) << 8 | (p % pattern_count));
     if (motion_waiting >= 0 && motion_waiting != which) sync_pattern(unsigned(motion_waiting) >> 8, unsigned(motion_waiting) & 0xff);

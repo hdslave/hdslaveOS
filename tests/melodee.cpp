@@ -9297,6 +9297,22 @@ void pattern_motion() {
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength && !lock_place(*project, ui, q, tick, hold));
         ui.page = PageId::Roll; ui.roll_key = 60; ui.held_note = 4;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::Lock && lock_place(*project, ui, q, tick, hold) && hold == 48);
+        // Erase + pot on a lock card: that lane's lock out; the step's note, the other lane's lock and the lane's
+        // recorded moves stay, and the card shows the track's own value again.
+        const unsigned first = lane_param(cards[0].id), second = lane_param(cards[1].id);
+        q.write_motion(point(3, second, 9, 0, 48));
+        q.write_motion(point(5, first, 30)); // a recorded move
+        CHECK(erase_resets(cards[0]) && erase_resets(cards[1]));
+        CHECK(!remove_lock(q, 4 * sixteenth_ticks, first, 0) && !remove_lock(q, 5 * sixteenth_ticks, first, 0)); // none; a move is no lock
+        CHECK(remove_lock(q, 3 * sixteenth_ticks, first, 0) && !q.lock_at(3 * sixteenth_ticks, first, 0));
+        CHECK(q.lock_at(3 * sixteenth_ticks, second, 0) && q.lane_points(first, 0) == 1 && q.events.size() == 1);
+        CHECK(!remove_lock(q, 3 * sixteenth_ticks, first, 0));
+        ui.page = PageId::StepEdit; ui.held_step = 3;
+        int shown = 0; // the lanes with moves come first now: the card found by its lane
+        for (const auto& b : page_bindings(*project, ui, q, false))
+            if (b.kind == Binding::Kind::Lock && lane_param(b.id) == first)
+                shown += b.value == project->tracks[0].params[size_t(info.favourites[0])];
+        CHECK(shown == 1);
     }
 }
 

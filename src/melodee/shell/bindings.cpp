@@ -317,7 +317,8 @@ bool pad_reset_value(const Binding& b, int& value) {
 
 bool erase_resets(const Binding& b) {
     int value = 0;
-    return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || pad_reset_value(b, value);
+    return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || b.kind == Kind::Lock
+        || pad_reset_value(b, value);
 }
 
 namespace {

@@ -237,7 +237,8 @@ Roll is a piano roll. On a kit, each row is a pad.
 - **K1** length, **K2** velocity, **K3** chance of the note under the cursor.
   **SHIFT** + **K1**: nudge the note early or late.
 - Hold a pad on the note under the cursor and turn **K1**–**K3** to lock
-  Motion lanes on it.
+  Motion lanes on it. Hold **ERASE** too and turn a knob to clear that
+  knob's lock. The note stays.
 - **ERASE** pressed alone deletes the note under the cursor. **ERASE** + pad
   deletes every note of that pad's key (asks first).
 - Push the encoder for the note sheet: accent, slide, tie and delete as
@@ -348,6 +349,9 @@ STEPS mode:
 - **Hold a step** and turn **K1**–**K3** to lock Motion lanes on it (a
   parameter lock). Turn the encoder to change its pitch; on a kit this moves
   the note to the next pad.
+- **Clear a lock**: hold the step, then hold **ERASE** and turn the knob of
+  the lock. The step's notes and its other locks stay. **SHIFT** + **−**
+  brings the lock back.
 - **K1** length, **K2** velocity, **K3** chance of the step. On a kit,
   **SHIFT** + **K1** (**LANE**) sets the pad's lane length. See
   [Lanes of their own length](#lanes-of-their-own-length).
@@ -359,8 +363,8 @@ STEPS mode:
 In both modes:
 
 - **B1** steps through the card sets: **NOTE**, **LOCK** (the Motion lanes
-  locked on the caret's step), **TRIG** and, on a kit or Drums lane,
-  **EUCLID**.
+  locked on the caret's step; **ERASE** + knob clears one), **TRIG** and, on
+  a kit or Drums lane, **EUCLID**.
 - **TRIG**: **K1** ratchet (1–8 hits), **K2** ramp, **K3** trig condition
   (Always, n:m, Fill, First, Pre, Nei and their opposites). On a kit,
   **SHIFT** + **K2** sets a pad's pitch ramp.
