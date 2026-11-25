@@ -207,7 +207,9 @@ the `Melodee` folder at the top level), in any subfolders. Melodee loads:
 Plug-ins built only for Windows or macOS do not run on the MPC. The
 plug-in picker shows them dimmed, with the reason.
 
-The [MPC plug-in collection with Slink 0.6.0](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/tag/v0.8.2-slink.1) updates the acid synth bundled with hdslaveOS 0.8.2. For an existing setup, the [Slink MPC Sample download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) updates just that instrument. Extract its Melodee folder over the existing one, select **hdslave Slink**, and open **Stage → Panel**. The plug-in keeps its original device filename for saved projects.
+The [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/tag/v0.8.2-slink.1) includes Slink 0.6.0. To install the silver panel with the larger chrome title and three satin knobs, download [Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1). Merge its `Melodee` folder onto the card, keep the supplied plug-in filename so saved projects can find it, then select **hdslave Slink** and open **Stage → Panel**.
+
+<a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.6.1/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.6.1/docs/slink-mpc-pattern.png" width="320" alt="Slink 0.6.1 playing in Stage on its silver MPC panel"></a>
 
 The Melodee synths are free downloads:
 [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
