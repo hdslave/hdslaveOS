@@ -422,7 +422,16 @@ ClapInstance::~ClapInstance()
 float ClapInstance::parameterValue (uint32_t id) const
 {
     const auto it = std::lower_bound (byId.begin(), byId.end(), std::make_pair (id, -1));
-    return it != byId.end() && it->first == id ? parameters[size_t (it->second)]->getValue() : 0.0f;
+    if (it == byId.end() || it->first != id) return 0.0f;
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    const auto* p = parameters[size_t (it->second)];
+    const auto cached = p->value.load (std::memory_order_acquire);
+    // A native panel edit is already in the plug-in even before the host's next rescan.
+    // Host edits still awaiting process() belong to the host's value until the plug-in takes them.
+    if (cached.queued() || (parameterEdits.load (std::memory_order_acquire) & editsApplying))
+        return cached.normalised;
+    double value;
+    return params->get_value (plugin, id, &value) ? float (p->normalise (value)) : cached.normalised;
 }
 
 void ClapInstance::readParameters()

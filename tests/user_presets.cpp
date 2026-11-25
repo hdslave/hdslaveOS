@@ -654,6 +654,8 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
     const bool with_note = mode == "anvil-freeze-note";
     const bool ring_launch = mode == "anvil-freeze-ring-launch";
     const bool queued_run = mode == "anvil-freeze-queued-run";
+    const bool panel_pending = mode == "anvil-freeze-panel-pending";
+    const bool panel_run = panel_pending || mode == "anvil-freeze-panel-run";
     struct Audio {
         std::vector<float> left, right;
         std::vector<int32_t> main;
@@ -726,7 +728,7 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         for (unsigned n = 0; n < 32; ++n) { tick(); render(); }
         const auto patch = rack->state(0);
         const uint32_t generation = rack->live_generation(0);
-        if (queued_run) {
+        if (queued_run || panel_run) {
             rack->set_param_index(0, generation, run_index, 0);
             render();
             CHECK(!rack->anvil_sequencer_running(0));
@@ -740,6 +742,17 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
             CHECK(!shell->ui().print_sheet.printing);
             tap(SurfaceButton::TopLeft);
             c.project.plugins[0].transport = true;
+        }
+
+        if (panel_run) {
+            stage_go(shell->ui(), EngineKind::Plugin, StageKind::PluginScreen);
+            c.open(PageId::Stage);
+            spin([&] { return bool(rack->screen_picture()); });
+            if (run_index == 33) { // staged Anvil: SEQ tab, RUN row, open the editor
+                for (unsigned i = 0; i < 6; ++i) rack->screen_input(0, {ScreenKey::Step, 1, false});
+                rack->screen_input(0, {ScreenKey::Wheel, 8, false});
+                rack->screen_input(0, {ScreenKey::Push, 0, false});
+            }
         }
 
         unsigned blocks = 0;
@@ -758,13 +771,35 @@ static void anvil_freeze(const std::string& card, const std::string& plugin, con
         advance(requested);
         if (queued_run)
             rack->set_param_index(0, generation, run_index, 1000);
+        if (panel_run) {
+            if (freeze && panel_pending) {
+                // Open PRINT before the preceding panel gesture reaches its worker.
+                tap(SurfaceButton::SampleRecord);
+                CHECK(shell->ui().page == PageId::Print && !shell->ui().print_sheet.picked(0));
+            }
+            const auto input = run_index == 33 ? ScreenInput {ScreenKey::Wheel, 1, false}
+                                               : ScreenInput {ScreenKey::Push, 0, false};
+            rack->screen_input(0, input);
+            if (panel_pending) c.plugins_tick(++c.now);
+            // Confirm the native panel applied the edit before returning to the shell, without
+            // advancing the audio thread or waiting for the rack to refresh its parameter cards.
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+            while (rack->state(0) != patch && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            CHECK(rack->state(0) == patch);
+        }
         if (freeze) {
-            tap(SurfaceButton::SampleRecord);
+            if (!panel_pending) tap(SurfaceButton::SampleRecord);
             const auto& sheet = shell->ui().print_sheet;
-            CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
+            if (!(panel_pending && rate == 48000)) {
+                // At 44.1 kHz exercise the periodic sheet refresh. At 48 kHz press B3 before
+                // any print tick can refresh the already open sheet.
+                if (panel_pending) c.print_tick();
+                CHECK(shell->ui().page == PageId::Print && sheet.picked(0) && !sheet.picked(1));
+            }
             if (ring_launch) shell->ui().print_sheet.tail = PrintTail::Ring;
             tap(SurfaceButton::TopRight);
-            CHECK(sheet.printing);
+            CHECK(sheet.printing && sheet.picked(0) && !sheet.picked(1));
             c.print_tick();
             if (queued_run) {
                 CHECK(c.freeze_pending(0) && !printer->busy());
@@ -879,7 +914,8 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (mode == "anvil-freeze-empty" || mode == "anvil-freeze-note" ||
-        mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run") {
+        mode == "anvil-freeze-ring-launch" || mode == "anvil-freeze-queued-run" ||
+        mode == "anvil-freeze-panel-run" || mode == "anvil-freeze-panel-pending") {
         CHECK(argc <= 6);
         anvil_freeze(card, plugin, mode, argc >= 5 ? std::stoul(argv[4]) : 44100, argc == 6 ? std::stoi(argv[5]) : 2);
         return 0;

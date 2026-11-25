@@ -495,7 +495,7 @@ struct UiState {
     struct PrintSheet {
         uint8_t track = 0;
         std::array<uint64_t, (pattern_count + 63) / 64> picks {}, eligible {};
-        bool clocked_anvil = false;
+        bool clocked_anvil = false, picks_touched = false;
         PrintTap tap = PrintTap::PostFx;
         PrintTail tail = PrintTail::Loop;
         bool printing = false;

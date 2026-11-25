@@ -38,6 +38,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginHandle;
+class ClapInstance;
 class CompanionHost;
 struct PluginSkin;
 
@@ -104,7 +105,7 @@ public:
     // no_plugin: none); screen_input() an input on that page, handed to the plug-in by the screen thread;
     // set_screen_param() a value for the parameter its screen puts on K`k`. screen_picture(): the newest picture of
     // the screen in view, null none (any thread). panel() gives `screen` once the plug-in has drawn and named K1-K3.
-    void screen_view(const ScreenView& view);
+    void screen_view(ScreenView view, unsigned print_instrument = no_plugin);
     void screen_input(unsigned entry, const ScreenInput& input);
     bool set_screen_param(const PluginPanel& panel, unsigned k, int value, bool relative); // false when its card went stale
     ScreenPicturePtr screen_picture() const;
@@ -175,6 +176,7 @@ public:
     Usage usage() const;
 
 private:
+    const ClapInstance* anvil_locked(unsigned entry) const; // the rack lock is held
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too

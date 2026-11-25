@@ -97,17 +97,23 @@ bool Context::edit_gate(void* owner, Edit& edit) {
 
 // ---- the PRINT sheet
 
-std::array<uint64_t, (pattern_count + 63) / 64> Context::freeze_patterns(unsigned track, bool deep) const {
-    const unsigned t = track % track_count;
-    auto eligible = with_notes(patterns, t);
-    if (!deep && anvil_sequencing(t)) {
-        // The pattern playing now can carry Anvil's sequence with zero MPC notes. Retain previously selected
-        // empty clips so the sheet can still show and unpick them after another pattern is launched.
-        const unsigned p = (host.playing() ? host.pattern_of(t) : project.tracks[t].pattern) % pattern_count;
+namespace {
+auto eligible_patterns(const Context& c, unsigned t, bool clocked_anvil) {
+    auto eligible = with_notes(c.patterns, t);
+    if (clocked_anvil) {
+        // The playing pattern can carry Anvil's sequence with zero MPC notes. Retain previously
+        // frozen empty patterns so the sheet can show and unpick them after a launch.
+        const unsigned p = (c.host.playing() ? c.host.pattern_of(t) : c.project.tracks[t].pattern) % pattern_count;
         eligible[p / 64] |= uint64_t(1) << (p % 64);
-        for (size_t i = 0; i < eligible.size(); ++i) eligible[i] |= prints.freeze[t].patterns[i];
+        for (size_t i = 0; i < eligible.size(); ++i) eligible[i] |= c.prints.freeze[t].patterns[i];
     }
     return eligible;
+}
+} // namespace
+
+std::array<uint64_t, (pattern_count + 63) / 64> Context::freeze_patterns(unsigned track, bool deep) const {
+    const unsigned t = track % track_count;
+    return eligible_patterns(*this, t, !deep && anvil_sequencing(t));
 }
 
 void Context::open_print_sheet() {
@@ -122,7 +128,7 @@ void Context::open_print_sheet() {
         sheet.clocked_anvil = anvil_sequencing(t);
         sheet.tap = sheet.clocked_anvil ? PrintTap::PostFx : f.tap;
         sheet.tail = f.tail;
-        sheet.eligible = freeze_patterns(t);
+        sheet.eligible = eligible_patterns(*this, t, sheet.clocked_anvil);
         sheet.picks = frozen(t) ? f.patterns : sheet.eligible;
         for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
     }
@@ -132,21 +138,40 @@ void Context::open_print_sheet() {
     if (ui.page != PageId::Print) open(PageId::Print);
 }
 
+void Context::refresh_print_sheet() {
+    auto& sheet = ui.print_sheet;
+    if (ui.page != PageId::Print || sheet.printing) return;
+    const unsigned t = sheet.track % track_count;
+    const bool clocked = anvil_sequencing(t);
+    if (clocked == sheet.clocked_anvil) return;
+    sheet.clocked_anvil = clocked;
+    if (clocked) sheet.tap = PrintTap::PostFx;
+    sheet.eligible = eligible_patterns(*this, t, clocked);
+    if (!sheet.picks_touched) sheet.picks = frozen(t) ? prints.freeze[t].patterns : sheet.eligible;
+    for (size_t n = 0; n < sheet.picks.size(); ++n) sheet.picks[n] &= sheet.eligible[n];
+}
+
 void Context::print_sheet_pad(unsigned pad) {
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
     unsigned p = ui.pad_pattern(pad);
     if (!sheet.can_pick(p)) { notice(pattern_word(p) + " is empty"); return; }
     sheet.pick(p, !sheet.picked(p));
+    sheet.picks_touched = true;
 }
 
 void Context::print_sheet_all() {
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
+    if (none_of(sheet.eligible)) return;
     sheet.picks = sheet.picks == sheet.eligible ? decltype(sheet.picks) {} : sheet.eligible;
+    sheet.picks_touched = true;
 }
 
 void Context::print_sheet_go(bool deep_freeze) {
+    refresh_print_sheet();
     auto& sheet = ui.print_sheet;
     const unsigned t = sheet.track % track_count;
     if (sheet.printing) return;

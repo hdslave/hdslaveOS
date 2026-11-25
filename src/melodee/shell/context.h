@@ -497,6 +497,7 @@ public:
     bool anvil_sequencing(unsigned track) const;
     std::array<uint64_t, (pattern_count + 63) / 64> freeze_patterns(unsigned track, bool deep = false) const;
     void open_print_sheet();
+    void refresh_print_sheet(); // a panel RUN edit can arrive while PRINT is already open
     void print_sheet_pad(unsigned pad);
     void print_sheet_all();
     void print_sheet_go(bool deep_freeze = false); // freeze plan F2d: Shift + B3 DEEP FREEZE

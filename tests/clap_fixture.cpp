@@ -387,6 +387,12 @@ bool screenDraw(const void* p, const melodee_screen_frame_t* frame) {
 bool screenInput(const void* p, const melodee_screen_input_t* in) {
     auto& s = of(static_cast<const clap_plugin*>(p));
     s.main();
+    if (clockedInstrument && s.instrument && in->kind == MELODEE_SCREEN_PUSH) {
+        // The panel edits RUN in the plug-in first. Leave the cache stale to exercise a PRINT
+        // opening before the host services the value rescan.
+        s.gain = 1.0 - s.gain;
+        return true;
+    }
     if (in->kind == MELODEE_SCREEN_WHEEL && s.instrument) s.level = std::clamp(s.level + in->value * 0.01, 0.0, 1.0);
     else if (in->kind == MELODEE_SCREEN_WHEEL) s.gain = std::clamp(s.gain + in->value * 0.02, 0.0, 2.0);
     else if (in->kind == MELODEE_SCREEN_PUSH && s.instrument) s.wave = std::fmod(s.wave + 1, 3);

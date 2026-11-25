@@ -33,9 +33,10 @@ struct ScreenView {
     uint32_t colour = 0x808080;                 // the track's colour, 0xRRGGBB
     std::array<int16_t, 3> pots {-1, -1, -1};   // K1-K3: where each pot sits, 0..127, -1 not known
     std::array<uint8_t, 3> live {};             // and whether it drives its value yet
+    bool input_only = false;                   // finish accepted inputs as the shell opens PRINT
     bool operator==(const ScreenView& o) const {
         return entry == o.entry && area == o.area && shift == o.shift && playing == o.playing && colour == o.colour
-            && pots == o.pots && live == o.live;
+            && pots == o.pots && live == o.live && input_only == o.input_only;
     }
     bool operator!=(const ScreenView& o) const { return !(*this == o); }
 };

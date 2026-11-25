@@ -220,6 +220,7 @@ void Context::finish_unfreeze(unsigned t) {
 void Context::print_tick() {
     audio_tick(); // freeze plan F3: audio tracks' regions and takes (shell/audio_jobs.cpp)
     if (!printer) return;
+    refresh_print_sheet();
     autosample_tick();
     const uint32_t lost = host.print_underruns();
     if (lost != last_print_underruns) {
