@@ -666,9 +666,9 @@ void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
 // The Looper's previews: L1 playing with an overdub (stretched to another tempo), L2 recording a free take,
 // L3 stopped with a change waiting, L4 armed; peaks drawn as a beat would.
 // The mixer's previews: the project's tracks with their levels, track 3 a bass with EQ and a compressor at work, its
-// sends into buses with effects, every strip's meter playing; `block` the lit one.
+// sends into buses with effects, every strip's meter playing; `block` the lit one, in the card (Plus held).
 void mixer_scene(Snapshot& s, unsigned block) {
-    s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.mixer_block = uint8_t(block); s.playing = true;
+    s.ui.page = PageId::Mixer; s.ui.track = 2; s.ui.mixer_block = uint8_t(block); s.ui.mixer_card = true; s.playing = true;
     auto& bass = s.project.tracks[2];
     if (!bass.used()) bass.engine = EngineKind::Sampler;
     bass.set_name("Bass");
@@ -1165,7 +1165,13 @@ const Preview previews[] {
      }},
     // The mixer (docs/MIXER_PLAN.md): track 3 in the card, its neighbours' meters; SENDS, EQ (MID in hand), COMP (what
     // it took off of late), Basic (send A alone).
-    {"mixer", [](Shell&, Snapshot& s) { mixer_scene(s, 0); }},
+    {"mixer", [](Shell&, Snapshot& s) { // as it opens: every track a strip, track 4 muted, track 6 soloed
+        mixer_scene(s, 0); s.ui.mixer_card = false; s.project.tracks[3].mix.mute = true; s.project.tracks[5].mix.solo = true;
+    }},
+    {"mixercard", [](Shell&, Snapshot& s) { mixer_scene(s, 0); }},                        // Plus held: track 3's card
+    {"mixerslide", [](Shell&, Snapshot& s) { // on the way from the strips to the card, 100 ms in: the card fading in
+        mixer_scene(s, 0); s.ui.mixer_card_from = 0; s.ui.mixer_card_at = s.now - 100;
+    }},
     {"mixereq", [](Shell&, Snapshot& s) { mixer_scene(s, 1); s.ui.mixer_eq_group = 1; }},
     {"mixercomp", [](Shell&, Snapshot& s) { mixer_scene(s, 2); }},
     {"mixerbasic", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.settings.full_features = false; }},
@@ -1187,6 +1193,7 @@ const Preview previews[] {
     }},
     {"mixerfxbus", [](Shell&, Snapshot& s) { mixer_other_scene(s, bus_chain(0), 0); }}, // a bus: B1 is FX alone
     {"mixerrow", [](Shell&, Snapshot& s) { mixer_scene(s, 0); s.ui.mixer_row = 1; }},   // + on SENDS: its second row
+    {"mixerstrips2", [](Shell&, Snapshot& s) { mixer_other_scene(s, strip_sub(1), 0); s.ui.mixer_card = false; }}, // the second row's strips
     {"fxsub", [](Shell&, Snapshot& s) { // Shift + Knob FX on submix 2: its chain
         mixer_other_scene(s, strip_sub(1), 0);
         s.ui.page = PageId::Rack; s.ui.fx_sub = 1;

@@ -8630,6 +8630,26 @@ void track_move() {
     // The MIX hub's row (shell/mix_hub.h): MIXER, none (the page stays), and FX along the chains, a kit's pads' last.
     CHECK(mix_next(PageId::Stage, 0, false) == PageId::Mixer && mix_next(PageId::Rack, 1, false) == PageId::Rack);
     CHECK(mix_section(PageId::Mixer) == MixSection::Tracks && mix_next(PageId::Mixer, 2, false) == PageId::Rack);
+    {   // The mixer's view: the strips as it opens; Plus held the card, Minus held the strips, a tap nudges as it is let go.
+        UiState m; m.page = PageId::Mixer;
+        CHECK(!m.mixer_card);
+        MixerViewHold h;
+        mixer_view_press(h, 1, 1000);
+        mixer_view_tick(h, m, 1000 + mixer_view_hold_ms - 1);
+        CHECK(!m.mixer_card && mixer_view_release(h) == 1); // a tap: + moves through the lit block, the view stays
+        mixer_view_press(h, 1, 2000);
+        mixer_view_tick(h, m, 2000 + mixer_view_hold_ms);
+        CHECK(m.mixer_card && mixer_view_release(h) == 0); // held: the card, the release does nothing more
+        const uint32_t from = 2000 + mixer_view_hold_ms; // on the way there over mixer_view_ms, eased out
+        CHECK(mixer_card_shown(m, from) == 0 && mixer_card_shown(m, from + mixer_view_ms / 2) > 0.5f && mixer_card_shown(m, from + mixer_view_ms) == 1);
+        mixer_view_press(h, -1, 3000);
+        mixer_view_tick(h, m, 3000 + mixer_view_hold_ms);
+        CHECK(!m.mixer_card && mixer_view_release(h) == 0);
+        mixer_view_press(h, 1, 4000);
+        m.page = PageId::Stage; // another page opened while it is down: let go, the view stays
+        mixer_view_tick(h, m, 4000 + mixer_view_hold_ms);
+        CHECK(!m.mixer_card && !h.down && mixer_view_release(h) == 0);
+    }
     {   // The mixer's second row (shell/mixer_channels.h): submixes on pads 1-8, buses 9-12, the input 15, the master 16.
         UiState m; m.settings.full_features = true; m.page = PageId::Mixer;
         CHECK(pad_other(m, 0) == int(strip_sub(0)) && pad_other(m, 7) == int(strip_sub(7)) && pad_other(m, 8) == int(bus_chain(0)));
