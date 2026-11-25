@@ -13,9 +13,10 @@ LOFLY_DIR ?= $(ROOT)/../lo-fly
 LOFLY_REV ?= HEAD
 OUT ?= $(ROOT)/build/lo-fly
 CLAP_INCLUDE ?= $(ROOT)/build/deps/clap/include
-# Spleen (BSD 2-Clause), from its GitHub release: `make fonts`
+# National Park (SIL OFL 1.1), from Google Fonts' repository at a fixed commit: `make fonts`
 FONT_DIR ?= $(OUT)/fonts
-SPLEEN := 2.3.0
+GFONTS_REV := 83c62e30d87daa70216dab6b984d00d20d96d585
+NP_URL := https://raw.githubusercontent.com/google/fonts/$(GFONTS_REV)/ofl/nationalpark
 PYTHON ?= python3
 ZIG ?= zig
 CXX_MAC ?= clang++
@@ -59,17 +60,14 @@ endif
 $(SRC)/dsp/src/%.cpp: | $(SRC)/.exported ;
 .PRECIOUS: $(SRC)/dsp/src/%.cpp
 
-$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/spleen-6x12.otf
-	$(PYTHON) fonts.py $(FONT_DIR) $@
+$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/NationalPark.ttf
+	$(PYTHON) fonts.py $(FONT_DIR)/NationalPark.ttf $@
 
-fonts: $(FONT_DIR)/spleen-6x12.otf
-$(FONT_DIR)/spleen-6x12.otf:
-	@mkdir -p $(FONT_DIR)/spleen
-	curl -sfL -o $(FONT_DIR)/spleen/spleen-$(SPLEEN).tar.gz https://github.com/fcambus/spleen/releases/download/$(SPLEEN)/spleen-$(SPLEEN).tar.gz
-	tar -xzf $(FONT_DIR)/spleen/spleen-$(SPLEEN).tar.gz -C $(FONT_DIR)/spleen spleen-$(SPLEEN)/spleen-6x12.otf spleen-$(SPLEEN)/spleen-8x16.otf \
-		spleen-$(SPLEEN)/spleen-12x24.otf spleen-$(SPLEEN)/LICENSE
-	cp $(FONT_DIR)/spleen/spleen-$(SPLEEN)/spleen-*.otf $(FONT_DIR)/
-	cp $(FONT_DIR)/spleen/spleen-$(SPLEEN)/LICENSE $(FONT_DIR)/Spleen-LICENSE.txt
+fonts: $(FONT_DIR)/NationalPark.ttf
+$(FONT_DIR)/NationalPark.ttf:
+	@mkdir -p $(FONT_DIR)
+	curl -sfL -o $(FONT_DIR)/NationalPark-OFL.txt $(NP_URL)/OFL.txt
+	curl -sfL -o $@ '$(NP_URL)/NationalPark%5Bwght%5D.ttf'
 
 HEADERS := store.h panel.h $(ROOT)/sdk/melodee-screen/melodee_screen.h
 
@@ -89,11 +87,11 @@ $(OUT)/mpc/obj/%.o: %.cpp $(HEADERS) $(OUT)/gen/fonts.h | $(SRC)/.exported
 $(OUT)/mpc/lo-fly/lo-fly.clap: $(MPC_OBJ) lo-fly.map $(OUT)/mpc/lo-fly/FONTS.txt
 	@mkdir -p $(@D)/Presets
 	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-s $(MPC_OBJ) -o $@
-# The panel's type is drawn from Spleen: its licence goes with the plug-in.
-$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/spleen-6x12.otf
+# The panel's type is drawn from National Park: its licence goes with the plug-in.
+$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/NationalPark.ttf
 	@mkdir -p $(@D)
-	{ echo "lo-fly's panel draws its text from Spleen, under the BSD 2-Clause License."; \
-	  echo; cat $(FONT_DIR)/Spleen-LICENSE.txt; } > $@
+	{ echo "lo-fly's panel draws its text from National Park, under the SIL Open Font License 1.1."; \
+	  echo; cat $(FONT_DIR)/NationalPark-OFL.txt; } > $@
 
 $(BUNDLE)/Contents/MacOS/lo-fly: $(MAC_OBJ)
 	@mkdir -p $(@D)

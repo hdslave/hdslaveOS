@@ -51,7 +51,7 @@ private:
     void* context_;
     int page_ = 0;
 
-    // What it drew last, and the background (grain, card) of the page and area it drew.
+    // What it drew last, and the background (the paper) of the page and area it drew.
     std::uint64_t drawn_ = 0;
     int background_page_ = -1, background_area_ = -1;
     std::vector<std::uint32_t> background_;

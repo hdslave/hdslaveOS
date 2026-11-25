@@ -238,9 +238,9 @@ struct Session {
         melodee_screen_frame_t f {};
         f.pixels = pixels.data();
         f.width = 320;
-        f.height = 218;
+        f.height = strip ? MELODEE_SCREEN_STRIP_HEIGHT : MELODEE_SCREEN_PAGE_HEIGHT;
         f.stride = 320;
-        f.area = MELODEE_SCREEN_PAGE;
+        f.area = strip ? MELODEE_SCREEN_STRIP : MELODEE_SCREEN_PAGE;
         f.redraw_all = all ? 1 : 0;
         f.colour = 0xe2817a;
         f.time_ms = time_ms;
@@ -252,15 +252,16 @@ struct Session {
     }
     bool shot(const std::string& path, std::array<int16_t, 3> pots = { -1, -1, -1 }, std::array<uint8_t, 3> live = { 1, 1, 1 })
     {
-        for (int i = 0; i < 12; ++i) { // as Melodee draws while the sound plays: the needle and the reels move
+        for (int i = 0; i < 12; ++i) { // as Melodee draws while the sound plays: the wobble line and the level move
             run(0.03);
             auto f = frame(pots, live, false);
             screen->draw(plugin, &f);
         }
         auto f = frame(pots, live);
         screen->draw(plugin, &f);
-        return write_png(path, pixels.data(), 320, 218, 2);
+        return write_png(path, pixels.data(), 320, strip ? MELODEE_SCREEN_STRIP_HEIGHT : MELODEE_SCREEN_PAGE_HEIGHT, 2);
     }
+    bool strip = false; // draw the 320 x 144 strip under the chain slots instead of the page
 };
 
 void patch(Session& s)
@@ -369,6 +370,12 @@ int shots(const std::string& dir)
     shot("16-arcade-engine-1");
     s.page(8);
     shot("17-arcade-fx-1");
+    s.strip = true;
+    s.page(0);
+    shot("18-strip-lofi");
+    s.page(2);
+    shot("19-strip-engine-1");
+    s.strip = false;
     return failed;
 }
 

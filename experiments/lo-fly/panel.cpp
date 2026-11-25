@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 //
-// lo-fly's panel in Melodee (see panel.h). The look: night. Each picture sits on a night sky over a skyline with lit
-// windows, stars and a moon, with scan lines; curves are neon lines with a glow; knobs are LED rings. Type is Spleen,
-// a sharp bitmap face; titles and the wheel's value glow in the page's colour. The LOFI page draws the tape's wobble as a moving line and the level on two LED columns.
-// The pictures come from lo-fly's own code and values: the oscillator's cycle through the converter, the built-in
-// noises, the LoFi chain's response, the envelopes, the voices that sound.
+// lo-fly's panel in Melodee (see panel.h). The look: a two-ink print on paper, as a risograph prints it. Blue carries
+// the lines and the type, fluorescent pink the fills; both multiply onto the paper, so they turn violet where they
+// cross, and the pink plate sits a fraction of a pixel off register. Areas under curves are a pink halftone screen.
+// Type is National Park. The pictures come from lo-fly's own code and values: the oscillator's cycle through the
+// converter, the built-in noises, the LoFi chain's response, the envelopes, the voices that sound.
 #include "panel.h"
 
 #include "lofly/builtin_noise.h"
@@ -16,10 +16,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
-#include <tuple>
+#include <utility>
 
 namespace lofly_melodee {
 namespace {
@@ -30,7 +31,7 @@ struct Glyph {
     unsigned offset;
     int width;   // of its coverage map
     int advance; // to the next glyph
-    int left;    // where its map starts, from the pen (a script's strokes start left of it)
+    int left;    // where its map starts, from the pen
 };
 struct Font {
     const Glyph* glyphs;
@@ -38,37 +39,19 @@ struct Font {
     int height;
     int ascent;
 };
-#include "fonts.h" // sp_6x12, sp_8x16, sp_12x24: Spleen 6 x 12, 8 x 16, 12 x 24
+#include "fonts.h" // National Park: np_title, np_wheel, np_value, np_value_s, np_name, np_label, np_small (fonts.py)
 
 constexpr float pi = 3.14159265f;
 
-// --- type and colours ---
+// --- inks and layout ---
 
-// The type: Spleen, a bitmap face, at its own sizes so every pixel is sharp (fonts.py); titles and the wheel's value
-// glow in the page's colour. Where each sits: the header's text tops, a knob's label and value under its centre.
-struct Type {
-    const Font& small;
-    const Font& label;
-    const Font& value;
-    const Font& title;
-    const Font& big;
-    float title_y, small_y, label_dy, value_dy;
-    bool neon; // titles glow in the page's colour; else the video-tape colour fringe
-};
-const Type spleen { sp_6x12_font, sp_8x16_font, sp_12x24_font, sp_12x24_font, sp_12x24_font, -1, 6, 20, 35, true };
-const Type* T = &spleen;
+constexpr std::uint32_t paper = 0xf3efe6, blue = 0x0d63ad, pink = 0xff4fa7;
+constexpr float plate_dx = 0.6f, plate_dy = 0.4f; // the pink plate, off register
 
-constexpr std::uint32_t ground = 0x100d1b, ink = 0xf4eaff, ink_dim = 0xb3a6d0, ink_faint = 0x6d628e, ink_ghost = 0x2f2848;
-constexpr std::uint32_t sky_top = 0x15112a, sky_bottom = 0x3d2654, card_edge = 0x5b4a86;
-constexpr std::uint32_t pink = 0xff8db4, yellow = 0xffd27a, mint = 0x8cf0b8, cyan = 0x7fddeb, violet = 0xb9a2ff;
-constexpr std::array<std::uint32_t, 3> knob_colour { pink, yellow, cyan }; // K1-K3
-constexpr std::uint32_t moon = 0xfff1c9, window = 0xffcf7a, building = 0x0d0a18, knob_face = 0x1c1733;
-constexpr float fill_alpha = 0.14f; // the area under a curve
-
-// --- layout (page) ---
-constexpr float card_x = 8, card_y = 22, card_w = 304, card_h = 106;
+// Page: header to y 30, the wheel's choice at 41-59, the picture at 64-132, the knobs below. The strip: header, knobs.
+constexpr float title_base = 27, wheel_base = 56;
 constexpr std::array<float, 3> knob_x { 56, 160, 264 };
-constexpr float knob_y_page = 152, knob_y_strip = 66;
+constexpr float knob_y_page = 169, knob_y_strip = 74;
 
 // --- pages ---
 enum class Pic { Lofi, Tape, Engine, Noise, Filter, Env, Fx, Voice };
@@ -76,24 +59,24 @@ struct PageDef {
     const char* title;
     Pic pic;
     int n; // engine, envelope or effect slot
-    std::uint32_t accent;
 };
 constexpr PageDef pages[] {
-    { "LOFI", Pic::Lofi, 0, pink },
-    { "TAPE", Pic::Tape, 0, yellow },
-    { "ENGINE 1", Pic::Engine, 0, cyan },
-    { "ENGINE 2", Pic::Engine, 1, cyan },
-    { "NOISE", Pic::Noise, 0, violet },
-    { "FILTER", Pic::Filter, 0, mint },
-    { "FILTER ENV", Pic::Env, 0, mint },
-    { "AMP ENV", Pic::Env, 1, yellow },
-    { "FX 1", Pic::Fx, 0, pink },
-    { "FX 2", Pic::Fx, 1, pink },
-    { "FX 3", Pic::Fx, 2, pink },
-    { "FX 4", Pic::Fx, 3, pink },
-    { "VOICE", Pic::Voice, 0, pink },
+    { "LOFI", Pic::Lofi, 0 },
+    { "TAPE", Pic::Tape, 0 },
+    { "ENGINE 1", Pic::Engine, 0 },
+    { "ENGINE 2", Pic::Engine, 1 },
+    { "NOISE", Pic::Noise, 0 },
+    { "FILTER", Pic::Filter, 0 },
+    { "FILTER ENV", Pic::Env, 0 },
+    { "AMP ENV", Pic::Env, 1 },
+    { "FX 1", Pic::Fx, 0 },
+    { "FX 2", Pic::Fx, 1 },
+    { "FX 3", Pic::Fx, 2 },
+    { "FX 4", Pic::Fx, 3 },
+    { "VOICE", Pic::Voice, 0 },
 };
 constexpr int page_total = static_cast<int>(std::size(pages));
+
 
 ParamId eng(int n, lofly::EngineParam p) { return lofly::engineParam(n, p); }
 std::array<ParamId, 4> env_ids(int n)
@@ -186,7 +169,12 @@ std::uint32_t mix(std::uint32_t a, std::uint32_t b, int t) // t: 0..256 of b
     const std::uint32_t g = (((a & 0x00ff00u) * static_cast<std::uint32_t>(256 - t) + (b & 0x00ff00u) * static_cast<std::uint32_t>(t)) >> 8) & 0x00ff00u;
     return rb | g;
 }
-std::uint32_t lerp_colour(std::uint32_t a, std::uint32_t b, float t) { return mix(a, b, static_cast<int>(std::clamp(t, 0.0f, 1.0f) * 256.0f)); }
+// Ink over what is printed already: each channel multiplied.
+std::uint32_t multiply(std::uint32_t a, std::uint32_t b)
+{
+    auto ch = [&](int shift) { return (((a >> shift) & 255u) * ((b >> shift) & 255u) + 127u) / 255u << shift; };
+    return ch(16) | ch(8) | ch(0);
+}
 
 std::uint32_t hash(int x, int y, std::uint32_t seed = 0)
 {
@@ -202,10 +190,21 @@ std::uint32_t shade(std::uint32_t c, int n)
     return ch(16) | ch(8) | ch(0);
 }
 
+// The halftone screen: dots 3 px apart on a grid turned 30 degrees. Coverage of the screen at a pixel's centre.
+float screen(float x, float y)
+{
+    constexpr float c = 0.8660254f, s = 0.5f, pitch = 3.0f, r = 1.0f;
+    const float u = (x * c + y * s) / pitch, v = (y * c - x * s) / pitch;
+    const float du = (u - std::round(u)) * pitch, dv = (v - std::round(v)) * pitch;
+    return std::clamp(0.5f - (std::hypot(du, dv) - r), 0.0f, 1.0f);
+}
+
 struct Canvas {
     std::uint32_t* px;
     int w, h, stride;
     int x0 = 0, y0 = 0, x1 = 1 << 20, y1 = 1 << 20; // clip
+    bool ink = false;          // multiply onto the paper and what is printed on it
+    float dx = 0.0f, dy = 0.0f; // where this plate sits against the other (shapes only)
 
     bool inside(int x, int y) const { return x >= std::max(0, x0) && y >= std::max(0, y0) && x < std::min(w, x1) && y < std::min(h, y1); }
 
@@ -214,7 +213,8 @@ struct Canvas {
         if (a <= 0.004f || !inside(x, y))
             return;
         auto& p = px[y * stride + x];
-        p = a >= 0.996f ? c : mix(p, c, static_cast<int>(a * 256.0f + 0.5f));
+        const std::uint32_t to = ink ? multiply(p, c) : c;
+        p = a >= 0.996f ? to : mix(p, to, static_cast<int>(a * 256.0f + 0.5f));
     }
     std::uint32_t& at(int x, int y) { return px[y * stride + x]; }
     void fill(float fx, float fy, float fw, float fh, std::uint32_t c, float a = 1.0f)
@@ -226,13 +226,13 @@ struct Canvas {
     // Anti-aliased fill of the shape whose signed distance (negative inside) `dist` gives, inside a bounding box.
     template <class Dist> void shape(float bx0, float by0, float bx1, float by1, std::uint32_t c, float a, Dist dist)
     {
-        const int ya = std::max(static_cast<int>(std::floor(by0)), std::max(0, y0));
-        const int yb = std::min(static_cast<int>(std::ceil(by1)), std::min(h, y1));
-        const int xa = std::max(static_cast<int>(std::floor(bx0)), std::max(0, x0));
-        const int xb = std::min(static_cast<int>(std::ceil(bx1)), std::min(w, x1));
+        const int ya = std::max(static_cast<int>(std::floor(by0 + dy)), std::max(0, y0));
+        const int yb = std::min(static_cast<int>(std::ceil(by1 + dy)), std::min(h, y1));
+        const int xa = std::max(static_cast<int>(std::floor(bx0 + dx)), std::max(0, x0));
+        const int xb = std::min(static_cast<int>(std::ceil(bx1 + dx)), std::min(w, x1));
         for (int y = ya; y < yb; ++y)
             for (int x = xa; x < xb; ++x) {
-                const float cover = std::clamp(0.5f - dist(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f), 0.0f, 1.0f);
+                const float cover = std::clamp(0.5f - dist(static_cast<float>(x) + 0.5f - dx, static_cast<float>(y) + 0.5f - dy), 0.0f, 1.0f);
                 if (cover > 0.0f)
                     blend(x, y, c, a * cover);
             }
@@ -258,46 +258,88 @@ struct Canvas {
                 return std::hypot(x - ax - vx * t, y - ay - vy * t) - r;
             });
     }
-    static float rrect_dist(float x, float y, float rx, float ry, float rw, float rh, float r)
+    static float rect_dist(float x, float y, float rx, float ry, float rw, float rh)
     {
-        const float qx = std::fabs(x - (rx + rw * 0.5f)) - (rw * 0.5f - r);
-        const float qy = std::fabs(y - (ry + rh * 0.5f)) - (rh * 0.5f - r);
-        return std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) + std::min(std::max(qx, qy), 0.0f) - r;
+        const float qx = std::fabs(x - (rx + rw * 0.5f)) - rw * 0.5f, qy = std::fabs(y - (ry + rh * 0.5f)) - rh * 0.5f;
+        return std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) + std::min(std::max(qx, qy), 0.0f);
     }
-    void rrect(float rx, float ry, float rw, float rh, float r, std::uint32_t c, float a = 1.0f)
+    void rect(float rx, float ry, float rw, float rh, std::uint32_t c, float a = 1.0f)
     {
-        shape(rx - 1, ry - 1, rx + rw + 1, ry + rh + 1, c, a, [&](float x, float y) { return rrect_dist(x, y, rx, ry, rw, rh, r); });
+        shape(rx - 1, ry - 1, rx + rw + 1, ry + rh + 1, c, a, [&](float x, float y) { return rect_dist(x, y, rx, ry, rw, rh); });
     }
-    void rrect_line(float rx, float ry, float rw, float rh, float r, float t, std::uint32_t c, float a = 1.0f)
+    void rect_line(float rx, float ry, float rw, float rh, float t, std::uint32_t c, float a = 1.0f)
     {
         shape(rx - t - 1, ry - t - 1, rx + rw + t + 1, ry + rh + t + 1, c, a,
-            [&](float x, float y) { return std::fabs(rrect_dist(x, y, rx, ry, rw, rh, r)) - t * 0.5f; });
+            [&](float x, float y) { return std::fabs(rect_dist(x, y, rx, ry, rw, rh)) - t * 0.5f; });
+    }
+    // A convex quadrilateral, corners clockwise.
+    void quad(const float (&qx)[4], const float (&qy)[4], std::uint32_t c, float a = 1.0f)
+    {
+        const float bx0 = std::min({ qx[0], qx[1], qx[2], qx[3] }), bx1 = std::max({ qx[0], qx[1], qx[2], qx[3] });
+        const float by0 = std::min({ qy[0], qy[1], qy[2], qy[3] }), by1 = std::max({ qy[0], qy[1], qy[2], qy[3] });
+        shape(bx0 - 1, by0 - 1, bx1 + 1, by1 + 1, c, a, [&](float x, float y) {
+            float d = -1e9f;
+            for (int i = 0; i < 4; ++i) {
+                const int j = (i + 1) % 4;
+                const float ex = qx[j] - qx[i], ey = qy[j] - qy[i], len = std::max(std::hypot(ex, ey), 1e-6f);
+                d = std::max(d, ((x - qx[i]) * ey - (y - qy[i]) * ex) / len);
+            }
+            return d;
+        });
+    }
+    // A band along a circle from angle `a0` to `a1` (radians from 12 o'clock, clockwise), round ends.
+    void arc(float cx, float cy, float r, float width, float a0, float a1, std::uint32_t c, float a = 1.0f)
+    {
+        const float o = r + width;
+        const float ex0 = cx + std::sin(a0) * r, ey0 = cy - std::cos(a0) * r, ex1 = cx + std::sin(a1) * r, ey1 = cy - std::cos(a1) * r;
+        shape(cx - o - 1, cy - o - 1, cx + o + 1, cy + o + 1, c, a, [&](float x, float y) {
+            const float an = std::atan2(x - cx, cy - y);
+            if (an >= a0 && an <= a1)
+                return std::fabs(std::hypot(x - cx, y - cy) - r) - width * 0.5f;
+            return std::min(std::hypot(x - ex0, y - ey0), std::hypot(x - ex1, y - ey1)) - width * 0.5f;
+        });
     }
     void polyline(const float* xs, const float* ys, int n, float width, std::uint32_t c, float a = 1.0f)
     {
         for (int i = 1; i < n; ++i)
             seg(xs[i - 1], ys[i - 1], xs[i], ys[i], width, c, a);
     }
-    // The area between a curve and `base`, one column a pixel.
-    void area(const float* ys, float x, int n, float base, std::uint32_t c, float a)
+    // The halftone screen between two curves, one column a pixel from `x`.
+    void halftone(float x, int n, const float* top, const float* bottom, std::uint32_t c, float a)
     {
         for (int i = 0; i < n; ++i) {
-            const float top = std::min(ys[i], base), bottom = std::max(ys[i], base);
+            const float t = std::min(top[i], bottom[i]), b = std::max(top[i], bottom[i]);
             const int xi = static_cast<int>(x) + i;
-            for (int y = static_cast<int>(top); y < static_cast<int>(std::ceil(bottom)); ++y) {
-                const float cover = std::clamp(std::min(static_cast<float>(y) + 1.0f, bottom) - std::max(static_cast<float>(y), top), 0.0f, 1.0f);
-                blend(xi, y, c, a * cover);
+            for (int y = static_cast<int>(t); y < static_cast<int>(std::ceil(b)); ++y) {
+                const float cover = std::clamp(std::min(static_cast<float>(y) + 1.0f, b) - std::max(static_cast<float>(y), t), 0.0f, 1.0f);
+                blend(xi, y, c, a * cover * screen(static_cast<float>(xi) + 0.5f - dx, static_cast<float>(y) + 0.5f - dy));
             }
         }
     }
+    // A row (or column) of single dots, `step` apart.
+    void dots_h(float fx0, float fx1, float fy, float step, std::uint32_t c, float a)
+    {
+        for (float fx = fx0; fx <= fx1; fx += step)
+            fill(fx, fy, 1.0f, 1.0f, c, a);
+    }
+    void dots_v(float fx, float fy0, float fy1, float step, std::uint32_t c, float a)
+    {
+        for (float fy = fy0; fy <= fy1; fy += step)
+            fill(fx, fy, 1.0f, 1.0f, c, a);
+    }
 };
 
-// A neon curve: a wide faint glow, then the line.
-void stroke(Canvas& g, const float* xs, const float* ys, int n, std::uint32_t c, float a, float width = 2.0f)
-{
-    g.polyline(xs, ys, n, width + 4.0f, c, 0.16f * a);
-    g.polyline(xs, ys, n, width, c, a);
-}
+// While alive, shapes print on the pink plate: off register by (plate_dx, plate_dy).
+struct PinkPlate {
+    Canvas& g;
+    explicit PinkPlate(Canvas& c)
+        : g(c)
+    {
+        g.dx = plate_dx;
+        g.dy = plate_dy;
+    }
+    ~PinkPlate() { g.dx = g.dy = 0.0f; }
+};
 
 int text_width(const Font& f, std::string_view s, int track = 0)
 {
@@ -309,10 +351,11 @@ int text_width(const Font& f, std::string_view s, int track = 0)
     }
     return s.empty() ? 0 : width - track;
 }
-void text(Canvas& g, const Font& f, float fx, float fy, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
+// Text on its baseline `base`.
+void text(Canvas& g, const Font& f, float fx, float base, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
 {
     int x = static_cast<int>(std::lround(fx));
-    const int y = static_cast<int>(std::lround(fy));
+    const int y = static_cast<int>(std::lround(base)) - f.ascent;
     for (char ch : s) {
         const auto code = static_cast<unsigned char>(ch);
         if (code < 32 || code >= 127)
@@ -327,225 +370,205 @@ void text(Canvas& g, const Font& f, float fx, float fy, std::string_view s, std:
         x += glyph.advance + track;
     }
 }
-void text_centre(Canvas& g, const Font& f, float cx, float y, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
+void text_centre(Canvas& g, const Font& f, float cx, float base, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
 {
-    text(g, f, cx - static_cast<float>(text_width(f, s, track)) * 0.5f, y, s, c, track, a);
+    text(g, f, cx - static_cast<float>(text_width(f, s, track)) * 0.5f, base, s, c, track, a);
 }
-// Neon: the text over a soft glow of its colour, the strokes paler than the glow.
-void text_neon(Canvas& g, const Font& f, float x, float y, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
+void text_right(Canvas& g, const Font& f, float rx, float base, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
 {
-    for (auto [dx, dy, w] : { std::tuple { -2.0f, 0.0f, 0.1f }, std::tuple { 2.0f, 0.0f, 0.1f }, std::tuple { 0.0f, -2.0f, 0.1f },
-             std::tuple { 0.0f, 2.0f, 0.1f }, std::tuple { -1.0f, -1.0f, 0.16f }, std::tuple { 1.0f, -1.0f, 0.16f }, std::tuple { -1.0f, 1.0f, 0.16f },
-             std::tuple { 1.0f, 1.0f, 0.16f } })
-        text(g, f, x + dx, y + dy, s, c, track, w * a);
-    text(g, f, x, y, s, lerp_colour(c, 0xffffff, 0.62f), track, a);
+    text(g, f, rx - static_cast<float>(text_width(f, s, track)), base, s, c, track, a);
 }
 
-// The colour fringe of a worn video tape, red one way and blue the other.
-void text_fringe(Canvas& g, const Font& f, float x, float y, std::string_view s, std::uint32_t c, int track = 0, float a = 1.0f)
+// The wheel's choice: its name over a stroke of pink marker, between two chevrons. A chevron fades where the list ends.
+void wheel(Canvas& g, std::string_view s, bool prev, bool next, float a)
 {
-    text(g, f, x - 1.0f, y, s, 0xff4f7a, track, 0.55f * a);
-    text(g, f, x + 1.0f, y, s, 0x4fd6ff, track, 0.55f * a);
-    text(g, f, x, y, s, c, track, a);
-}
-// A title: glowing in the page's colour, or fringed.
-void title_text(Canvas& g, const Font& f, float x, float y, std::string_view s, std::uint32_t accent, int track = 0, float a = 1.0f)
-{
-    if (T->neon)
-        text_neon(g, f, x, y, s, accent, track, a);
-    else
-        text_fringe(g, f, x, y, s, ink, track, a);
-}
-
-// The page's wheel control: its value large, between two chevrons (drawn and glowing, or pixel triangles).
-void selector(Canvas& g, float cx, float y, std::string_view s, std::uint32_t accent, float a)
-{
-    const float half = static_cast<float>(text_width(T->big, s)) * 0.5f;
-    title_text(g, T->big, cx - half, y, s, accent, 0, a);
-    const float my = y + static_cast<float>(T->big.ascent) * (T->neon ? 0.66f : 0.6f);
+    const float hw = static_cast<float>(text_width(np_wheel_font, s)) * 0.5f + 7.0f;
+    {
+        PinkPlate plate(g);
+        g.quad({ 160.0f - hw, 160.0f + hw, 160.0f + hw - 1.0f, 160.0f - hw + 1.0f }, { 47.0f, 45.5f, 58.0f, 59.0f }, pink, 0.85f * a);
+    }
+    text_centre(g, np_wheel_font, 160.0f, wheel_base, s, blue, 0, a);
     for (float side : { -1.0f, 1.0f }) {
-        const float tip = cx + side * (half + 14.0f), back = tip - side * 5.0f;
-        if (!T->neon) {
-            for (int i = 0; i < 7; ++i) {
-                const float len = 4.0f - static_cast<float>(std::abs(i - 3));
-                g.fill(side < 0 ? tip + 4.0f - len : tip - 4.0f, std::round(my) - 3.0f + static_cast<float>(i), len, 1.0f, accent, a);
-            }
-            continue;
-        }
-        g.seg(back, my - 5.0f, tip, my, 4.5f, accent, 0.15f * a);
-        g.seg(tip, my, back, my + 5.0f, 4.5f, accent, 0.15f * a);
-        g.seg(back, my - 5.0f, tip, my, 1.8f, accent, a);
-        g.seg(tip, my, back, my + 5.0f, 1.8f, accent, a);
+        const float tip = 160.0f + side * 143.0f, back = tip - side * 7.0f;
+        const float ca = (side < 0 ? prev : next) ? a : 0.25f * a;
+        g.seg(back, 43.0f, tip, 49.0f, 2.2f, blue, ca);
+        g.seg(tip, 49.0f, back, 55.0f, 2.2f, blue, ca);
     }
 }
 
-// Where a knob's ring starts: 0, or the middle for a control that goes both ways.
+// Where a knob's arc starts: 0, or the middle for a control that goes both ways.
 float zero_of(ParamId id)
 {
     const auto& sp = spec_of(id);
     return sp.min < 0.0f && sp.max > 0.0f ? lofly::toNormalized(sp, 0.0f) : 0.0f;
 }
-bool lit(float t, float zero, float n) { return t >= std::min(zero, n) - 0.001f && t <= std::max(zero, n) + 0.001f; }
 
-// A knob drawn once, by lo-fly: an LED ring lit from zero to the value, a pointer, then the label and value.
-// A pot that has not reached the value yet shows as a small ring at its own place.
-void knob(Canvas& g, float cx, float cy, ParamId id, const Store& s, const char* label, int k, int pot, bool live, float a)
+// "60.0 %" as "60.0" and "%"; a value that is not a number and a unit stays whole.
+std::pair<std::string, std::string> split_unit(const std::string& v)
 {
-    constexpr float a0 = -2.36f, a1 = 2.36f;
-    constexpr int leds = 15;
-    const bool used = id != ParamId::Count;
-    const float n = used ? s.normalized(id) : 0.0f, zero = used ? zero_of(id) : 0.0f;
-    const float av = a0 + (a1 - a0) * n;
-    const std::uint32_t colour = knob_colour[static_cast<std::size_t>(k)];
-    const float ua = used ? a : 0.45f * a;
-    for (int i = 0; i < leds; ++i) {
-        const float t = static_cast<float>(i) / (leds - 1), an = a0 + (a1 - a0) * t;
-        const float x = cx + std::sin(an) * 19.0f, y = cy - std::cos(an) * 19.0f;
-        if (used && lit(t, zero, n)) {
-            g.disc(x, y, 5.0f, colour, 0.2f * a);
-            g.disc(x, y, 2.4f, colour, a);
-        } else
-            g.disc(x, y, 2.0f, ink_ghost, ua);
-    }
-    g.disc(cx, cy, 13.0f, knob_face, ua);
-    g.ring(cx, cy, 12.8f, 1.0f, ink_faint, 0.7f * ua);
-    if (!used)
-        return;
-    g.seg(cx + std::sin(av) * 4.0f, cy - std::cos(av) * 4.0f, cx + std::sin(av) * 10.0f, cy - std::cos(av) * 10.0f, 2.2f, colour, a);
-    if (pot >= 0 && !live) {
-        const float ap = a0 + (a1 - a0) * static_cast<float>(pot) / 127.0f;
-        const float px = cx + std::sin(ap) * 27.0f, py = cy - std::cos(ap) * 27.0f;
-        g.disc(px, py, 3.3f, ink, a);
-        g.disc(px, py, 1.7f, ground, a);
-    }
-    text_centre(g, T->label, cx, cy + T->label_dy, label, colour, 1, a);
-    const std::string v = value_text(id, s.get(id));
-    // Up to 92 px leaves 12 px to the next knob's value; longer ones in 8 x 16, centred on the same line.
-    if (text_width(T->value, v) <= 92)
-        text_centre(g, T->value, cx, cy + T->value_dy, v, ink, 0, a);
-    else
-        text_centre(g, T->label, cx, cy + T->value_dy + 4.0f, v, ink, 0, a);
+    const auto space = v.rfind(' ');
+    if (space == std::string::npos || space == 0)
+        return { v, "" };
+    const std::string number = v.substr(0, space), unit = v.substr(space + 1);
+    const char first = number[0];
+    const bool numeric = (first >= '0' && first <= '9') || first == '-' || first == '+' || first == '.';
+    if (!numeric || unit.empty() || std::any_of(unit.begin(), unit.end(), [](char c) { return c >= '0' && c <= '9'; }))
+        return { v, "" };
+    return { number, unit };
 }
 
-// The page's title (after the section's lamp: play while on, stop while off), the preset's name, the page dots.
+// A knob, printed: a disc in its ink (K1 pink, K2 blue, K3 both: violet), a dotted track with the value's arc over
+// it (one mark a setting for a choice), a pointer; the label above, the value below. A pot that has not reached the
+// value yet shows as a pink dot at its own place.
+void knob(Canvas& g, float cx, float cy, ParamId id, const Store& s, const char* label, int k, int pot, bool live, float a)
+{
+    constexpr float a0 = -2.356f, a1 = 2.356f, r = 21.0f;
+    const bool used = id != ParamId::Count;
+    for (int i = 0; i <= 30; ++i) {
+        const float an = a0 + (a1 - a0) * static_cast<float>(i) / 30.0f;
+        g.disc(cx + std::sin(an) * r, cy - std::cos(an) * r, 0.75f, blue, (used ? 0.8f : 0.35f) * a);
+    }
+    if (!used)
+        return;
+    const auto& spec = spec_of(id);
+    const float n = s.normalized(id), av = a0 + (a1 - a0) * n;
+    if (k != 1) {
+        PinkPlate plate(g);
+        g.disc(cx, cy, 15.0f, pink, a);
+    }
+    if (k != 0)
+        g.disc(cx, cy, 15.0f, blue, (k == 1 ? 0.35f : 0.55f) * a);
+    const int choices = spec.kind == lofly::ParamKind::Choice ? static_cast<int>(spec.choices.size()) : 0;
+    if (choices >= 2 && choices <= 32) {
+        for (int i = 0; i < choices; ++i) {
+            const float an = a0 + (a1 - a0) * static_cast<float>(i) / static_cast<float>(choices - 1);
+            g.seg(cx + std::sin(an) * 19.5f, cy - std::cos(an) * 19.5f, cx + std::sin(an) * 23.0f, cy - std::cos(an) * 23.0f, 1.4f, blue, a);
+        }
+    } else {
+        const float z = a0 + (a1 - a0) * zero_of(id);
+        if (std::fabs(av - z) > 0.01f)
+            g.arc(cx, cy, r, 3.2f, std::min(z, av), std::max(z, av), blue, a);
+    }
+    g.seg(cx + std::sin(av) * 4.0f, cy - std::cos(av) * 4.0f, cx + std::sin(av) * 15.0f, cy - std::cos(av) * 15.0f, 2.4f, blue, a);
+    if (pot >= 0 && !live) {
+        const float ap = a0 + (a1 - a0) * static_cast<float>(pot) / 127.0f;
+        PinkPlate plate(g);
+        g.disc(cx + std::sin(ap) * 27.0f, cy - std::cos(ap) * 27.0f, 3.0f, pink, a);
+    }
+    text_centre(g, np_label_font, cx, cy - 25.0f, label, blue, 1, a);
+    // The value: number and unit on one baseline, the number in the largest size that keeps 8 px to the next knob's.
+    const auto [number, unit] = split_unit(value_text(id, s.get(id)));
+    const int unit_w = unit.empty() ? 0 : text_width(np_small_font, unit) + 3;
+    const Font* f = &np_value_font;
+    for (const Font* size : { &np_value_font, &np_value_s_font, &np_small_font }) {
+        f = size;
+        if (text_width(*f, number) + unit_w <= 96)
+            break;
+    }
+    const float x = cx - static_cast<float>(text_width(*f, number) + unit_w) * 0.5f, base = cy + 41.0f;
+    text(g, *f, x, base, number, blue, 0, a);
+    if (!unit.empty())
+        text(g, np_small_font, x + static_cast<float>(text_width(*f, number) + 3), base, unit, blue, 0, a);
+}
+
+// The page's title after the section's lamp (pink while on, a pink ring while off), the preset's name, the page number.
 void header(Canvas& g, const PageDef& p, int page, std::optional<bool> on, const std::string& preset)
 {
     if (on) {
-        if (*on) {
-            for (int i = 0; i < 9; ++i)
-                g.fill(9.0f, 6.0f + static_cast<float>(i), 1.0f + static_cast<float>(std::min(i, 8 - i)), 1.0f, mint);
-        } else
-            g.fill(9.0f, 7.0f, 7.0f, 7.0f, ink_faint);
+        PinkPlate plate(g);
+        if (*on)
+            g.disc(13.0f, 16.0f, 5.0f, pink);
+        else
+            g.ring(13.0f, 16.0f, 4.2f, 1.6f, pink);
     }
-    const float tx = on ? 22.0f : 10.0f;
-    title_text(g, T->title, tx, T->title_y, p.title, p.accent, 1);
-    float dx = 311.0f - static_cast<float>((page_total - 1) * 7 + 11);
-    const float title_end = tx + static_cast<float>(text_width(T->title, p.title, 1));
-    const float name_w = static_cast<float>(text_width(T->small, preset));
-    if (title_end + 10.0f + name_w <= dx - 8.0f) // shown whole or not at all
-        text(g, T->small, dx - 8.0f - name_w, T->small_y, preset, ink_dim);
-    for (int i = 0; i < page_total; ++i) {
-        if (i == page) {
-            g.fill(dx, 9.0f, 11.0f, 4.0f, p.accent, 0.25f);
-            g.fill(dx, 10.0f, 11.0f, 2.0f, p.accent);
-            dx += 14.0f;
-        } else {
-            g.fill(dx + 1.0f, 10.0f, 2.0f, 2.0f, ink_faint);
-            dx += 7.0f;
-        }
-    }
+    const float tx = on ? 22.0f : 9.0f;
+    text(g, np_title_font, tx, title_base, p.title, blue);
+    const float title_end = tx + static_cast<float>(text_width(np_title_font, p.title));
+    const float name_w = static_cast<float>(text_width(np_name_font, preset));
+    if (title_end + 12.0f + name_w <= 312.0f) // shown whole or not at all
+        text(g, np_name_font, 312.0f - name_w, 15.0f, preset, blue);
+    char number[16];
+    std::snprintf(number, sizeof number, "%02d / %d", page + 1, page_total);
+    text_right(g, np_small_font, 312.0f, 29.0f, number, blue, 0, 0.75f);
 }
 
-// --- the background (built once a page) ---
-
-// Dark ground with scan lines; the card a night sky with stars, a moon (where nothing runs into it) and a skyline
-// with a few windows lit.
-void night_background(Canvas& g, bool strip, bool with_moon)
+// The paper, with a fixed grain (built once a page).
+void paper_background(Canvas& g)
 {
     for (int y = 0; y < g.h; ++y)
         for (int x = 0; x < g.w; ++x)
-            g.at(x, y) = shade(ground, grain(x, y) / 2 - ((y & 1) ? 3 : 0));
-    if (strip)
-        return;
-    auto in_card = [](float x, float y) { return Canvas::rrect_dist(x, y, card_x, card_y, card_w, card_h, 8.0f); };
-    for (int y = static_cast<int>(card_y) - 1; y <= static_cast<int>(card_y + card_h); ++y)
-        for (int x = static_cast<int>(card_x) - 1; x <= static_cast<int>(card_x + card_w); ++x) {
-            const float cover = std::clamp(0.5f - in_card(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f), 0.0f, 1.0f);
-            if (cover <= 0.0f)
-                continue;
-            const float t = (static_cast<float>(y) - card_y) / card_h;
-            std::uint32_t c = shade(lerp_colour(sky_top, sky_bottom, t * t), grain(x + 3, y) / 2 - ((y & 1) ? 4 : 0));
-            const std::uint32_t h = hash(x, y, 11);
-            if (t < 0.7f && (h % 331u) == 0) // a star
-                c = lerp_colour(c, 0xfff6e8, 0.35f + static_cast<float>((h >> 12) & 63u) / 100.0f);
-            g.blend(x, y, c, cover);
-        }
-    const float mx = card_x + card_w - 30.0f, my = card_y + 22.0f;
-    if (with_moon) { // a glow, then a crescent
-        g.disc(mx, my, 19.0f, moon, 0.05f);
-        g.disc(mx, my, 14.0f, moon, 0.08f);
-        g.shape(mx - 11, my - 11, mx + 11, my + 11, moon, 1.0f, [&](float x, float y) {
-            return std::max(std::hypot(x - mx, y - my) - 9.0f, -(std::hypot(x - mx - 4.5f, y - my + 3.0f) - 8.0f));
-        });
+            g.at(x, y) = shade(paper, grain(x, y) / 2);
+}
+
+// A frequency across the picture: 20 Hz to 20 kHz, `n` columns.
+float column_hz(int i, int n) { return 20.0f * std::pow(1000.0f, static_cast<float>(i) / static_cast<float>(n - 1)); }
+constexpr float curve_x = 12.0f;
+constexpr int curve_n = 296;
+
+// 100 Hz, 1 kHz and 10 kHz as dotted lines with their names, and the 0 dB line.
+void freq_grid(Canvas& g, float top, float bottom, float zero_y, float a)
+{
+    g.dots_h(curve_x, curve_x + curve_n, zero_y, 4.0f, blue, 0.7f * a);
+    for (auto [hz, label] : { std::pair { 100.0f, "100" }, std::pair { 1000.0f, "1k" }, std::pair { 10000.0f, "10k" } }) {
+        const float fx = std::round(curve_x + curve_n * std::log10(hz / 20.0f) / 3.0f);
+        g.dots_v(fx, top, bottom, 3.0f, blue, 0.55f * a);
+        text(g, np_small_font, fx + 3.0f, top + 9.0f, label, blue, 0, 0.8f * a);
     }
-    float bx = card_x;
-    for (int b = 0; bx < card_x + card_w; ++b) {
-        const float w = 10.0f + static_cast<float>(hash(b, 1, 5) % 18u), top = 7.0f + static_cast<float>(hash(b, 2, 5) % 17u);
-        for (int y = static_cast<int>(card_y + card_h - top); y < static_cast<int>(card_y + card_h); ++y)
-            for (int x = static_cast<int>(bx); x < static_cast<int>(bx + w) - 1; ++x) {
-                if (in_card(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f) > -0.5f)
-                    continue;
-                const int wx = x - static_cast<int>(bx), wy = y - static_cast<int>(card_y + card_h - top);
-                const bool lit_window = wx % 4 >= 2 && wy % 5 >= 3 && wx > 1 && wx < static_cast<int>(w) - 3 && (hash(x / 4, y / 5, 9) % 5u) == 0;
-                g.at(x, y) = lit_window ? window : shade(building, grain(x, y) / 2);
-            }
-        bx += w;
+}
+
+// A curve in blue over the pink screen down (or up) to `base`.
+void print_curve(Canvas& g, const float* xs, const float* ys, int n, float base, float a, float width = 2.0f)
+{
+    float bases[curve_n + 8];
+    for (int i = 0; i < n; ++i)
+        bases[i] = base;
+    {
+        PinkPlate plate(g);
+        g.halftone(xs[0], n, ys, bases, pink, a);
     }
-    g.rrect_line(card_x + 0.5f, card_y + 0.5f, card_w - 1.0f, card_h - 1.0f, 8.0f, 1.0f, card_edge, 0.55f);
+    g.polyline(xs, ys, n, width, blue, a);
 }
 
 // --- the LOFI page ---
 
-// The level on two LED columns (the dark segments are in the background); 0 VU at 0.708 of full, as a VU's needle.
-constexpr float led_x = card_x + 252.0f, led_y = card_y + 92.0f;
+// The level on two bars; 0 VU at -6 dBFS sits at 0.708 of the bar, as a VU's needle.
 float vu_position(float db) { return std::pow(10.0f, db / 20.0f) / std::pow(10.0f, 3.0f / 20.0f); }
-std::uint32_t led_colour(int i) { return i >= 8 ? pink : i >= 6 ? yellow : mint; }
-void leds_static(Canvas& g)
+void level_bars(Canvas& g, float level, float a)
 {
-    for (int c = 0; c < 2; ++c)
-        for (int i = 0; i < 10; ++i)
-            g.fill(led_x + static_cast<float>(c) * 16.0f, led_y - static_cast<float>(i) * 6.0f - 4.0f, 12.0f, 4.0f, ink_ghost);
-}
-void leds(Canvas& g, float level, float a)
-{
-    const int on = static_cast<int>(std::lround(std::clamp(level, 0.0f, 1.0f) * 10.0f));
-    for (int c = 0; c < 2; ++c)
-        for (int i = 0; i < on; ++i) {
-            const float x = led_x + static_cast<float>(c) * 16.0f, y = led_y - static_cast<float>(i) * 6.0f - 4.0f;
-            g.fill(x - 2.0f, y - 2.0f, 16.0f, 8.0f, led_colour(i), 0.15f * a);
-            g.fill(x, y, 12.0f, 4.0f, led_colour(i), a);
+    constexpr float top = 72.0f, h = 54.0f;
+    const float fill = std::clamp(level, 0.0f, 1.0f) * h;
+    for (float x : { 266.0f, 288.0f }) {
+        if (fill > 0.5f) {
+            PinkPlate plate(g);
+            g.rect(x, top + h - fill, 16.0f, fill, pink, a);
         }
+        g.rect_line(x + 0.5f, top + 0.5f, 15.0f, h - 1.0f, 1.0f, blue, a);
+    }
+    for (float db : { -20.0f, -10.0f, -5.0f, 0.0f, 3.0f }) {
+        const float y = std::round(top + h - vu_position(db) * h);
+        g.fill(db == 0.0f ? 282.0f : 283.0f, y, db == 0.0f ? 6.0f : 4.0f, 1.0f, blue, a);
+    }
 }
 
-// The character, the tape's wobble as a neon line across the sky (wow and flutter of the character, as deep as
-// Wobble × Amount, moving while lo-fly sounds), the level.
-void picture_lofi(Canvas& g, const Store& s, double spin, float level, std::uint32_t accent, float a)
+// The character, the tape's wobble as a line (wow and flutter of the character, as deep as Wobble × Amount, moving
+// while lo-fly sounds), the level.
+void picture_lofi(Canvas& g, const Store& s, double spin, float level, float a)
 {
     const auto& prof = lofly::characterProfile(static_cast<lofly::LofiCharacter>(s.index(ParamId::LofiCharacter)));
     const float wobble = s.get(ParamId::LofiWobble) * s.get(ParamId::LofiAmount);
-    selector(g, card_x + 128.0f, card_y + 4.0f, choice_name(s, ParamId::LofiCharacter), accent, a);
-    constexpr int n = 224;
+    constexpr int n = 231;
     float xs[n], ys[n];
-    const float cy = card_y + 62.0f, amp = 3.0f + 16.0f * wobble;
+    const float cy = 96.0f, amp = 3.0f + 14.0f * wobble;
     const float wow = std::max(0.2f, prof.wowHz), flutter = std::max(1.0f, prof.flutterHz);
     for (int i = 0; i < n; ++i) {
         const float x = static_cast<float>(i);
-        xs[i] = card_x + 14.0f + x;
+        xs[i] = 10.0f + x;
         ys[i] = cy + amp * (0.8f * std::sin(2.0f * pi * (x / 140.0f - static_cast<float>(spin) * wow * 0.5f))
                        + 0.2f * std::sin(2.0f * pi * (x / 19.0f - static_cast<float>(spin) * flutter * 0.25f)));
     }
-    stroke(g, xs, ys, n, accent, a, 2.2f);
-    leds(g, level, a);
+    g.dots_h(10.0f, 240.0f, cy, 4.0f, blue, 0.7f * a);
+    print_curve(g, xs, ys, n, cy, a, 2.2f);
+    level_bars(g, level, a);
 }
 
 // The LoFi chain's response, dB at `f` Hz: speaker band, tape loss, head bump, tone tilt (each scaled by Amount).
@@ -579,48 +602,27 @@ float lofi_response(const Store& s, float f)
     return db;
 }
 
-// A frequency across the card: 20 Hz to 20 kHz, `n` columns.
-float column_hz(int i, int n) { return 20.0f * std::pow(1000.0f, static_cast<float>(i) / static_cast<float>(n - 1)); }
-
-void freq_grid(Canvas& g, float x, float y, float w, float h, float zero_y, float a)
+void picture_tape(Canvas& g, const Store& s, float a)
 {
-    g.fill(x, zero_y, w, 1.0f, ink_ghost, a);
-    for (float hz : { 100.0f, 1000.0f, 10000.0f }) {
-        const float fx = x + w * std::log10(hz / 20.0f) / 3.0f;
-        g.fill(fx, y, 1.0f, h, ink_ghost, 0.6f * a);
-    }
-}
-
-constexpr int curve_n = 276;
-
-void picture_tape(Canvas& g, const Store& s, std::uint32_t accent, float a)
-{
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, choice_name(s, ParamId::LofiCharacter), accent, a);
-    const float x = card_x + 18.0f, y = card_y + 34.0f, h = 50.0f, zero = y + 20.0f;
-    freq_grid(g, x, y, curve_n, h, zero, a);
+    constexpr float top = 68.0f, bottom = 128.0f, zero = 88.0f;
+    freq_grid(g, top, bottom, zero, a);
     float xs[curve_n], ys[curve_n];
     for (int i = 0; i < curve_n; ++i) {
-        xs[i] = x + static_cast<float>(i);
-        ys[i] = std::clamp(zero - lofi_response(s, column_hz(i, curve_n)) * 2.4f, y, y + h);
+        xs[i] = curve_x + static_cast<float>(i);
+        ys[i] = std::clamp(zero - lofi_response(s, column_hz(i, curve_n)) * 2.0f, top, bottom);
     }
-    g.area(ys, x, curve_n, y + h, accent, fill_alpha * a);
-    stroke(g, xs, ys, curve_n, accent, a);
-    for (auto [hz, label] : { std::pair { 100.0f, "100" }, std::pair { 1000.0f, "1k" }, std::pair { 10000.0f, "10k" } })
-        text(g, T->small, x + curve_n * std::log10(hz / 20.0f) / 3.0f + 3.0f, y + h - 1.0f, label, ink_dim, 0, a);
+    print_curve(g, xs, ys, curve_n, bottom, a);
 }
 
-void picture_engine(Canvas& g, const Store& s, int n, std::uint32_t accent, float a)
+// One cycle of lo-fly's own oscillator at A4, through the engine's converter: its rate as steps (and one tick a
+// sample under the picture), its bits as levels.
+void picture_engine(Canvas& g, const Store& s, int n, float a)
 {
-    const float x = card_x + 18.0f, cy = card_y + 66.0f, amp = 24.0f;
+    constexpr float cy = 97.0f, amp = 25.0f;
     constexpr int w = curve_n;
-    const int type = s.index(eng(n, lofly::EngineParam::Type));
-    if (type != 0) { // Instrument or Sampler: the content comes from files
-        selector(g, card_x + card_w * 0.5f, card_y + 5.0f, choice_name(s, eng(n, lofly::EngineParam::Type)), accent, a);
-        g.fill(x, cy, w, 1.0f, ink_ghost, a);
+    g.dots_h(curve_x, curve_x + w, cy, 4.0f, blue, 0.7f * a);
+    if (s.index(eng(n, lofly::EngineParam::Type)) != 0) // Instrument or Sampler: the content comes from files
         return;
-    }
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, choice_name(s, eng(n, lofly::EngineParam::Wave)), accent, a);
-    // One cycle of lo-fly's own oscillator at A4, through the engine's converter: its rate as steps, its bits as levels.
     constexpr float note = 440.0f, rate = note * w;
     lofly::VaOsc osc;
     osc.reset(0.0f);
@@ -646,12 +648,13 @@ void picture_engine(Canvas& g, const Store& s, int n, std::uint32_t accent, floa
             }
             v = held;
         }
-        xs[i] = x + static_cast<float>(i);
+        xs[i] = curve_x + static_cast<float>(i);
         ys[i] = cy - std::clamp(v, -1.3f, 1.3f) * amp;
     }
-    g.fill(x, cy, w, 1.0f, ink_ghost, a);
-    g.area(ys, x, w, cy, accent, fill_alpha * a);
-    stroke(g, xs, ys, w, accent, a);
+    print_curve(g, xs, ys, w, cy, a);
+    if (converter && steps * 2.0f <= static_cast<float>(w))
+        for (int k = 0; k < static_cast<int>(steps); ++k)
+            g.fill(std::floor(curve_x + (static_cast<float>(k) + 0.5f) * static_cast<float>(w) / steps), 127.0f, 1.0f, 3.0f, blue, 0.8f * a);
 }
 
 const char* noise_name(int i)
@@ -663,52 +666,58 @@ int noise_index(const Store& s)
     return s.index(ParamId::NoiseMode) == 0 ? s.index(ParamId::NoiseTexture) : 6 + s.index(ParamId::NoiseTransient);
 }
 
-void picture_noise(Canvas& g, const Store& s, const std::array<std::array<float, 2>, 288>& columns, std::uint32_t accent, float a)
+// The built-in noise itself: its highs and lows per column, screened pink between blue edges.
+void picture_noise(Canvas& g, const Store& s, const std::array<std::array<float, 2>, 288>& columns, float a)
 {
     const int i = noise_index(s);
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, noise_name(i), accent, a);
-    text(g, T->small, card_x + 18.0f, card_y + 31.0f, i < 6 ? "TEXTURE" : "TRANSIENT", ink_dim, 1, a);
-    const float x = card_x + 18.0f, cy = card_y + 70.0f, amp = 22.0f;
-    g.fill(x, cy, curve_n, 1.0f, ink_ghost, a);
+    text(g, np_label_font, curve_x, 75.0f, i < 6 ? "TEXTURE" : "TRANSIENT", blue, 1, 0.8f * a);
+    constexpr float cy = 102.0f, amp = 22.0f;
+    float xs[curve_n], hi[curve_n], lo[curve_n];
     for (int c = 0; c < curve_n; ++c) {
         const auto& col = columns[static_cast<std::size_t>(c * 288 / curve_n)];
-        const float top = cy - col[1] * amp, bottom = cy - col[0] * amp;
-        g.fill(x + static_cast<float>(c), top - 1.0f, 1.0f, std::max(1.0f, bottom - top) + 2.0f, accent, 0.18f * a);
-        g.fill(x + static_cast<float>(c), top, 1.0f, std::max(1.0f, bottom - top), accent, 0.85f * a);
+        xs[c] = curve_x + static_cast<float>(c);
+        hi[c] = cy - col[1] * amp;
+        lo[c] = cy - col[0] * amp;
+        if (lo[c] - hi[c] < 1.0f)
+            lo[c] = hi[c] + 1.0f;
     }
+    {
+        PinkPlate plate(g);
+        g.halftone(curve_x, curve_n, hi, lo, pink, a);
+    }
+    g.polyline(xs, hi, curve_n, 1.2f, blue, a);
+    g.polyline(xs, lo, curve_n, 1.2f, blue, a);
 }
 
 // The filter: its response for Clean and Analog; for LoFi a sine sampled and held at the cutoff's rate.
-void picture_filter(Canvas& g, const Store& s, std::uint32_t accent, float a)
+void picture_filter(Canvas& g, const Store& s, float a)
 {
     const int type = s.index(ParamId::FilterType), mode = s.index(ParamId::FilterMode);
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, choice_name(s, ParamId::FilterType), accent, a);
     constexpr int w = curve_n;
-    const float x = card_x + 18.0f, y = card_y + 34.0f, h = 62.0f;
     const float cutoff = s.get(ParamId::FilterCutoff), res = s.get(ParamId::FilterResonance);
     float xs[w], ys[w];
     if (type == 2) {
-        const float cy = y + h * 0.5f, amp = 24.0f;
+        constexpr float cy = 97.0f, amp = 25.0f;
         const float steps = 4.0f + 60.0f * s.normalized(ParamId::FilterCutoff);
-        g.fill(x, cy, w, 1.0f, ink_ghost, a);
+        g.dots_h(curve_x, curve_x + w, cy, 4.0f, blue, 0.7f * a);
         for (int i = 0; i < w; ++i) {
             const float t = static_cast<float>(i) / static_cast<float>(w);
-            xs[i] = x + static_cast<float>(i);
+            xs[i] = curve_x + static_cast<float>(i);
             ys[i] = cy - std::sin(4.0f * pi * t) * amp;
         }
-        g.polyline(xs, ys, w, 1.2f, ink_faint, a);
+        g.polyline(xs, ys, w, 1.0f, blue, 0.45f * a);
         for (int i = 0; i < w; ++i) {
             const float t = std::floor(static_cast<float>(i) / static_cast<float>(w) * steps) / steps;
             ys[i] = cy - std::sin(4.0f * pi * t) * amp;
         }
-        g.area(ys, x, w, cy, accent, fill_alpha * a);
-        stroke(g, xs, ys, w, accent, a);
+        print_curve(g, xs, ys, w, cy, a);
         return;
     }
-    text(g, T->small, card_x + 18.0f, card_y + 31.0f, mode == 0 ? "LOW-PASS" : mode == 1 ? "BAND-PASS" : mode == 2 ? "HIGH-PASS" : "NOTCH", ink_dim, 1, a);
+    text(g, np_label_font, curve_x, 75.0f, mode == 0 ? "LOW-PASS" : mode == 1 ? "BAND-PASS" : mode == 2 ? "HIGH-PASS" : "NOTCH", blue, 1, 0.8f * a);
     const int stages = type == 0 ? s.index(ParamId::FilterSlope) + 1 : 1;
-    const float q = 0.707f + res * res * 9.0f, zero = y + 22.0f;
-    freq_grid(g, x, y + 10.0f, w, h - 10.0f, zero, a);
+    constexpr float top = 80.0f, bottom = 128.0f, zero = 94.0f;
+    const float q = 0.707f + res * res * 9.0f;
+    freq_grid(g, top, bottom, zero, a);
     for (int i = 0; i < w; ++i) {
         const float r = column_hz(i, w) / cutoff;
         auto stage = [&](float qq) {
@@ -724,29 +733,30 @@ void picture_filter(Canvas& g, const Store& s, std::uint32_t accent, float a)
         for (int k = 1; k < stages; ++k)
             mag *= stage(0.707f);
         const float db = 20.0f * std::log10(std::max(mag, 1e-4f));
-        xs[i] = x + static_cast<float>(i);
-        ys[i] = std::clamp(zero - db * 1.2f, y + 8.0f, y + h);
+        xs[i] = curve_x + static_cast<float>(i);
+        ys[i] = std::clamp(zero - db * 1.2f, 68.0f, bottom);
     }
-    g.area(ys, x, w, y + h, accent, fill_alpha * a);
-    stroke(g, xs, ys, w, accent, a);
-    const float fx = x + w * std::log10(cutoff / 20.0f) / 3.0f;
-    const int at = std::clamp(static_cast<int>(fx - x), 0, w - 1);
-    g.disc(xs[at], ys[at], 3.2f, ink, a);
+    print_curve(g, xs, ys, w, bottom, a);
+    const int at = std::clamp(static_cast<int>(curve_n * std::log10(cutoff / 20.0f) / 3.0f), 0, w - 1);
+    {
+        PinkPlate plate(g);
+        g.disc(xs[at], ys[at], 3.6f, pink, a);
+    }
+    g.ring(xs[at], ys[at], 3.6f, 1.4f, blue, a);
 }
 
-void picture_env(Canvas& g, const Store& s, int n, std::uint32_t accent, float a)
+// The envelope's shape; decay and release are drawn exponential, as envelopes sound. Pink points at its corners.
+void picture_env(Canvas& g, const Store& s, int n, float a)
 {
     const auto ids = env_ids(n);
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, "Sustain " + value_text(ids[2], s.get(ids[2])), accent, a);
     auto width = [](float t) { return 74.0f * std::log(1.0f + t * 25.0f) / std::log(1.0f + 10.0f * 25.0f); };
-    const float top = card_y + 38.0f, base = card_y + 96.0f, x = card_x + 20.0f;
+    constexpr float top = 70.0f, base = 126.0f, x = curve_x + 2.0f;
     const float sustain = s.get(ids[2]);
     const float xa = x + std::max(2.0f, width(s.get(ids[0])));
     const float xd = xa + std::max(2.0f, width(s.get(ids[1])));
     const float xs_ = xd + 56.0f;
     const float xr = xs_ + std::max(2.0f, width(s.get(ids[3])));
     const float sy = base - (base - top) * sustain;
-    // The decay and release curves are drawn exponential, as envelopes sound.
     constexpr int seg_n = 24;
     float xs[2 * seg_n + 4], ys[2 * seg_n + 4];
     int k = 0;
@@ -763,8 +773,8 @@ void picture_env(Canvas& g, const Store& s, int n, std::uint32_t accent, float a
         xs[k] = xs_ + (xr - xs_) * t;
         ys[k++] = base + (sy - base) * std::exp(-4.0f * t);
     }
-    g.fill(x, base, card_w - 38.0f, 1.0f, ink_ghost, a);
-    float cols[curve_n];
+    g.dots_h(curve_x, curve_x + curve_n, base, 4.0f, blue, 0.7f * a);
+    float cols[curve_n], bases[curve_n];
     const int span = std::min(curve_n, static_cast<int>(xr - x) + 1);
     for (int c = 0, j = 1; c < span; ++c) {
         const float cx = x + static_cast<float>(c);
@@ -772,56 +782,62 @@ void picture_env(Canvas& g, const Store& s, int n, std::uint32_t accent, float a
             ++j;
         const float t = xs[j] > xs[j - 1] ? std::clamp((cx - xs[j - 1]) / (xs[j] - xs[j - 1]), 0.0f, 1.0f) : 1.0f;
         cols[c] = ys[j - 1] + (ys[j] - ys[j - 1]) * t;
+        bases[c] = base;
     }
-    g.area(cols, x, span, base, accent, fill_alpha * a);
-    stroke(g, xs, ys, k, accent, a);
-    for (auto [px, py] : { std::pair { xa, top }, std::pair { xd, sy }, std::pair { xs_, sy } })
-        g.disc(px, py, 3.0f, ink, a);
+    {
+        PinkPlate plate(g);
+        g.halftone(x, span, cols, bases, pink, a);
+    }
+    g.polyline(xs, ys, k, 2.0f, blue, a);
+    for (auto [px, py] : { std::pair { xa, top }, std::pair { xd, sy }, std::pair { xs_, sy } }) {
+        {
+            PinkPlate plate(g);
+            g.disc(px, py, 3.4f, pink, a);
+        }
+        g.ring(px, py, 3.4f, 1.3f, blue, a);
+    }
 }
 
-void picture_fx(Canvas& g, const Store& s, int slot, std::uint32_t accent, float a)
+// The four slots in a row: pink = an effect that is on, a bar under this page's slot, and under the bar SEND or
+// INSERT for a reverb or delay type.
+void picture_fx(Canvas& g, const Store& s, int slot, float a)
 {
-    const float y = card_y + 12.0f, w = 54.0f, h = 20.0f, gap = 16.0f;
-    const float x0 = card_x + 6.0f + (card_w - 6.0f - (4.0f * w + 3.0f * gap)) * 0.5f;
+    constexpr float y = 82.0f, w = 54.0f, h = 20.0f, gap = 16.0f, x0 = 160.0f - (4.0f * w + 3.0f * gap) * 0.5f;
     for (int i = 0; i < lofly::kFxSlots; ++i) {
         const float x = x0 + static_cast<float>(i) * (w + gap);
         if (i > 0)
-            g.seg(x - gap + 3.0f, y + h * 0.5f, x - 3.0f, y + h * 0.5f, 1.5f, ink_faint, a);
+            g.seg(x - gap + 3.0f, y + h * 0.5f, x - 3.0f, y + h * 0.5f, 1.2f, blue, a);
         const bool used = s.index(lofly::fxParam(i, lofly::FxCommon::Type)) != 0 && s.on(lofly::fxParam(i, lofly::FxCommon::On));
-        if (i == slot)
-            g.rrect_line(x - 3.0f, y - 3.0f, w + 6.0f, h + 6.0f, 4.0f, 1.4f, ink, a);
         if (used) {
-            g.rrect(x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f, 4.0f, accent, 0.2f * a);
-            g.rrect(x, y, w, h, 2.0f, accent, a);
-        } else
-            g.rrect_line(x, y, w, h, 2.0f, 1.2f, ink_faint, a);
+            PinkPlate plate(g);
+            g.rect(x, y, w, h, pink, a);
+        }
+        g.rect_line(x + 0.5f, y + 0.5f, w - 1.0f, h - 1.0f, 1.2f, blue, used || i == slot ? a : 0.55f * a);
+        if (i == slot)
+            g.rect(x, y + h + 4.0f, w, 3.0f, blue, a);
         const char digit[2] { static_cast<char>('1' + i), 0 };
-        text_centre(g, T->label, x + w * 0.5f, y + 1.0f, digit, used ? ground : ink_dim, 0, a);
+        text_centre(g, np_label_font, x + w * 0.5f, y + 14.0f, digit, blue, 0, used || i == slot ? a : 0.55f * a);
     }
-    const auto type_id = lofly::fxParam(slot, lofly::FxCommon::Type);
-    const int type = s.index(type_id);
-    selector(g, card_x + card_w * 0.5f, card_y + 44.0f, choice_name(s, type_id), accent, a);
+    const int type = s.index(lofly::fxParam(slot, lofly::FxCommon::Type));
     if (lofly::isSpatial(static_cast<lofly::FxType>(type)))
-        text_centre(g, T->small, card_x + card_w * 0.5f, card_y + 78.0f, s.on(lofly::fxParam(slot, lofly::FxCommon::Send)) ? "SEND" : "INSERT",
-            ink_dim, 1, a);
+        text_centre(g, np_label_font, x0 + static_cast<float>(slot) * (w + gap) + w * 0.5f, y + h + 20.0f,
+            s.on(lofly::fxParam(slot, lofly::FxCommon::Send)) ? "SEND" : "INSERT", blue, 1, 0.8f * a);
 }
 
-void picture_voice(Canvas& g, const Store& s, std::uint32_t accent, float a)
+// A lamp a voice: pink while it sounds, a frame while free, faint past the polyphony.
+void picture_voice(Canvas& g, const Store& s, float a)
 {
-    selector(g, card_x + card_w * 0.5f, card_y + 5.0f, choice_name(s, ParamId::VoiceMode), accent, a);
     std::uint32_t mask = s.voices.load(std::memory_order_relaxed);
     mask = (mask & 0xffffu) | (mask >> 16); // the four spare voices (fading after a steal) show on the first lamps
     const int count = s.index(ParamId::VoiceCount);
-    const float w = 26.0f, h = 14.0f, gap = 7.0f, x0 = card_x + 6.0f + (card_w - 6.0f - (8.0f * w + 7.0f * gap)) * 0.5f;
+    constexpr float w = 26.0f, h = 14.0f, gap = 7.0f, x0 = 160.0f - (8.0f * w + 7.0f * gap) * 0.5f;
     for (int i = 0; i < 16; ++i) {
-        const float x = x0 + static_cast<float>(i % 8) * (w + gap), y = card_y + 44.0f + static_cast<float>(i / 8) * 22.0f;
-        if (i >= count)
-            g.rrect_line(x, y, w, h, 2.0f, 1.0f, ink_ghost, a);
-        else if (mask >> i & 1u) {
-            g.rrect(x - 3.0f, y - 3.0f, w + 6.0f, h + 6.0f, 5.0f, accent, 0.18f * a);
-            g.rrect(x, y, w, h, 2.0f, accent, a);
-        } else
-            g.rrect(x, y, w, h, 2.0f, ink_ghost, a);
+        const float x = x0 + static_cast<float>(i % 8) * (w + gap), y = 78.0f + static_cast<float>(i / 8) * 24.0f;
+        if (i < count && (mask >> i & 1u)) {
+            PinkPlate plate(g);
+            g.rect(x, y, w, h, pink, a);
+        }
+        g.rect_line(x + 0.5f, y + 0.5f, w - 1.0f, h - 1.0f, 1.2f, blue, i < count ? a : 0.25f * a);
     }
 }
 
@@ -991,11 +1007,7 @@ void Panel::build_background(int area)
     const int h = area == MELODEE_SCREEN_STRIP ? MELODEE_SCREEN_STRIP_HEIGHT : MELODEE_SCREEN_PAGE_HEIGHT;
     background_.assign(static_cast<std::size_t>(MELODEE_SCREEN_WIDTH * h), 0);
     Canvas g { background_.data(), MELODEE_SCREEN_WIDTH, h, MELODEE_SCREEN_WIDTH };
-    const auto& p = pages[static_cast<std::size_t>(page_)];
-    const bool strip = area == MELODEE_SCREEN_STRIP;
-    night_background(g, strip, p.pic != Pic::Fx && p.pic != Pic::Env); // no moon where the slots or a long value run
-    if (!strip && p.pic == Pic::Lofi)
-        leds_static(g);
+    paper_background(g);
     background_page_ = page_;
     background_area_ = area;
 }
@@ -1012,23 +1024,54 @@ void Panel::paint(const melodee_screen_frame_t& f)
             sizeof(std::uint32_t) * static_cast<std::size_t>(w));
 
     Canvas g { f.pixels, w, static_cast<int>(f.height), static_cast<int>(f.stride) };
+    g.ink = true; // everything from here prints onto the paper
     const auto& p = pages[static_cast<std::size_t>(page_)];
     const auto on_id = on_param(p);
     const bool on = !on_id || store_.on(*on_id);
     header(g, p, page_, on_id ? std::optional<bool>(on) : std::nullopt, store_.preset());
     if (!strip) {
+        const float a = on ? 1.0f : 0.35f; // the section is off: its picture prints faint
+        auto choice_wheel = [&](ParamId id, const std::string& name) {
+            const int i = store_.index(id), count = static_cast<int>(spec_of(id).choices.size());
+            wheel(g, name, i > 0, i < count - 1, a);
+        };
         switch (p.pic) {
-        case Pic::Lofi: picture_lofi(g, store_, spin_seconds_, needle_, p.accent, 1.0f); break;
-        case Pic::Tape: picture_tape(g, store_, p.accent, 1.0f); break;
-        case Pic::Engine: picture_engine(g, store_, p.n, p.accent, 1.0f); break;
-        case Pic::Noise: picture_noise(g, store_, noise_columns_[static_cast<std::size_t>(noise_index(store_))], p.accent, 1.0f); break;
-        case Pic::Filter: picture_filter(g, store_, p.accent, 1.0f); break;
-        case Pic::Env: picture_env(g, store_, p.n, p.accent, 1.0f); break;
-        case Pic::Fx: picture_fx(g, store_, p.n, p.accent, 1.0f); break;
-        case Pic::Voice: picture_voice(g, store_, p.accent, 1.0f); break;
+        case Pic::Lofi:
+        case Pic::Tape: choice_wheel(ParamId::LofiCharacter, choice_name(store_, ParamId::LofiCharacter)); break;
+        case Pic::Engine: {
+            const auto type = eng(p.n, lofly::EngineParam::Type), wave = eng(p.n, lofly::EngineParam::Wave);
+            choice_wheel(wave, choice_name(store_, store_.index(type) != 0 ? type : wave));
+            break;
         }
-        if (!on) // the section is off: the picture fades back
-            g.rrect(card_x + 1.0f, card_y + 1.0f, card_w - 2.0f, card_h - 2.0f, 8.0f, sky_top, 0.68f);
+        case Pic::Noise: {
+            const int i = noise_index(store_);
+            wheel(g, noise_name(i), i > 0, i < 11, a);
+            break;
+        }
+        case Pic::Filter: choice_wheel(ParamId::FilterType, choice_name(store_, ParamId::FilterType)); break;
+        case Pic::Env: {
+            const auto id = env_ids(p.n)[2];
+            const float n = store_.normalized(id);
+            wheel(g, "Sustain " + value_text(id, store_.get(id)), n > 0.0f, n < 1.0f, a);
+            break;
+        }
+        case Pic::Fx: {
+            const auto id = lofly::fxParam(p.n, lofly::FxCommon::Type);
+            choice_wheel(id, choice_name(store_, id));
+            break;
+        }
+        case Pic::Voice: choice_wheel(ParamId::VoiceMode, choice_name(store_, ParamId::VoiceMode)); break;
+        }
+        switch (p.pic) {
+        case Pic::Lofi: picture_lofi(g, store_, spin_seconds_, needle_, a); break;
+        case Pic::Tape: picture_tape(g, store_, a); break;
+        case Pic::Engine: picture_engine(g, store_, p.n, a); break;
+        case Pic::Noise: picture_noise(g, store_, noise_columns_[static_cast<std::size_t>(noise_index(store_))], a); break;
+        case Pic::Filter: picture_filter(g, store_, a); break;
+        case Pic::Env: picture_env(g, store_, p.n, a); break;
+        case Pic::Fx: picture_fx(g, store_, p.n, a); break;
+        case Pic::Voice: picture_voice(g, store_, a); break;
+        }
     }
     const auto ks = knobs();
     const float ky = strip ? knob_y_strip : knob_y_page;

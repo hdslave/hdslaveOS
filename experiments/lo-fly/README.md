@@ -14,8 +14,8 @@ instrument without an editor.
 | `plugin.cpp` | CLAP entry: parameters, notes, state, presets, remote-control pages, the screen extension |
 | `panel.cpp`, `panel.h` | the panel: 13 pages drawn into Melodee's 320 × 218 frame |
 | `store.h` | parameter values shared by the host calls, the audio thread and the screen |
-| `fonts.py` | Spleen (BSD) into `build/lo-fly/gen/fonts.h` at its own sizes: 6 × 12, 8 × 16, 12 × 24 (half-width space) |
-| `preview.cpp` | hosts the plug-in on a Mac: writes each page as a PNG, measures render and draw times |
+| `fonts.py` | National Park (OFL) into `build/lo-fly/gen/fonts.h`: seven sizes and weights, anti-aliased |
+| `preview.cpp` | hosts the plug-in on a Mac: writes each page and the strip as PNGs, measures render and draw times |
 
 ## Build
 
@@ -25,7 +25,7 @@ build) and Python with Pillow (the fonts).
 
 ```sh
 cd experiments/lo-fly
-make fonts              # Spleen (its GitHub release), once
+make fonts              # National Park (Google Fonts' repository, a fixed commit), once
 make                    # build/lo-fly/mpc/lo-fly/ (lo-fly.clap, Presets, FONTS.txt) and build/lo-fly/mac/lo-fly.clap
 make screens            # build/lo-fly/screens/*.png
 make bench              # render and draw times on this machine
@@ -42,17 +42,22 @@ exports `clap_entry` only.
 
 ## The look
 
-Night: each picture sits on a night sky over a skyline with lit windows,
-stars and a moon, with scan lines. Curves are neon lines with a glow; knobs
-are LED rings in K1 pink, K2 yellow, K3 cyan. All text is Spleen, a bitmap
-face drawn at its own sizes without smoothing, so every pixel is sharp:
-knob values, titles and the wheel's value 12 × 24 (titles glowing in the
-page's colour), knob labels 8 × 16, the preset's name and small text 6 × 12.
-A knob value wider than 92 px, such as `8-bit 30k`, drops to 8 × 16. The LOFI page
-draws the tape's wobble (the character's wow and flutter, as deep as
-Wobble × Amount) as a line that moves while lo-fly sounds, and the level on
-two LED columns. Spleen is BSD 2-Clause; its licence goes beside the
-plug-in as `FONTS.txt`.
+Print: two inks on paper, as a risograph prints them. Blue carries the lines
+and the type, fluorescent pink the fills; both multiply onto the paper, so
+they turn violet where they cross, and the pink plate sits a fraction of a
+pixel off register. The area under each curve is a pink halftone screen.
+Knobs are discs in K1 pink, K2 blue and K3 both inks, with a dotted track,
+the value's arc (one mark a setting for a choice) and a pointer. The wheel's
+choice sits on a stroke of pink marker; a chevron fades at the end of the
+list. The LOFI page draws the tape's wobble (the character's wow and
+flutter, as deep as Wobble × Amount) as a line that moves while lo-fly
+sounds, and the level on two bars. ENGINE pages put one tick a converter
+sample under the cycle.
+
+All text is National Park (lettering from the US National Park Service's
+routed wooden signs): titles 27 px, the wheel's choice 20 px, knob values
+17 px (13 or 11 px when wider than 96 px), labels 11 px. National Park is
+SIL OFL 1.1; its licence goes beside the plug-in as `FONTS.txt`.
 
 ## On the MPC
 
@@ -64,7 +69,7 @@ Stage **B1** to **PANEL**. The page's header shows the loaded preset's name.
 |---------|--------|
 | **−** / **+** | previous / next page |
 | Wheel | the page's top control (**SHIFT**: finer steps on Sustain) |
-| Push | the page's section on or off (play sign left of the title: on; stop sign: off) |
+| Push | the page's section on or off (pink dot left of the title: on; pink ring: off) |
 | **K1**–**K3** | the three knobs at the bottom of the page |
 
 | Page | Wheel | K1 | K2 | K3 | Push |
