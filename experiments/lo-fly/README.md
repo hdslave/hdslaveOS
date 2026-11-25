@@ -14,7 +14,7 @@ instrument without an editor.
 | `plugin.cpp` | CLAP entry: parameters, notes, state, presets, remote-control pages, the screen extension |
 | `panel.cpp`, `panel.h` | the panel: 13 pages drawn into Melodee's 320 × 218 frame |
 | `store.h` | parameter values shared by the host calls, the audio thread and the screen |
-| `fonts.py` | Doto (OFL) into `build/lo-fly/gen/fonts.h`: its outlines for titles, its dot grid on whole pixels for small text |
+| `fonts.py` | Doto and Rubik (OFL) into `build/lo-fly/gen/fonts.h`: Doto's outlines for titles, its dot grid on whole pixels for values, Rubik for labels |
 | `preview.cpp` | hosts the plug-in on a Mac: writes each page as a PNG, measures render and draw times |
 
 ## Build
@@ -46,13 +46,14 @@ Night: each picture sits on a night sky over a skyline with lit windows,
 stars and a moon, with scan lines. Curves are neon lines with a glow; knobs
 are LED rings in K1 pink, K2 yellow, K3 cyan. The type is Doto, a dot
 matrix like an LED sign. Titles and the wheel's value are Doto's outlines,
-glowing in the page's colour. Small, those outlines blur, so labels, the
-preset's name and small text use Doto's own 5 × 7 dot grid drawn a dot a
-pixel, and values the same grid with 2 × 2 dots (`fonts.py`). The LOFI page
+glowing in the page's colour. Small, those outlines blur, so values use
+Doto's own 5 × 7 dot grid drawn with 2 × 2 dots (`fonts.py`). Knob labels,
+the preset's name and small text are Rubik SemiBold, Melodee's face: Doto's
+dots at a readable size would not fit "ENV AMOUNT" under a knob. The LOFI page
 draws the tape's wobble (the character's wow and flutter, as deep as
 Wobble × Amount) as a line that moves while lo-fly sounds, and the level on
-two LED columns. Doto is SIL OFL 1.1; its licence goes beside the plug-in as
-`FONTS.txt`.
+two LED columns. Doto and Rubik are SIL OFL 1.1 (Rubik from Melodee's own
+`build/deps/rubik`); their licences go beside the plug-in as `FONTS.txt`.
 
 ## On the MPC
 

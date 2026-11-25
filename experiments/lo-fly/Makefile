@@ -15,6 +15,8 @@ OUT ?= $(ROOT)/build/lo-fly
 CLAP_INCLUDE ?= $(ROOT)/build/deps/clap/include
 # Doto (SIL OFL 1.1), from Google Fonts' repository: `make fonts`
 FONT_DIR ?= $(OUT)/fonts
+# Rubik (SIL OFL 1.1), as Melodee's own build fetches it
+RUBIK ?= $(ROOT)/build/deps/rubik/Rubik-VF.ttf
 FONTS_URL := https://raw.githubusercontent.com/google/fonts/main/ofl
 PYTHON ?= python3
 ZIG ?= zig
@@ -59,8 +61,8 @@ endif
 $(SRC)/dsp/src/%.cpp: | $(SRC)/.exported ;
 .PRECIOUS: $(SRC)/dsp/src/%.cpp
 
-$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/Doto-VF.ttf
-	$(PYTHON) fonts.py $(FONT_DIR) $@
+$(OUT)/gen/fonts.h: fonts.py $(FONT_DIR)/Doto-VF.ttf $(RUBIK)
+	$(PYTHON) fonts.py $(FONT_DIR) $(RUBIK) $@
 
 fonts: $(FONT_DIR)/Doto-VF.ttf
 $(FONT_DIR)/Doto-VF.ttf:
@@ -86,11 +88,12 @@ $(OUT)/mpc/obj/%.o: %.cpp $(HEADERS) $(OUT)/gen/fonts.h | $(SRC)/.exported
 $(OUT)/mpc/lo-fly/lo-fly.clap: $(MPC_OBJ) lo-fly.map $(OUT)/mpc/lo-fly/FONTS.txt
 	@mkdir -p $(@D)/Presets
 	$(ZIG) c++ $(MPC_FLAGS) -shared -Wl,--version-script=lo-fly.map -Wl,-s $(MPC_OBJ) -o $@
-# The panel's type is drawn from Doto: its licence goes with the plug-in.
-$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/Doto-VF.ttf
+# The panel's type is drawn from Doto and Rubik: their licences go with the plug-in.
+$(OUT)/mpc/lo-fly/FONTS.txt: $(FONT_DIR)/Doto-VF.ttf $(RUBIK)
 	@mkdir -p $(@D)
-	{ echo "lo-fly's panel draws its text from Doto, under the SIL Open Font License 1.1."; \
-	  echo; echo "=== Doto ==="; cat $(FONT_DIR)/Doto-OFL.txt; } > $@
+	{ echo "lo-fly's panel draws its text from Doto and Rubik, both under the SIL Open Font License 1.1."; \
+	  echo; echo "=== Doto ==="; cat $(FONT_DIR)/Doto-OFL.txt; \
+	  echo; echo "=== Rubik ==="; cat $(dir $(RUBIK))OFL.txt; } > $@
 
 $(BUNDLE)/Contents/MacOS/lo-fly: $(MAC_OBJ)
 	@mkdir -p $(@D)

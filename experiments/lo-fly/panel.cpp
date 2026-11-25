@@ -39,15 +39,15 @@ struct Font {
     int height;
     int ascent;
 };
-#include "fonts.h" // dm_label, dm_value: Doto's dots a pixel and 2 x 2; dt_title, dt_big: Doto at 22 and 28 px
+#include "fonts.h" // dm_value: Doto's dots 2 x 2; dt_title, dt_big: Doto at 22 and 24 px; rb_label, rb_small: Rubik 12, 11
 
 constexpr float pi = 3.14159265f;
 
 // --- type and colours ---
 
-// The type: Doto. Titles and the wheel's value in Doto itself, glowing in the page's colour; labels, values and
-// small text in Doto's own dot grid drawn on whole pixels (fonts.py). Where each sits: the header's text tops, a
-// knob's label and value under its centre.
+// The type: titles and the wheel's value in Doto, glowing in the page's colour; values in Doto's own dot grid drawn
+// on whole pixels; labels and small text in Rubik, Melodee's face, where Doto's dots would not fit (fonts.py). Where
+// each sits: the header's text tops, a knob's label and value under its centre.
 struct Type {
     const Font& small;
     const Font& label;
@@ -57,7 +57,7 @@ struct Type {
     float title_y, small_y, label_dy, value_dy;
     bool neon; // titles glow in the page's colour; else the video-tape colour fringe
 };
-const Type doto { dm_label_font, dm_label_font, dm_value_font, dt_title_font, dt_big_font, -2, 6, 21, 31, true };
+const Type doto { rb_small_font, rb_label_font, dm_value_font, dt_title_font, dt_big_font, -2, 3, 19, 33, true };
 const Type* T = &doto;
 
 constexpr std::uint32_t ground = 0x100d1b, ink = 0xf4eaff, ink_dim = 0xb3a6d0, ink_faint = 0x6d628e, ink_ghost = 0x2f2848;
