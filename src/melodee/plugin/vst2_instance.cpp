@@ -19,6 +19,12 @@ thread_local Vst2Instance* opening = nullptr;
 thread_local double openingRate = 0.0;
 thread_local int openingBlock = 0;
 
+// NODELETE: a plug-in with a static C++ runtime (zig's libc++) leaves exit handlers that crash Melodee once unmapped.
+void* openLibrary (const File& file)
+{
+    return dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
+}
+
 vst2::EntryPoint entryPointOf (void* library)
 {
     if (auto* main = dlsym (library, "VSTPluginMain"))
@@ -75,7 +81,7 @@ AudioProcessor::BusesProperties Vst2Instance::busesOf (const vst2::Effect& effec
 
 bool Vst2Instance::exportsEntryPoint (const File& file, String& error)
 {
-    void* library = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL);
+    void* library = openLibrary (file);
     if (library == nullptr)
     {
         error = dlerror();
@@ -90,7 +96,7 @@ bool Vst2Instance::exportsEntryPoint (const File& file, String& error)
 
 std::unique_ptr<Vst2Instance> Vst2Instance::load (const File& file, double rate, int block, String& error)
 {
-    void* library = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL);
+    void* library = openLibrary (file);
     if (library == nullptr)
     {
         error = dlerror();

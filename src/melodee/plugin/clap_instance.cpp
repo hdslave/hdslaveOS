@@ -70,7 +70,8 @@ struct ClapInstance::Library
     static Library* acquire (const File& file, String& error)
     {
         std::lock_guard<std::mutex> held (lock());
-        void* handle = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL);
+        // NODELETE: a plug-in with a static C++ runtime (zig's libc++) leaves exit handlers that crash Melodee once unmapped.
+        void* handle = dlopen (file.getFullPathName().toRawUTF8(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
         if (handle == nullptr) { error = dlerror(); return nullptr; }
         for (auto& l : all())
             if (l->handle == handle) { dlclose (handle); ++l->users; return l.get(); } // the same object again
