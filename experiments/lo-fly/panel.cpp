@@ -38,7 +38,7 @@ struct Font {
     int height;
     int ascent;
 };
-#include "fonts.h" // sp_label, sp_value, sp_big: Spleen 6 x 12, 8 x 16, 12 x 24
+#include "fonts.h" // sp_6x12, sp_8x16, sp_12x24: Spleen 6 x 12, 8 x 16, 12 x 24
 
 constexpr float pi = 3.14159265f;
 
@@ -55,7 +55,7 @@ struct Type {
     float title_y, small_y, label_dy, value_dy;
     bool neon; // titles glow in the page's colour; else the video-tape colour fringe
 };
-const Type spleen { sp_label_font, sp_label_font, sp_value_font, sp_big_font, sp_big_font, -1, 6, 21, 32, true };
+const Type spleen { sp_6x12_font, sp_8x16_font, sp_12x24_font, sp_12x24_font, sp_12x24_font, -1, 6, 20, 35, true };
 const Type* T = &spleen;
 
 constexpr std::uint32_t ground = 0x100d1b, ink = 0xf4eaff, ink_dim = 0xb3a6d0, ink_faint = 0x6d628e, ink_ghost = 0x2f2848;
@@ -420,8 +420,11 @@ void knob(Canvas& g, float cx, float cy, ParamId id, const Store& s, const char*
     }
     text_centre(g, T->label, cx, cy + T->label_dy, label, colour, 1, a);
     const std::string v = value_text(id, s.get(id));
-    const Font& vf = text_width(T->value, v) <= 98 ? T->value : T->label;
-    text_centre(g, vf, cx, cy + T->value_dy, v, ink, 0, a);
+    // Up to 92 px leaves 12 px to the next knob's value; longer ones in 8 x 16, centred on the same line.
+    if (text_width(T->value, v) <= 92)
+        text_centre(g, T->value, cx, cy + T->value_dy, v, ink, 0, a);
+    else
+        text_centre(g, T->label, cx, cy + T->value_dy + 4.0f, v, ink, 0, a);
 }
 
 // The page's title (after the section's lamp: play while on, stop while off), the preset's name, the page dots.
@@ -793,7 +796,7 @@ void picture_fx(Canvas& g, const Store& s, int slot, std::uint32_t accent, float
         } else
             g.rrect_line(x, y, w, h, 2.0f, 1.2f, ink_faint, a);
         const char digit[2] { static_cast<char>('1' + i), 0 };
-        text_centre(g, T->value, x + w * 0.5f, y + 1.0f, digit, used ? ground : ink_dim, 0, a);
+        text_centre(g, T->label, x + w * 0.5f, y + 1.0f, digit, used ? ground : ink_dim, 0, a);
     }
     const auto type_id = lofly::fxParam(slot, lofly::FxCommon::Type);
     const int type = s.index(type_id);

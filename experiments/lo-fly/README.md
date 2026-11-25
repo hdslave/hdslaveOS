@@ -14,7 +14,7 @@ instrument without an editor.
 | `plugin.cpp` | CLAP entry: parameters, notes, state, presets, remote-control pages, the screen extension |
 | `panel.cpp`, `panel.h` | the panel: 13 pages drawn into Melodee's 320 × 218 frame |
 | `store.h` | parameter values shared by the host calls, the audio thread and the screen |
-| `fonts.py` | Spleen (BSD) into `build/lo-fly/gen/fonts.h` at its own sizes: 6 × 12, 8 × 16, 12 × 24 |
+| `fonts.py` | Spleen (BSD) into `build/lo-fly/gen/fonts.h` at its own sizes: 6 × 12, 8 × 16, 12 × 24 (half-width space) |
 | `preview.cpp` | hosts the plug-in on a Mac: writes each page as a PNG, measures render and draw times |
 
 ## Build
@@ -46,8 +46,9 @@ Night: each picture sits on a night sky over a skyline with lit windows,
 stars and a moon, with scan lines. Curves are neon lines with a glow; knobs
 are LED rings in K1 pink, K2 yellow, K3 cyan. All text is Spleen, a bitmap
 face drawn at its own sizes without smoothing, so every pixel is sharp:
-knob labels, the preset's name and small text 6 × 12, values 8 × 16, titles
-and the wheel's value 12 × 24, glowing in the page's colour. The LOFI page
+knob values, titles and the wheel's value 12 × 24 (titles glowing in the
+page's colour), knob labels 8 × 16, the preset's name and small text 6 × 12.
+A knob value wider than 92 px, such as `8-bit 30k`, drops to 8 × 16. The LOFI page
 draws the tape's wobble (the character's wow and flutter, as deep as
 Wobble × Amount) as a line that moves while lo-fly sounds, and the level on
 two LED columns. Spleen is BSD 2-Clause; its licence goes beside the
