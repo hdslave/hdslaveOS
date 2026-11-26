@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/history_jobs.h"
 #include "melodee/shell/lesson_jobs.h"
 #include "melodee/shell/features.h"
@@ -655,7 +656,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
     on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Patterns || ui.page == PageId::Scenes || ui.page == PageId::Roll || ui.page == PageId::Motion || ui.page == PageId::ModPage); // its hub
-    on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
+    on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples || sounds_open(ui)); // Step Edit: the sounds on the pads
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.repeat && ui.page != PageId::Song); // on Song it repeats the clip
     {

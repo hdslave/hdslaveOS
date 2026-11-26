@@ -9,6 +9,7 @@
 #include "melodee/shell/pad_job.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/midi_config_rows.h"
@@ -364,6 +365,29 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = m.info->label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(*m.info); c.fill = gauge_of(*m.info, b.value);
         break;
     }
+    case Kind::StepSound: { // Step Edit's SOUND row: the step's own sample by the pad it is on ("B01" Amen), else PAD
+        c.label = "SOUND";
+        const auto choices = step_sound_choices(s.project);
+        if (b.value > 0 && size_t(b.value) <= choices.size()) {
+            const auto& choice = choices[size_t(b.value - 1)];
+            char label[4];
+            pad_label(choice.pad, label);
+            c.value = label;
+            c.unit = juce::String::fromUTF8(s.project.samples[choice.slot].name);
+        } else if (b.id > 0 && unsigned(b.id) <= sample_slots) { // a sample no pad holds now: the step keeps it
+            c.value = juce::String::fromUTF8(s.project.samples[unsigned(b.id) - 1].name);
+        } else {
+            c.value = "PAD";
+        }
+        break;
+    }
+    case Kind::StepSlice: // 0 the pad's region, a slice of the chop (id: how many), id + 1 a slice at random each hit
+        c.label = "SLICE";
+        if (b.id <= 0 || b.value <= 0) c.value = "PAD";
+        else if (b.value > b.id) c.value = "RND";
+        else { c.value = juce::String(b.value); c.unit = "/ " + juce::String(b.id); }
+        break;
+    case Kind::StepPlay: c.label = "PLAY"; c.value = step_play_name(StepPlay(std::clamp(b.value, 0, 3))); break;
     case Kind::StepCondition: case Kind::EventCondition: // trig conditions (roadmap P1)
         c.label = "COND"; c.value = trig_name(unsigned(b.value));
         break;

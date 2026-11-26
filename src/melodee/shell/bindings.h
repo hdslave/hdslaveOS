@@ -66,6 +66,9 @@ struct Binding {
         // kit its lane's notes), Roll's note in focus; the pitch ramp a kit pad's (Shift + K2).
         StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp,
         StepCondition, EventCondition, // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
+        // Step Edit's SOUND row (kit, keygroup): the step's own sample (Elektron's sample lock; value 0 its pad's, n
+        // the nth of step_sound_choices(), id its Event::sample), slice (0 PAD, 1..id the chop's, id + 1 RND) and way.
+        StepSound, StepSlice, StepPlay,
         Lock, // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
         LaneLength, // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
         // Step Edit as step entry (round 2, step-edit2 C): what a pad writes at the caret, length in steps of Q,

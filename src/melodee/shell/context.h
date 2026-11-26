@@ -247,6 +247,8 @@ public:
     void set_euclid(Binding::Kind kind, int value);
     // A track's playback speed (roadmap P1, model/pattern.h speeds): its patterns sent again, scaled (shell/feel_jobs.cpp).
     void set_speed(unsigned track, int speed);
+    void set_direction(unsigned track, unsigned direction); // Elektron's per track direction (model/step_order.h)
+    void cycle_direction();                                 // Shift + Loop on Patterns: FWD, REV, RND in turn
     void vary(Variation v);
     static constexpr uint32_t motion_sync_ms = 40;
     int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet

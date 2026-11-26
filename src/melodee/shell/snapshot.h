@@ -85,6 +85,9 @@ struct Snapshot {
     // Pads (round 2, pads B): each pad of the bank in view drawn as its own waveform, start to end; a bit a pad that has one.
     std::array<std::array<uint8_t, 32>, 16> pad_waves {};
     uint16_t pad_waves_shown = 0;
+    // Step Edit's SOUND panel: the whole sample the step in hand plays (its own, else its pad's).
+    std::array<uint8_t, 96> step_wave {};
+    bool step_wave_shown = false;
     struct Take {
         uint8_t state = 0;             // TakeRecorder::State
         uint32_t frames = 0, length = 0;

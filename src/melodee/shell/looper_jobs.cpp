@@ -145,7 +145,10 @@ void loop_press(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (!pressed) {
         if (ui.loop_held && !ui.loop_grip && ui.shift) loop_to_shift(c); // Shift came down during the tap
-        if (ui.loop_shift_held) { if (!note_reverse(c)) reverse_last_pad(c); } // let go before the hold: Reverse, as printed (the editors: the notes)
+        if (ui.loop_shift_held) { // let go before the hold: Reverse, as printed (the editors: the notes; Patterns: the track's direction)
+            if (ui.page == PageId::Patterns) c.cycle_direction();
+            else if (!note_reverse(c)) reverse_last_pad(c);
+        }
         else if (ui.loop_held && !ui.loop_grip && !edit_loop_tap(c)) loop_tap(c); // the editors: their bars in view loop
         if (ui.loop_held && ui.page != PageId::Looper) ui.loop_clear = -1; // a clear pad still down: no clear
         ui.loop_held = false; ui.loop_grip = false; ui.loop_shift_held = false;

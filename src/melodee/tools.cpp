@@ -27,6 +27,7 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/seq_layer.h"
+#include "melodee/shell/step_lane.h"
 #include "melodee/engine/auto_probe.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
@@ -2980,6 +2981,38 @@ const Preview previews[] {
          s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
          lay_euclid(shell.patterns().at[3][0], uint8_t(sampler_first_note + 2), 5, 8, 0, 90);
          s.ui.step_cards = 3; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"stepeditsound", [](Shell& shell, Snapshot& s) { // SOUND on the kit's hat lane, step 5 held: B01's sample, PLAY REV; step 7 forward
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
+         s.ui.step_cards = cards_sound;
+         const uint16_t other = s.project.tracks[3].pads[0].sample; // the kick's sample on the hat's step
+         for (auto& e : shell.patterns().at[3][0].events) {
+             if (e.tick == 960 && e.key == sampler_first_note + 2) { e.sample = uint16_t(other + 1); e.flags = with_play(e.flags, StepPlay::Reverse); }
+             if (e.tick == 1440) e.flags = with_play(e.flags, StepPlay::Random);
+         }
+         s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"stepeditsounds", [](Shell& shell, Snapshot& s) { // step 5 held + SAMPLE SELECT: the kit's sounds on the pads, the kick's picked
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2; s.ui.step_cards = cards_sound;
+         s.ui.sounds_step = 4; s.ui.sounds_for = 3; s.ui.sounds_track = 3; s.ui.sounds_bank = 0;
+         const uint16_t other = s.project.tracks[3].pads[0].sample;
+         for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 960 && e.key == sampler_first_note + 2) e.sample = uint16_t(other + 1);
+     }},
+    {"patternsdirection", [](Shell&, Snapshot& s) { // Patterns: track 2 backward at x1/2, track 3 (selected) shuffled at x1/4, track 4 at x2
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true;
+         const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
+         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
+         s.project.tracks[1].direction = uint8_t(PlayDirection::Reverse); s.project.tracks[1].speed = 5;
+         s.project.tracks[2].direction = uint8_t(PlayDirection::Random); s.project.tracks[2].speed = 4;
+         s.project.tracks[3].speed = 9;
+     }},
+    {"patternsspeed", [](Shell&, Snapshot& s) { // Shift held on Patterns: K3 SPEED turning, x1/4
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; s.ui.shift = true;
+         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = 0; s.positions[t] = int((4 + t) * sixteenth_ticks); }
+         s.project.tracks[2].speed = 4;
+         s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"patternsvary", [](Shell& shell, Snapshot& s) { // Shift + B3 on Patterns: VARY, Busier picked, amount 30 %
          step_edit_kit(shell, s);

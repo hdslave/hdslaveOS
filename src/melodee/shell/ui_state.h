@@ -406,8 +406,14 @@ struct UiState {
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
     uint8_t mod_view = 0, mod_index = 0, mod_target = 0, macro_index = 0, macro_target = 0;
     uint8_t patterns_cards = 0; // Patterns' cards: 0 the pattern's, 1 SCENE (Shift + B1), 2 FOLLOW (Shift + B2)
-    uint8_t step_cards = 0;     // Step Edit's B1: 0 NOTE, 1 LOCK, 2 TRIG, 3 EUCLID (a kit or Drums lane)
+    uint8_t step_cards = 0;     // Step Edit's B1 (shell/step_lane.h StepCards): NOTE, LOCK, TRIG, SOUND (kit, keygroup), EUCLID (kit or Drums lane)
     bool step_pads = false;     // Step Edit's Shift + B1 PADS: false PLAY (entry at the caret), true STEPS (the bar's steps)
+    // Step SOUND's sounds on the pads (Step Edit, SAMPLE SELECT with a step held or on the SOUND cards;
+    // shell/step_sounds.h): the step (-1 closed) of track `sounds_for`, the track whose pads show and their bank, and
+    // B2 SLICES: the step's sample's slices on the pads instead.
+    int16_t sounds_step = -1;
+    uint8_t sounds_for = 0, sounds_track = 0, sounds_bank = 0;
+    bool sounds_slices = false;
     int16_t learn_lane = -1;
     uint8_t learn_track = 0;
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is SD card access at the top)

@@ -67,6 +67,7 @@
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/pad_colour.h"
 #include "melodee/shell/zoom_view.h"
@@ -9829,28 +9830,28 @@ void generators() {
     }
 }
 
-// A track's playback speed (roadmap P1): x1/2 .. x2, its notes as written.
+// A track's playback speed (roadmap P1): x1/64 .. x4, its notes as written.
 void track_speed() {
     Pattern p;
     put(p, 0, 60, 100); put(p, 4, 62, 100, 2);
     p.write_motion(point(8, engine_lane, 20, 0, 24));
     p.set_lane_length(64, 6 * sixteenth_ticks);
-    auto fast = speed_pattern(p, 4); // x2: every tick half as far
+    auto fast = speed_pattern(p, 9); // x2: every tick half as far
     CHECK(fast.length == 8 * sixteenth_ticks && fast.events[1].tick == 2 * sixteenth_ticks && fast.events[1].length == 2 * sixteenth_ticks / 2);
     CHECK(fast.motion[0].tick == 4 * sixteenth_ticks && fast.motion[0].hold == 12 && fast.lane_length(64) == 3 * sixteenth_ticks);
-    auto slow = speed_pattern(p, 0); // x1/2
+    auto slow = speed_pattern(p, 5); // x1/2
     CHECK(slow.length == 32 * sixteenth_ticks && slow.events[1].tick == 8 * sixteenth_ticks);
-    auto three = speed_pattern(p, 3); // x3/2: sixteenths become sixteenth triplets
+    auto three = speed_pattern(p, 8); // x3/2: sixteenths become sixteenth triplets
     CHECK(three.length == 2560 && three.events[1].tick == 640);
     CHECK(speed_pattern(p, speed_normal) == p && played_pattern(p, speed_normal) == p);
-    CHECK(std::string(speed_name(4)) == "\xc3\x97" "2" && speed_of(1).num == 3 && speed_of(1).den == 4);
+    CHECK(std::string(speed_name(9)) == "\xc3\x97" "2" && speed_of(6).num == 3 && speed_of(6).den == 4);
     // Heard: a track at x2 plays its sixteenths as thirty-seconds; its place is still read in the pattern as written.
     {
         using namespace midi_track;
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Midi, 0);
-        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1; project->tracks[0].speed = 4;
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1; project->tracks[0].speed = 9;
         project->tempo = 1200;
         put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 4, 62, 100);
         auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
@@ -9874,7 +9875,7 @@ void track_speed() {
     // An editor's loop (Loop on Roll or Step Edit) is sent in the pattern's ticks as written: on a track at another
     // speed it plays the same bar. Bar 2 of two looped: at x2 the loop was ignored (it starts past the pattern as it
     // plays), at x1/2 beats 3 and 4 of bar 1 played. A project loaded after it does not keep the loop.
-    for (unsigned speed : {4u, 0u, speed_normal}) {
+    for (unsigned speed : {9u, 5u, speed_normal}) {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         synth(project->tracks[0], 0);
@@ -9908,10 +9909,10 @@ void track_speed() {
     // Shift + Play on a track at another speed carries on where it stopped: Stop keeps the track's place as written
     // (position_of), Play gets it as the transport's tick (played_ticks). At x2 it carried on at twice the place, round
     // the pattern (444 came back as 120). MIDI's song position comes in as the transport's tick (written_ticks).
-    CHECK(played_ticks(444, 4) == 222 && written_ticks(222, 4) == 444 && played_ticks(111, 0) == 222 && played_ticks(333, 3) == 222);
+    CHECK(played_ticks(444, 9) == 222 && written_ticks(222, 9) == 444 && played_ticks(111, 5) == 222 && played_ticks(333, 8) == 222);
     CHECK(played_ticks(321, speed_normal) == 321 && written_ticks(321, speed_normal) == 321);
-    for (unsigned speed : {0u, 1u, 3u, 4u}) CHECK(played_ticks(written_ticks(7 * sixteenth_ticks, speed), speed) == 7 * sixteenth_ticks);
-    for (unsigned speed : {4u, 0u, 1u, 3u, speed_normal}) {
+    for (unsigned speed : {5u, 6u, 8u, 9u}) CHECK(played_ticks(written_ticks(7 * sixteenth_ticks, speed), speed) == 7 * sixteenth_ticks);
+    for (unsigned speed : {9u, 5u, 6u, 8u, speed_normal}) {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         synth(project->tracks[0], 0);
@@ -9939,12 +9940,15 @@ void track_speed() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        project->tracks[6].speed = 1;
+        project->tracks[6].speed = 6; // x3/4
+        project->tracks[4].speed = 0; // x1/64: TSP2 alone holds it (TSPD, as builds before read it: x1)
         auto data = save_project(*project, *bank);
         auto back = std::make_unique<Project>();
         auto back_bank = std::make_unique<PatternBank>();
-        CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == 1 && back->tracks[5].speed == speed_normal);
+        CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == 6 && back->tracks[4].speed == 0 && back->tracks[5].speed == speed_normal);
         std::string text(data.begin(), data.end());
+        data[text.find("TSP2")] = 'X'; // a file from before: TSPD's five speeds
+        CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == 6 && back->tracks[4].speed == speed_normal);
         data[text.find("TSPD")] = 'X';
         CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == speed_normal);
     }
@@ -9952,12 +9956,12 @@ void track_speed() {
     {
         auto project = std::make_unique<Project>();
         synth(project->tracks[2], 2);
-        project->tracks[2].speed = 3;
+        project->tracks[2].speed = 8;
         UiState ui;
         ui.page = PageId::Patterns; ui.track = 2; // since the mixer: Patterns, Shift + K3 (Kerem's pick)
         Pattern none;
         auto cards = shift_bindings(*project, ui, none);
-        CHECK(cards[2].kind == Binding::Kind::TrackSpeed && cards[2].value == 3 && cards[2].id == 2 && cards[2].max == int(speed_count) - 1);
+        CHECK(cards[2].kind == Binding::Kind::TrackSpeed && cards[2].value == 8 && cards[2].id == 2 && cards[2].max == int(speed_count) - 1);
     }
 }
 
@@ -12609,7 +12613,78 @@ void jam_list() {
     }
 }
 
+
+// Elektron's sequencing in the shell: Step Edit's card sets (SOUND on a kit or keygroup), the SOUND row's cards, the
+// sounds a step may take, and the step the cards and the sounds on the pads edit.
+void step_sound_cards() {
+    auto project = std::make_unique<Project>();
+    synth(project->tracks[0], 0);
+    load_sound(project->tracks[1], EngineKind::Sampler, 0);
+    load_sound(project->tracks[2], EngineKind::Keygroup, 0);
+    load_sound(project->tracks[3], EngineKind::Sampler, 0);
+    auto& kit = project->tracks[1];
+    for (auto& pad : kit.pads) pad = PadSound {};
+    kit.pads[0].sample = 4; kit.pads[1].sample = 5; kit.pads[16].sample = 4; // A01 and B01 the same sample: listed once
+    project->tracks[2].pads[0].sample = 6;
+    for (auto& pad : project->tracks[3].pads) pad = PadSound {};
+    project->tracks[3].pads[3].sample = 7;
+    for (unsigned n : {4u, 5u, 6u, 7u}) { std::snprintf(project->samples.edit(n).name, sizeof(SampleRef::name), "S%u", n); project->samples.edit(n).frames = 1000; }
+    // The sets on each track, in B1's order.
+    std::array<uint8_t, cards_count> sets {};
+    CHECK(step_card_sets(kit, sets) == 5 && sets[3] == cards_sound && sets[4] == cards_euclid);
+    CHECK(step_card_sets(project->tracks[2], sets) == 4 && sets[3] == cards_sound);
+    CHECK(step_card_sets(project->tracks[0], sets) == 3);
+    CHECK(next_step_set(kit, cards_trig) == cards_sound && next_step_set(kit, cards_sound) == cards_euclid && next_step_set(kit, cards_euclid) == cards_note);
+    CHECK(next_step_set(project->tracks[2], cards_sound) == cards_note && step_set(project->tracks[0], cards_sound) == cards_note);
+    CHECK(step_set_place(kit, cards_sound) == 3 && std::string(step_cards_name(cards_sound)) == "SOUND");
+    // The sounds: every sample on a kit or keygroup pad, by track and pad, each once.
+    const auto choices = step_sound_choices(*project);
+    CHECK(choices.size() == 4 && choices[0].slot == 4 && choices[0].track == 1 && choices[0].pad == 0 && choices[1].slot == 5);
+    CHECK(choices[2].slot == 6 && choices[2].track == 2 && choices[3].slot == 7 && choices[3].pad == 3);
+    CHECK(step_sound_index(choices, 0) == 0 && step_sound_index(choices, 7) == 3 && step_sound_index(choices, 200) == -1);
+    project->chops.edit(7).slices.count = 12; // slot 7 chopped in twelve
+    CHECK(step_sound_slices(*project, kit, sampler_first_note, 8) == 12 && step_sound_slices(*project, kit, sampler_first_note, 0) == 0);
+    CHECK(step_sound_slices(*project, project->tracks[2], 60, 8) == 0); // a keygroup plays whole samples
+    // The SOUND row on the caret's step: SOUND the step's sample (B02's place), SLICE PAD .. 12 .. RND, PLAY its way.
+    Pattern q;
+    put(q, 2, uint8_t(sampler_first_note), 100);
+    q.events[0].sample = 8; q.events[0].slice = slice_random;
+    q.events[0].flags = with_play(q.events[0].flags, StepPlay::Reverse);
+    UiState ui;
+    ui.page = PageId::StepEdit; ui.track = 1; ui.step_cursor = 2; ui.step_cards = cards_sound;
+    kit.last_pad = 0; kit.last_note = uint8_t(sampler_first_note);
+    auto row = page_bindings(*project, ui, q, false);
+    CHECK(row[0].kind == Binding::Kind::StepSound && row[0].value == 4 && row[0].id == 8 && row[0].max == 4);
+    CHECK(row[1].kind == Binding::Kind::StepSlice && row[1].id == 12 && row[1].value == 13 && row[1].max == 13);
+    CHECK(row[2].kind == Binding::Kind::StepPlay && row[2].value == int(StepPlay::Reverse));
+    q.events[0].sample = 0; q.events[0].slice = 0;
+    row = page_bindings(*project, ui, q, false);
+    CHECK(row[0].value == 0 && row[0].id == 0 && row[1].max == 0); // its pad's own sample, no chop: SLICE stays PAD
+    ui.step_cursor = 3; // a rest: no cards
+    CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::None);
+    // A step held on SOUND: its SOUND row, not locks; on NOTE, locks as ever.
+    ui.step_pads = true; ui.held_step = 2;
+    CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepSound);
+    ui.step_cards = cards_note;
+    CHECK(page_bindings(*project, ui, q, false)[0].kind != Binding::Kind::StepSound);
+    // The step they edit: the sounds on the pads' step, else the held one, else the caret's.
+    CHECK(sound_step(ui, q) == 2 && !sounds_open(ui));
+    ui.held_step = -1; ui.step_cursor = 5;
+    CHECK(sound_step(ui, q) == 5);
+    ui.sounds_step = 9; ui.sounds_for = 1;
+    CHECK(sounds_open(ui) && sound_step(ui, q) == 9);
+    ui.track = 3;
+    CHECK(!sounds_open(ui)); // another track: closed
+    ui.track = 1; ui.page = PageId::Roll;
+    CHECK(!sounds_open(ui));
+    // Patterns' Shift + K3 over every speed.
+    ui.page = PageId::Patterns; ui.track = 1;
+    CHECK(shift_bindings(*project, ui, q)[2].max == int(speed_count) - 1);
+    std::puts("step sound cards ok");
+}
+
 int main() {
+    step_sound_cards();
     browse_trim_sheet();
     audio_monitor_choice();
     pad_value_erase();

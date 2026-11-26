@@ -13,6 +13,7 @@
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/midi_engine.h"
@@ -326,6 +327,7 @@ void Context::browse_for_track() {
 
 void Context::open(PageId page) {
     if (page != PageId::Scenes) ui.scene_capture = false; // CAPTURE waits for a pad on Scenes only
+    ui.sounds_step = -1; // Step Edit's sounds on the pads close with any page opened (shell/step_sounds.h)
     if (page == PageId::Samples) browse_for_track();
     // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
     if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
@@ -750,6 +752,30 @@ void Context::apply(const Binding& b, int value) {
             }
         });
         if (!any) break;
+        sync_pattern(ui.track, t.pattern);
+        ui.held_edited = true;
+        break;
+    }
+    case Kind::StepSound:
+    case Kind::StepSlice:
+    case Kind::StepPlay: { // Step Edit's SOUND row: the held step's (else the caret's) notes, on a kit its lane's
+        auto& p = pattern();
+        const unsigned at = sound_step(ui, p);
+        const auto choices = b.kind == Kind::StepSound ? step_sound_choices(project) : std::vector<StepSoundChoice> {};
+        bool any = edit_lane(p, at, steps_lane(t), [&](Event& e) {
+            if (b.kind == Kind::StepSound) {
+                const uint16_t was = e.sample;
+                e.sample = value > 0 && size_t(value) <= choices.size() ? uint16_t(choices[size_t(value - 1)].slot + 1) : 0;
+                if (e.sample != was && e.slice != slice_random && e.slice > step_sound_slices(project, t, e.key, e.sample)) e.slice = 0; // past its chop
+            } else if (b.kind == Kind::StepSlice) {
+                const unsigned slices = step_sound_slices(project, t, e.key, e.sample);
+                e.slice = !slices || value <= 0 ? 0 : unsigned(value) > slices ? slice_random : uint8_t(value);
+            } else {
+                e.flags = with_play(e.flags, StepPlay(std::clamp(value, 0, int(StepPlay::Count) - 1)));
+            }
+        });
+        if (!any) break;
+        if (b.kind == Kind::StepSlice) p.sort(); // a note's slice is part of where it sorts
         sync_pattern(ui.track, t.pattern);
         ui.held_edited = true;
         break;

@@ -34,6 +34,9 @@
 #include "melodee/shell/mix_hub.h"
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/step_edit.h"
+#include "melodee/shell/step_lane.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/browse_trim.h"
 #include "melodee/shell/sample_mode.h"
@@ -497,6 +500,7 @@ void Shell::press(Button b, bool pressed) {
             break;
         }
         if (!ui.shift) {
+            if (sounds_select(context_)) break; // Step Edit: the step's sounds on the pads (shell/step_sounds.h), or back
             bool kit = context_.track().sampled(); // a kit's or a keygroup's sounds are files
             PageId list = kit ? PageId::Samples : PageId::Sounds;
             if (ui.page == list) { context_.back(); break; } // its opener closes it (HUBS_PLAN T-a)
@@ -656,6 +660,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (ui_.erase && b.kind == Binding::Kind::Lock) { // Erase + pot on a lock card: that lane's lock out, the notes kept
         const auto bit = uint8_t(1u << n);
         if (context_.clear_lock(b, !(ui_.erase_cleared & bit))) ui_.erase_cleared |= bit; // the rest of the turn: quiet
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
+    if (ui_.erase && (b.kind == Binding::Kind::StepSound || b.kind == Binding::Kind::StepSlice || b.kind == Binding::Kind::StepPlay)) {
+        context_.apply(b, 0); // Erase + pot on Step Edit's SOUND row: that card back to PAD (the pad's own)
         pot.engaged = false; pot.bound = 0;
         return;
     }
@@ -996,9 +1005,23 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     }
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
+        // Step Edit's SOUND row: the sample the step in hand plays (its own, else its pad's)
+        unsigned step_slot = no_sample;
+        if (ui_.page == PageId::StepEdit && step_set(t, ui_.step_cards) == cards_sound) {
+            const auto& p = patterns_->at[ui_.track % track_count][t.pattern % pattern_count]; // the pattern Step Edit edits
+            const int n = lane_event(p, sound_step(ui_, p), steps_lane(t));
+            if (n >= 0) {
+                const auto& e = p.events[size_t(n)];
+                step_slot = e.sample ? e.sample - 1u
+                          : t.engine == EngineKind::Keygroup ? t.pads[0].sample
+                          : e.key >= sampler_first_note ? t.pads[(e.key - sampler_first_note) % sampler_pads].sample : no_sample;
+            }
+        }
         unsigned slot = ui_.page == PageId::Chop ? context_.chop_cut_slot() // Chop: CLEAN shows the drums stem
                       : ui_.page == PageId::Samples && ui_.browse.up() ? unsigned(ui_.browse.slot) // the trim sheet's file
+                      : sounds_open(ui_) && ui_.sounds_slices && step_slot < sample_slots ? step_slot // the sounds' SLICES: the step's sample
                       : t.pads[t.last_pad % sampler_pads].sample;
+        out.step_wave_shown = step_slot < sample_slots && library_->thumbnail(step_slot, 0, 0, out.step_wave.data(), unsigned(out.step_wave.size()));
         out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
         out.zone_file = out.sample.instrument && ui_.page != PageId::Chop ? library_->zone_file(slot, ui_.zone) : std::string();
         // Trim and Chop zoomed in: the view's own peaks, from the audio (the overview's 512 are too few that close).
@@ -1009,7 +1032,14 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             out.detail_from = view.from; out.detail_to = view.to;
         }
         out.pad_waves_shown = 0;
-        if ((ui_.page == PageId::Pads || ui_.sample_held) && t.engine == EngineKind::Sampler) // pads B (and Sample held's): the bank's sixteen waveforms
+        if (sounds_open(ui_) && !ui_.sounds_slices) { // Step Edit's sounds on the pads: the shown track's bank
+            const auto& source = project_->tracks[ui_.sounds_track % track_count];
+            for (unsigned n = 0; n < 16; ++n) {
+                const auto& pad = source.pads[(ui_.sounds_bank % sampler_banks * 16 + n) % sampler_pads];
+                if (pad.used() && library_->thumbnail(pad.sample, pad.start, pad.end, out.pad_waves[n].data(), 32))
+                    out.pad_waves_shown = uint16_t(out.pad_waves_shown | 1u << n);
+            }
+        } else if ((ui_.page == PageId::Pads || ui_.sample_held) && t.engine == EngineKind::Sampler) // pads B (and Sample held's): the bank's sixteen waveforms
             for (unsigned n = 0; n < 16; ++n) {
                 const auto& pad = t.pads[t.bank % sampler_banks * 16 + n];
                 if (pad.used() && library_->thumbnail(pad.sample, pad.start, pad.end, out.pad_waves[n].data(), 32))

@@ -392,9 +392,18 @@ beat; the meters show the mix.
   the channel; −/+ move through the lit block (a row, a group of bands, an effect); Shift + Push names a track; Mute +
   pad mutes (Shift: solos) the row's channels; Erase + pad clears a track. Pads light in the channel's colour by its
   meter. Shift + Knob FX opens the channel's full FX page; B1 MIXER comes back to it.
-- **Track speed** (Patterns, Shift + K3): ×½, ×¾, ×1, ×1½, ×2: the track's patterns play that much faster or slower
-  against the tempo, their notes and motion as written, ×1½ turning sixteenths into sixteenth triplets; Patterns'
-  header names it; kept in TSPD. CPU and the selected track's share are on the MENU's header.
+- **Track speed** (Patterns, Shift + K3): ×1/64, ×1/32, ×1/16, ×1/8, ×¼, ×½, ×¾, ×1, ×1½, ×2, ×4: the track's
+  patterns play that much faster or slower against the tempo, their notes and motion as written, ×1½ turning
+  sixteenths into sixteenth triplets; Patterns' header and track list name it; kept in TSP2 (and TSPD, the five older
+  builds read). CPU and the selected track's share are on the MENU's header.
+- **Track direction** (Patterns, Shift + Loop): FWD, REV or RND, the steps of Q played forward, backward or shuffled
+  each pass (every step once, the same orders from the top); notes keep their place in their step; Motion follows;
+  kept in TDIR (core model/step_order.h).
+- **Step SOUND** (Step Edit's B1 SOUND on a kit or keygroup; Elektron's sample lock): K1 any sample on a kit or
+  keygroup pad of the project played through the step's pad, K2 SLICE (PAD, a slice, RND), K3 PLAY (PAD, FWD, REV,
+  RND); Erase + knob back to PAD; Sample Select with a step held puts the sounds on the pads (−/+ the track, Pad Bank
+  the bank, the wheel the next sound, B1 CLEAR, B2 SLICES). Kept in ESMP (the sample), SLCE (255: RND) and the
+  note's flags (bits 4-5: PLAY).
 - **Keys** (Sample held on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
   filled in the track's colour, the pad played white; the key and scale are

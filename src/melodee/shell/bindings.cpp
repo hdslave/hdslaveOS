@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/free_length.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/mix_hub.h"
@@ -260,7 +261,7 @@ bool lock_place(const Project& project, const UiState& ui, const Pattern& patter
     unsigned q = pattern.q();
     // Step Edit: a step held (the pads on the steps), or the caret's on LOCK; as long as its longest note on its lane
     // (a step at least)
-    if (ui.page == PageId::StepEdit && (ui.held_step >= 0 || ui.step_cards % (steps_lane(track) >= 0 ? 4 : 3) == 1)) {
+    if (ui.page == PageId::StepEdit && (ui.held_step >= 0 || step_set(track, ui.step_cards) == cards_lock)) {
         unsigned st = unsigned(ui.held_step >= 0 ? ui.held_step : std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         tick = st * q; hold = q;
         int lane = steps_lane(track);
@@ -704,6 +705,19 @@ std::array<Binding, 3> levels_cards(const Project& project, const Track& track) 
             Binding {Kind::LevelsHigh, 0, range.low, range.high, ends[1]}};
 }
 
+// Step Edit's SOUND row on step `at` (on a kit its lane's note): its sample, slice and way.
+std::array<Binding, 3> sound_cards(const Project& project, const Track& track, const Pattern& pattern, unsigned at) {
+    int n = lane_event(pattern, at, steps_lane(track));
+    if (n < 0) return {};
+    const auto& e = pattern.events[size_t(n)];
+    const auto choices = step_sound_choices(project);
+    const unsigned slices = step_sound_slices(project, track, e.key, e.sample);
+    const int slice = e.slice == slice_random ? int(slices) + 1 : std::min<int>(e.slice, int(slices));
+    return {Binding {Kind::StepSound, int(e.sample), 0, int(choices.size()), std::max(step_sound_index(choices, e.sample), 0)},
+            Binding {Kind::StepSlice, int(slices), 0, slices ? int(slices) + 1 : 0, slices ? slice : 0},
+            Binding {Kind::StepPlay, 0, 0, int(StepPlay::Count) - 1, int(step_play(e.flags))}};
+}
+
 std::array<Binding, 3> trig_cards(const Event& e, bool step) {
     return {Binding {step ? Kind::StepRatchet : Kind::EventRatchet, 0, 1, int(max_ratchet), int(e.hits())},
             Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp},
@@ -783,14 +797,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         int lane = steps_lane(track);
         if (ui.held_step >= 0) return {};
         if (lane >= 0) {
-            unsigned q = pattern.q(), steps = pattern.steps(), set = ui.step_cards % 4;
+            unsigned q = pattern.q(), steps = pattern.steps(), set = step_set(track, ui.step_cards);
             unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % steps;
-            if (set == 2) {
+            if (set == cards_trig) {
                 int n = lane_event(pattern, at, lane);
                 if (n < 0) return {};
                 return {Binding {}, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
             }
-            if (set == 3 || ui.step_pads) {
+            if (set == cards_euclid || ui.step_pads) {
                 unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
                 return {Binding {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)}, Binding {}, Binding {}};
             }
@@ -1015,18 +1029,24 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::StepEdit: { // B1's card sets on the caret's step; on a kit (or Drums) its lane's note, the last pad's
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
-        if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // STEPS, held: locks
+        const unsigned set = step_set(track, ui.step_cards);
+        if (sounds_open(ui)) return sound_cards(project, track, pattern, sound_step(ui, pattern)); // the sounds on the pads: the step's
+        if (ui.held_step >= 0) { // STEPS, held: its SOUND row on SOUND, else locks
+            if (set == cards_sound) return sound_cards(project, track, pattern, unsigned(ui.held_step) % pattern.steps());
+            return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q());
+        }
         int lane = steps_lane(track);
         bool spare = in_spare(ui, pattern); // past the end (shell/spare_bar.h): no step's cards, only what a pad writes
-        switch (ui.step_cards % (lane >= 0 ? 4 : 3)) {
-        case 1: if (spare) return {}; return lock_cards(project, ui, pattern, at * pattern.q()); // LOCK: the Motion lanes locked on the caret's step
-        case 2: { // TRIG: its ratchet, ramp and condition
+        switch (set) {
+        case cards_lock: if (spare) return {}; return lock_cards(project, ui, pattern, at * pattern.q()); // LOCK: the Motion lanes locked on the caret's step
+        case cards_sound: if (spare) return {}; return sound_cards(project, track, pattern, at); // SOUND: its sample, slice, way
+        case cards_trig: { // TRIG: its ratchet, ramp and condition
             if (spare) return {};
             int n = lane_event(pattern, at, lane);
             if (n < 0) return {};
             return trig_cards(pattern.events[size_t(n)], true);
         }
-        case 3: { // EUCLID: the last pad's lane's rhythm (roadmap P1)
+        case cards_euclid: { // EUCLID: the last pad's lane's rhythm (roadmap P1)
             unsigned key = unsigned(lane);
             const EuclidLane* e = euclid_of(pattern, key);
             int steps = e ? e->steps : int(std::min(pattern.steps(), euclid_max_steps));
