@@ -46,7 +46,8 @@ void copy_track(Context& c, unsigned from, unsigned to) {
     auto next = std::make_unique<TrackState>(track_state(c, from));
     next->track.mix = c.project.tracks[to].mix; // the target keeps its strip
     restore_track(c, to, *next); // the source's motion comes in its patterns
-    edit.track_after = std::move(next);
+    c.own_plugins(to, &edit); // its plug-ins in entries of their own now, so a redo brings back these, not new ones each time
+    edit.track_after = std::make_unique<TrackState>(track_state(c, to));
     c.notice(what);
     c.edits.push(std::move(edit));
 }

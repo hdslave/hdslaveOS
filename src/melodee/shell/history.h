@@ -225,6 +225,8 @@ public:
     bool can_undo() const { return !undo_.empty(); }
     bool can_redo() const { return !redo_.empty(); }
     void clear() { undo_.clear(); redo_.clear(); }
+    void clear_redo() { redo_.clear(); }
+    bool drop_oldest() { if (undo_.empty()) return false; undo_.pop_front(); return true; } // the step undone last of all
     size_t size() const { return undo_.size(); }
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
     Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }

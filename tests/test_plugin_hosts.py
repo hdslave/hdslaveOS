@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_plugin_entries_an_undo_names_are_kept_for_it(self):
+        self.run_rack_fixture("undo-entries")
+
     def test_undo_of_several_steps_at_once_keeps_a_plugins_state(self):
         self.run_rack_fixture("undo-steps")
 

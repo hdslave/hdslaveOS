@@ -2720,6 +2720,17 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   and another undo take the state again as it is then. The kept state is
   not saved with the project, and goes once another plug-in takes its
   entry or another project opens.
+- **Entries undo still names.** A new plug-in takes an entry never set,
+  else one nothing uses, but never one an undo or a redo step still names
+  (a cleared track's, a copy undone), so that undo brings back the plug-in
+  that was there, not the new one. The entry taken starts clean: its old
+  name and path, and the state the rack kept for it, go. When all 32 are
+  used or named, the redo steps go first, then the oldest undo steps, one
+  at a time, until one is free (`Context::take_plugin_entry`). Copy Track
+  gives the copy entries of its own at once, the track copied keeping its
+  own, and its redo brings back those same entries, so copying, undoing
+  and redoing never takes up more of them (`Context::own_plugins`). A
+  project's entries are saved and read as before.
 - **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
   a kit pad's chain take no plug-ins; editors are never shown.
 - `tools/vst_probe/` is a command-line host on the same code, for trying a

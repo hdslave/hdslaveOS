@@ -40,14 +40,85 @@ namespace melodee {
 using Type = Command::Type;
 
 namespace {
-// An entry for a new plug-in: one never set first, else one nothing uses now.
-int free_entry(const Project& project) {
-    for (unsigned e = 0; e < max_plugins; ++e) if (!project.plugins[e].used()) return int(e);
-    for (unsigned e = 0; e < max_plugins; ++e) if (!plugin_used_by(project, e)) return int(e);
-    return -1;
+// The entries a track names: its instrument's, and its chain's plug-in effects'.
+void mark_track(const Track& t, std::array<bool, max_plugins>& out) {
+    if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) out[t.plugin] = true;
+    for (const auto& s : t.fx.slots) if (s.kind == plugin_effect_kind && unsigned(s.params[0]) < max_plugins) out[size_t(s.params[0])] = true;
+}
+void mark_chain(const Chain& chain, std::array<bool, max_plugins>& out) {
+    for (const auto& s : chain.slots) if (s.kind == plugin_effect_kind && unsigned(s.params[0]) < max_plugins) out[size_t(s.params[0])] = true;
+}
+// The entries an undo or a redo could point a track or a chain at again, or swap a plug-in in; `pending`: an edit
+// still being made, not kept yet.
+std::array<bool, max_plugins> named_by_history(const History& edits, const Edit* pending) {
+    std::array<bool, max_plugins> named {};
+    auto mark = [&](const Edit& e) {
+        if (e.track_before) mark_track(e.track_before->track, named);
+        if (e.track_after) mark_track(e.track_after->track, named);
+        if (e.chain_before) mark_chain(*e.chain_before, named);
+        if (e.chain_after) mark_chain(*e.chain_after, named);
+        if (e.plugin) named[e.plugin->entry % max_plugins] = true;
+    };
+    edits.each(mark);
+    if (pending) mark(*pending);
+    return named;
+}
+} // namespace
+
+// An entry for a new plug-in: one never set first, else one nothing uses now. Never one an undo or a redo still names
+// (a cleared track's, a copy undone): its plug-in would come back as the new one. When every entry is used or named,
+// the redo steps go, then the oldest undo steps, until one is free (-1: all 32 are in use now). The entry taken starts
+// clean: its old name and path, and the rack's state kept for it, go.
+int Context::take_plugin_entry(const Edit* pending) {
+    for (;;) {
+        const auto named = named_by_history(edits, pending);
+        for (unsigned e = 0; e < max_plugins; ++e) if (!project.plugins[e].used() && !named[e]) return fresh_entry(e);
+        for (unsigned e = 0; e < max_plugins; ++e) if (!plugin_used_by(project, e) && !named[e]) return fresh_entry(e);
+        if (edits.can_redo()) { edits.clear_redo(); continue; }
+        bool any = false;
+        for (unsigned e = 0; e < max_plugins; ++e) any |= !plugin_used_by(project, e);
+        if (!any || !edits.drop_oldest()) return -1;
+    }
 }
 
-} // namespace
+int Context::fresh_entry(unsigned e) {
+    project.plugins[e] = PluginRef {};
+    if (plugins) plugins->restore(e, {}); // nothing of what was let go here comes back
+    return int(e);
+}
+
+// A track copied onto track `t` names the same entries as the track copied: `t` gets entries of its own, with the
+// same plug-ins and their state as they are now, and the track copied keeps its own (and is not opened again).
+void Context::own_plugins(unsigned t, const Edit* pending) {
+    t %= track_count;
+    auto shared = [&](unsigned entry) {
+        unsigned users = 0;
+        for (const auto& tr : project.tracks) users += tr.engine == EngineKind::Plugin && tr.plugin == entry;
+        for (unsigned n = 0; n < mix_chain_count; ++n)
+            for (const auto& s : project.chain(n).slots) users += s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
+        return users > 1;
+    };
+    auto copy_of = [&](unsigned entry) -> int {
+        if (entry >= max_plugins || !shared(entry)) return -1;
+        const PluginRef from = project.plugins[entry];
+        const int copy = take_plugin_entry(pending);
+        if (copy < 0) return -1; // none free: it stays shared until split_shared_plugins finds one
+        project.plugins[size_t(copy)] = from;
+        if (plugins) plugins->clone(entry, unsigned(copy));
+        return copy;
+    };
+    auto& tr = project.tracks[t];
+    if (tr.engine == EngineKind::Plugin)
+        if (int copy = copy_of(tr.plugin); copy >= 0) {
+            tr.plugin = uint8_t(copy);
+            send({Type::TrackPlugin, uint8_t(t), 0, 0, int16_t(copy)});
+        }
+    for (unsigned k = 0; k < tr.fx.size; ++k) {
+        const auto& s = tr.fx.slots[k];
+        if (s.kind != plugin_effect_kind) continue;
+        if (int copy = copy_of(unsigned(s.params[0])); copy >= 0) set_effect_param(t, k, 0, copy);
+    }
+}
 
 // One instance plays one place: a track copy (or a copied chain) leaves two users on an entry, and the second and
 // after each get an entry of their own with the same plug-in and its state as it is now.
@@ -56,9 +127,10 @@ void Context::split_shared_plugins() {
     auto claim = [&](unsigned entry) -> int { // -1: keep it; else the entry to move to
         if (entry >= max_plugins) return -1;
         if (!seen[entry]) { seen[entry] = true; return -1; }
-        int copy = free_entry(project);
+        const PluginRef from = project.plugins[entry];
+        int copy = take_plugin_entry();
         if (copy < 0 || seen[size_t(copy)]) return -1; // none free: it stays shared (and is heard twice)
-        project.plugins[size_t(copy)] = project.plugins[entry];
+        project.plugins[size_t(copy)] = from;
         seen[size_t(copy)] = true;
         if (plugins) plugins->clone(entry, unsigned(copy));
         return copy;
@@ -149,7 +221,7 @@ void Context::choose_plugin(const PluginFile& file) {
         ask(*this, UiState::Ask::ReplacePlugin, int(ui.plugins_cursor));
         return;
     }
-    if (entry < 0) entry = free_entry(project);
+    if (entry < 0) entry = take_plugin_entry();
     if (entry < 0) { notice("Every plug-in entry is in use"); return; }
 
     close_gesture();

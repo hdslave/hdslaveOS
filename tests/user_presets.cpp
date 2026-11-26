@@ -696,6 +696,10 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
     }
+    if (mode == "undo-entries") { // the same
+        setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
+        fs::copy_file(plugin, fs::path(plugin).parent_path() / "B.clap");
+    }
     if (mode == "picker-rows") { // each file one instrument, so a row loads; two more beside it, and one in each of two folders
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         const auto folder = fs::path(plugin).parent_path();
@@ -750,6 +754,8 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
     }
+    if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
+        for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
     if (mode == "presets-track" || mode == "copy-presets" || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
@@ -1281,6 +1287,93 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Plug-in entries and undo: an entry an undo still names is never given to a new plug-in, even once all 32 have
+    // been set; a track copy undone and done again keeps the one entry it had (none taken each time); and when every
+    // entry is named, the oldest undo step goes so a new plug-in still has one.
+    if (mode == "undo-entries") {
+        auto set = [&] { unsigned n = 0; for (const auto& p : project.plugins) n += p.used(); return n; };
+        set_control("Wave", 1000);
+        wait([&] { return values(entry)[1] == 2; });
+        c.open(PageId::Master);
+        button(SurfaceButton::PadBank, true);
+        button(SurfaceButton::Erase, true);
+        pad(0);
+        button(SurfaceButton::Erase, false);
+        button(SurfaceButton::PadBank, false);
+        tap(SurfaceButton::TopRight); // Clear track 1
+        CHECK(!tr.used());
+        wait([&] { return rack->status(entry) == PluginStatus::None; });
+        for (int k = 0; k < 20; ++k) tick();
+        c.select_track(3);
+        c.open_plugin_picker(UiState::PluginTarget::Instrument);
+        listing("Plugins", 2);
+        cursor_on("B.clap");
+        tap(SurfaceButton::WheelPush); // B.clap onto empty track 4: not into track 1's entry
+        auto& t4 = project.tracks[3];
+        CHECK(t4.engine == EngineKind::Plugin && t4.plugin != entry);
+        CHECK(fs::path(ref.path).filename() == "Test.clap" && fs::path(project.plugins[t4.plugin].path).filename() == "B.clap");
+        wait([&] { return ready(t4.plugin); });
+        CHECK(values(t4.plugin)[1] == 0); // a new plug-in from its defaults
+        c.open(PageId::Master);
+        undo(); // the new track
+        CHECK(!t4.used());
+        undo(); // the clear: track 1's own plug-in back, as it was
+        CHECK(tr.engine == EngineKind::Plugin && tr.plugin == entry && fs::path(ref.path).filename() == "Test.clap");
+        wait([&] { return ready(entry); });
+        CHECK(values(entry)[1] == 2);
+
+        // Track 1 copied onto track 5, then undone and done again five times: the copy keeps one entry and its state.
+        const unsigned before = set();
+        button(SurfaceButton::PadBank, true);
+        tap(SurfaceButton::TopRight); // COPY
+        pad(0);
+        pad(4);
+        button(SurfaceButton::PadBank, false);
+        auto& t5 = project.tracks[4];
+        CHECK(t5.engine == EngineKind::Plugin && t5.plugin != entry && tr.plugin == entry);
+        const unsigned copy = t5.plugin;
+        wait([&] { return ready(copy); });
+        CHECK(values(copy)[1] == 2);
+        set_control_of(copy, "Wave", 500);
+        wait([&] { return values(copy)[1] == 1; });
+        for (int round = 0; round < 5; ++round) {
+            undo();
+            CHECK(!t5.used());
+            for (int k = 0; k < 10; ++k) tick();
+            redo();
+            CHECK(t5.engine == EngineKind::Plugin && t5.plugin == copy);
+            wait([&] { return ready(copy); });
+        }
+        for (int k = 0; k < 10; ++k) tick();
+        CHECK(set() == before && t5.plugin == copy && tr.plugin == entry && values(copy)[1] == 1 && values(entry)[1] == 2);
+
+        // Every entry nothing uses named by an undo step: the oldest step goes, and B.clap still gets an entry.
+        c.edits.clear();
+        std::array<bool, max_plugins> in_use {};
+        for (unsigned e = 0; e < max_plugins; ++e) in_use[e] = plugin_used_by(project, e);
+        unsigned named = 0, oldest = max_plugins;
+        for (unsigned e = 0; e < max_plugins; ++e) {
+            if (in_use[e]) continue;
+            Edit step;
+            step.what = "Replace X";
+            step.plugin = std::make_unique<PluginSwap>();
+            step.plugin->entry = uint8_t(e);
+            if (oldest == max_plugins) oldest = e;
+            c.edits.push(std::move(step));
+            ++named;
+        }
+        CHECK(named > 0 && c.edits.size() == named);
+        c.select_track(6);
+        c.open_plugin_picker(UiState::PluginTarget::Instrument);
+        listing("Plugins", 2);
+        cursor_on("B.clap");
+        tap(SurfaceButton::WheelPush);
+        auto& t7 = project.tracks[6];
+        CHECK(t7.engine == EngineKind::Plugin && t7.plugin == oldest);
+        CHECK(c.edits.size() == named); // the oldest step dropped, the new track's kept
         shell->set_plugins(nullptr);
         return 0;
     }
