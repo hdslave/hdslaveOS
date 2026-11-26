@@ -11,6 +11,7 @@
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/update.h"
 #include <algorithm>
+#include <filesystem>
 
 namespace melodee {
 
@@ -70,13 +71,17 @@ bool ask_button(Context& c, SurfaceButton button) {
     else if (kind == UiState::Ask::ClearTrack) clear_track(c, unsigned(ui.ask_target)); // Pad Bank held + Erase + pad
     else if (kind == UiState::Ask::DeleteFile) delete_asked(c);    // shell/delete_jobs.h: Erase in a browser
     else if (kind == UiState::Ask::ReplacePlugin && c.plugins) { // the plug-in asked about, picked again
-        // Found again by its path in the rows shown now: a web page change may have moved its row, or taken it away.
+        // Its row as listed now when it is there (a web page change may have moved it), else as it was asked about,
+        // still on the card (the picker may show another folder by now); one taken away from the card loads nothing.
         const auto& files = c.plugin_view.files;
         const auto same = [&](const PluginFile& f) { return f.path == c.plugin_asked.path && f.id == c.plugin_asked.id; };
-        if (auto it = std::find_if(files.begin(), files.end(), same); it != files.end()) {
+        const auto it = std::find_if(files.begin(), files.end(), same);
+        std::error_code missing;
+        if (it != files.end() || std::filesystem::exists(c.plugin_asked.path, missing)) {
+            const PluginFile file = it != files.end() ? *it : c.plugin_asked;
             // The yes is for the track asked about: with another in hand since, that one is asked about first.
             ui.plugin_replace = c.plugin_asked_track < 0 || c.plugin_asked_track == int(ui.track % track_count);
-            c.choose_plugin(*it);
+            c.choose_plugin(file);
         } else {
             c.notice("Not on the card");
         }

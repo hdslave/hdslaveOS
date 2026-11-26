@@ -2528,8 +2528,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   moves the cursor, and a web page change or a delete lists again the
   folder asked for last, whether or not it is in yet (`relist()`).
   "Replace <name>?" keeps the plug-in it was asked about, and REPLACE
-  loads that one wherever its row has moved; one deleted meanwhile says
-  Not on the card.
+  loads that one wherever its row has moved, whichever folder the picker
+  shows by then; one deleted from the card meanwhile says Not on the card.
   The project keeps which one (its id; a CLAP's is a hash of its CLAP id)
   and its name.
 - **CLAP.** JUCE hosts no CLAP, so Melodee has its own host on the CLAP

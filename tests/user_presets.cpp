@@ -1080,10 +1080,13 @@ int main(int argc, char** argv) {
         CHECK(fs::path(under.path).filename() == "Two.clap"); // Beta's rows, still: the folder above is not in yet
         tap(SurfaceButton::WheelPush); // so Push picks that plug-in, another than the track's: it asks
         CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "Test Sine");
-        tap(SurfaceButton::TopLeft);
-        listing("Plugins", 6);
+        listing("Plugins", 6); // the folder above is in while the question is up: Two.clap is no row of it
         CHECK(int(ui.plugins_cursor) == row_of("Beta")); // BACK's cursor: on the folder it came out of
-        CHECK(loaded() == "C.clap");
+        tap(SurfaceButton::TopRight); // REPLACE: the plug-in asked about, still on the card
+        CHECK(ui.ask == UiState::Ask::None && loaded() == "Two.clap");
+        wait([&] { return ready(entry); });
+        open_picker();
+        listing("Plugins", 6);
 
         // A plug-in asked about, then deleted from the web page: REPLACE loads nothing, and says so.
         cursor_on("B.clap");
@@ -1093,7 +1096,7 @@ int main(int argc, char** argv) {
         rack->card_changed();
         listing("Plugins", 5);
         tap(SurfaceButton::TopRight);
-        CHECK(ui.ask == UiState::Ask::None && std::string(ui.notice) == "Not on the card" && loaded() == "C.clap");
+        CHECK(ui.ask == UiState::Ask::None && std::string(ui.notice) == "Not on the card" && loaded() == "Two.clap");
 
         // B1 from Beta, and B1 again while the plug-in opens again: the listing shown again meanwhile (the one the
         // first B1 asked for) leaves the cursor alone, and the folder above lands on the one it came out of.
