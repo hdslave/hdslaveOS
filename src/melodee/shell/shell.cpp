@@ -203,7 +203,7 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
             if (!mark) mark = std::make_unique<UsageMark>();
             usage_mark(*mark);
         }
-        context_.refresh_plugin_panel(); // what the page shows of a plug-in as it is now: B1-B3, − / +, Push decide by it
+        context_.follow_plugin_focus(); // the plug-in the page shows as it is now: B1-B3, − / +, Push decide by it
         button(Button(input.index), input.pressed);
         if (!input.pressed && mark && context_.usage.on()) {
             if (!usage_changed(*mark) && input.index < surface_buttons.size()) context_.usage.nojob(now, surface_buttons[input.index].name, ui_.page);
@@ -225,7 +225,7 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     }
     // SD card access: the card is on a computer; only the main volume still turns (as the MPC, other modes wait).
     if (card_owns_controls(ui_) && SurfaceControl(input.index) != SurfaceControl::MainVolume) return;
-    if (SurfaceControl(input.index) == SurfaceControl::Wheel) context_.refresh_plugin_panel(); // as for the buttons
+    if (SurfaceControl(input.index) == SurfaceControl::Wheel) context_.follow_plugin_focus(); // as for the buttons
     if (ui_.lesson) { // a lesson: the step's knob or the encoder; the other knobs and the fader keep their positions
         switch (SurfaceControl(input.index)) {
         case SurfaceControl::K1: case SurfaceControl::K2: case SurfaceControl::K3: {

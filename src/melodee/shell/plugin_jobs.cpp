@@ -523,9 +523,11 @@ void Context::companion_requests() {
 }
 
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
+// The place says the page shows the plug-in's own screen (it offers one, open, and Settings let it): the input goes to
+// it, though the screen may not have drawn for this page yet (just after Pad Bank + pad), so none is lost.
 bool Context::plugin_screen_input(ScreenKey key, int value) {
     const auto at = plugin_screen_place(project, ui);
-    if (at.entry < 0 || !plugins || !ui.plugin_panel.screen) return false;
+    if (at.entry < 0 || !plugins) return false;
     plugins->screen_input(unsigned(at.entry), {key, int32_t(value), ui.shift});
     return true;
 }
@@ -534,7 +536,7 @@ bool Context::plugin_screen_input(ScreenKey key, int value) {
 // when its page takes that button (melodee_screen.h keys()), asked now rather than from the panel's last refresh.
 bool Context::plugin_screen_key(ScreenKey key) {
     const auto at = plugin_screen_place(project, ui);
-    if (at.entry < 0 || at.area != 0 || !plugins || !ui.plugin_panel.screen) return false;
+    if (at.entry < 0 || at.area != 0 || !plugins) return false;
     const uint8_t bit = key == ScreenKey::Mute ? screen_key_mute : key == ScreenKey::Erase ? screen_key_erase : 0;
     if (!bit || !(plugins->screen_keys(unsigned(at.entry)) & bit)) return false;
     plugins->screen_input(unsigned(at.entry), {key, 1, ui.shift});
@@ -600,34 +602,51 @@ void Context::plugins_tick(uint32_t at) {
         }
     }
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) take_plugin_view();
-    { // A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once.
-        ScreenView view;
-        if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {
-            view.entry = uint8_t(at.entry);
-            view.area = at.area;
-            view.shift = ui.shift;
-            view.playing = host.playing();
-            view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;
-            for (unsigned k = 0; k < 3; ++k) { view.pots[k] = ui.pots[k].position; view.live[k] = ui.pots[k].engaged ? 1 : 0; }
-        }
-        plugins->screen_view(view);
-    }
     companion_requests();
     // The cards' texts twenty times a second, and at once when the plug-in in view is another (refresh_plugin_panel).
     const int focus = plugin_in_focus();
     const bool moved = focus != (ui.plugin_panel.entry < max_plugins ? int(ui.plugin_panel.entry) : -1);
-    if (!moved && at - plugin_panel_at < 50) return;
-    plugin_panel_at = at;
-    { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)
-        const auto& t = track();
-        if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
-        else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
+    if (moved || at - plugin_panel_at >= 50) {
+        plugin_panel_at = at;
+        { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)
+            const auto& t = track();
+            if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
+            else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
+        }
+        refresh_plugin_panel();
     }
-    refresh_plugin_panel();
+    tell_screen_view(); // after the panel: a page newly showing a screen is told in this tick
 }
 
-// The panel of the plug-in the page in view shows, read now: from plugins_tick (often), and by the shell before a
-// button or the wheel acts. Stage passes over PANEL unless this panel says the track's plug-in draws its own screen
+// A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once (and the rack takes
+// input for that page only).
+void Context::tell_screen_view() {
+    if (!plugins) return;
+    ScreenView view;
+    if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {
+        view.entry = uint8_t(at.entry);
+        view.area = at.area;
+        view.shift = ui.shift;
+        view.playing = host.playing();
+        view.colour = ui::track_colour(ui.track).getARGB() & 0xffffffu;
+        for (unsigned k = 0; k < 3; ++k) { view.pots[k] = ui.pots[k].position; view.live[k] = ui.pots[k].engaged ? 1 : 0; }
+    }
+    plugins->screen_view(view);
+}
+
+// Before a button or the wheel acts (the shell): the panel read again only when the plug-in in view is another than
+// the panel's (Pad Bank + pad, MIDI Remote, another page), with the rack told the page in view at once. Read on every
+// press, a bridged plug-in's card texts would each cost a round trip under the lock its audio block takes.
+void Context::follow_plugin_focus() {
+    if (!plugins) return;
+    const int focus = plugin_in_focus();
+    if (focus == (ui.plugin_panel.entry < max_plugins ? int(ui.plugin_panel.entry) : -1)) return;
+    refresh_plugin_panel();
+    tell_screen_view();
+}
+
+// The panel of the plug-in the page in view shows, read now: from plugins_tick (often), and by follow_plugin_focus
+// before a button or the wheel acts when that is another plug-in. Stage passes over PANEL unless this panel says the track's plug-in draws its own screen
 // (shell/features.h), so one twenty times a second, or another plug-in's (just after Pad Bank + pad, or back from the
 // mixer), made − / +, the wheel and B1 act on PRESETS there and load a preset into a track that was on its PANEL.
 void Context::refresh_plugin_panel() {

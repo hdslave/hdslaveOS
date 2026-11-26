@@ -1307,6 +1307,13 @@ int main(int argc, char** argv) {
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.has_screen && ui.plugin_panel.status == PluginStatus::Ready; });
         auto shown = [&] { const auto& t = project.tracks[ui.track % track_count]; return stage_page_now(ui, t, stage_skip(project, ui, t)).kind; };
         CHECK(shown() == StageKind::PluginScreen);
+        // The first wheel turn on the other track's PANEL, straight after Pad Bank + pad, reaches its own screen.
+        pick_track(1);
+        CHECK(values(1)[0] == 0.5);
+        turn(10);
+        wait([&] { return values(1)[0] == 0.6; });
+        pick_track(0);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
         const int first = rack->programs(entry).current, second = rack->programs(1).current;
         auto none_armed = [&](SurfaceButton key, int detents) {
             tap(key);

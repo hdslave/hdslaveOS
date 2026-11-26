@@ -399,6 +399,8 @@ public:
     // (a plug-in swap) reads it.
     void plugins_follow();
     void refresh_plugin_panel(); // the panel of the plug-in in view read now (shell/plugin_jobs.cpp)
+    void follow_plugin_focus();  // before a key acts: the panel and the screen in view, when the plug-in in view is another
+    void tell_screen_view();     // the rack told which plug-in's screen the page shows
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
     bool plugin_screen_key(ScreenKey key); // MUTE or ERASE tapped: to the plug-in's own page when it takes the key; false: Melodee's job
