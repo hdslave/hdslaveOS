@@ -4,6 +4,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
+#include "melodee/shell/features.h" // stage_skip: the page Stage shows
 #include "melodee/shell/shell.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
@@ -684,6 +685,12 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);    // the fixture takes 60 ms to open, and 60 ms more to say where
         setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
     }
+    // The fixture's three presets, as preset-keys has them, without its slow opening.
+    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state") {
+        const auto folder = fs::path(plugin).parent_path() / "TestPresets";
+        fs::create_directories(folder);
+        std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
+    }
     const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
@@ -853,6 +860,25 @@ int main(int argc, char** argv) {
         }
         throw std::runtime_error(std::string("missing fixture control: ") + name);
     };
+    // Stage left on PANEL, and PANEL passed over (plug-in screens switched off in Settings): the page shows
+    // PRESETS, and what it draws from holds the track's plug-in's presets.
+    if (mode == "stage-presets") {
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.has_screen && ui.plugin_panel.programs == 3; });
+        auto shown = [&] { return stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind; };
+        CHECK(shown() == StageKind::PluginScreen);
+        auto frame = std::make_unique<Snapshot>();
+        shell->snapshot(*frame, now);
+        ui.settings.plugin_skins = false; // Settings > SCREEN > Plug-in screens: off
+        CHECK(shown() == StageKind::PluginSound);
+        shell->snapshot(*frame, ++now);
+        CHECK(frame->presets.list.size() == 3);
+        tap(SurfaceButton::Plus); // and its keys walk the list it shows
+        CHECK(ui.preset_due && ui.presets_cursor == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // Stage's PRESETS on a plug-in track: Minus / Plus walk its presets as the wheel does and stop at the list's
     // ends; the pads keep their keys (the octave and the Drums bank those keys move elsewhere). Its face, a
     // plug-in with no presets, and the track's other pages: the octave, as before.
