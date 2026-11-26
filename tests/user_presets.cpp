@@ -1184,6 +1184,24 @@ int main(int argc, char** argv) {
         for (int k = 0; k < 40; ++k) tick();
         shell->snapshot(*drawn, now);
         CHECK(fs::path(rack->view().folder).filename() == "Plugins" && fs::path(drawn->plugins.folder).filename() == "Plugins");
+
+        // With the picker closed, the rack leaves a listed plug-in's kind for later: opening it to ask would hold up a
+        // job behind it (a thaw's, a freeze's). Open again, the picker gets it.
+        fs::create_directories(folder / "Gamma");
+        fs::copy_file(plugin, folder / "Gamma" / "Three.clap");
+        rack->card_changed();
+        wait([&] { return row_of("Gamma") >= 0 && fs::path(c.plugin_view.folder).filename() == "Plugins"; });
+        listing("Plugins", rack->view().files.size());
+        cursor_on("Gamma");
+        rack->reload(entry);
+        tick(); // the plug-in opens again (60 ms): Gamma lists behind it, then its presets are looked for
+        tap(SurfaceButton::WheelPush);
+        c.open(PageId::Stage); // and the picker closed meanwhile
+        wait([&] { return ready(entry) && fs::path(rack->view().folder).filename() == "Gamma"; });
+        for (int k = 0; k < 60; ++k) tick();
+        CHECK(rack->view().files.size() == 1 && rack->view().files[0].instrument < 0);
+        open_picker();
+        listing("Gamma", 1);
         unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;

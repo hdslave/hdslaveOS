@@ -545,6 +545,7 @@ void Context::plugins_follow() {
 void Context::plugins_tick(uint32_t at) {
     if (!plugins) return;
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it
+    plugins->set_browsing(ui.page == PageId::Plugins); // the picker's rows probed in idle time only while it is open
     split_shared_plugins();
     presets_follow(); // a copy's plug-in in its own entry now: an open PRESETS list follows it
     plugins->sync(project, plugins_asleep());

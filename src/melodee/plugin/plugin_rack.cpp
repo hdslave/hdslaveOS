@@ -1462,7 +1462,9 @@ void PluginRack::run() {
                 held.unlock();
                 free_retired();
                 idle_plugins();
-                probe_listed(); // the listed plug-ins a probe left for other work: their kind, now the queue is empty
+                // The listed plug-ins a probe left for other work: their kind, now the queue is empty, while the picker
+                // is open (closed, a probe could hold up a thaw's or a freeze's job; the next listing asks again).
+                if (browsing.load(std::memory_order_relaxed)) probe_listed();
                 continue;
             }
             job = std::move(jobs.front());
@@ -1602,7 +1604,8 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
 
 // Opens each listed plug-in whose kind is not known yet just long enough to ask, one at a time, so the picker can
 // say INSTRUMENT or EFFECT, or how many plug-ins a bundle holds. Stops when other work comes in, and goes on once the
-// rack's queue is empty again (run(): each plug-in is opened once, so nothing is asked twice).
+// rack's queue is empty again while the picker is open (run(), set_browsing(): each plug-in is opened once, so nothing
+// is asked twice).
 void PluginRack::probe_listed() {
     for (;;) {
         PluginFile file;

@@ -156,6 +156,9 @@ public:
     // changed under it), whether or not that listing is in yet.
     uint32_t browse(const std::string& folder, const std::string& row = {}, int32_t row_id = 0);
     uint32_t relist(const std::string& row = {}, int32_t row_id = 0);
+    // Whether the picker is open (the shell, each tick): only then do listed plug-ins whose kind a listing left for
+    // later get opened once the rack is idle.
+    void set_browsing(bool open) { browsing.store(open, std::memory_order_relaxed); }
     using View = PluginListing; // plugin/plugin_files.h
     View view() const;
     unsigned changes() const { return change_count.load(std::memory_order_acquire); } // the view or a status moved
@@ -250,6 +253,7 @@ private:
     const bool ring_print;
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0}, card_count {0};
+    std::atomic<bool> browsing {false}; // set_browsing()
     std::thread thread;
     // The screen thread's: what the MIDI thread told it and the newest picture (under `screen_lock`, never held while
     // `lock` is taken); `screen_calls` held while it calls into a plug-in, so destroy() frees none meanwhile.
