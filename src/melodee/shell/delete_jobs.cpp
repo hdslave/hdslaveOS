@@ -62,7 +62,12 @@ bool samples_erase(Context& c) {
     if (files.empty()) return false;
     const auto& file = files[std::min<size_t>(c.ui.files_cursor, files.size() - 1)]; // as the page draws the cursor
     if (file.list) return false; // STARRED and RECENT themselves stay
-    if (list_folder(c.library->folder())) { c.library->unlist(file.path); return true; } // in a list: off it, the file kept
+    // In a list as drawn: off it, the file kept. Only when the library has that list in view still: one it has left (B1
+    // or B2, the rows not taken in yet) does nothing, and never reaches the file's delete below.
+    if (list_folder(c.files_shown().folder)) {
+        if (c.library->folder() == c.files_shown().folder) c.library->unlist(file.path);
+        return true;
+    }
     const std::string card = c.library->card(), samples = samples_folder(card); // <card>/Melodee/Samples
     const std::string name = fs::path(file.path).filename().string();
     if (part_of_file(file.path)) { c.notice("Delete: its file, not a preset of it"); return true; }

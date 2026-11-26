@@ -2285,6 +2285,27 @@ int main(int argc, char** argv) {
         shell->snapshot(*frame, ++now); // and now the folder above, the cursor on the folder it came out of
         CHECK(fs::path(frame->files_folder).filename() == "Samples" && ui.files_cursor < frame->files.size());
         CHECK(fs::path(frame->files[ui.files_cursor].path).filename() == "Sub");
+        // STARRED: a starred file's row drawn, B1, and Erase before the browser has taken the folder above in. Erase in a
+        // list takes a file off it; here the list is no longer the library's, so it does nothing, and never asks to
+        // delete the file from the card.
+        CHECK(write_wav((root / "Sub" / "Other.wav").string(), kick).empty()); // in a folder of the card's, in no project
+        samples->star((root / "Sub" / "Other.wav").string());
+        settle();
+        shell->snapshot(*frame, ++now);
+        int starred = -1;
+        for (size_t n = 0; n < frame->files.size(); ++n) if (frame->files[n].list && frame->files[n].name == "STARRED") starred = int(n);
+        CHECK(starred >= 0);
+        ui.files_cursor = uint16_t(starred);
+        tap(SurfaceButton::WheelPush);
+        settle();
+        shell->snapshot(*frame, ++now);
+        CHECK(frame->files.size() == 1 && fs::path(frame->files[0].path).filename() == "Other.wav" && ui.files_cursor == 0);
+        tap(SurfaceButton::TopLeft);
+        for (int k = 0; k < 40 && fs::path(samples->folder()).filename() != "Samples"; ++k) samples->service(hardware);
+        CHECK(fs::path(samples->folder()).filename() == "Samples");
+        ui.notice[0] = 0;
+        tap(SurfaceButton::Erase);
+        CHECK(ui.ask != UiState::Ask::DeleteFile && fs::exists(root / "Sub" / "Other.wav") && ui.notice[0] == 0);
     }
     // The Name sheet saves what it was opened for, though another track is in hand at Done (MIDI Remote picks one).
     if (mode == "name-target") {
