@@ -45,6 +45,10 @@ def main():
         raise SystemExit("Version must look like v0.1.0 or v0.1.0-alpha.1")
     commit = stamped_commit(arguments.allow_dirty)
     files = make_release.collect(Path(arguments.binary), arguments.version, commit)
+    files[f"{make_release.PACKAGE}/README.txt"] = make_release.readme(
+        arguments.version, commit,
+        template=ROOT / "release/README-hdslaveOS.txt", source="https://github.com/hdslave/hdslaveOS",
+    )
     for name, data in files.items():
         make_release.scan(name, data)
     files[make_release.LIST] = make_release.release_list(files)

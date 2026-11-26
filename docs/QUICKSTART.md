@@ -1,4 +1,4 @@
-# Melodee quickstart
+# hdslaveOS quickstart
 
 This guide takes you from the release zip to a saved beat with a kit and a
 plug-in instrument. For every page and control, read the
@@ -23,38 +23,40 @@ You need:
 - On firmware 1.4: **Developer Mode** on, in the stock app's Settings on
   the **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
-- The release zip, `Melodee-MPC-Sample-<version>.zip`.
+- The **Complete SD Card Install** ZIP for hdslaveOS and eleven plug-ins,
+  or the **OS-only** ZIP. [Latest hdslaveOS release](https://github.com/hdslave/hdslaveOS/releases/latest)
 
-The zip holds the `autorun` folder and an `autorun.sh` file. The
-`README.txt` and the licences are in `autorun/melodee/`.
+The OS-only ZIP holds `autorun/` and `autorun.sh` at its top level.
+The complete ZIP keeps them in `SD-Card/` beside the `Melodee/` plug-in
+folder. Both include a README and licences under `autorun/melodee/`.
 
-To install Melodee:
+To install hdslaveOS:
 
-1. Back up the card. If it has an `autorun` folder at its top level, move
-   that folder somewhere safe. Melodee's `autorun` folder replaces it.
-2. Unzip the release and copy the `autorun` folder and `autorun.sh` to
-   the top level of the card. The card now has `autorun.sh`,
-   `autorun/autorun.sh` and `autorun/melodee/`. Do not edit or rename
-   anything inside them: the MPC does not start an autorun whose files
-   have changed.
-3. Optional: to use plug-ins, make a folder named `Plugins` inside the
-   `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
-   into it. A plug-in's release zip can go in as it is: Melodee unzips it
-   the next time the plug-in picker opens. See
+1. Back up the card, then extract the ZIP on your computer.
+2. On a direct-boot card, move the existing top-level `autorun/` and
+   `autorun.sh` to your backup and copy both replacements to the top level
+   of the card. On a SampleBoot card, keep its launcher. Copy the contents
+   of the extracted `autorun/` into a new
+   `autorun/mods/hdslaveOS <version>/` folder with `autorun.json`
+   directly inside it. Keep the original names of the autorun files.
+3. If you downloaded the plug-ins, copy the files from the extracted
+   `Melodee/Plugins/hdslave/` into the card's folder of the same name.
+   Replace files with matching names and keep your project and sample
+   folders. See
    [Plug-ins](guide/plug-ins.md) for what runs.
 4. Put the card in the MPC and switch it on. The stock app starts first.
    On firmware 1.4 it asks whether to run the card's autorun script: press
-   Yes. A few seconds later Melodee starts, with a new project open on
-   track 1.
+   **Yes**. In SampleBoot, select the new hdslaveOS entry. On a new install,
+   Stage opens on track 1 with the track types.
 
-Melodee changes nothing on the MPC itself. To stop it from starting, delete
-the `autorun` folder and `autorun.sh` from the card.
+hdslaveOS runs from the card. To boot the stock app, power off, remove the
+card, and restart.
 
 While Melodee runs, connect the MPC to a computer with USB-C and open
-**http://melodee.local** in a browser. The page installs plug-ins and
-updates, moves files to and from the card, and holds this quickstart and
-the user guide. To update Melodee later, see
-[Update Melodee](guide/projects-and-files.md#update-melodee).
+**http://melodee.local** in a browser. The page installs plug-ins, moves files
+to and from the card, and holds this quickstart and the user guide. To
+install a newer unsigned OS ZIP, see
+[Update hdslaveOS](guide/projects-and-files.md#update-hdslaveos).
 
 ## 2. Learn the controls
 

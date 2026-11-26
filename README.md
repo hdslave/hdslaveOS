@@ -19,7 +19,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 
 ### Mixer
 
-In 0.8.2, Mixer opens on the channel strips. Hold **+** to open the selected channel’s card and hold **−** to return to the strips. Tap **+** or **−** to move through the selected block.
+Mixer opens on the channel strips. Hold **+** to open the selected channel’s card and hold **−** to return to the strips. Tap **+** or **−** to move through the selected block.
 
 <p align="center">
   <img src="docs/images/hdslave-mixer.png" alt="Four views of the hdslaveOS mixer showing submix sends, insert effects, channel EQ, and compression" width="760">
@@ -129,8 +129,8 @@ page and control, read the [user guide](docs/GUIDE.md).
   chord builder for your own.
 - **Sequencing**: 128 patterns per track in 8 banks, up to 128 bars each. Step
   sequencer, piano roll, step entry, parameter locks, ratchets and trig
-  conditions. Sequences, as on the stock app, sequence chains and follow
-  actions.
+  conditions. Sequences keep their own track mutes. Copy a sequence with its
+  patterns, or use sequence chains and follow actions.
 - **Song**: an arrangement with a lane per track, markers and a tempo lane.
   Export a WAV mixdown, stems, a MIDI file, an MPC 3 project or an Ableton
   Live Set.
@@ -154,11 +154,9 @@ page and control, read the [user guide](docs/GUIDE.md).
   plug-ins, the mixer and Song. Full shows every page. Melodee starts on
   Full.
 - **Web page**: connect the MPC to a computer by USB-C and open
-  http://melodee.local to install updates and plug-ins, manage the card's
+  http://melodee.local to install plug-ins, manage the card's
   files and read this guide. The MPC can also show up as a USB webcam with
   Melodee's screen.
-- **Updates from the card**: copy a release zip to the card and Melodee
-  installs it.
 
 ## Requirements
 
@@ -170,22 +168,23 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 ## Install
 
-hdslaveOS has no signed releases (Melodee's updater takes only its author's),
-so it is installed by hand from an unsigned package
-(`hdslaveOS-MPC-Sample-<version>-unsigned.zip`, see
-[Build from source](#build-from-source)). Melodee's own
-[Releases](https://github.com/keremimo/melodee-sample/releases) install
-stock Melodee, not this fork.
+Download the **Complete SD Card Install** for hdslaveOS and all eleven MPC
+plug-ins, or the **OS-only** ZIP to update an existing install. Install
+the unsigned ZIP by hand. [Latest hdslaveOS release](https://github.com/hdslave/hdslaveOS/releases/latest)
 
-1. Back up the card. If the card already has an `autorun` folder at its top
-   level, move it somewhere safe.
-2. Unzip the package. It holds the `autorun` folder and an `autorun.sh` file.
-   Copy both to the top level of the card (or, under a boot menu such as
-   SampleBoot, copy the contents of `autorun/` into that menu's folder for it).
-   Do not edit or rename anything inside them.
-3. Put the card in the MPC and switch it on. The stock app starts first.
-   On firmware 1.4 it asks whether to run the card's autorun script: press
-   Yes. A few seconds later hdslaveOS starts.
+1. Back up the card, then extract the ZIP on your computer. With the
+   complete installer, open `START-HERE.txt` and use the files inside
+   `SD-Card/`.
+2. On a direct-boot card, back up the existing top-level `autorun/` and
+   `autorun.sh` and replace both with the copies from the ZIP. On a
+   SampleBoot card, keep its launcher and copy the contents of the ZIP's
+   `autorun/` into a new `autorun/mods/hdslaveOS <version>/` folder. Put
+   `autorun.json` directly inside that folder.
+3. If you downloaded the plug-ins, copy the supplied files into
+   `Melodee/Plugins/hdslave/` on the card. Keep the supplied filenames so
+   existing projects can find their plug-ins.
+4. Start the MPC with the card inserted. On firmware 1.4, choose **Yes**
+   at the autorun prompt. In SampleBoot, select the new hdslaveOS entry.
 
 On firmware 1.4, Screen Mirror is not available and hdslaveOS runs at
 44.1 kHz only: the firmware no longer lets apps load their own kernel
@@ -207,7 +206,12 @@ the `Melodee` folder at the top level), in any subfolders. Melodee loads:
 Plug-ins built only for Windows or macOS do not run on the MPC. The
 plug-in picker shows them dimmed, with the reason.
 
-The [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/tag/v0.8.2-slink.2) and the [complete installer](https://github.com/hdslave/hdslaveOS/releases/tag/v0.8.2-hdslave.3) both include **Slink 0.6.1**. To update only that instrument, merge the `Melodee` folder from the [Slink MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) onto your card. Keep the supplied plug-in filename for saved projects. Select **hdslave Slink** and open **Stage → Panel** to see the silver panel below.
+The latest complete installer and the standalone collection contain the same
+eleven MPC plug-ins. The included `MPC-PLUGINS.tsv` lists the exact source
+revisions and file hashes. [Complete installer](https://github.com/hdslave/hdslaveOS/releases/latest) · [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/latest)
+
+Select **hdslave Slink** and open **Stage → Panel** to see its silver panel.
+Keep the supplied `hdslave TB-MPC-3-P-0.clap` filename for saved projects.
 
 <a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.6.1/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.6.1/docs/slink-mpc-pattern.png" width="320" alt="Slink 0.6.1 playing in Stage on its silver MPC panel"></a>
 
@@ -247,10 +251,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.8.1-hdslave.3 ./build.sh
+MELODEE_VERSION=v0.8.3-hdslave.1 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.8.1-hdslave.3
+python3 tools/package_unsigned.py v0.8.3-hdslave.1
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.

@@ -104,7 +104,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [SD card access](guide/projects-and-files.md#sd-card-access)
    - [Files on the card](guide/projects-and-files.md#files-on-the-card)
    - [The web page](guide/projects-and-files.md#the-web-page)
-   - [Update Melodee](guide/projects-and-files.md#update-melodee)
+   - [Update hdslaveOS](guide/projects-and-files.md#update-hdslaveos)
 15. [Settings](guide/settings.md)
    - [Basic and Full](guide/settings.md#basic-and-full)
    - [Palette and Font](guide/settings.md#palette-and-font)

@@ -80,9 +80,9 @@ def sums(files, prefix):
                    for name, data in sorted(files.items()) if name.startswith(prefix) and name.count("/") == prefix.count("/"))
 
 
-def readme(version, commit):
-    text = (ROOT / "release/README.txt").read_text()
-    return text.replace("{version}", version).replace("{commit}", commit).replace("{source}", SOURCE_URL).encode()
+def readme(version, commit, *, template=ROOT / "release/README.txt", source=SOURCE_URL):
+    text = template.read_text()
+    return text.replace("{version}", version).replace("{commit}", commit).replace("{source}", source).encode()
 
 
 def collect(binary, version, commit, stems=ROOT / "build/stems"):

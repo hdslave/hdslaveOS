@@ -186,9 +186,8 @@ While Melodee runs, connect the MPC to a computer with USB-C and open
 four tabs:
 
 - **Device**: the version running, the card's free space and the plug-ins
-  in `Melodee/Plugins`. Drop a Melodee release zip on **Update** and press
-  **Send** (see [Update Melodee](#update-melodee)), or a plug-in's
-  `-mpc-sample.zip` on **Plug-ins** and press **Install** (see
+  in `Melodee/Plugins`. Drop a plug-in's `-mpc-sample.zip` on **Plug-ins**
+  and press **Install** (see
   [What runs](plug-ins.md#what-runs)).
 - **Files**: the folders on the card. Play audio files in the browser,
   download files, upload files (with **Upload** or by dropping them on the
@@ -201,32 +200,25 @@ four tabs:
 Uploads wait while the card is on a computer with SD card access. When
 Melodee stops, the MPC's own web page comes back.
 
-## Update Melodee
+<a id="update-melodee"></a>
 
-1. Download the new release zip (`Melodee-MPC-Sample-<version>.zip`).
-   Do not unzip it.
-2. Copy the zip to the top level of the card, with **SD card access** or
-   a card reader. Or send it from a browser: with the MPC connected to the
-   computer by USB-C, open **http://melodee.local** (or **http://192.168.155.1**), choose the zip
-   under **Update** and press **Send**.
-3. When playback is stopped, Melodee asks **Update to <version>?**. Press
-   **B3** (**INSTALL**). To keep this version for now, press **B1**
-   (**LATER**). Melodee asks again after SD card access or the next time
-   it starts.
-4. Melodee saves the project, checks the zip, writes it to the card and
-   restarts. The header then shows **Updated to <version>**. Melodee
-   deletes the zip from the card.
+## Update hdslaveOS
 
-![Update question](../images/screens/updateask.png)
+Install the unsigned release ZIP by hand. Download the **OS-only** ZIP
+to update the OS, or the **Complete SD Card Install** to update the OS
+and all eleven hdslave plug-ins together. [Latest hdslaveOS release](https://github.com/hdslave/hdslaveOS/releases/latest)
 
-Melodee only offers official releases. A zip that was changed, or that
-did not come from Melodee's releases page, is ignored. If the update fails
-(for example, the card is full), the screen shows the reason and nothing is
-changed. Press **B1** to close it. The previous version stays on the card
-in `autorun/melodee.prev`.
-
-Melodee 0.1.0 cannot update this way. To move from 0.1.0, install the new
-version by hand, as in [Install](../../README.md#install).
+1. Save your project, exit to the stock app, and power off. Back up the card
+   on your computer and extract the ZIP.
+2. On a direct-boot card, replace the top-level `autorun/` and
+   `autorun.sh` together. On a SampleBoot card, use a new version folder in
+   `autorun/mods/` and keep SampleBoot's launcher. Follow the
+   [installation layout](../QUICKSTART.md#1-install).
+3. If updating the plug-ins too, copy the files into
+   `Melodee/Plugins/hdslave/` and keep their filenames. Projects, samples
+   and settings are in the card's `Melodee/` folder.
+4. Boot the new version. To check the build on the MPC, open **Settings →
+   ABOUT** and press **B3**.
 
 ---
 

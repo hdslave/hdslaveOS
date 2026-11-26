@@ -49,10 +49,10 @@ Around the project:
   [Files on the card](projects-and-files.md#files-on-the-card)).
 - **The web page**: connect the MPC to a computer with USB-C and open
   **http://melodee.local** while Melodee runs. Its tabs are **Device**
-  (updates and plug-in zips), **Files** (the card's files), **Quickstart**
+  (version and plug-in ZIPs), **Files** (the card's files), **Quickstart**
   and **Manual** (this guide).
-- **Updates**: a release zip copied to the card, or sent from the web page,
-  updates Melodee (see [Update Melodee](projects-and-files.md#update-melodee)).
+- **Updates**: install each unsigned release ZIP on the card by hand.
+  [Update hdslaveOS](projects-and-files.md#update-hdslaveos)
 
 ---
 
