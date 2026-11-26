@@ -868,7 +868,7 @@ PluginStates PluginRack::states() const {
     std::lock_guard<std::mutex> held(lock);
     for (unsigned e = 0; e < max_plugins; ++e) {
         const auto& entry = entries[e];
-        out[e] = entry.live && entry.status == PluginStatus::Ready ? state_now(entry.live, entry.state) : entry.state;
+        out[e] = kept_state(entry); // a dead bridge's, or one not open: the state it had
     }
     return out;
 }
@@ -877,8 +877,7 @@ void PluginRack::clone(unsigned entry, unsigned copy) {
     if (entry >= max_plugins || copy >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);
     auto& from = entries[entry];
-    entries[copy].state = from.live && from.status == PluginStatus::Ready ? state_now(from.live, from.state)
-                                                                           : from.state;
+    entries[copy].state = kept_state(from);
     entries[copy].parked_path.clear(); // a copy of another: nothing of what was let go here comes back
     entries[copy].parked.clear();
 }
@@ -946,9 +945,7 @@ void PluginRack::reload(unsigned entry) {
 std::vector<uint8_t> PluginRack::state(unsigned entry) const {
     if (entry >= max_plugins) return {};
     std::lock_guard<std::mutex> held(lock);
-    const auto& e = entries[entry];
-    if (!e.live || e.status != PluginStatus::Ready) return e.state;
-    return state_now(e.live, e.state);
+    return kept_state(entries[entry]);
 }
 
 void PluginRack::restore(unsigned entry, std::vector<uint8_t> state) {

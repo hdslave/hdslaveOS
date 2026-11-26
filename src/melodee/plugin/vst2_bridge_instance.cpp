@@ -510,9 +510,14 @@ const String Vst2BridgeInstance::getProgramName (int index)
 
 // Same layout as Vst2Instance: "MVS2", a kind byte, then the chunk or the
 // parameter values, so a project can move between the two hosts.
+// A bridge that died (before or while it is read) gives no state at all: its parameters would read as 0, and a state
+// of zeros saved with the project, copied or loaded again would replace the plug-in's sound. The rack keeps the one it
+// had instead, as for any save that gives nothing (plugin_rack.cpp, state_now).
 void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 {
     state.reset();
+    if (connection->dead)
+        return;
     state.append (vst2::state::tag, sizeof (vst2::state::tag));
     {
         const std::lock_guard<InheritingMutex> held (connection->lock);
@@ -530,6 +535,8 @@ void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
         const float value = parameter (i);
         state.append (&value, sizeof (value));
     }
+    if (connection->dead)
+        state.reset();
 }
 
 void Vst2BridgeInstance::setStateInformation (const void* data, int size)

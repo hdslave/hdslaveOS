@@ -14,6 +14,7 @@
 #include <dirent.h>
 #include <fstream>
 #include <pthread.h>
+#include <signal.h>
 #include <sched.h>
 #include <string>
 #include <unistd.h>
@@ -187,8 +188,18 @@ int main (int argc, char** argv)
 
     const auto trip = plugin->measureRoundTrips (2000);
     std::printf ("empty round trip mean %.1f us p99 %.1f us max %.1f us\n", trip[0], trip[1], trip[2]);
+
+    // The bridge dies: the state it gives is nothing (the rack keeps the one it had, as for a failed save), never a
+    // state of every parameter at 0, which a project saved then, a copy or a reload would put back.
+    MemoryBlock alive, dead;
+    plugin->getStateInformation (alive);
+    kill (bridge, SIGKILL);
+    usleep (100000);
+    plugin->getStateInformation (dead);
+    const bool kept = alive.getSize() > 0 && dead.getSize() == 0 && plugin->bridgeDied();
+    std::printf ("dead bridge: state %zu bytes (%zu alive)%s\n", dead.getSize(), alive.getSize(), kept ? "" : "  FAILED");
     plugin->releaseResources();
     plugin.reset();
     MessageManager::deleteInstance();
-    return 0;
+    return kept ? 0 : 1;
 }
