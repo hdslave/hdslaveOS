@@ -902,7 +902,9 @@ PluginRack::Usage PluginRack::usage() const {
 }
 
 // Under `lock`: an entry's state as it is now, from a plug-in that is open and working; a dead bridge has nothing to
-// say (its parameters read as 0), so it, and one not open, keep the state they had.
+// say (its parameters read as 0), so it, and one not open, keep the state they had. The read is the plug-in's own state
+// save, made on the thread that asks (the MIDI thread, from sync() as an entry is let go, as clone(), state() and
+// states() read it) and under the rack's lock: a plug-in with a large state holds the rack's thread that long.
 std::vector<uint8_t> PluginRack::kept_state(const Entry& e) const {
     if (!e.live || e.status != PluginStatus::Ready) return e.state;
     auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
