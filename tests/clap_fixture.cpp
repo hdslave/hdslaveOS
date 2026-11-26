@@ -61,6 +61,10 @@ struct Plugin {
     std::atomic<uint32_t> ringTail {0};
     bool secondBank = false;
     int drawnBar = -1;            // its screen's bar as last drawn, pixels
+    // The transport its last process call was given, and how many it has had (MELODEE_TEST_TRANSPORT: in its state).
+    std::atomic<int> seenPlaying {-1};
+    std::atomic<double> seenBeats {-1};
+    std::atomic<int> processCalls {0};
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
     void audio() { if (threads && !threads->is_audio_thread(host)) ++wrongThread; }
@@ -107,11 +111,17 @@ void flush(const clap_plugin*, const clap_input_events*, const clap_output_event
 const clap_plugin_params params {paramCount, paramInfo, paramValue, valueText, textValue, flush};
 
 // State: Level, Wave and Gain as three doubles (fixture_fail_saves(1), or MELODEE_TEST_FAIL_SAVES in the
-// environment where the test cannot reach this copy's globals: a part-written save that then fails).
+// environment where the test cannot reach this copy's globals: a part-written save that then fails). With
+// MELODEE_TEST_TRANSPORT, three more after them: whether its last process call was told the song plays (-1 none yet),
+// the song position it was told in quarter notes, and how many process calls it has had (load() reads the first three).
 bool save(const clap_plugin* p, const clap_ostream* out) {
     of(p).main();
     double v[3] {of(p).level, of(p).wave, of(p).gain};
     if (failSaves || std::getenv("MELODEE_TEST_FAIL_SAVES")) { out->write(out, v, sizeof(double)); return false; }
+    if (std::getenv("MELODEE_TEST_TRANSPORT")) {
+        const double w[6] {v[0], v[1], v[2], double(of(p).seenPlaying.load()), of(p).seenBeats.load(), double(of(p).processCalls.load())};
+        return out->write(out, w, sizeof(w)) == int64_t(sizeof(w));
+    }
     return out->write(out, v, sizeof(v)) == int64_t(sizeof(v));
 }
 bool load(const clap_plugin* p, const clap_istream* in) {
@@ -288,6 +298,11 @@ void event(Plugin& s, const clap_event_header* e) {
 clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     auto& s = of(p);
     s.audio();
+    if (const auto* t = proc->transport) {
+        s.seenPlaying.store((t->flags & CLAP_TRANSPORT_IS_PLAYING) ? 1 : 0);
+        s.seenBeats.store(double(t->song_pos_beats) / double(CLAP_BEATTIME_FACTOR));
+    }
+    s.processCalls.fetch_add(1);
     if (beforeEvents) beforeEvents(beforeEventsData);
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
     if (!s.instrument) {

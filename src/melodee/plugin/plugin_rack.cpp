@@ -525,7 +525,7 @@ public:
         if (clap && clap->takeTailChange(declared_tail)) idle.set_tail(plugin_rate, declared_tail);
         const bool changed = change_waiting.load(std::memory_order_relaxed)
                              && change_waiting.exchange(false, std::memory_order_acq_rel);
-        const bool waiting = pending_count > 0 || (waker && waker->wantsProcess()) || changed;
+        const bool waiting = pending_count > 0 || (waker && waker->wantsProcess()) || changed || moved; // moved: the transport
         // Ring prints can hear a delayed repeat after the live gate would sleep.
         bool sleeping = !warming && !(ring_print && declared_tail > 0) && idle.asleep(waiting, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
         asleep.store(sleeping, std::memory_order_relaxed);
@@ -676,8 +676,22 @@ private:
     void follow_clock(unsigned frames) {
         if (warming) { now = EffectClock {}; quarters = 0; per_frame = 0; return; }
         now = *effect_clock_now;
+        if (now.block != block_seen) {
+            // The engine's transport (as the engine has it, TRANSPORT on or off) against where its last block left it:
+            // started, stopped, or the song's place moved other than by that block's frames (a locate, a loop told as
+            // a jump). That block is run, asleep or not (render(): `moved`), so the plug-in hears the change.
+            const double expected = song_seen + into_block / std::max(quarter_seen, 1.0);
+            moved = clock_seen && (now.playing != playing_seen || (now.playing && std::fabs(now.song - expected) > jump_quarters));
+            clock_seen = true;
+            playing_seen = now.playing;
+            song_seen = now.song;
+            quarter_seen = now.quarter;
+            block_seen = now.block;
+            into_block = 0;
+        } else {
+            moved = false; // the rest of a block heard in parts: its first part was run
+        }
         if (!transport.load(std::memory_order_relaxed)) now.playing = false; // TRANSPORT off: the place, never Play
-        if (now.block != block_seen) { block_seen = now.block; into_block = 0; }
         double quarter = std::max(now.quarter, 1.0);
         quarters = now.playing ? now.song + into_block / quarter : now.song;
         per_frame = now.playing ? sample_rate / plugin_rate / quarter : 0.0; // quarter notes a frame at its rate
@@ -708,6 +722,11 @@ private:
     EffectClock now;           // the engine host's clock as this render found it
     uint64_t block_seen = ~uint64_t(0);
     double into_block = 0;     // device frames of that block played already
+    // The engine's transport at the start of the last block (follow_clock): whether it played, the song's place and a
+    // quarter note's frames; `moved` this block's start, stop or jump. A jump is a place off by more than this.
+    static constexpr double jump_quarters = 1e-6;
+    bool clock_seen = false, playing_seen = false, moved = false;
+    double song_seen = 0, quarter_seen = 1;
     double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top
     double per_frame = 0;      // and how far a frame at the plug-in's rate moves it
     bool warming = false;

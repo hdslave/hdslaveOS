@@ -15,7 +15,8 @@
 // long, or for the tail it reports when that is longer (so echoes are not
 // frozen mid-gap); the song playing does not matter. Any MIDI for it, sound
 // in an effect's input, or anything else waiting for it (a CLAP plug-in's
-// request_process or request_flush, a parameter value set for it) wakes it
+// request_process or request_flush, a parameter value set for it, the song
+// started, stopped or moved: PluginHandle::follow_clock) wakes it
 // for that block and counts it quiet again from there, as a note does. All
 // Notes Off releases the keys while a held sustain pedal keeps the gate awake. Audio thread only; no allocation.
 namespace melodee {

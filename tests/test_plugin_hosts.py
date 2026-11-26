@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_sleeping_plugins_hear_play_stop_and_a_jump(self):
+        self.run_rack_fixture("transport-wake")
+
     def test_samples_browser_acts_on_the_rows_it_draws(self):
         self.run_rack_fixture("samples-rows")
 

@@ -693,6 +693,7 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
+    if (mode == "transport-wake") setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -749,6 +750,13 @@ int main(int argc, char** argv) {
         project.tracks[2].set_name("BASS");
     }
     if (mode == "undo-state") { // and the fixture's effect on the master's chain
+        project.plugins[2] = ref;
+        project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
+        auto& slot = project.chain(master_chain).slots[0];
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = 2;
+    }
+    if (mode == "transport-wake") { // and Test Gain on the master's chain (mixed, so run, even in silence)
         project.plugins[2] = ref;
         project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
         auto& slot = project.chain(master_chain).slots[0];
@@ -1309,6 +1317,53 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A plug-in its gate has put to sleep hears the transport change: on Play, on a jump and on Stop it runs the very
+    // block that carries the new transport, with that block's song position; with no change it sleeps on.
+    if (mode == "transport-wake") {
+        const unsigned gain = 2;
+        struct Heard { int playing; double beats; int calls; };
+        auto heard = [&](unsigned at) {
+            auto bytes = rack->state(at);
+            CHECK(bytes.size() == 4 + 6 * sizeof(double));
+            std::array<double, 6> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Heard {int(v[3]), v[4], int(v[5])};
+        };
+        auto sleeps_on = [&](unsigned at) { // no change: no process call for a while
+            const int calls = heard(at).calls;
+            for (int k = 0; k < 40; ++k) tick();
+            CHECK(rack->idling(at) && heard(at).calls == calls);
+        };
+        wait([&] { return ready(entry) && ready(gain); });
+        wait([&] { return rack->idling(entry) && rack->idling(gain); }); // stopped, silent: both asleep
+        sleeps_on(entry);
+        sleeps_on(gain);
+        const int effect_before = heard(gain).calls;
+        CHECK(host->send({Command::Type::Play}));
+        tick(); // the block that starts the song
+        CHECK(heard(gain).calls > effect_before && heard(gain).playing == 1 && heard(gain).beats < 0.25);
+        CHECK(heard(entry).playing == 1); // an instrument is run while the song plays anyway
+        wait([&] { return rack->idling(gain); }); // the effect asleep again, the song playing on
+        sleeps_on(gain);
+        const auto before_jump = heard(gain);
+        CHECK(before_jump.playing == 1 && before_jump.beats > 0.5);
+        Command jump {Command::Type::Locate};
+        jump.position = 0; // back to the patterns' top
+        CHECK(host->send(jump));
+        tick();
+        CHECK(heard(gain).calls > before_jump.calls && heard(gain).playing == 1 && heard(gain).beats < 0.25);
+        wait([&] { return rack->idling(gain); });
+        const int instrument_before = heard(entry).calls, effect_still = heard(gain).calls;
+        CHECK(host->send({Command::Type::Stop}));
+        tick(); // the block that stops it: the effect asleep, the instrument quiet long enough to sleep at once
+        CHECK(heard(gain).calls > effect_still && heard(gain).playing == 0);
+        CHECK(heard(entry).calls > instrument_before && heard(entry).playing == 0);
+        wait([&] { return rack->idling(entry) && rack->idling(gain); }); // and both sleep again
+        sleeps_on(entry);
+        sleeps_on(gain);
         shell->set_plugins(nullptr);
         return 0;
     }
