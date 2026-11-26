@@ -2518,6 +2518,18 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   broken plug with why for one that cannot load here) and its facts last
   (the format, a check on the one loaded, a keyboard or sliders once known
   to be an instrument or an effect); K1 jumps.
+  The rack lists a folder on its own thread; the page draws, and Push,
+  B1, Erase and K1 act on, the listing the shell took in last, with the
+  cursor moved in the same step: onto the folder it came out of after
+  going up, to the top of a folder newly opened, onto the same plug-in
+  after a web page change. So a press never lands on a row the screen
+  has not shown yet (`Context::plugin_view`). Each listing carries the
+  request it answers (`PluginRack::browse()`), so only the one asked for
+  moves the cursor, and a web page change or a delete lists again the
+  folder asked for last, whether or not it is in yet (`relist()`).
+  "Replace <name>?" keeps the plug-in it was asked about, and REPLACE
+  loads that one wherever its row has moved; one deleted meanwhile says
+  Not on the card.
   The project keeps which one (its id; a CLAP's is a hash of its CLAP id)
   and its name.
 - **CLAP.** JUCE hosts no CLAP, so Melodee has its own host on the CLAP

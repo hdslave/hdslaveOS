@@ -978,7 +978,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     for (unsigned n = 0; n < 16; ++n) out.held_keys[n] = context_.pad_keys[n][0];
     out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
-    if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
+    if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugin_view; // as the keys act on it
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
     out.plugin_skin = context_.plugins && ui_.plugin_panel.skin_page != -1 ? context_.plugins->skin(ui_.plugin_panel.entry) : nullptr;
     out.plugin_picture = context_.plugins && ui_.plugin_panel.screen ? context_.plugins->screen_picture() : nullptr;

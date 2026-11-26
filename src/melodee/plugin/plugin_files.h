@@ -55,6 +55,17 @@ struct PluginFile {
     bool several() const { return plugins > 1 && id == 0; }
 };
 
+// A folder as the PLUG-INS picker lists it (PluginRack::view()).
+struct PluginListing {
+    std::string root;   // the card's Melodee/Plugins folder; empty: no card
+    std::string folder; // the folder listed
+    bool top = true;    // the card's top: nothing above it to go back to
+    bool home = true;   // the Plugins folder itself
+    int came_from = -1; // after going up: the row of the folder it came out of; after browse() with a row: that row
+    uint32_t request = 0; // the browse() or relist() it answers (0: none yet)
+    std::vector<PluginFile> files;
+};
+
 // The folder's entries; an unreadable folder lists nothing. A .zip left there (one unzip_plugins() could not
 // open) lists dimmed; with `zips` false (a folder outside Melodee/Plugins, where zips are not unzipped) it is
 // left out. System Volume Information is left out too.

@@ -143,6 +143,9 @@ class PluginHostTests(unittest.TestCase):
     def test_picker_loads_over_a_used_track_only_after_asking(self):
         self.run_rack_fixture("picker-track")
 
+    def test_picker_acts_on_the_row_it_draws(self):
+        self.run_rack_fixture("picker-rows")
+
     def test_stage_presets_shown_in_place_of_panel_has_its_presets(self):
         self.run_rack_fixture("stage-presets")
 

@@ -10,6 +10,7 @@
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/update.h"
+#include <algorithm>
 
 namespace melodee {
 
@@ -68,12 +69,16 @@ bool ask_button(Context& c, SurfaceButton button) {
     } else if (kind == UiState::Ask::ErasePunches) c.erase_punches(); // Erase + KEEP on Pad FX (pad-fx C)
     else if (kind == UiState::Ask::ClearTrack) clear_track(c, unsigned(ui.ask_target)); // Pad Bank held + Erase + pad
     else if (kind == UiState::Ask::DeleteFile) delete_asked(c);    // shell/delete_jobs.h: Erase in a browser
-    else if (kind == UiState::Ask::ReplacePlugin && c.plugins) { // the picker's row asked about, picked again
-        auto view = c.plugins->view();
-        if (unsigned(ui.ask_target) < view.files.size()) {
+    else if (kind == UiState::Ask::ReplacePlugin && c.plugins) { // the plug-in asked about, picked again
+        // Found again by its path in the rows shown now: a web page change may have moved its row, or taken it away.
+        const auto& files = c.plugin_view.files;
+        const auto same = [&](const PluginFile& f) { return f.path == c.plugin_asked.path && f.id == c.plugin_asked.id; };
+        if (auto it = std::find_if(files.begin(), files.end(), same); it != files.end()) {
             // The yes is for the track asked about: with another in hand since, that one is asked about first.
             ui.plugin_replace = c.plugin_asked_track < 0 || c.plugin_asked_track == int(ui.track % track_count);
-            c.choose_plugin(view.files[size_t(ui.ask_target)]);
+            c.choose_plugin(*it);
+        } else {
+            c.notice("Not on the card");
         }
         ui.plugin_replace = false;
     }

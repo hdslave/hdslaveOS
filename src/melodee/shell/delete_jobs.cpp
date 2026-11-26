@@ -80,7 +80,7 @@ bool samples_erase(Context& c) {
 
 bool plugins_erase(Context& c) {
     if (!c.plugins || !c.library) return false;
-    const auto view = c.plugins->view();
+    const auto& view = c.plugin_view; // the row the page draws under the cursor
     if (view.files.empty()) return false;
     const auto& file = view.files[std::min<size_t>(c.ui.plugins_cursor, view.files.size() - 1)];
     if (view.root.empty() || !within(file.path, view.root) || file.path == view.root) { c.notice("Delete: plug-ins on the card only"); return true; }
@@ -107,7 +107,7 @@ void delete_tick(Context& c) {
     const unsigned done = c.library->removals();
     if (done == c.removals_seen) return;
     c.removals_seen = done;
-    if (c.ui.page == PageId::Plugins) c.plugins->browse(c.plugins->view().folder); // its rows, without what went
+    if (c.ui.page == PageId::Plugins) c.plugins->relist(); // its rows, without what went
 }
 
 } // namespace melodee

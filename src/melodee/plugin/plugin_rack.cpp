@@ -1344,9 +1344,25 @@ void PluginRack::set_card(const std::string& top) {
     browse("");
 }
 
-void PluginRack::browse(const std::string& where, const std::string& row, int32_t row_id) {
-    Job job {Job::Kind::Browse, 0, 0, where, 0, row_id, row};
+uint32_t PluginRack::browse(const std::string& where, const std::string& row, int32_t row_id) {
+    uint32_t request = 0;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        asked_folder = where;
+        request = ++browse_count;
+    }
+    Job job {Job::Kind::Browse, 0, request, where, 0, row_id, row}; // the request's number in `generation`
     push(std::move(job));
+    return request;
+}
+
+uint32_t PluginRack::relist(const std::string& row, int32_t row_id) {
+    std::string where;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        where = asked_folder;
+    }
+    return browse(where, row, row_id);
 }
 
 void PluginRack::card_changed() {
@@ -1368,17 +1384,6 @@ void PluginRack::card_changed() {
         }), known.end());
     }
     card_count.fetch_add(1, std::memory_order_acq_rel);
-}
-
-void PluginRack::browse_up() {
-    std::string up;
-    {
-        std::lock_guard<std::mutex> held(lock);
-        if (shown.top) return;
-        up = fs::path(shown.folder).parent_path().string();
-    }
-    Job job {Job::Kind::Browse, 1, 0, up, 0}; // entry 1: going up (the row it came out of is found)
-    push(std::move(job));
 }
 
 PluginRack::View PluginRack::view() const {
@@ -1407,13 +1412,12 @@ void PluginRack::run() {
         case Job::Kind::Unload: unload(job.entry, job.generation); break;
         case Job::Kind::Sleep: sleep(job.entry, job.generation); break;
         case Job::Kind::Browse: {
-            std::string row = job.row, at;
+            std::string at;
             {
                 std::lock_guard<std::mutex> held(lock);
-                if (job.entry == 1) row = shown.folder; // going up: the row of the folder it came out of
                 at = job.path.empty() ? root : job.path;
             }
-            list(at, row, job.entry == 1 ? 0 : job.id);
+            list(at, job.row, job.id, job.generation);
             probe_listed();
             break;
         }
@@ -1426,7 +1430,7 @@ void PluginRack::run() {
     }
 }
 
-void PluginRack::list(const std::string& at, const std::string& row, int32_t row_id) {
+void PluginRack::list(const std::string& at, const std::string& row, int32_t row_id, uint32_t request) {
     std::string top, card;
     {
         std::lock_guard<std::mutex> held(lock);
@@ -1435,6 +1439,7 @@ void PluginRack::list(const std::string& at, const std::string& row, int32_t row
     }
     View v;
     v.root = top;
+    v.request = request;
     if (!top.empty()) {
         // Anywhere on the card; a folder off it lists the Plugins folder.
         std::error_code e;

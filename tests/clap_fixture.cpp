@@ -445,7 +445,8 @@ const clap_plugin* create(const clap_plugin_factory*, const clap_host* host, con
     return &p;
 }
 
-uint32_t count(const clap_plugin_factory*) { return 2; }
+// MELODEE_TEST_ONE_PLUGIN: the library holds Test Sine alone, so its file is a row the picker loads (not a bundle).
+uint32_t count(const clap_plugin_factory*) { return std::getenv("MELODEE_TEST_ONE_PLUGIN") ? 1 : 2; }
 const clap_plugin_descriptor* descriptor(const clap_plugin_factory*, uint32_t i) {
     return i == 0 ? &sineDescriptor : i == 1 ? &gainDescriptor : nullptr;
 }

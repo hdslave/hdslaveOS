@@ -86,14 +86,36 @@ void Context::open_plugin_picker(UiState::PluginTarget target, unsigned chain, u
     ui.plugin_chain = uint8_t(chain);
     ui.plugin_slot = uint8_t(slot);
     ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Stage : ui.page; // an instrument: Stage's B1 EDIT once loaded
-    plugins->browse(plugins->view().folder); // where the picker was left, listed afresh, on the row it was on
+    take_plugin_view(); // the rows as they are listed now, until the new listing is in (never none: NO CARD)
+    plugins->relist(); // where the picker was left, listed afresh, on the row it was on
     if (ui.page != PageId::Plugins) ui.plugin_from = ui.page;
     open(PageId::Plugins);
 }
 
+// The picker's rows as the rack listed them, taken here and in plugins_tick() only, and the cursor with them: onto the
+// row asked for once its own listing is in (going up, a web page change), to the top of a folder newly opened, else
+// on the row it was on.
+void Context::take_plugin_view() {
+    if (!plugins) return;
+    plugin_view_seen = plugins->changes();
+    auto view = plugins->view();
+    const bool other = view.folder != plugin_view.folder;
+    plugin_view = std::move(view);
+    ui.plugins_count = uint16_t(plugin_view.files.size());
+    if (plugin_landing && plugin_view.request == plugin_landing) {
+        if (plugin_view.came_from >= 0) ui.plugins_cursor = uint16_t(plugin_view.came_from);
+        else if (other) ui.plugins_cursor = 0;
+        plugin_landing = 0;
+    } else if (other) {
+        ui.plugins_cursor = 0;
+    }
+    if (ui.plugins_cursor >= ui.plugins_count) ui.plugins_cursor = uint16_t(ui.plugins_count ? ui.plugins_count - 1 : 0);
+}
+
 void Context::choose_plugin(const PluginFile& file) {
     if (!plugins) return;
-    if (file.folder || file.several()) { plugins->browse(file.path); ui.plugins_cursor = 0; return; } // a folder, or a bundle's plug-ins
+    // A folder, or a bundle's plug-ins: listed on the rack's thread; the cursor goes to its top once they show (plugins_tick)
+    if (file.folder || file.several()) { plugins->browse(file.path); return; }
     if (!file.loadable()) { notice(file.why.empty() ? "Not a plug-in for this MPC" : file.why); return; }
     bool instrument = ui.plugin_target == UiState::PluginTarget::Instrument;
     if (instrument && file.instrument == 0) { notice(file.name + " is an effect"); return; }
@@ -123,6 +145,7 @@ void Context::choose_plugin(const PluginFile& file) {
         // back); ask first, and for this track only (shell/ask.cpp)
         std::snprintf(ui.ask_name.data(), ui.ask_name.size(), "%s", over_sound ? sound_name.c_str() : project.plugins[size_t(entry)].name);
         plugin_asked_track = instrument ? int(ui.track % track_count) : -1;
+        plugin_asked = file; // REPLACE loads this one, wherever its row is by then
         ask(*this, UiState::Ask::ReplacePlugin, int(ui.plugins_cursor));
         return;
     }
@@ -432,20 +455,13 @@ void Context::plugins_tick(uint32_t at) {
     // The web page installed or deleted a plug-in: an open picker lists again, its cursor on the plug-in it was on.
     if (plugins->card_changes() != plugin_card_seen) {
         plugin_card_seen = plugins->card_changes();
-        if (ui.page == PageId::Plugins) {
-            auto view = plugins->view();
+        if (ui.page == PageId::Plugins) { // the folder asked for last, which may not be in yet: on the row under the cursor
+            const auto& view = plugin_view;
             const PluginFile on = ui.plugins_cursor < view.files.size() ? view.files[ui.plugins_cursor] : PluginFile {};
-            plugin_came_back = false;
-            plugins->browse(view.folder, on.path, on.id);
+            plugin_landing = plugins->relist(on.path, on.id);
         }
     }
-    if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
-        plugin_view_seen = plugins->changes();
-        auto view = plugins->view();
-        ui.plugins_count = uint16_t(view.files.size());
-        if (view.came_from >= 0 && !plugin_came_back) { ui.plugins_cursor = uint16_t(view.came_from); plugin_came_back = true; }
-        if (ui.plugins_cursor >= ui.plugins_count) ui.plugins_cursor = uint16_t(ui.plugins_count ? ui.plugins_count - 1 : 0);
-    }
+    if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) take_plugin_view();
     { // A plug-in's own screen in view: what it is told, each tick, so a pot reaches its picture at once.
         ScreenView view;
         if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {

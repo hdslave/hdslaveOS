@@ -12,7 +12,8 @@
 // or a plug-in already there it asks first, shell/plugin_jobs.cpp) and goes back; B1
 // goes up a folder, past the Plugins folder as far as the card's top (a
 // plug-in anywhere on the card can be picked), and there back where it came
-// from. The pads play the track.
+// from. The pads play the track. The rows drawn and acted on are the shell's copy of
+// the rack's listing (Context::plugin_view), taken with the cursor in one step.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -94,22 +95,24 @@ void wheel(Context& c, int delta) {
     c.ui.plugins_cursor = uint16_t(std::clamp<int>(c.ui.plugins_cursor + delta, 0, std::max(int(c.ui.plugins_count) - 1, 0)));
 }
 
+// Push, B1 and Erase act on the rows the page draws (Context::plugin_view), never on a listing newer than those.
 void push(Context& c) {
     if (!c.plugins) return;
-    auto view = c.plugins->view();
+    const auto& view = c.plugin_view;
     if (c.ui.plugins_cursor >= view.files.size()) return;
-    c.choose_plugin(view.files[c.ui.plugins_cursor]);
+    c.choose_plugin(PluginFile(view.files[c.ui.plugins_cursor])); // a copy: choosing can list again
 }
 
 void soft(Context& c, int key) {
     if (key != 0 || !c.plugins) return;
-    if (c.plugins->view().top) { // CANCEL: an instrument leaves the track as it was, on the page it came from
+    const auto& view = c.plugin_view;
+    if (view.top) { // CANCEL: an instrument leaves the track as it was, on the page it came from
         c.open(c.ui.plugin_target == UiState::PluginTarget::Instrument ? c.ui.plugin_from : c.ui.plugin_back);
         if (c.ui.plugin_target != UiState::PluginTarget::Instrument) c.picker_done(); // from the mixer's plus: back there
         return;
     }
-    c.plugin_came_back = false; // the cursor lands on the folder it came out of
-    c.plugins->browse_up();
+    // The cursor lands on the folder it came out of, once that listing is in.
+    c.plugin_landing = c.plugins->browse(std::filesystem::path(view.folder).parent_path().string(), view.folder);
 }
 } // namespace
 

@@ -148,18 +148,14 @@ public:
     // library; the picker starts in its Plugins folder and goes up as far as
     // the card's top, so a plug-in anywhere on the card can be picked.
     void set_card(const std::string& top);
-    // "" the Plugins folder itself. With `row` (a listed plug-in's path, and its id in a bundle of several), the
-    // listing's came_from is where that row is now. A folder no longer there lists the Plugins folder.
-    void browse(const std::string& folder, const std::string& row = {}, int32_t row_id = 0);
-    void browse_up();
-    struct View {
-        std::string root;   // the card's Melodee/Plugins folder; empty: no card
-        std::string folder; // the folder listed
-        bool top = true;    // the card's top: nothing above it to go back to
-        bool home = true;   // the Plugins folder itself
-        int came_from = -1; // after going up: the row of the folder it came out of; after browse() with a row: that row
-        std::vector<PluginFile> files;
-    };
+    // "" the Plugins folder itself. With `row` (a listed plug-in's path, and its id in a bundle of several, or the
+    // folder a listing goes up from), the listing's came_from is where that row is now. A folder no longer there
+    // lists the Plugins folder. Returns the request's number, which the listing made for it carries (View::request),
+    // so a listing made before it is told apart. relist(): the folder asked for last, listed again (the card
+    // changed under it), whether or not that listing is in yet.
+    uint32_t browse(const std::string& folder, const std::string& row = {}, int32_t row_id = 0);
+    uint32_t relist(const std::string& row = {}, int32_t row_id = 0);
+    using View = PluginListing; // plugin/plugin_files.h
     View view() const;
     unsigned changes() const { return change_count.load(std::memory_order_acquire); } // the view or a status moved
     // The web page installed, replaced or deleted something on the card (any thread). What opening a plug-in found is
@@ -202,7 +198,7 @@ private:
     void user_preset(const Job& job);
     void find_presets(unsigned entry, uint32_t generation); // a CLAP plug-in's, once it plays
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
-    void list(const std::string& folder, const std::string& row, int32_t row_id); // `row` as in browse()
+    void list(const std::string& folder, const std::string& row, int32_t row_id, uint32_t request); // `row` as in browse()
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
     void idle_plugins();                            // CLAP plug-ins' main-thread requests
@@ -228,6 +224,8 @@ private:
     bool stopping = false;
     std::string card_top, root, folder;
     View shown;
+    std::string asked_folder;   // the folder browse() asked for last
+    uint32_t browse_count = 0;  // browse() and relist() requests made
     // What opening a plug-in once found: its own name, instrument or effect, and every plug-in a bundle holds.
     struct Class { int32_t id = 0; std::string name; int8_t instrument = 0; };
     // `time`: the file's or the folder's own when it was opened (card_changed() forgets it once that moves).

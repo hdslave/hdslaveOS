@@ -691,6 +691,14 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
+    if (mode == "picker-rows") { // each file one instrument, so a row loads; two more beside it, and one in each of two folders
+        setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
+        const auto folder = fs::path(plugin).parent_path();
+        for (const char* name : {"B.clap", "C.clap", "Alpha/One.clap", "Beta/Two.clap"}) {
+            fs::create_directories((folder / name).parent_path());
+            fs::copy_file(plugin, folder / name);
+        }
+    }
     const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
@@ -814,6 +822,13 @@ int main(int argc, char** argv) {
         shell->surface(event, ++now);
     };
     auto ready = [&](unsigned at) { return rack->status(at) == PluginStatus::Ready && !rack->programs(at).finding; };
+    // The picker's row for a file or folder of that name on the card (-1 none), and the cursor put on it with the wheel.
+    auto row_of = [&](const std::string& name) {
+        const auto view = rack->view();
+        for (size_t n = 0; n < view.files.size(); ++n)
+            if (fs::path(view.files[n].path).filename() == name && view.files[n].id == 0) return int(n);
+        return -1;
+    };
     // The picker shows that folder, whole: the rack, the shell's count and the page drawn; `kinds`: each plug-in in it
     // opened once, its kind known.
     auto drawn = std::make_unique<Snapshot>();
@@ -825,6 +840,11 @@ int main(int argc, char** argv) {
             shell->snapshot(*drawn, now);
             return fs::path(drawn->plugins.folder).filename() == folder && drawn->plugins.files.size() == rows;
         });
+    };
+    auto cursor_on = [&](const std::string& name) {
+        CHECK(row_of(name) >= 0);
+        turn(row_of(name) - int(ui.plugins_cursor));
+        CHECK(int(ui.plugins_cursor) == row_of(name));
     };
     auto open_picker = [&] { // Stage's PRESETS on the track in hand, then Shift + B1 PLUG-INS
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
@@ -987,6 +1007,109 @@ int main(int argc, char** argv) {
         CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "BASS");
         tap(SurfaceButton::TopLeft);
         CHECK(bass.engine == EngineKind::Sampler && std::string(bass.name) == "BASS");
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // the picker's rows fill in from the rack's thread. The plug-in a question was asked about is the one
+    // REPLACE loads, though the list moved meanwhile; a folder's cursor starts at its top when the folder lists, not
+    // before; and Push acts on the row the page draws under the cursor.
+    if (mode == "picker-rows") {
+        const auto folder = fs::path(plugin).parent_path();
+        auto loaded = [&] { return fs::path(ref.path).filename().string(); };
+        open_picker();
+        shell->snapshot(*drawn, now); // drawn at once: the card's rows as the rack has them, never NO CARD
+        CHECK(!drawn->plugins.root.empty() && !drawn->plugins.top);
+        listing("Plugins", 5); // Alpha, Beta, B, C, Test
+        cursor_on("C.clap");
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin && loaded() == "Test.clap");
+        fs::copy_file(plugin, folder / "A.clap"); // the web page installs one meanwhile: the rows below it move down
+        rack->card_changed();
+        listing("Plugins", 6);
+        CHECK(int(ui.plugins_cursor) == row_of("C.clap")); // the cursor went with its plug-in
+        tap(SurfaceButton::TopRight); // REPLACE
+        CHECK(ui.ask == UiState::Ask::None && loaded() == "C.clap");
+        wait([&] { return ready(entry); });
+
+        // Push on the second folder, and again before it has listed (the rack's thread is busy opening a plug-in):
+        // the second Push is not another row's.
+        setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);
+        open_picker();
+        listing("Plugins", 6);
+        cursor_on("Beta");
+        rack->reload(entry);
+        tick(); // the plug-in opens again: the listings asked for now wait their turn
+        tap(SurfaceButton::WheelPush);
+        tap(SurfaceButton::WheelPush);
+        wait([&] { return ready(entry); });
+        listing("Beta", 1, false); // its plug-in's kind: not looked for while the rack had other work (its presets)
+        for (int k = 0; k < 40; ++k) tick();
+        CHECK(fs::path(rack->view().folder).filename() == "Beta" && ui.plugins_cursor == 0 && ui.plugins_count == 1);
+        unsetenv("MELODEE_TEST_SLOW_OPEN");
+
+        // B1 BACK, and Push once the folder above has listed but before the shell has matched its cursor to it: the
+        // row drawn under the cursor is the one picked (here the plug-in in Beta, so it asks), never another folder.
+        tap(SurfaceButton::TopLeft);
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (fs::path(rack->view().folder).filename() != "Plugins" && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        CHECK(fs::path(rack->view().folder).filename() == "Plugins");
+        shell->snapshot(*drawn, now);
+        CHECK(!drawn->plugins.files.empty());
+        const auto under = drawn->plugins.files[std::min<size_t>(drawn->ui.plugins_cursor, drawn->plugins.files.size() - 1)];
+        CHECK(fs::path(under.path).filename() == "Two.clap"); // Beta's rows, still: the folder above is not in yet
+        tap(SurfaceButton::WheelPush); // so Push picks that plug-in, another than the track's: it asks
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "Test Sine");
+        tap(SurfaceButton::TopLeft);
+        listing("Plugins", 6);
+        CHECK(int(ui.plugins_cursor) == row_of("Beta")); // BACK's cursor: on the folder it came out of
+        CHECK(loaded() == "C.clap");
+
+        // A plug-in asked about, then deleted from the web page: REPLACE loads nothing, and says so.
+        cursor_on("B.clap");
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin);
+        fs::remove(folder / "B.clap");
+        rack->card_changed();
+        listing("Plugins", 5);
+        tap(SurfaceButton::TopRight);
+        CHECK(ui.ask == UiState::Ask::None && std::string(ui.notice) == "Not on the card" && loaded() == "C.clap");
+
+        // B1 from Beta, and B1 again while the plug-in opens again: the listing shown again meanwhile (the one the
+        // first B1 asked for) leaves the cursor alone, and the folder above lands on the one it came out of.
+        fs::create_directories(folder.parent_path() / "Aaa"); // so Plugins is not the Melodee folder's first row
+        setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);
+        cursor_on("Beta");
+        tap(SurfaceButton::WheelPush);
+        listing("Beta", 1, false);
+        tap(SurfaceButton::TopLeft);
+        listing("Plugins", 5);
+        CHECK(int(ui.plugins_cursor) == row_of("Beta"));
+        rack->reload(entry);
+        tick(); // the plug-in opens again (60 ms)
+        tap(SurfaceButton::TopLeft); // up to Melodee: listed once it has opened
+        rack->reload(entry);
+        tick(); // asked again: the rack's listing, still Plugins', is shown again
+        wait([&] { return ready(entry); });
+        const auto melodee = fs::path(folder).parent_path().filename().string();
+        listing(melodee, rack->view().files.size(), false);
+        CHECK(row_of("Plugins") > 0 && int(ui.plugins_cursor) == row_of("Plugins"));
+
+        // Push into Plugins while the plug-in opens again, and the web page changes the card before the listing is
+        // in: the folder listed again is Plugins, the one asked for, not the one shown.
+        cursor_on("Plugins");
+        rack->reload(entry);
+        tick();
+        tap(SurfaceButton::WheelPush);
+        fs::copy_file(plugin, folder / "D.clap");
+        rack->card_changed();
+        tick();
+        wait([&] { return ready(entry); });
+        listing("Plugins", 6, false);
+        for (int k = 0; k < 40; ++k) tick();
+        shell->snapshot(*drawn, now);
+        CHECK(fs::path(rack->view().folder).filename() == "Plugins" && fs::path(drawn->plugins.folder).filename() == "Plugins");
+        unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;
     }

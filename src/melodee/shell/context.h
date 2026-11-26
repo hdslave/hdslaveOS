@@ -10,6 +10,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
 #include "melodee/model/jam_log.h"
+#include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_screen.h"
 #include "melodee/shell/auto_sample.h"
 #include "melodee/shell/bindings.h"
@@ -370,6 +371,10 @@ public:
     void open_plugin_picker(UiState::PluginTarget target, unsigned chain = 0, unsigned slot = 0);
     void choose_plugin(const PluginFile& file);
     int plugin_asked_track = -1; // "Replace ...?" asked of an instrument: the track it was asked about (-1: a chain's slot)
+    PluginFile plugin_asked;     // and the plug-in it was asked about, found again by its path when REPLACE comes
+    // The picker's listing as the page draws it and its keys act on it: the rack's, taken in plugins_tick() with the
+    // cursor moved to match in the same step, so a row the rack's thread moved meanwhile is never the one pressed.
+    PluginListing plugin_view;
     void set_plugin_param(int32_t id, int value);
     unsigned name_preset_entry = no_plugin;
     uint32_t name_preset_generation = 0;
@@ -390,7 +395,10 @@ public:
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;
     unsigned plugin_card_seen = 0; // the web page's changes to the card the picker has listed again for
-    bool plugin_came_back = true; // false after going up (or a web page change), until the cursor lands on the row asked for
+    // The listing asked for with a row to land on (going up, a web page change: PluginRack::browse()'s number), until it
+    // is in and the cursor is on that row; 0 none. A listing made before it (a status change shows it again) moves nothing.
+    uint32_t plugin_landing = 0;
+    void take_plugin_view(); // the rack's listing into plugin_view, the cursor with it (shell/plugin_jobs.cpp)
     // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
     // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results
     // taken in, often, from the shell's tick.
