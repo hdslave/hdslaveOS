@@ -207,7 +207,12 @@ grammar (`shell/pad_light.h`):
 - **Colour** says whose pad it is: the track's colour (a loop's on the
   Looper; a kit pad's own colour where it has one, Stage's COLOUR or its MPC
   kit's), white for the panel's own jobs and the pad in your hand, red for
-  a loss or a recording (muted, about to be erased, the take).
+  a loss or a recording (muted, about to be erased, the take). The
+  sixteen track colours, the loops' and the submixes' are screen colours:
+  they reach the LEDs with each channel squared, as a level is, and the
+  brightest raised to full (`pad_light::led()`), so a pad lights as vivid
+  as the screen draws it (Coral drives FF3A21, not a pale FF7A5C). An MPC
+  kit's colours go to the LEDs as they came.
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2
   a colour falls apart; Faint is the lowest rung at which all sixteen track
@@ -334,7 +339,7 @@ beat; the meters show the mix.
     onto; Follow on or off is an LED in the header. COLOUR: the bank's pads as
     they sit, each filled with the colour it lights in, the last pad ringed; K1 and the wheel walk that pad's colour
     (`PadSound::colour`, `shell/pad_colour.h`): Track (0, the track's), the sixteen track colours by name, then Kit, the
-    pad's own when it is none of those (an MPC kit's), until another is picked. The Pads page draws each pad in its
+    colour the pad's MPC kit brought, there to go back to after another is picked (`PadSound::kit_colour`). The Pads page draws each pad in its
     colour too; names, the header and the cards keep the track's. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
     print. CLOUD
     (the selected pad as a grain cloud, each pad its own): K1 position, K2 grain size, K3
@@ -1594,7 +1599,8 @@ the file holds, to the bit.
   region and loop; the pads' colours (the program's ProgramPads: each pad's
   RGB, or the one Universal colour on every pad; pads that follow the track's
   colour keep Melodee's), raised to full brightness so the rungs still read
-  (`mpc_pad_colours()`, `PadSound::colour`, saved in PCOL, a bank's BCOL).
+  (`mpc_pad_colours()`, `PadSound::colour`, saved in PCOL, a bank's BCOL;
+  the kit's colour again as `PadSound::kit_colour`, in PKCL and BKCL, for COLOUR's Kit).
   Shift + pad on it says Push loads a kit.
 - **MPC expansions** (`.xpn`, tagged INSTALL): Push installs one onto the card,
   a file a pass, into `Melodee/Samples/Expansions/<its title>` (from its

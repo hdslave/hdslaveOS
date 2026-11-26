@@ -93,7 +93,8 @@ to play chords. An instrument loaded on an empty pad is Poly.
 **COLOUR**: the bank's pads, each in its colour; the last pad you hit has
 a ring. **K1** or the encoder changes that pad's colour: **Track** (the
 track's colour), one of 16 colours, or **Kit** (the colour the pad came with
-from an MPC kit). Hit another pad to colour it. The pads light in their
+from an MPC kit; turn back to the end of the list to get it back). Hit
+another pad to colour it. The pads light in their
 colours on every kit page.
 
 ![COLOUR](../images/screens/stagekitcolour.png)

@@ -168,7 +168,7 @@ Look counting(const PadScene& s, const Look& look) {
 // Kit pad `kit` in its own colour (Stage's COLOUR, an MPC kit's), else the track's; Hue::Track either way.
 Look kit_hue(const PadScene& s, unsigned kit, float level) {
     uint32_t own = selected(s).pads[kit % sampler_pads].colour;
-    return own ? of(own, Hue::Track, level) : track(selected_index(s), level);
+    return own ? of(pad_led(own), Hue::Track, level) : track(selected_index(s), level);
 }
 Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
@@ -548,7 +548,7 @@ Look sounds_look(const PadScene& s, unsigned pad) {
     if (!plays && t.engine == EngineKind::Sampler && e.key >= sampler_first_note) plays = uint16_t(t.pads[(e.key - sampler_first_note) % sampler_pads].sample + 1);
     if (!plays && t.engine == EngineKind::Keygroup) plays = uint16_t(t.pads[0].sample + 1);
     if (sound.sample + 1u == plays) return white(full);
-    return sound.colour ? of(sound.colour, Hue::Track, dim) : track(from, dim);
+    return sound.colour ? of(pad_led(sound.colour), Hue::Track, dim) : track(from, dim);
 }
 // Roll: the row in focus, the rows of the cursor's step and, under 16 Levels on a kit, every row the pattern uses
 // (its rows are the levels pad's pitches: shell/roll.h roll_lane()), as the page draws them.

@@ -588,7 +588,7 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     if (page.kind == SK::Colour) { // K1 (and the wheel) the last pad's colour; Shift nothing
         const auto& pad = track.pads[track.last_pad % sampler_pads];
         if (shift_row || track.engine != EngineKind::Sampler || !pad.used()) return {};
-        return {Binding {Kind::PadColour, 0, colour_track, colour_last(pad.colour), colour_choice(pad.colour)}, Binding {}, Binding {}};
+        return {Binding {Kind::PadColour, 0, colour_track, colour_last(pad), colour_choice(pad.colour)}, Binding {}, Binding {}};
     }
     switch (page.kind) {
     case SK::Params: {

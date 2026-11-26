@@ -8024,9 +8024,12 @@ struct ClockPlugin final : PluginRunner {
 // The pads light as what a press does there (shell/pad_context.h, shell/pad_lights.cpp), on five rungs.
 void pad_lights() {
     using namespace pad_light;
-    // The ladder: Faint keeps every channel of each track's colour lit; 0.07 left track 1 pure red.
+    // The ladder: Faint keeps every channel that carries a tenth of each track's colour lit; 0.07 left track 1 pure red.
     auto channels = [](Rgb c) { return unsigned(c.r > 0) + unsigned(c.g > 0) + unsigned(c.b > 0); };
-    for (unsigned t = 0; t < 16; ++t) CHECK(channels(track(t, faint).rgb) == channels(track(t, full).rgb));
+    for (unsigned t = 0; t < 16; ++t) {
+        Rgb top = track(t, full).rgb, low = track(t, faint).rgb;
+        CHECK((top.r < 13 || low.r) && (top.g < 13 || low.g) && (top.b < 13 || low.b));
+    }
     CHECK(channels(track(0, 0.07f).rgb) == 1 && channels(track(0, full).rgb) == 3);
     CHECK(rung(0) == 0 && rung(faint) == 1 && rung(dim) == 2 && rung(mid) == 3 && rung(full) == 4 && rung(0.3f) == 1);
 
@@ -11207,11 +11210,34 @@ void pad_colours() {
     using K = Binding::Kind;
     // A dark MPC colour at full brightness, its hue kept; none stays none.
     CHECK(full_colour(0x7F0000) == 0xFF0000 && full_colour(0x50007F) == 0xA100FF && full_colour(0x0000FF) == 0x0000FF && full_colour(0) == 0);
-    // COLOUR's list: the track's, the sixteen, then the pad's own when it is none of them.
+    // COLOUR's list: the track's, the sixteen, then Kit, the colour the pad's MPC kit brought.
     CHECK(colour_choice(0) == colour_track && colour_choice(ui::track_shades[2][0]) == 3 && colour_choice(0x123456) == colour_own);
-    CHECK(colour_last(0) == colour_own - 1 && colour_last(ui::track_shades[15][0]) == colour_own - 1 && colour_last(0x123456) == colour_own);
-    CHECK(colour_at(colour_track, 0x123456) == 0 && colour_at(3, 0) == ui::track_shades[2][0] && colour_at(colour_own, 0x123456) == 0x123456);
+    PadSound plain, picked, from_kit, before;
+    picked.colour = ui::track_shades[15][0];
+    from_kit.colour = from_kit.kit_colour = 0x123456;
+    before.colour = 0x123456; // a pad from before PKCL: its colour off the sixteen is its kit's
+    CHECK(colour_last(plain) == colour_own - 1 && colour_last(picked) == colour_own - 1 && colour_last(from_kit) == colour_own);
+    CHECK(colour_last(before) == colour_own && kit_colour(before) == 0x123456 && !kit_colour(picked));
+    CHECK(colour_at(colour_track, from_kit) == 0 && colour_at(3, plain) == ui::track_shades[2][0] && colour_at(colour_own, from_kit) == 0x123456);
     CHECK(std::string(ui::track_colour_names[2]) == "Teal");
+    // Turned off Kit and back: the kit's colour comes back (it was lost once another was picked), a pad from before too.
+    for (PadSound* pad : {&from_kit, &before}) {
+        pick_colour(*pad, 5);
+        CHECK(pad->colour == ui::track_shades[4][0] && pad->kit_colour == 0x123456 && colour_last(*pad) == colour_own);
+        pick_colour(*pad, colour_track);
+        CHECK(!pad->colour && colour_last(*pad) == colour_own);
+        pick_colour(*pad, colour_own);
+        CHECK(pad->colour == 0x123456 && colour_choice(pad->colour) == colour_own);
+    }
+    pick_colour(picked, colour_own); // no kit colour: the list ends on Grey
+    CHECK(colour_last(picked) == colour_own - 1 && !picked.kit_colour);
+
+    // The LEDs: the sixteen squared as a level is and raised to full, so they light as vivid as the screen draws
+    // them (Coral FF7A5C drove 127, 61, 46: pale); an MPC kit's as it came.
+    CHECK(pad_light::led(0xFF7A5C) == 0xFF3A21 && pad_light::led(0x46D9B0) == 0x1BFFA8 && pad_light::led(0xFFFFFF) == 0xFFFFFF);
+    CHECK(pad_light::led(0xFF0000) == 0xFF0000 && pad_light::led(0) == 0);
+    CHECK(pad_light::pad_led(ui::track_shades[0][0]) == 0xFF3A21 && pad_light::pad_led(0x7F3F00) == 0x7F3F00);
+    CHECK(pad_light::track(0, pad_light::full).rgb.g == 29 && pad_light::track(2, pad_light::full).rgb.g == 127);
 
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
@@ -11233,7 +11259,10 @@ void pad_colours() {
     cards = page_bindings(*project, ui, none, false);
     CHECK(cards[0].value == colour_own && cards[0].max == colour_own);
     kit.pads[5].colour = ui::track_shades[4][0];
-    CHECK(page_bindings(*project, ui, none, false)[0].value == 5);
+    CHECK(page_bindings(*project, ui, none, false)[0].value == 5 && page_bindings(*project, ui, none, false)[0].max == colour_own - 1);
+    kit.pads[5].kit_colour = 0x123456; // Sky over a kit's colour: the list still ends on Kit
+    CHECK(page_bindings(*project, ui, none, false)[0].value == 5 && page_bindings(*project, ui, none, false)[0].max == colour_own);
+    kit.pads[5].kit_colour = 0;
     kit.last_pad = 6; // an empty pad: nothing to colour
     CHECK(!page_bindings(*project, ui, none, false)[0].bound());
     kit.last_pad = 5;
@@ -11247,27 +11276,31 @@ void pad_colours() {
     std::array<pad_light::Look, 16> looks;
     pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
     CHECK(looks[5].colour == 0xFF0000 && looks[5].hue == pad_light::Hue::Track && pad_light::rung(looks[5].level) == 4);
-    CHECK(looks[7].colour == ui::track_shades[4][0] && pad_light::rung(looks[7].level) == 2);
+    CHECK(looks[7].colour == pad_light::led(ui::track_shades[4][0]) && pad_light::rung(looks[7].level) == 2);
     kit.pads[7].colour = 0;
     pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
-    CHECK(looks[7].colour == ui::track_shades[1][0]);
+    CHECK(looks[7].colour == pad_light::led(ui::track_shades[1][0]));
 
     // PCOL keeps them; an empty pad's is not kept; a build without PCOL leaves the track's.
     kit.pads[7].colour = ui::track_shades[4][0]; kit.pads[9].colour = 0x00FF00;
     auto file = save_project(*project, *bank);
     auto loaded = std::make_unique<Project>();
     auto loaded_bank = std::make_unique<PatternBank>();
+    kit.pads[7].kit_colour = 0x2AC2FF; // Kit kept behind Sky; PKCL keeps it
+    file = save_project(*project, *bank);
     CHECK(load_project(file, *loaded, *loaded_bank).empty());
     CHECK(loaded->tracks[1].pads[5].colour == 0xFF0000 && loaded->tracks[1].pads[7].colour == ui::track_shades[4][0] && loaded->tracks[1].pads[9].colour == 0);
+    CHECK(loaded->tracks[1].pads[7].kit_colour == 0x2AC2FF && !loaded->tracks[1].pads[5].kit_colour);
     std::string text(file.begin(), file.end());
     file[text.find("PCOL")] = 'X';
     CHECK(load_project(file, *loaded, *loaded_bank).empty() && loaded->tracks[1].pads[5].colour == 0);
     // A bank file keeps them in BCOL, and they come back with it.
     BankFile saved = bank_of(*project, 1, 0, "Colours"), back;
     CHECK(load_bank(save_bank(saved), back) && back.pads[5].colour == 0xFF0000 && back.pads[7].colour == ui::track_shades[4][0]);
+    CHECK(back.pads[7].kit_colour == 0x2AC2FF); // and Kit in BKCL
     Track into;
     import_bank(back, 2, into, [](const SampleRef&) { return 0; });
-    CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
+    CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000 && into.pads[2 * 16 + 7].kit_colour == 0x2AC2FF);
 }
 
 // Pad sends, phase 4: each send is a lane of its pad (Motion records it, plays it back through the pad, the lane's card
