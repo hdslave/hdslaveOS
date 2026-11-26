@@ -17,7 +17,7 @@ struct Binding {
         None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
         ModSource, ModDest, ModAmount, // id: the route
         PatternSteps, Division, Swing, // Patterns: PatternSteps the length in sixteenths (Shift + K1, issue 27)
-        PatternLength, TimeSignature,  // Patterns: K1 1, 2, 4 .. 128 bars; Shift + K2 the project's signature
+        PatternLength, TimeSignature,  // Patterns: K1 1, 2, 3 .. 16, 24 .. 128 bars; Shift + K2 the project's signature
         TcShift, TcSwing,              // Time Correct (Division is its Q)
         SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
         FxParam,                           // id: chain * 64 + slot * 8 + parameter
@@ -214,16 +214,17 @@ inline Binding strip_card(unsigned n, StripPart part, const Strip& s) {
 }
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
-// Patterns' K1: lengths in bars, as on the MPC; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against
-// a 16-step pattern on another track).
-constexpr unsigned pattern_lengths[] {1, 2, 4, 8, 16, 32, 64, 128};
+// Patterns' K1: lengths in bars, as on the MPC: every bar to 16 (issue 52: 3, 5, 7 ..), then longer steps to 128 so
+// the pot's travel still finds each; Shift + K1 in sixteenths, 1 to pattern_step_max (issue 27: 5/16 against a
+// 16-step pattern on another track).
+constexpr unsigned pattern_lengths[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32, 48, 64, 96, 128};
 constexpr unsigned pattern_step_max = 64;
 constexpr unsigned pattern_length_count = sizeof(pattern_lengths) / sizeof(pattern_lengths[0]);
 // A pattern's length in whole bars of the project's signature, rounded up.
 inline unsigned pattern_bars(const Project& project, const Pattern& pattern) {
     return std::max(1u, unsigned((pattern.length + project.bar_ticks() - 1) / project.bar_ticks()));
 }
-// K1's pattern length card: 1, 2, 4 .. 128 bars by index, and -1 Free below them on an empty pattern whose sequence
+// K1's pattern length card: 1, 2, 3 .. 16, 24 .. 128 bars by index, and -1 Free below them on an empty pattern whose sequence
 // has no notes on another track (shell/free_length.h). A Free pattern shows the length a take on it would get.
 Binding length_card(const Project& project, const UiState& ui, const Pattern& pattern);
 // Warp on its card: 0 Off, 1..151 for 50..200 %, 152 Seq; and back.

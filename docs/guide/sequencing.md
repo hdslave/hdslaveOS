@@ -85,7 +85,7 @@ Push the encoder to put every track back. The pads light as the cells.
 | Encoder push | Launch the sequence in hand again: every track goes back to the pattern it keeps. |
 | **PAD BANK** | Pattern bank A–H. The bank LEDs show it. |
 | **−** / **+** | Select the previous / next track. |
-| **K1** | Pattern length: Free, 1, 2, 4 … 128 bars. **Free** is there for an empty pattern: the first take sets the length (see [Free length](#free-length)). **SHIFT**: the length in 16th notes, 1 to 64 (up to four bars of 4/4). The card shows a length that is not whole bars as 16ths: **7/16**. Notes past a shorter length are kept and play again when the pattern is longer. |
+| **K1** | Pattern length: Free, 1 to 16 bars one bar at a time, then 24, 32, 48, 64, 96 and 128 bars. **Free** is there for an empty pattern: the first take sets the length (see [Free length](#free-length)). **SHIFT**: the length in 16th notes, 1 to 64 (up to four bars of 4/4). The card shows a length that is not whole bars as 16ths: **7/16**. Notes past a shorter length are kept and play again when the pattern is longer. |
 | **K2** | Grid (Q): 1/4 to 1/64, with triplets. **SHIFT**: time signature. |
 | **K3** | Swing (50–75 %). **SHIFT**: the track's speed, ×1/64 to ×4 (see [Track speed](tracks.md#track-speed)). The metronome level is on [Tempo](#tempo). |
 | **SHIFT** + **LOOP** | The track's direction: **FWD**, **REV** or **RND** in turn (see [Track direction](tracks.md#track-direction)). |

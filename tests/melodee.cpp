@@ -1345,7 +1345,7 @@ void button_remap() {
     UiState ui; ui.track = 0;
     ui.page = PageId::Patterns;
     auto cards = page_bindings(*project, ui, pattern);
-    CHECK(cards[0].kind == Binding::Kind::PatternLength && pattern_lengths[cards[0].value] == 2); // 1, 2, 4 ..: 3 bars sits on 2
+    CHECK(cards[0].kind == Binding::Kind::PatternLength && pattern_lengths[cards[0].value] == 3); // every bar to 16 (issue 52)
     CHECK(cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     ui.page = PageId::InputConfig; ui.settings.input.threshold = -24;
     cards = page_bindings(*project, ui, pattern);
@@ -2316,14 +2316,15 @@ void timing() {
         CHECK(peak_of(first_bar, 0, 40000) == 0 && peak_of(second) > 0.005f);
     }
 
-    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 in sixteenths up to four bars (issue 27), Shift + K2 the
+    // Patterns' cards: K1 by 1, 2, 3 .. 16, 24 .. 128 bars, Shift + K1 in sixteenths up to four bars (issue 27), Shift + K2 the
     // time signature.
     {
         Project project;
         UiState ui; ui.page = PageId::Patterns;
         Pattern five; five.length = 5 * 3840; five.free = false; // a length set by hand (Free: shell/free_length.h)
         auto base = page_bindings(project, ui, five, false);
-        CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == 7 && pattern_lengths[base[0].value] == 4);
+        CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == int(pattern_length_count) - 1 && pattern_lengths[base[0].value] == 5);
+        CHECK(pattern_lengths[base[0].max] == 128 && pattern_lengths[15] == 16 && pattern_lengths[16] == 24); // every bar to 16 (issue 52)
         auto shifted = page_bindings(project, ui, five, true);
         CHECK(shifted[0].kind == Binding::Kind::PatternSteps && shifted[0].value == 64 && shifted[0].min == 1 && shifted[0].max == 64);
         Pattern seven; seven.length = 7 * sixteenth_ticks; seven.free = false; // 7/16 against a bar on another track
@@ -11499,15 +11500,15 @@ void free_length() {
         CHECK(card.kind == Binding::Kind::PatternLength && card.min == -1 && card.value == -1 && free_shown(empty, 0) == 0);
         ui.column_ticks = 2 * bar;
         card = length_card(*project, ui, empty);
-        CHECK(card.min == 0 && card.value == 1 && free_shown(empty, ui.column_ticks) == 2 * bar);
+        CHECK(card.min == 0 && pattern_lengths[card.value] == 2 && free_shown(empty, ui.column_ticks) == 2 * bar);
         Pattern fixed;
         fixed.free = false; fixed.length = 4 * bar;
         ui.column_ticks = 0;
         card = length_card(*project, ui, fixed);
-        CHECK(card.min == -1 && card.value == 2 && free_offered(fixed, 0));
+        CHECK(card.min == -1 && pattern_lengths[card.value] == 4 && free_offered(fixed, 0));
         fixed.add(note(0, 60));
         card = length_card(*project, ui, fixed);
-        CHECK(card.min == 0 && card.value == 2 && !free_offered(fixed, 0));
+        CHECK(card.min == 0 && pattern_lengths[card.value] == 4 && !free_offered(fixed, 0));
     }
     {   // The file: an empty Free pattern of a bar is not written and loads Free; an empty fixed one, a Free one
         // with its own Q, and one with notes keep what they were.

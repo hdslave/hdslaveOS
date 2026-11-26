@@ -680,8 +680,8 @@ hold to steer, Shift + Seq to zoom in**.
   pattern (next bar; stopped, at once); hold a pad and tap another to
   copy; Erase + pad asks, then clears it; Shift + pad keeps the printed
   Shift jobs. Pad Bank steps the bank A–H (the bank lights show it), as
-  Seq held + Pad Bank. Minus / Plus move the track. K1 length (Free, 1,
-  2, 4 .. 128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
+  Seq held + Pad Bank. Minus / Plus move the track. K1 length (Free, 1 ..
+  16 bars, 24, 32, 48, 64, 96, 128, issue 52; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
   K3 swing (Shift: metronome level). The wheel selects the track; the
   selected track's pattern is the sequence in view (cell n is also sequence n),
   and Push launches it.
