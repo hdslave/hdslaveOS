@@ -3945,6 +3945,21 @@ void fader_and_takeover() {
         plug.fader_learned = learned;
         CHECK(fader_learned_binding(plug, 0).kind == Kind::PitchBend && fader_learned_binding(plug, 0).value == 12);
     }
+    { // Issue 57: a target chosen with the encoder holds; FILTER, ECHO and SPACE no longer take it, the Fader page's
+      // own knobs still do, and B2 lets every knob take it again.
+        Track plug;
+        ::synth(plug, 0);
+        plug.fader_learned = fader_learnable(plug, 0, Binding {Kind::Param, plugin_track::Macro1, -100, 100, 0});
+        assign_fader_target(plug, FaderTarget::PitchBend);
+        CHECK(plug.fader_pin && plug.fader_on && !plug.fader_learned.learned() && fader_target(plug) == FaderTarget::PitchBend);
+        for (int m = plugin_track::Macro1; m <= plugin_track::Macro3; ++m) {
+            Binding macro {Kind::Param, m, -100, 100, 0};
+            CHECK(fader_learnable(plug, 0, macro).learned()); // a macro is one of the track's values
+            CHECK(!fader_follow(plug, 0, macro, false).learned() && fader_follow(plug, 0, macro, true).learned());
+        }
+        plug.fader_pin = false; // B2
+        CHECK(fader_follow(plug, 0, Binding {Kind::Param, plugin_track::Macro1, -100, 100, 0}, false).learned());
+    }
     { // Its wide middle (Kerem): 54..74 is no bend, the rest spread so nothing jumps at the middle's edges; the ends reach the ends.
         FaderJob j; j.bend = true;
         CHECK(fader_reach(j, 64) == 64 && fader_reach(j, 54) == 64 && fader_reach(j, 74) == 64 && fader_reach(j, -1) == -1);

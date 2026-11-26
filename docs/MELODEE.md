@@ -130,7 +130,7 @@ cards.
 | Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the mixer | FX Select: the effect chains, Track → Bus → Master (on the mixer, the channel in hand's; at once) |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks, a pad picks one (the screen stays the page's; Pad FX + Knob FX shows the tracks); −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
-| Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
+| Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks (and pins, issue 57), or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts. Every pad held repeats together on each step; the arp is separate (Stage's ARP, Shift + K2). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
@@ -2064,7 +2064,9 @@ The fader follows the pot turned last on its track: any of the track's
 values (an engine parameter, an effect on its chain, a kit pad's own value
 on the last pad hit, its level, pan or a send); a pot on anything else (a
 tempo, a pattern's length, a bus's effect) leaves it where it is. **PIN**
-keeps what it has. The **Fader page** (Shift + Pad 9) shows what it
+keeps what it has; a target the wheel picks pins (issue 57: a plug-in's
+FILTER / ECHO / SPACE took a picked target away), and K1–K3 on the Fader
+page still take it while pinned. The **Fader page** (Shift + Pad 9) shows what it
 follows: that pot's knob in its shade, its name and value, a dashed arrow
 to the fader (the pin on it while PIN holds), and while the fader waits to
 pick a value up, where the hand has it and the way to move. K1–K3 there are
