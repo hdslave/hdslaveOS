@@ -130,8 +130,7 @@ struct Settings {
     enum : uint8_t { CpuAuto, CpuFull, CpuBalanced, CpuEco, CpuCount };
     static constexpr uint32_t cpu_eco_khz = 1416000, cpu_balanced_khz = 1608000;
     uint8_t cpu_speed = CpuFull;
-    // Refresh: frames a second while the screen changes by itself (a play head, a meter). A control used is
-    // answered at 60 whatever this says (App::frame_interval()).
+    // Display refresh: the maximum rate of screen updates (App::frame_interval()).
     static constexpr std::array<uint8_t, 3> refresh_rates {{60, 30, 20}};
     uint8_t refresh = 1;
     unsigned refresh_fps() const { return refresh_rates[refresh % refresh_rates.size()]; }
@@ -181,9 +180,9 @@ struct Settings {
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
-                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
+                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Mirror frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "CPU speed", "Refresh", "Dim after", "Pad brightness",
+                                    "CPU speed", "Display refresh", "Dim after", "Pad brightness",
                                     "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out"};
         return names[row % Rows];
     }

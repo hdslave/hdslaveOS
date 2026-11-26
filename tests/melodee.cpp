@@ -5168,7 +5168,7 @@ void device_rates() {
         b.read("mirror_size=5\nscreen_mirror=0\nmirror_fps=45\n");
         CHECK(!b.mirror && b.mirror_size == 3 && b.mirror_fps == 30);
         CHECK(std::string(Settings::row_name(Settings::Mirror)) == "Screen mirror" && std::string(Settings::row_name(Settings::MirrorSize)) == "Resolution");
-        CHECK(std::string(Settings::row_name(Settings::MirrorRate)) == "Frame rate" && std::string(Settings::row_name(Settings::Screen)) == "Brightness");
+        CHECK(std::string(Settings::row_name(Settings::MirrorRate)) == "Mirror frame rate" && std::string(Settings::row_name(Settings::Screen)) == "Brightness");
         b.mirror = true; b.mirror_fps = 60; b.reset_factory();
         CHECK(!b.mirror && b.mirror_size == 3 && b.mirror_fps == 30);
     }
@@ -11782,7 +11782,7 @@ void usb_volume() {
         CHECK(power.dim_ms() == 120000 && power.value_text(Settings::DimAfter) == "2 min" && power.choices(Settings::DimAfter) == 5);
         CHECK(power.pad_percent() == 100 && power.value_text(Settings::PadLevel) == "100 %" && power.choices(Settings::PadLevel) == 4);
         CHECK(std::string(Settings::row_name(Settings::CpuSpeed)) == "CPU speed" && unsigned(Settings::CpuSpeed) == unsigned(Settings::UsbVolume) + 1);
-        CHECK(std::string(Settings::row_name(Settings::Refresh)) == "Refresh" && unsigned(Settings::Refresh) == unsigned(Settings::CpuSpeed) + 1);
+        CHECK(std::string(Settings::row_name(Settings::Refresh)) == "Display refresh" && unsigned(Settings::Refresh) == unsigned(Settings::CpuSpeed) + 1);
         CHECK(std::string(Settings::row_name(Settings::DimAfter)) == "Dim after" && std::string(Settings::row_name(Settings::PadLevel)) == "Pad brightness");
         CHECK(std::string(Settings::row_name(Settings::UsbVolume)) == "USB volume"); // the rows before them where they were
         for (unsigned row : {unsigned(Settings::CpuSpeed), unsigned(Settings::Refresh), unsigned(Settings::DimAfter), unsigned(Settings::PadLevel)})

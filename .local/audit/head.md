@@ -10,7 +10,7 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 
 - **128 findings**: 127 from eleven auditors, each covering one part of the code, and one found while implementing. I checked each against the code. 95 are confirmed, 27 turned out to be the same issue reported by a second auditor, 5 are partly confirmed and 1 could not be checked without the compiler's output. None was rejected outright, but one recommended compiler flag turned out to change the audio and was dropped (BASE-5).
 - **The processor runs at full speed by default.** The first pass built a CPU speed setting that can hold the cores at a lower clock and voltage to save battery. It ships as the CPU speed setting (Auto, Full, Balanced, Eco) and defaults to Full: untouched, the four cores stay at the kernel's 1.8 GHz, as under the stock app.
-- **The fork implements 25 findings**, nine of them in part. They remove wasted work in the engine and around it and add the Refresh, Dim after, Pad brightness and CPU speed settings. The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
+- **The fork implements 25 findings**, nine of them in part. They remove wasted work in the engine and around it and add the Display refresh, Dim after, Pad brightness and CPU speed settings. The audio output is unchanged: the self-test render and the DSP bench's output are bit-identical to the original build's.
 - **Second pass, for speed:** the engine runs **23 % fewer instructions** for the benchmark's busy 16-track project and **12 % fewer** for the same project stopped, playing the same to the bit. Most of it comes from one loop in the sampler.
 - **Third pass, silent chains:** a chain of effects that hears nothing and holds nothing is no longer run (HOST-1). Once a stopped project's chains rest, a block costs the engine **76 % fewer instructions**. The output is the same to the bit with resting on and off, through silence and the sound that ends it.
 - **Third pass, the screen:** the screen thread no longer copies the kits and redraws every pattern's sketch for frames in which neither can have changed (MODEL-1). With the MPC's cache sizes that takes its snapshot from about 3.4 million cycles a frame to 0.75 million, and the pads wait on its lock for that much less time. Every page gives the same pixels.
@@ -20,7 +20,7 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 | # | Lever | Finding | In the fork |
 | --- | --- | --- | --- |
 | 1 | The kernel holds all four cores at 1.8 GHz and 1.10 V at all times. At 1.416 GHz the supply is 0.90 V, where the same work takes about a third less switching energy. | BASE-1 | CPU speed setting, Full by default: full speed unless the player chooses less |
-| 2 | Any changed pixel bought 30 more full redraws at 60 fps. The place bar moves on every page while playing, so every page was redrawn 60 times a second. | BASE-2, UI-1, UI-4 | Refresh setting (30 fps by default), shorter tail, event-driven wake |
+| 2 | Any changed pixel bought 30 more full redraws at 60 fps. The place bar moves on every page while playing, so every page was redrawn 60 times a second. | BASE-2, UI-1, UI-4 | Display refresh setting (30 fps by default), shorter tail, event-driven wake |
 | 2a | Every frame copied 0.8 MB of project and rebuilt 2,048 pattern sketches under the lock the pads use. | MODEL-1 | Third pass: only when a kit or pattern can have changed |
 | 3 | Nothing dims: backlight at its level and 16 RGB pads plus about 25 button lights on for hours. | BASE-3, LIGHT-4 | Dim after and Pad brightness settings |
 | 4 | Silent tracks, buses and the master still run every effect in their chains on every block. | HOST-1 | Third pass: chains that hold nothing rest; silent tracks and buses are not mixed |
@@ -34,7 +34,7 @@ Melodee is the work of Kerem Kiliç (Ellic Studio). This document covers his app
 
 | Change | Findings | Where |
 | --- | --- | --- |
-| **Refresh** setting (SCREEN): 60, 30 or 20 fps while the picture moves by itself. A control in use is answered at 60 fps. The loop sleeps between frames and is woken by input. | BASE-2, BASE-4, UI-1, UI-3, UI-4 | `base/src/runtime/run_app.cpp`, `session.h`, `controller.cpp`, `app.h` |
+| **Display refresh** in SCREEN caps built-in screen updates at 60, 30 or 20 fps. Input wakes the loop for the next frame allowed by the cap. | BASE-2, BASE-4, UI-1, UI-3, UI-4 | `base/src/runtime/run_app.cpp`, `session.h`, `controller.cpp`, `app.h` |
 | **Dim after** setting (SCREEN): Off, 1, 2, 5, 10 min with no control used and nothing playing (a Looper loop still heard counts), recording or working. Backlight to its lowest lit level, pads to a sixth, bright buttons to dim. | BASE-3, LIGHT-4 | `shell/lights.cpp` (`power_tick`), `melodee_app.cpp`, `base/src/surface/leds.h` |
 | **Pad brightness** setting (PADS): 100, 75, 50, 25 %. | LIGHT-4 | `shell/settings.h`, `base/src/surface/leds.h` |
 | Commands that only mirror state or carry a gesture no longer mark the project changed, so an untouched project is not saved again. | SHELL-1, LIGHT-6 | `shell/context.cpp` |
@@ -60,7 +60,7 @@ Changes to `base/` are on a branch named `hdslave` inside the submodule, since t
 
 ### What you will notice
 
-- The place bar, play head and meters step at 30 fps when your hands are off the controls. Set **Refresh** to 60 to get the old look.
+- The place bar, play head and meters update at up to 30 fps by default. **Display refresh** sets the cap.
 - After two minutes untouched and stopped, the screen and lights go low. Any control brings them back and still does its job.
 - The processor runs at its full speed, as it does under the stock app, unless CPU speed is set below Full.
 - The settings file gains four lines (`refresh`, `dim_after`, `pad_level`, `cpu_speed`). The original Melodee ignores lines it does not know, so the file still works there.
@@ -94,7 +94,7 @@ What my own read changed:
 
 What the second reader found, each confirmed in the code before it was fixed:
 
-- **A control's result could show 100 ms late on a still screen.** A press woke the screen at once, but what a press does often shows a frame later (the engine answers a block later), and the loop went back to its resting rate after one unchanged frame. The original held 60 fps for half a second after any control. While a control has been used in the last 300 ms, every frame now comes at 60 fps.
+- **A control's result could show 100 ms late on a still screen.** The engine can take an audio block to respond, so the screen draws at the selected rate for 300 ms after input. That gives the engine's response time to appear before the screen returns to its resting rate.
 - **The Power button did not end the dimmed state.** It comes by another thread than the pads and buttons, and the Exit sheet opened on a dimmed screen. It now counts as a control.
 - **A change of the Pad FX bank or target was no longer marked unsaved.** In the original nothing marked it either, until the next punch's command did by accident; with punches made exempt (LIGHT-6), nothing did at all. The two setters now mark the project themselves.
 
@@ -237,7 +237,7 @@ Things only the device can tell:
 3. **How the dimmed state looks** in a dark room and in daylight, and whether a sixth of the pads' light is the right resting level.
 4. **Whether 30 fps is acceptable** on the pages you use most.
 
-Going back is one setting each: Refresh 60, Dim after Off, Pad brightness 100 %.
+Set **Display refresh** to 60, **Dim after** to Off, and **Pad brightness** to 100 % to restore the original defaults.
 
 ## Not done, in order of likely value
 

@@ -43,7 +43,7 @@ public:
     void midi_lost() override;                                             // MIDI thread
     void midi_output(MidiOutput& out, Clock::time_point now) override;   // MIDI thread: MIDI out and the sync jack, timed
     void draw(juce::Graphics& g) override;                              // screen thread
-    // Screen thread: Settings' Refresh, the frames a second while the picture moves with no control in use.
+    // Screen thread: Settings' Display refresh caps the built-in display's updates.
     std::chrono::microseconds frame_interval() const override { return std::chrono::microseconds(1000000 / std::max(shell.refresh_fps(), 10u)); }
     void service(Hardware& hardware) override;                          // service thread
     void jack(const JackEvent& event, Hardware& hardware) override;     // service thread

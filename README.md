@@ -12,7 +12,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 
 **hdslaveOS** (originally `melodee-hdslave`) cuts wasted CPU and display work on the Akai MPC Sample so more headroom goes to your synths and effects and the battery lasts longer — while playing back bit-identical audio to stock Melodee.
 
-- **Performance & power controls**: Removes idle/redundant work across the engine and UI, and adds four hardware settings — **CPU speed** (runs at full speed unless you step it down yourself), **Refresh**, **Dim after**, and **Pad brightness**. See [optimization.md](optimization.md) for the full breakdown.
+- **Performance & power controls**: Removes idle and redundant work across the engine and UI. Settings include **CPU speed** (Full by default), **Display refresh** (a 20, 30 or 60 fps cap for built-in display updates), **Dim after**, and **Pad brightness**. See [optimization.md](optimization.md) for the full breakdown.
 - **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black with dark violet contours on selected list rows, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
 - **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
 - **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time; kit pads assigned any of the 16 colours light more vividly; and a custom **hdslave intro** boot film replaces the default splash.

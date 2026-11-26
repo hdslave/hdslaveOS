@@ -84,6 +84,7 @@ void Shell::load_engine() {
 void Shell::start_settings(const std::string& text) {
     ui_.settings.read(text);
     want_audio_format();
+    refresh_wanted.store(uint8_t(ui_.settings.refresh_fps()), std::memory_order_relaxed);
 }
 
 namespace {

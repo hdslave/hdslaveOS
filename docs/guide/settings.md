@@ -22,7 +22,7 @@ and in amber the audio dropouts since Melodee started.
 | **PADS** | Pad response (soft, medium, hard, full level), pad pressure, Repeat velocity (Strike: every repeat as hard as the pad was struck; Pressure: as hard as the pad is held), pad lights (track colours, white, off), **Pad fade** (how fast a pad's light fades after its sound stops: 60, 100, 150 or 250 ms), **Tap Tempo light** (flashes on the beat while playing, on or off) |
 | **SEQ** | **Rec quantize** (on or off, as **SHIFT** + **Pad 10**: recorded notes land on the pattern's **Q**), **Follow** (Step Edit and Roll while the pattern plays: Off, Page or Step; see [Sequencing](sequencing.md)), **Note preview** (on or off: a note you write or move on Step Edit or Roll without playing it is heard once; see [Sequencing](sequencing.md)), **Mute** (**Audio**: a muted track or pad is silent at once; **Notes**: it plays no new notes and what it plays rings out; see [Basics](basics.md)), what Double Seq copies, Capture length and grid, **Autosave** (On, or Off: the project is saved only when you save it; see [Projects and files](projects-and-files.md)) |
 | **KNOBS** | Knob, Knob FX and fader takeover: Pickup, Scaled or Instant |
-| **SCREEN** | **Palette** and **Font** (see below), **Brightness** (20 to 100 %), place bar at the top or bottom, **Plug-in screens** (a plug-in's own screen and page files' art, on or off), Screen mirror (on or off), its resolution and frame rate: the screen as a USB camera for a computer |
+| **SCREEN** | **Palette**, **Font**, **Brightness**, **Dim after**, **Display refresh**, **Place bar**, **Plug-in screens**, and USB **Screen mirror** with its resolution and frame rate |
 | **AUDIO** | Sample rate (44.1, 48 or 96 kHz; 44.1 kHz only on MPC firmware 1.4) and audio buffer (256 to 1024 frames). A longer buffer gives fewer crackles on a busy project. A shorter one responds sooner. **USB volume**: what a computer records from the MPC over USB-C (inputs 1 and 2). **Full** (the default) sends the mix at full level whatever **MAIN VOLUME** is set to; **Knob** follows **MAIN VOLUME**, as the jacks do. **USB out**: what a computer records on inputs 3 to 18 after the mix. **Tracks** (the default): tracks 1 to 16, one mono input each. **Submixes**: submixes 1 to 8 in stereo (3 and 4 submix 1, up to 17 and 18 submix 8), each as it goes into the master. Changing it keeps the computer connected. **USB-C in**: **Direct** (the default) plays what a computer sends straight to the jacks, about 3 ms after it arrives, wherever Melodee would play it (a MIDI track's **AUDIO** input on USB with **MONITOR** on, Input Config's monitor, a loop), at the level and pan it would have there but without effects; **Tracks** plays it through those, with their effects, about 8 ms later. **Direct level**: −24 to +6 dB on top (0 dB: as loud as **Tracks**), then **MAIN VOLUME**. Turning it on or off, muting and the volume knob fade it in a few milliseconds. Under the rows: **DSP**, the audio's processor load, with the dropouts in amber, and **PDC**, how long plug-in delay compensation holds the sound back while a plug-in needs it. |
 | **SAMPLING** | Audio Recall settings, when a Free take ends on its own, and the level that counts as silence (**Silence below**) |
 | **MIDI** | MIDI Config (see [MIDI and sync](midi-and-sync.md)) |
@@ -55,7 +55,7 @@ Four settings trade a little speed or light for battery life. None of them chang
 | Setting | Page | Values | What it does |
 | --- | --- | --- | --- |
 | **CPU speed** | AUDIO | Auto, Full, Balanced, Eco | The processor's top speed. **Eco** holds 1.4 GHz, the fastest speed at the processor's lowest voltage, where the same work takes about a third less energy and a quarter more time. **Balanced** holds 1.6 GHz and **Full** (the default) 1.8 GHz, the MPC's own speed, as under the stock app. **Auto** holds 1.4 GHz and goes to 1.8 GHz while the project needs it: when a block of audio has taken half its time, after a dropout, and while loading, printing, exporting or separating stems. It goes back after eight calm seconds. |
-| **Refresh** | SCREEN | 60, 30, 20 fps | How often the screen is drawn while something on it moves by itself, such as the place bar or a meter. Every frame is a full redraw, so fewer frames save processor time while a project plays. A control you use is always answered at 60 fps. The default is 30. |
+| **Display refresh** | SCREEN | 60, 30, 20 fps | Caps how often hdslaveOS updates the built-in display, including while you use the controls. A still screen redraws less often, and a large update can take longer to reach the panel. The default is 30 fps. |
 | **Dim after** | SCREEN | Off, 1, 2, 5, 10 min | After this long with no control used, and nothing playing, recording or working, the screen goes to its lowest light and the pads and buttons go low. Any control brings them back and is acted on as usual. The default is 2 minutes. |
 | **Pad brightness** | PADS | 100, 75, 50, 25 % | The light of the pads and the fader. |
 
@@ -139,8 +139,8 @@ camera named **MPC Sample**. Choose it in any camera app (QuickTime Player,
 OBS, a video call) to show the screen. Macs, Windows and Linux computers
 and iPads with USB-C take it; iPhones do not take USB cameras.
 
-**Resolution** sets the picture size the computer gets, and **Frame rate**
-how many pictures a second (30 or 60). Each size is the screen scaled up by
+**Resolution** sets the picture size the computer gets, and **Mirror frame rate**
+sets the USB camera's output rate (30 or 60 fps). Each size is the screen scaled up by
 a whole number, so its pixels stay sharp squares:
 
 | Resolution | Scale | 30 fps | 60 fps |

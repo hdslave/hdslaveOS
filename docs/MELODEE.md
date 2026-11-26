@@ -2222,10 +2222,11 @@ while following.
   (On, Off: its flash on the beat while playing).
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
+  Display refresh (a 20, 30 or 60 fps cap for built-in display updates),
   where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
   (Off, On), Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960: the
   screen times 1, 2, 3 with black at the sides, 4; 1280 x 960 by default)
-  and Frame rate (30, 60 fps; 30 by default): the screen as a USB webcam over
+  and Mirror frame rate (30 or 60 fps, 30 by default): the screen as a USB webcam over
   USB-C (`App::screen_mirror()`, base `drivers/screen_mirror.h`: YUYV, exact
   to the pixel, where one endpoint carries it (320 x 240, and 640 x 480 at
   30), else JPEG at quality 95 from the RK3566's encoder; a new picture only
