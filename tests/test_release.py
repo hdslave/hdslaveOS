@@ -41,7 +41,7 @@ class ReleaseTests(unittest.TestCase):
         for line in files["autorun/melodee/SHA256SUMS"].decode().splitlines():
             digest, name = line.split("  ")
             listed[name] = digest
-        self.assertEqual(set(listed), {"sample-base", "restore-stock.sh", "sd-boot.sh", "sd-worker.sh", "sd-update.sh", "clear-dev-marker.sh"})
+        self.assertEqual(set(listed), {"sample-base", "restore-stock.sh", "sd-boot.sh", "sd-worker.sh", "sd-update.sh"})
         for name, digest in listed.items():
             self.assertEqual(hashlib.sha256(files["autorun/melodee/" + name]).hexdigest(), digest)
         self.assertEqual(files["autorun/melodee/app"], b"melodee\n")

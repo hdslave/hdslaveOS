@@ -20,10 +20,6 @@ Requirements
   DEV ENHANCEMENTS (BETA) page.
 - A microSD card for the MPC (the one you already use is fine).
 
-On firmware 1.4, each Melodee start clears the imb-dev-mode-used record
-after the stock app stops, if the record exists. Returning to stock can
-set it again. This does not change Developer Mode or LoadPin.
-
 
 Install
 -------
