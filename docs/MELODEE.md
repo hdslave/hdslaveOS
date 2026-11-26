@@ -2683,6 +2683,16 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   undo step: the old plug-in loads again with its state as it was, and a redo
   brings the new one back as it was when undone (`PluginSwap` in
   `shell/history.h`, `PluginRack::restore`).
+- The instrument picker loads onto the track in hand when Push comes, which
+  Pad Bank + pad or MIDI Remote can change while it is open (its header's
+  tag says which). Over a kit, a keygroup, a MIDI or an audio track it asks
+  the same way, by the track's name ("Replace DRUMS?"), and is one undo
+  step that brings the whole track back. That holds however the picker was
+  opened: the engine card on Stage's PRESET page turned to PLUGIN on a kit
+  asks too. A yes counts for the track it was asked about: with another in
+  hand by then, REPLACE is a Push for that one, which asks again when that
+  track has a sound or another plug-in to lose; an empty one simply takes
+  the plug-in, as its own undo step (`Context::choose_plugin`).
 - **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
   a kit pad's chain take no plug-ins; editors are never shown.
 - `tools/vst_probe/` is a command-line host on the same code, for trying a

@@ -138,6 +138,12 @@ page before (see [A plug-in's own screen](#a-plug-ins-own-screen)).
   "Replace Surge XT?" first. The old plug-in's sound and settings go;
   **SHIFT** + **−** (undo) brings it back with its settings. The same
   question comes on an effect slot.
+- The picker loads the plug-in onto the selected track, the one named at
+  the top right. When the plug-in would take the place of a kit, a
+  keygroup, a MIDI or an audio track, Melodee asks "Replace DRUMS?" (the
+  track's name) first: after you turn a track's engine to **Plugin**, or
+  select such a track with **PAD BANK** + pad while the picker is open.
+  **SHIFT** + **−** brings the whole track back.
 - Every plug-in hears Melodee's Play and Stop, the tempo and the place in
   the song, so its own sequencer plays only while Melodee plays.
   **SHIFT** + **B3** (**TRANSPORT**) sets whether the plug-in hears Play and

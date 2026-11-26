@@ -369,6 +369,7 @@ public:
     PluginRack* plugins = nullptr;
     void open_plugin_picker(UiState::PluginTarget target, unsigned chain = 0, unsigned slot = 0);
     void choose_plugin(const PluginFile& file);
+    int plugin_asked_track = -1; // "Replace ...?" asked of an instrument: the track it was asked about (-1: a chain's slot)
     void set_plugin_param(int32_t id, int value);
     unsigned name_preset_entry = no_plugin;
     uint32_t name_preset_generation = 0;

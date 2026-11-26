@@ -725,6 +725,11 @@ int main(int argc, char** argv) {
         project.tracks[t].set_name("DRUMS");
         project.tracks[t].pads[0].sample = 3;
     };
+    if (mode == "picker-track" || mode == "undo-state") kit_on(1);
+    if (mode == "picker-track") { // and a second kit, named
+        kit_on(2);
+        project.tracks[2].set_name("BASS");
+    }
     if (mode == "presets-track") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
@@ -794,6 +799,13 @@ int main(int argc, char** argv) {
         pad(n);
         button(SurfaceButton::PadBank, false);
     };
+    auto shifted = [&](SurfaceButton b) {
+        button(SurfaceButton::Shift, true);
+        tap(b);
+        button(SurfaceButton::Shift, false);
+    };
+    auto undo = [&] { shifted(SurfaceButton::Minus); };
+    auto redo = [&] { shifted(SurfaceButton::Plus); };
     auto turn = [&](int detents) { // the wheel
         SurfaceEvent event;
         event.input.kind = SurfaceInput::Kind::Control;
@@ -802,6 +814,24 @@ int main(int argc, char** argv) {
         shell->surface(event, ++now);
     };
     auto ready = [&](unsigned at) { return rack->status(at) == PluginStatus::Ready && !rack->programs(at).finding; };
+    // The picker shows that folder, whole: the rack, the shell's count and the page drawn; `kinds`: each plug-in in it
+    // opened once, its kind known.
+    auto drawn = std::make_unique<Snapshot>();
+    auto listing = [&](const std::string& folder, size_t rows, bool kinds = true) {
+        wait([&] {
+            const auto view = rack->view();
+            if (fs::path(view.folder).filename() != folder || view.files.size() != rows || ui.plugins_count != rows) return false;
+            for (const auto& f : view.files) if (kinds && !f.folder && f.instrument < 0) return false;
+            shell->snapshot(*drawn, now);
+            return fs::path(drawn->plugins.folder).filename() == folder && drawn->plugins.files.size() == rows;
+        });
+    };
+    auto open_picker = [&] { // Stage's PRESETS on the track in hand, then Shift + B1 PLUG-INS
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        shifted(SurfaceButton::TopLeft);
+        CHECK(ui.page == PageId::Plugins && ui.plugin_target == UiState::PluginTarget::Instrument);
+    };
     auto has_patch = [&](unsigned slot) {
         for (const auto& p : rack->programs(slot).list) if (p.user() && p.name == "My Patch") return true;
         return false;
@@ -900,6 +930,66 @@ int main(int argc, char** argv) {
         }
         throw std::runtime_error(std::string("missing fixture control: ") + name);
     };
+    // the picker opened on a plug-in track, then another track picked (Pad Bank + pad). Push loads onto the
+    // track in hand: over a kit it asks first, as over another plug-in, and one undo brings the kit back.
+    if (mode == "picker-track") {
+        auto& kit = project.tracks[1];
+        open_picker();
+        listing("Plugins", 1);
+        wait([&] { return rack->view().files[0].several(); });
+        tap(SurfaceButton::WheelPush); // the fixture's library: its two plug-ins
+        listing("Test.clap", 2);
+        const auto rows = rack->view().files;
+        const int sine = rows[0].name == "Test Sine" ? 0 : 1;
+        CHECK(rows[size_t(sine)].name == "Test Sine");
+        turn(sine - int(ui.plugins_cursor));
+        const size_t steps = c.edits.size();
+        pick_track(1);
+        CHECK(ui.track == 1 && ui.page == PageId::Plugins);
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin); // asked first, the kit by its name
+        CHECK(std::string(ui.ask_name.data()) == "DRUMS" && kit.engine == EngineKind::Sampler && c.edits.size() == steps);
+        tap(SurfaceButton::TopLeft); // B1: not now
+        CHECK(ui.ask == UiState::Ask::None && kit.engine == EngineKind::Sampler && ui.page == PageId::Plugins);
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin);
+        c.select_track(2); // another track in hand before the answer, as MIDI Remote picks one
+        tap(SurfaceButton::TopRight); // B3 REPLACE: the answer was the other track's, so this one is asked about
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "BASS");
+        CHECK(kit.engine == EngineKind::Sampler && project.tracks[2].engine == EngineKind::Sampler && c.edits.size() == steps);
+        tap(SurfaceButton::TopLeft);
+        pick_track(1);
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "DRUMS");
+        tap(SurfaceButton::TopRight); // B3 REPLACE
+        CHECK(ui.ask == UiState::Ask::None && kit.engine == EngineKind::Plugin && kit.plugin == 1);
+        CHECK(c.edits.size() == steps + 1 && ui.page == PageId::Stage);
+        CHECK(tr.engine == EngineKind::Plugin && tr.plugin == entry); // the track the picker was opened on: as it was
+        wait([&] { return ready(1) && ready(entry); });
+        undo();
+        CHECK(kit.engine == EngineKind::Sampler && kit.pads[0].sample == 3 && std::string(kit.name) == "DRUMS");
+        wait([&] { return rack->status(1) == PluginStatus::None; });
+        redo();
+        CHECK(kit.engine == EngineKind::Plugin && kit.plugin == 1);
+        wait([&] { return ready(1) && ready(entry); });
+        // The picker opened for the kit itself, Stage's engine card turned to PLUGIN: Push asks before the kit goes.
+        auto& bass = project.tracks[2];
+        pick_track(2);
+        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+        const unsigned kinds = available_engines(engines);
+        const auto plugin_kind = std::find(engines.begin(), engines.begin() + kinds, EngineKind::Plugin);
+        CHECK(plugin_kind != engines.begin() + kinds);
+        c.apply(Binding {Binding::Kind::Engine, 0, 0, int(kinds) - 1, 0}, int(plugin_kind - engines.begin()));
+        CHECK(ui.page == PageId::Plugins && bass.engine == EngineKind::Sampler);
+        listing("Test.clap", 2);
+        turn(sine - int(ui.plugins_cursor));
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin && std::string(ui.ask_name.data()) == "BASS");
+        tap(SurfaceButton::TopLeft);
+        CHECK(bass.engine == EngineKind::Sampler && std::string(bass.name) == "BASS");
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // Stage left on PANEL, and PANEL passed over (plug-in screens switched off in Settings): the page shows
     // PRESETS, and what it draws from holds the track's plug-in's presets.
     if (mode == "stage-presets") {

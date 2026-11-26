@@ -8,7 +8,8 @@
 // after the folder lists). A bundle holding several plug-ins (LSP's) lists as
 // one row with how many, and Push opens it: a row for each. One that cannot
 // run here says why: a Windows or Mac download, a PC build. The wheel and Minus / Plus move, Push opens a folder
-// or loads the plug-in (on the track, or into the slot) and goes back; B1
+// or loads the plug-in (on the track in hand, or into the slot; over a sound
+// or a plug-in already there it asks first, shell/plugin_jobs.cpp) and goes back; B1
 // goes up a folder, past the Plugins folder as far as the card's top (a
 // plug-in anywhere on the card can be picked), and there back where it came
 // from. The pads play the track.

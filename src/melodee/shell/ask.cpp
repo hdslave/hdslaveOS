@@ -70,7 +70,11 @@ bool ask_button(Context& c, SurfaceButton button) {
     else if (kind == UiState::Ask::DeleteFile) delete_asked(c);    // shell/delete_jobs.h: Erase in a browser
     else if (kind == UiState::Ask::ReplacePlugin && c.plugins) { // the picker's row asked about, picked again
         auto view = c.plugins->view();
-        if (unsigned(ui.ask_target) < view.files.size()) { ui.plugin_replace = true; c.choose_plugin(view.files[size_t(ui.ask_target)]); }
+        if (unsigned(ui.ask_target) < view.files.size()) {
+            // The yes is for the track asked about: with another in hand since, that one is asked about first.
+            ui.plugin_replace = c.plugin_asked_track < 0 || c.plugin_asked_track == int(ui.track % track_count);
+            c.choose_plugin(view.files[size_t(ui.ask_target)]);
+        }
         ui.plugin_replace = false;
     }
     else if (kind == UiState::Ask::InstallUpdate) begin_update(c); // shell/update.h

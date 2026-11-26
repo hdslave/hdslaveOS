@@ -9,7 +9,9 @@
 // A plug-in is an entry of Project::plugins: its path on the card. A PLUGIN
 // track names its entry; a Plugin effect names it in its first parameter. A
 // track or slot that already has one keeps its entry for the new plug-in; a
-// new one takes an entry nothing uses. The rack loads what is used and lets go
+// new one takes an entry nothing uses. An instrument loads onto the track in
+// hand when Push comes: over another plug-in, or over a track's other sound,
+// it asks first and is one undo step. The rack loads what is used and lets go
 // of the rest, so undo, a project switch or a removed effect need nothing more.
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/context.h"
@@ -110,10 +112,17 @@ void Context::choose_plugin(const PluginFile& file) {
     }
     bool replace_asked = ui.plugin_replace;
     ui.plugin_replace = false;
-    if (entry >= 0 && project.plugins[size_t(entry)].used() && !replace_asked
-        && !(file.path == project.plugins[size_t(entry)].path && file.id == project.plugins[size_t(entry)].id)) {
-        // Another plug-in over one in use: its sound and settings go (undo brings them back); ask first
-        std::snprintf(ui.ask_name.data(), ui.ask_name.size(), "%s", project.plugins[size_t(entry)].name);
+    // The picker loads onto the track in hand, which may not be the one it was opened on (Pad Bank + pad, MIDI
+    // Remote). A kit, a keygroup, a MIDI or an audio track there would turn PLUGIN: its sound and settings go too.
+    const bool over_sound = instrument && track().used() && track().engine != EngineKind::Plugin;
+    const std::string sound_name = track().name[0] ? std::string(track().name) : "Track " + std::to_string(ui.track % track_count + 1);
+    const bool over_plugin = entry >= 0 && project.plugins[size_t(entry)].used()
+        && !(file.path == project.plugins[size_t(entry)].path && file.id == project.plugins[size_t(entry)].id);
+    if ((over_plugin || over_sound) && !replace_asked) {
+        // Another plug-in over one in use, or over a track's other sound: its sound and settings go (undo brings them
+        // back); ask first, and for this track only (shell/ask.cpp)
+        std::snprintf(ui.ask_name.data(), ui.ask_name.size(), "%s", over_sound ? sound_name.c_str() : project.plugins[size_t(entry)].name);
+        plugin_asked_track = instrument ? int(ui.track % track_count) : -1;
         ask(*this, UiState::Ask::ReplacePlugin, int(ui.plugins_cursor));
         return;
     }
@@ -130,6 +139,12 @@ void Context::choose_plugin(const PluginFile& file) {
     }
     auto& ref = project.plugins[size_t(entry)];
     bool same = file.path == ref.path && file.id == ref.id;
+    // Over a track's other sound: one undo step, the whole track back as it was (the plug-in takes an entry of its own).
+    if (!made && over_sound) {
+        made = std::make_unique<Edit>(begin_edit(("Replace " + sound_name).c_str(), ui.track, -1, false));
+        made->motion_before.reset();
+        made->track_before = std::make_unique<TrackState>(track_state(*this, ui.track));
+    }
     // Another plug-in over one in use: one undo step, the old plug-in back with its state (swap_plugin); on a
     // track, its name and pads too.
     if (!made && !same && ref.used()) {

@@ -159,7 +159,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         verb = "DELETE";
         break;
     }
-    case Ask::ReplacePlugin: { // a picked plug-in over one in use (shell/plugin_jobs.cpp)
+    case Ask::ReplacePlugin: { // a picked plug-in over one in use, or over a track's other sound (shell/plugin_jobs.cpp)
         sheet.icon = Icon::Plug;
         sheet.title = "Replace " + juce::String::fromUTF8(s.ui.ask_name.data()) + "?";
         sheet.lines = {"Its sound and settings go.", undo_line};
