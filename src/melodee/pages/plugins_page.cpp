@@ -112,6 +112,8 @@ void soft(Context& c, int key) {
         return;
     }
     // The cursor lands on the folder it came out of, once that listing is in.
+    c.plugin_landing_row = view.folder;
+    c.plugin_landing_id = 0;
     c.plugin_landing = c.plugins->browse(std::filesystem::path(view.folder).parent_path().string(), view.folder);
 }
 } // namespace

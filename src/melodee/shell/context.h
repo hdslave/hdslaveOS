@@ -413,6 +413,8 @@ public:
     // The listing asked for with a row to land on (going up, a web page change: PluginRack::browse()'s number), until it
     // is in and the cursor is on that row; 0 none. A listing made before it (a status change shows it again) moves nothing.
     uint32_t plugin_landing = 0;
+    std::string plugin_landing_row; // and the row it is to land on (the folder gone up from, the plug-in under the cursor)
+    int32_t plugin_landing_id = 0;
     void take_plugin_view(); // the rack's listing into plugin_view, the cursor with it (shell/plugin_jobs.cpp)
     // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
     // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results

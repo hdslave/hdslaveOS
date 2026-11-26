@@ -1125,6 +1125,27 @@ int main(int argc, char** argv) {
         listing(melodee, rack->view().files.size(), false);
         CHECK(row_of("Plugins") > 0 && int(ui.plugins_cursor) == row_of("Plugins"));
 
+        // Into Beta, then B1 while the plug-in opens again, and the web page changes the card before the folder above is
+        // in: listed again, it still lands on the folder B1 left, not its top.
+        cursor_on("Plugins");
+        tap(SurfaceButton::WheelPush);
+        listing("Plugins", 5, false);
+        cursor_on("Beta");
+        tap(SurfaceButton::WheelPush);
+        listing("Beta", 1, false);
+        rack->reload(entry);
+        tick();
+        tap(SurfaceButton::TopLeft);
+        rack->card_changed();
+        tick();
+        wait([&] { return ready(entry); });
+        listing("Plugins", 5, false);
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(int(ui.plugins_cursor) == row_of("Beta"));
+        tap(SurfaceButton::TopLeft); // back up to Melodee, as the next part starts
+        wait([&] { return fs::path(rack->view().folder).filename() == melodee; });
+        listing(melodee, rack->view().files.size(), false);
+
         // Push into Plugins while the plug-in opens again, and the web page changes the card before the listing is
         // in: the folder listed again is Plugins, the one asked for, not the one shown.
         cursor_on("Plugins");

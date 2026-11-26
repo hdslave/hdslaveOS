@@ -2534,7 +2534,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   has not shown yet (`Context::plugin_view`). Each listing carries the
   request it answers (`PluginRack::browse()`), so only the one asked for
   moves the cursor, and a web page change or a delete lists again the
-  folder asked for last, whether or not it is in yet (`relist()`).
+  folder asked for last, whether or not it is in yet (`relist()`), on the
+  row B1 was to land on when that is still to come.
   "Replace <name>?" keeps the plug-in it was asked about, and REPLACE
   loads that one wherever its row has moved, whichever folder the picker
   shows by then; one deleted from the card meanwhile says Not on the card.

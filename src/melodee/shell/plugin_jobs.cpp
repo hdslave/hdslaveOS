@@ -543,10 +543,15 @@ void Context::plugins_tick(uint32_t at) {
     // The web page installed or deleted a plug-in: an open picker lists again, its cursor on the plug-in it was on.
     if (plugins->card_changes() != plugin_card_seen) {
         plugin_card_seen = plugins->card_changes();
-        if (ui.page == PageId::Plugins) { // the folder asked for last, which may not be in yet: on the row under the cursor
+        if (ui.page == PageId::Plugins) { // the folder asked for last, which may not be in yet: on the row under the cursor,
+            // or, with a landing still to come (B1 not in yet), on the row that one was to land on
             const auto& view = plugin_view;
-            const PluginFile on = ui.plugins_cursor < view.files.size() ? view.files[ui.plugins_cursor] : PluginFile {};
-            plugin_landing = plugins->relist(on.path, on.id);
+            if (!plugin_landing) {
+                const PluginFile on = ui.plugins_cursor < view.files.size() ? view.files[ui.plugins_cursor] : PluginFile {};
+                plugin_landing_row = on.path;
+                plugin_landing_id = on.id;
+            }
+            plugin_landing = plugins->relist(plugin_landing_row, plugin_landing_id);
         }
     }
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) take_plugin_view();
