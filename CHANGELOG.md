@@ -2,6 +2,12 @@
 
 Changes in Melodee for the Akai MPC Sample. Install and update steps, and the notes of earlier versions, are on the [releases page](https://github.com/keremimo/melodee-sample/releases).
 
+## 0.9.1 (2026-11-27)
+
+### Fixed
+
+- **Step Edit's SLICE card.** On a kit step's **SOUND** cards, **K2** (**SLICE**) shows **PAD**, the slice (**5 / 16**) or **RND**. The panel shows the slices of the step's sample with the step's slice lit, and **B2** (**SLICES**) on the sounds shows them numbered. In 0.9.0, **K2** set the slice but its card, the slice edges and **SLICES** stayed blank.
+
 ## 0.9.0 (2026-11-26)
 
 Back up `Melodee/Projects` before you update. A project saved in 0.9.0 plays ten times too slow in 0.8.3 and earlier.
