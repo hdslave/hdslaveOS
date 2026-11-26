@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/files_view.h"
 #include "melodee/shell/features.h"
 #include "melodee/crash_log.h"
 #include "melodee/shell/erase_copy.h"
@@ -1012,7 +1013,8 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
                     out.pad_waves_shown = uint16_t(out.pad_waves_shown | 1u << n);
             }
         if (ui_.page == PageId::Samples) {
-            out.files = library_->files(); out.sample_root = library_->root(); out.files_folder = library_->folder(); out.files_top = library_->top();
+            const auto& shown = context_.files_shown(); // the rows the keys act on (shell/files_view.h)
+            out.files = shown.files; out.sample_root = shown.root; out.files_folder = shown.folder; out.files_top = shown.top;
         }
     }
     out.history.clear();

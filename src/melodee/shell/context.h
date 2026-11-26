@@ -37,6 +37,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginRack;
+struct FilesView;
 class PrintEngine;
 class AudioTracks;
 struct PluginFile;
@@ -765,6 +766,13 @@ public:
     void stop_preview();
     void browser_tick();
     std::string files_folder_seen;
+    // The browser's listing as drawn and acted on (shell/files_view.h), taken in browser_tick(): its generation, when.
+    std::shared_ptr<FilesView> files_view;
+    std::string files_landing; // B1: the folder gone up from, for the cursor once the folder above is in ("" none)
+    unsigned files_view_generation = ~0u;
+    uint32_t files_view_at = 0;
+    void take_files_view();
+    const FilesView& files_shown() const; // none yet: an empty one
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
     // Settings > SEQ > Note preview (shell/note_preview.h): `events` of the selected track's pattern heard once, the

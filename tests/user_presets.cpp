@@ -1752,7 +1752,7 @@ int main(int argc, char** argv) {
         chord();
         tap(SurfaceButton::TopRight);
         wait([&] { return std::string(ui.notice) == "Preset name already used"; });
-    } else if (mode != "name-target") { // name-target: straight to the naming sheets below
+    } else if (mode != "name-target" && mode != "samples-rows") { // these two: straight to the browser below
         CHECK(has_patch(entry));
         CHECK(state()[0] == 0.5);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs; });
@@ -1823,6 +1823,41 @@ int main(int argc, char** argv) {
     tap(SurfaceButton::TopRight);
     samples->service(hardware);
     CHECK(fs::file_size(root / "Banks" / "KIT.mldb") > 0);
+    // The browser's rows: B1 out of a folder, then Push once the folder above is listed but before the browser has
+    // taken it in (no tick between). Push acts on the row drawn under the cursor, never on the row of the folder above
+    // that the cursor's place meant in the folder left.
+    if (mode == "samples-rows") {
+        fs::create_directories(root / "Sub");
+        CHECK(write_wav((root / "Sub" / "Inner.wav").string(), kick).empty());
+        auto settle = [&] { for (int k = 0; k < 40; ++k) { samples->service(hardware); c.browser_tick(); } };
+        auto frame = std::make_unique<Snapshot>();
+        c.select_track(0);
+        c.open(PageId::Samples);
+        samples->rescan();
+        settle();
+        shell->snapshot(*frame, ++now);
+        CHECK(fs::path(frame->files_folder).filename() == "Samples");
+        int sub = -1;
+        for (size_t n = 0; n < frame->files.size(); ++n) if (fs::path(frame->files[n].path).filename() == "Sub") sub = int(n);
+        CHECK(sub > 0); // not the first row
+        ui.files_cursor = uint16_t(sub);
+        tap(SurfaceButton::WheelPush);
+        settle();
+        shell->snapshot(*frame, ++now);
+        CHECK(fs::path(frame->files_folder).filename() == "Sub" && frame->files.size() == 1 && ui.files_cursor == 0);
+        CHECK(fs::path(frame->files[0].path).filename() == "Inner.wav");
+        tap(SurfaceButton::TopLeft); // BACK: the folder above, listed on the service thread
+        for (int k = 0; k < 40 && fs::path(samples->folder()).filename() != "Samples"; ++k) samples->service(hardware);
+        CHECK(fs::path(samples->folder()).filename() == "Samples");
+        shell->snapshot(*frame, ++now);
+        CHECK(fs::path(frame->files_folder).filename() == "Sub"); // not taken in yet: Sub's rows still drawn
+        tap(SurfaceButton::WheelPush); // on Inner.wav, the row drawn
+        settle();
+        CHECK(fs::path(project.samples[tr.pads[tr.last_pad % sampler_pads].sample].path).filename() == "Inner.wav");
+        shell->snapshot(*frame, ++now); // and now the folder above, the cursor on the folder it came out of
+        CHECK(fs::path(frame->files_folder).filename() == "Samples" && ui.files_cursor < frame->files.size());
+        CHECK(fs::path(frame->files[ui.files_cursor].path).filename() == "Sub");
+    }
     // The Name sheet saves what it was opened for, though another track is in hand at Done (MIDI Remote picks one).
     if (mode == "name-target") {
         auto& other = project.tracks[1]; // a kit with the same sample, all of it

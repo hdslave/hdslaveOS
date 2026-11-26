@@ -22,6 +22,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/engine/dsp.h"
+#include "melodee/shell/files_view.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/sample_lists.h"
 #include "melodee/shell/new_track.h"
@@ -192,9 +193,10 @@ void push(Context& c) {
         return;
     }
     if (!c.library) return;
-    auto files = c.library->files();
+    const auto files = c.files_shown().files; // a copy: a browse below may take another listing in
     if (c.ui.files_cursor >= files.size()) return;
     const auto& file = files[c.ui.files_cursor];
+    if (file.list || file.folder) c.files_landing.clear(); // in: its top
     if (file.list) c.library->browse(Drive::Card, file.path); // STARRED or RECENT
     else if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
     else if (file.bank) c.load_bank_file(file.path, file.name);
@@ -209,11 +211,15 @@ void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (ui.sheet_open) { if (key == 0) { c.kit_held.reset(); c.back(); } return; } // LOAD KIT's cards: B1 BACK
     if (!c.library) return;
-    if (key == 0) { if (c.library->top()) samples_cancel(c); else c.library->browse_up(); } // at the top: CANCEL
+    if (key == 0) { // at the top (as shown): CANCEL; else up, the cursor to land on the folder left
+        if (c.files_shown().top) { samples_cancel(c); return; }
+        c.files_landing = c.files_shown().folder;
+        c.library->browse_up();
+    }
     if (key == 1) { // the other drive, where it was left
         unsigned from = ui.files_drive % unsigned(Drive::Count), to = (from + 1) % unsigned(Drive::Count);
         const unsigned kind = c.files_kind >= 0 ? unsigned(c.files_kind) : c.browse_kind();
-        c.files_places[kind][from] = {c.library->folder(), ui.files_cursor, true};
+        c.files_places[kind][from] = {c.files_shown().folder, ui.files_cursor, true};
         c.files_drives[kind] = uint8_t(to);
         const auto& back = c.files_places[kind][to];
         c.files_row_wanted = back.set ? back.row : -1;
@@ -221,7 +227,7 @@ void soft(Context& c, int key) {
         c.library->browse(Drive(to), back.set ? back.folder : std::string());
     }
     if (key == 2 && ui.shift) { // Shift + B3: the file under the cursor starred, or no longer
-        auto files = c.library->files();
+        const auto& files = c.files_shown().files;
         if (ui.files_cursor < files.size() && starrable(files[ui.files_cursor])) c.library->star(files[ui.files_cursor].path);
         else c.notice("Star: a file");
         return;
@@ -237,7 +243,7 @@ void soft(Context& c, int key) {
 // Shift + pad on the browser: the file under the cursor onto the next empty pad.
 bool samples_shift_pad(Context& c) {
     if (c.ui.page != PageId::Samples || !c.library || c.track().engine != EngineKind::Sampler) return false;
-    auto files = c.library->files();
+    const auto files = c.files_shown().files;
     if (c.ui.files_cursor >= files.size() || files[c.ui.files_cursor].folder) { c.notice("Shift + pad: a file first"); return true; }
     const auto& file = files[c.ui.files_cursor];
     if (file.bank) { c.notice("Push loads a bank"); return true; }

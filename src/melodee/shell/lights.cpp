@@ -243,8 +243,6 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 ref.streamed = shown.streamed;
                 if (ref.root == root_unread) ref.root = ref.instrument() ? root_none : library_->root_of(n, ref.path); // once, then kept
             }
-        ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
-        if (ui_.files_cursor >= ui_.files_count) ui_.files_cursor = uint16_t(ui_.files_count ? ui_.files_count - 1 : 0); // a row deleted: the last one left
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
     }
     // A KEYGROUP track of one sample plays from that sample's note once it is found, and again when its file changes.

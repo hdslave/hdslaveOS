@@ -21,6 +21,7 @@
 // Melodee writes only to the card: Trim and Extract go to Samples/Edits;
 // without a card they stay in memory for the session.
 #include "melodee/shell/context.h"
+#include "melodee/shell/files_view.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/sample_library.h"
 #include <cstdio>
@@ -380,7 +381,7 @@ void Context::take_landed(unsigned t, unsigned kit, unsigned slot, const LoadedS
 
 void Context::preview_cursor() {
     if (!library) return;
-    auto files = library->files();
+    const auto& files = files_shown().files;
     const SampleFile* file = ui.files_cursor < files.size() ? &files[ui.files_cursor] : nullptr;
     std::string path = ui.settings.preview && file &&!file->folder && !file->bank && !file->midi ? file->path : std::string(); // a MIDI file has no sound to preview
     stop_preview(); // what played stops as the cursor moves on
@@ -395,17 +396,59 @@ void Context::stop_preview() {
     previewing = -1;
 }
 
+const FilesView& Context::files_shown() const {
+    static const FilesView none;
+    return files_view ? *files_view : none;
+}
+
+// The library's listing as it is now, read whole (a listing that changed while it was read is read again), and the
+// cursor with it: on the same file when the folder is the same one listed again, the rest as browser_tick() sets.
+void Context::take_files_view() {
+    if (!library) return;
+    auto next = std::make_shared<FilesView>();
+    for (int tries = 0; tries < 4; ++tries) {
+        const unsigned at = library->generation();
+        next->files = library->files();
+        next->root = library->root();
+        next->folder = library->folder();
+        next->top = library->top();
+        next->came_from = library->came_from();
+        next->drive = library->drive();
+        files_view_generation = at;
+        if (library->generation() == at) break;
+    }
+    const auto& was = files_shown();
+    if (next->folder == was.folder && ui.files_cursor < was.files.size()) { // listed again: the cursor stays on its file
+        const auto& on = was.files[ui.files_cursor].path;
+        for (size_t n = 0; n < next->files.size(); ++n)
+            if (next->files[n].path == on) { ui.files_cursor = uint16_t(n); break; }
+    }
+    files_view = std::move(next);
+    files_view_at = now;
+}
+
 void Context::browser_tick() {
     if (!library) return;
     bool here = ui.page == PageId::Samples && track().sampled(); // a kit's browser or a keygroup's
-    auto folder = library->folder();
-    if (folder != files_folder_seen) { // a new folder: the cursor on the one it came out of, else the top
-        files_folder_seen = folder;
-        ui.files_cursor = uint16_t(files_row_wanted >= 0 ? files_row_wanted : std::max(library->came_from(), 0)); // B2's drive: its row
+    // The listing taken in: on the browser at each change, and a second at least (the library rescans a folder only
+    // while it is looked at); elsewhere once its folder is another, for where the cursor will be.
+    if (library->generation() != files_view_generation || !files_view
+        ? ui.page == PageId::Samples || !files_view || library->folder() != files_folder_seen
+        : ui.page == PageId::Samples && now - files_view_at >= 1000)
+        take_files_view();
+    const auto& view = files_shown();
+    if (view.folder != files_folder_seen) { // a new folder: the cursor on the one it came out of, else the top
+        files_folder_seen = view.folder;
+        int left = -1; // the folder B1 left, by its path: the library's own mark goes once it lists the folder again
+        for (size_t n = 0; n < view.files.size() && !files_landing.empty(); ++n) if (view.files[n].path == files_landing) left = int(n);
+        files_landing.clear();
+        ui.files_cursor = uint16_t(files_row_wanted >= 0 ? files_row_wanted : left >= 0 ? left : std::max(view.came_from, 0)); // B2's drive: its row
         files_row_wanted = -1;
-        ui.files_drive = uint8_t(library->drive());
+        ui.files_drive = uint8_t(view.drive);
         if (here && ui.settings.preview) preview_cursor();
     }
+    ui.files_count = uint16_t(std::min<size_t>(view.files.size(), 0xffff));
+    if (ui.files_cursor >= ui.files_count) ui.files_cursor = uint16_t(ui.files_count ? ui.files_count - 1 : 0); // a row deleted: the last one left
     if (!here && previewing >= 0) { // away from the browser: what it played stops (B3 stays as it was)
         stop_preview();
         library->preview("");
@@ -413,7 +456,7 @@ void Context::browser_tick() {
     unsigned arrived = library->previews();
     if (arrived == previews_seen) return;
     previews_seen = arrived;
-    auto files = library->files();
+    const auto& files = files_shown().files;
     if (!here || !ui.settings.preview || ui.files_cursor >= files.size() || files[ui.files_cursor].path != library->previewed()) return;
     Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
     a.pad.sample = uint16_t(preview_slot); a.pad.start = 0; a.pad.end = 0;

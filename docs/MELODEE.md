@@ -1449,7 +1449,8 @@ the file holds, to the bit.
   (KIT) first, then instruments (XPM, XTY, SFZ), then folders, then files;
   an expansion's `[Previews]` and a program's own `_[TrackData]` are not
   listed; wheel and −/+ move, Push opens a folder or loads onto the last pad
-  (keeping its settings), B1 back out, B2 the drive (CARD from `Melodee/Samples`,
+  (keeping its settings), B1 back out (the cursor on the folder left, found
+  by its path), B2 the drive (CARD from `Melodee/Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
   only; each drive keeps its folder and row, so B2 there and back lands
   where it was), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
@@ -1459,7 +1460,11 @@ the file holds, to the bit.
   (up to 30 s) and read in a piece each service pass while it plays
   (`SampleFill`, `AudioReader`), and the voice reads only what has landed
   (`SampleGrowth`), holding silent at that edge should the reading fall
-  behind; Shift + pad loads onto the
+  behind. The library lists on its service thread; the page draws, and
+  Push, Erase, Shift + pad, B1 and Shift + B3 act on, the listing the
+  shell took in last, with the cursor moved in the same step, so a press
+  never lands on a row of a listing not shown yet (`shell/files_view.h`).
+  A folder listed again keeps the cursor on its file. Shift + pad loads onto the
   next empty pad. Shift + B3 STAR (its LED lit on a starred file) stars or
   unstars the file under the cursor; a starred row shows a star. The card's
   `Melodee/Samples` and the card's top lead with two rows, STARRED (by name)

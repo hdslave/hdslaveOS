@@ -28,6 +28,7 @@
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/record_place.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/files_view.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
@@ -319,7 +320,7 @@ void Context::browse_for_track() {
     const unsigned kind = browse_kind();
     if (files_kind == int(kind)) return;
     if (files_kind >= 0) {
-        files_places[unsigned(files_kind)][ui.files_drive % 2] = {library->folder(), ui.files_cursor, true};
+        files_places[unsigned(files_kind)][ui.files_drive % 2] = {files_shown().folder, ui.files_cursor, true}; // as shown, with its cursor
         files_drives[unsigned(files_kind)] = uint8_t(ui.files_drive % 2);
     }
     files_kind = int(kind);

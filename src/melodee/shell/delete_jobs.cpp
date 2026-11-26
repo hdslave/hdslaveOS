@@ -5,6 +5,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/files_view.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/sample_lists.h"
 #include <algorithm>
@@ -57,7 +58,7 @@ void ask_delete(Context& c, const std::string& path, const std::string& name, De
 
 bool samples_erase(Context& c) {
     if (!c.library) return false;
-    const auto files = c.library->files();
+    const auto& files = c.files_shown().files; // the rows the page draws
     if (files.empty()) return false;
     const auto& file = files[std::min<size_t>(c.ui.files_cursor, files.size() - 1)]; // as the page draws the cursor
     if (file.list) return false; // STARRED and RECENT themselves stay

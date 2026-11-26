@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_samples_browser_acts_on_the_rows_it_draws(self):
+        self.run_rack_fixture("samples-rows")
+
     def test_name_sheet_saves_what_it_was_opened_for(self):
         self.run_rack_fixture("name-target")
 
