@@ -5,7 +5,10 @@
 // Presets on a plug-in effect's sheet.
 // The named ones list with their numbers; the wheel and Minus / Plus move,
 // Push loads the one under the cursor and stays, so the next can be heard
-// straight after (the pads play the track). The one picked last says LOADED
+// straight after (the pads play the track). Another track picked meanwhile
+// (Pad Bank + pad): a track's plug-in's list turns to that track's plug-in,
+// or the page goes back when it has no presets (Context::presets_follow_track).
+// The one picked last says LOADED
 // (LOADING until the plug-in has it). B1 goes back. A plug-in finds its
 // presets where it keeps them, under Melodee/Plugin Data on the card.
 // Presets in folders (a CLAP plug-in's files: Surge XT's Basses, Leads ...)

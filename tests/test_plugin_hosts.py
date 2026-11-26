@@ -143,6 +143,9 @@ class PluginHostTests(unittest.TestCase):
     def test_stage_presets_shown_in_place_of_panel_has_its_presets(self):
         self.run_rack_fixture("stage-presets")
 
+    def test_presets_list_follows_the_selected_track(self):
+        self.run_rack_fixture("presets-track")
+
     def test_deep_freeze_waits_for_its_pack_to_take_over(self):
         for mode in ("deep-freeze-live", "deep-freeze-replace"):
             with self.subTest(mode=mode):

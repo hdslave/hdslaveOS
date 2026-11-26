@@ -720,6 +720,24 @@ int main(int argc, char** argv) {
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
     }
+    auto kit_on = [&](unsigned t) { // a kit with a sample on its first pad
+        load_sound(project.tracks[t], EngineKind::Sampler, 0);
+        project.tracks[t].set_name("DRUMS");
+        project.tracks[t].pads[0].sample = 3;
+    };
+    if (mode == "presets-track") { // two tracks of the same synth, each its own instance, and a kit
+        project.plugins[1] = ref;
+        load_sound(project.tracks[1], EngineKind::Plugin, 0);
+        project.tracks[1].plugin = 1;
+        kit_on(2);
+        for (unsigned at : {3u, 4u}) { // Test Gain on the second track's chain and on the master's
+            project.plugins[at] = ref;
+            project.plugins[at].id = clap_id_hash("org.melodee.test.gain");
+            auto& slot = project.chain(at == 3 ? 1u : unsigned(master_chain)).slots[0];
+            slot.kind = plugin_effect_kind;
+            slot.params[0] = int16_t(at);
+        }
+    }
     if (mono || dynamicRing) {
         Step step;
         step.notes[0] = {69, 100};
@@ -762,6 +780,28 @@ int main(int argc, char** argv) {
         tap(SurfaceButton::SampleSelect);
         button(SurfaceButton::Shift, false);
     };
+    auto pad = [&](unsigned n) { // a pad hit and let go, as the surface sends it
+        for (uint8_t velocity : {uint8_t(100), uint8_t(0)}) {
+            SurfaceEvent event;
+            event.pad = int(n);
+            event.midi.status = velocity ? 0x90 : 0x80;
+            event.midi.value = velocity;
+            shell->surface(event, ++now);
+        }
+    };
+    auto pick_track = [&](unsigned n) { // Pad Bank + pad
+        button(SurfaceButton::PadBank, true);
+        pad(n);
+        button(SurfaceButton::PadBank, false);
+    };
+    auto turn = [&](int detents) { // the wheel
+        SurfaceEvent event;
+        event.input.kind = SurfaceInput::Kind::Control;
+        event.input.index = uint8_t(SurfaceControl::Wheel);
+        event.input.delta = detents;
+        shell->surface(event, ++now);
+    };
+    auto ready = [&](unsigned at) { return rack->status(at) == PluginStatus::Ready && !rack->programs(at).finding; };
     auto has_patch = [&](unsigned slot) {
         for (const auto& p : rack->programs(slot).list) if (p.user() && p.name == "My Patch") return true;
         return false;
@@ -876,6 +916,49 @@ int main(int argc, char** argv) {
         CHECK(frame->presets.list.size() == 3);
         tap(SurfaceButton::Plus); // and its keys walk the list it shows
         CHECK(ui.preset_due && ui.presets_cursor == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // the whole PRESETS list opened for a track's plug-in, then another track picked: the list is the plug-in
+    // of the track in hand, and a track with no presets leaves the page.
+    if (mode == "presets-track") {
+        wait([&] { return ready(1); });
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        tap(SurfaceButton::WheelPush); // Push on Stage's PRESETS: the whole list
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        pick_track(1);
+        CHECK(ui.track == 1 && ui.page == PageId::PluginPresets && ui.presets_entry == 1);
+        const auto list = rack->programs(1).list;
+        const auto rows = preset_rows(list, "", -1);
+        CHECK(list.size() == 3 && rows.size() == 3 && !rows[1].folder);
+        turn(1 - int(ui.presets_cursor));
+        tap(SurfaceButton::WheelPush);
+        const auto& picked = list[rows[1].at];
+        wait([&] { return rack->programs(1).current == picked.index; });
+        CHECK(std::string(project.plugins[1].preset) == program_key(picked));
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // the first track's plug-in: as it was
+        tap(SurfaceButton::TopLeft); // B1: back where the list was opened from, now this track's Stage
+        CHECK(ui.page == PageId::Stage && ui.track == 1);
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == 1);
+        pick_track(2); // a kit has no presets list
+        CHECK(ui.track == 2 && ui.page == PageId::Stage);
+        // An effect's list: one on the old track's chain goes back once another track is picked; the master's stays.
+        wait([&] { return ready(3) && ready(4) && rack->programs(3).list.size() == 1 && rack->programs(4).list.size() == 1; });
+        pick_track(1);
+        c.open(PageId::Rack); // the track's chain, and its slot sheet's PRESETS
+        c.open_plugin_presets(3);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == 3);
+        pick_track(0);
+        CHECK(ui.track == 0 && ui.page == PageId::Rack);
+        c.open(PageId::Master);
+        c.open_plugin_presets(4);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == 4);
+        pick_track(1);
+        CHECK(ui.track == 1 && ui.page == PageId::PluginPresets && ui.presets_entry == 4);
         shell->set_plugins(nullptr);
         return 0;
     }

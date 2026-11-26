@@ -156,6 +156,10 @@ stays open, so you can play each preset in turn. **K1**–**K3** still set
 the three parameters shown on **EDIT**. **B1** goes back. Push the encoder on
 Stage's **PRESETS** page, or press **SHIFT** + **B2**, to open the same list.
 
+The list belongs to the selected track. Select another plug-in track with
+**PAD BANK** + pad while it is open, and it shows that track's presets. Select
+a track that has no presets to list, and the list closes.
+
 ![Plug-in presets](../images/screens/pluginpresets.png)
 
 A plug-in that keeps its presets in folders (most CLAP plug-ins) lists the

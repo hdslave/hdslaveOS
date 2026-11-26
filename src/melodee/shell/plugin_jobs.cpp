@@ -259,6 +259,34 @@ void Context::open_plugin_presets(unsigned entry) {
     open(PageId::PluginPresets);
 }
 
+// PRESETS is open and another track was picked (select_track): a list opened for the track `was`, its plug-in's or
+// a plug-in effect's on its chain, would go on loading into that track while the pads play the one in hand. Its
+// plug-in's list turns to the plug-in of the track in hand, where the preset picked last is; with no presets there
+// (another kind of track, a plug-in with none or still opening), and for an effect's list, the page goes back where
+// it was opened from. An effect on a bus's, a submix's, the master's or a loop track's chain is no track's: its list stays.
+void Context::presets_follow_track(unsigned was) {
+    if (ui.page != PageId::PluginPresets || !plugins || ui.presets_entry >= max_plugins) return;
+    was %= track_count;
+    const unsigned entry = ui.presets_entry;
+    const auto& old = project.tracks[was];
+    const bool instrument = old.engine == EngineKind::Plugin && old.plugin == entry;
+    bool effect = false;
+    for (const auto& s : project.chain(was).slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
+    if (!instrument && !effect) return;
+    const auto& t = track();
+    if (instrument && t.engine == EngineKind::Plugin && t.plugin < max_plugins) {
+        auto programs = plugins->programs(t.plugin);
+        if (!programs.list.empty()) {
+            auto place = preset_place(programs.list, programs.current);
+            ui.presets_entry = t.plugin;
+            set_presets_folder(ui, place.folder);
+            ui.presets_cursor = uint16_t(place.row);
+            return;
+        }
+    }
+    open(ui.presets_back);
+}
+
 void Context::choose_plugin_program(int index) {
     if (!plugins) return;
     auto programs = plugins->programs(ui.presets_entry);

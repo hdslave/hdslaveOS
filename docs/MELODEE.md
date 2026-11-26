@@ -2562,7 +2562,15 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   on a plug-in effect's sheet (Push on the
   slot; the row shows only when it has some). The wheel or Minus / Plus
   move, Push loads one and stays, so the next is heard straight after (the
-  pads play the track); the one picked says LOADED, B1 goes back. Picking
+  pads play the track); the one picked says LOADED, B1 goes back. Another
+  track picked while the list is open (Pad Bank + pad, MIDI Remote): a
+  track's plug-in's list turns to the plug-in of the track in hand, where
+  its preset picked last is, so Push never loads into a track the pads no
+  longer play; a track with no presets to list (a kit, a plug-in with none
+  or still opening), and the list of an effect on the old track's chain,
+  go back where the list was opened from. An effect on any other chain (a
+  bus, a submix, the master, a loop track) keeps its list
+  (`Context::presets_follow_track`). Picking
   the one loaded loads it again, dropping edits since. What a preset loads
   goes into the plug-in's state, so the project keeps it. Presets in
   folders (a CLAP plug-in's) list as those folders first, each with how
