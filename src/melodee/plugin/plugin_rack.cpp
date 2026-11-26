@@ -723,8 +723,13 @@ private:
     uint64_t block_seen = ~uint64_t(0);
     double into_block = 0;     // device frames of that block played already
     // The engine's transport at the start of the last block (follow_clock): whether it played, the song's place and a
-    // quarter note's frames; `moved` this block's start, stop or jump. A jump is a place off by more than this.
-    static constexpr double jump_quarters = 1e-6;
+    // quarter note's frames; `moved` this block's start, stop or jump. A jump is a place off by more than a 64th note.
+    // The song's place is not a straight line from block to block: a tick that falls on a block's edge, a swung tick
+    // (up to a fifth of a tick, measured 0.0021 of a quarter at swing 60), MTC's speed trim (half a percent), and ticks
+    // held back and caught up while a MIDI clock is followed (a clock is a 24th of a quarter) all move it a little. A
+    // locate by a 32nd or more (Shift + wheel by Q, the wheel by a beat) and a song's jump by bars are told; one by a
+    // 64th, the finest Q, may not be, and barely moves the place.
+    static constexpr double jump_quarters = 1.0 / 16;
     bool clock_seen = false, playing_seen = false, moved = false;
     double song_seen = 0, quarter_seen = 1;
     double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top

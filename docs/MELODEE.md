@@ -96,9 +96,11 @@ one owner per piece of state.
   its own `request_process` or `request_flush` (a press on its own page that
   its audio side must take), each as a note would (hdslaveOS). So does a
   change of the transport (hdslaveOS): the song started or stopped
-  (after a count-in, as plug-ins hear Play), or its place moved other than
-  by the block's own frames (a locate, a loop told as a jump), judged on
-  the engine's clock whatever the plug-in's TRANSPORT. The block that
+  (after a count-in, as plug-ins hear Play), or its place moved by more
+  than a 64th note other than by the block's own frames (a locate, a loop
+  told as a jump). The clock's own wobble (swung ticks, a tick on a
+  block's edge, MTC's trim: at most a few thousandths of a quarter) is no
+  change. It is judged on the engine's clock whatever the plug-in's TRANSPORT. The block that
   carries the change is run, with its transport and song position, so an
   effect resting through a stop hears it; a plug-in that hears no change
   sleeps on. A sleeping plug-in's load shows 0.

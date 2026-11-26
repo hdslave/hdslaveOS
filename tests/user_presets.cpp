@@ -694,7 +694,8 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
-    if (mode == "transport-wake" || mode == "load-wake") setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    const bool steady = mode == "transport-steady";
+    if (mode == "transport-wake" || mode == "load-wake" || steady) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -757,7 +758,8 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
     }
-    if (mode == "transport-wake") { // and Test Gain on the master's chain (mixed, so run, even in silence)
+    if (steady) { project.tempo = 1270; project.swing = 60; } // a tick no whole number of frames, and swung
+    if (mode == "transport-wake" || steady) { // and Test Gain on the master's chain (mixed, so run, even in silence)
         project.plugins[2] = ref;
         project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
         auto& slot = project.chain(master_chain).slots[0];
@@ -800,7 +802,7 @@ int main(int argc, char** argv) {
         pattern.set_step(0, step);
     }
     host->load(project, shell->patterns());
-    host->set_audio_format(48000, 384);
+    host->set_audio_format(steady ? 44100 : 48000, 384); // transport-steady: the MPC's own rate
     Command reload {Command::Type::Reload};
     reload.pack = new ProjectPack(project, shell->patterns());
     host->send(reload);
@@ -1330,6 +1332,41 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // At the MPC's 44.1 kHz, 127 BPM and swing 60 the engine's song position wobbles a little about a straight line
+    // (ticks on a block's edge, swung ticks). A sleeping effect sleeps on while the song plays with nothing changed;
+    // a locate by a sixteenth and Stop still wake it, each for its block.
+    if (steady) {
+        const unsigned gain = 2;
+        struct Heard { int playing; double beats; int calls; };
+        auto heard = [&] {
+            auto bytes = rack->state(gain);
+            CHECK(bytes.size() == 4 + 6 * sizeof(double));
+            std::array<double, 6> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Heard {int(v[3]), v[4], int(v[5])};
+        };
+        wait([&] { return ready(entry) && ready(gain) && rack->idling(gain); });
+        CHECK(host->send({Command::Type::Play}));
+        for (int k = 0; k < 400; ++k) tick(); // over a second of song: woken by Play, asleep again
+        CHECK(rack->idling(gain));
+        const int before = heard().calls;
+        int awake = 0;
+        for (int k = 0; k < 1500; ++k) { tick(); awake += rack->idling(gain) ? 0 : 1; }
+        CHECK(heard().calls == before && awake == 0);
+        const auto at = heard();
+        Command back {Command::Type::Locate};
+        back.position = host->ticks() - sixteenth_ticks; // a sixteenth back
+        CHECK(host->send(back));
+        tick();
+        CHECK(heard().calls > at.calls && heard().playing == 1);
+        for (int k = 0; k < 400; ++k) tick();
+        const int still = heard().calls;
+        CHECK(host->send({Command::Type::Stop}));
+        tick();
+        CHECK(heard().calls > still && heard().playing == 0);
         shell->set_plugins(nullptr);
         return 0;
     }
