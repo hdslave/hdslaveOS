@@ -210,7 +210,8 @@ plays. For any other drum plug-in, set **K3** to Drums on **Keys**.
 
 On an effect chain (see [Effect chains](mixer-and-effects.md#effect-chains)), open the effect
 picker and choose the last family, **Plug-ins**. Track, bus, master and
-loop chains take plug-ins.
+loop chains take plug-ins. **SHIFT** + **−** (undo) takes a plug-in you
+added out again, or puts back the effect it replaced.
 
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 

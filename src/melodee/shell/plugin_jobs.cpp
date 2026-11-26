@@ -274,10 +274,19 @@ void Context::choose_plugin(const PluginFile& file) {
     } else {
         unsigned count = project.chain(n).count();
         if (k > count) k = count;
+        // Into an empty slot, or over a built-in effect: one undo step, the chain (and the lanes its effects' moves
+        // leave) as it was, as a chain page's edits keep. Over another plug-in the swap above is the step.
+        std::unique_ptr<Edit> slot;
+        if (!made) {
+            const auto& was = project.chain(n).slots[k];
+            const std::string what = was.kind == 0 ? "Add " + file.name : std::string("Replace ") + effect_info(EffectKind(was.kind)).name;
+            slot = scope_edit(UndoScope {UndoScope::Kind::Chain, uint8_t(ui.track % track_count), uint16_t(n)}, what);
+        }
         if (project.chain(n).slots[k].kind != plugin_effect_kind) set_effect(n, k, EffectKind::Plugin);
         set_effect_param(n, k, 0, entry);
         ui.fx_cursor[UiState::cursor_of(n)] = uint8_t(k);
         ui.fx_row[UiState::cursor_of(n)] = 0;
+        if (slot && finish_scope(*slot)) edits.push(std::move(*slot));
     }
     if (made) {
         if (made->plugin) made->plugin->after = ref;

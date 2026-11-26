@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_a_plugin_effect_picked_into_an_empty_slot_is_one_undo_step(self):
+        self.run_rack_fixture("effect-undo")
+
     def test_presets_list_asks_before_changing_a_frozen_tracks_sound(self):
         self.run_rack_fixture("presets-frozen")
 

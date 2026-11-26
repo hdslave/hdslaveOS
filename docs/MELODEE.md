@@ -2589,7 +2589,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   `lv2:InstrumentPlugin`). The GUI library beside it (`_ui.so`) is never
   loaded.
 - **An effect.** The effect picker's last family, Plug-ins, opens the same
-  folder for the slot; on the chain pages K1–K3 hold its parameters and
+  folder for the slot. A plug-in picked into an empty slot, or over a
+  built-in effect, is one undo step (the chain as it was); over another
+  plug-in, the Replace step above. On the chain pages K1–K3 hold its parameters and
   Minus / Plus its rows. Track, bus, master and loop-track chains take
   plug-ins; a kit pad's own chain does not.
 - **Presets.** A plug-in's own programs, those with a name: Push on a

@@ -1333,6 +1333,39 @@ int main(int argc, char** argv) {
         shell->set_plugins(nullptr);
         return 0;
     }
+    // A plug-in effect picked into an empty slot (the effect picker's Plug-ins, from a chain's plus) is one undo step:
+    // undo empties the slot again, redo brings the effect back as it was, its values too.
+    if (mode == "effect-undo") {
+        const auto& master = project.chain(master_chain);
+        CHECK(master.count() == 0);
+        c.open(PageId::Master);
+        c.open_plugin_picker(UiState::PluginTarget::Effect, master_chain, 0);
+        listing("Plugins", 1);
+        tap(SurfaceButton::WheelPush); // the fixture's library: its two plug-ins
+        listing("Test.clap", 2);
+        const auto rows = rack->view().files;
+        const int gain_row = rows[0].name == "Test Gain" ? 0 : 1;
+        CHECK(rows[size_t(gain_row)].name == "Test Gain");
+        turn(gain_row - int(ui.plugins_cursor));
+        const size_t steps = c.edits.size();
+        tap(SurfaceButton::WheelPush);
+        CHECK(master.count() == 1 && master.slots[0].kind == plugin_effect_kind && c.edits.size() == steps + 1);
+        const unsigned gain = unsigned(master.slots[0].params[0]);
+        wait([&] { return ready(gain); });
+        set_control_of(gain, "Gain", 250);
+        wait([&] { return values(gain)[2] == 0.5; });
+        c.open(PageId::Master);
+        undo();
+        CHECK(master.count() == 0);
+        wait([&] { return rack->status(gain) == PluginStatus::None; });
+        for (int k = 0; k < 20; ++k) tick();
+        redo();
+        CHECK(master.count() == 1 && master.slots[0].kind == plugin_effect_kind && unsigned(master.slots[0].params[0]) == gain);
+        wait([&] { return ready(gain); });
+        CHECK(values(gain)[2] == 0.5);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // Push on a preset in the whole PRESETS list of a frozen track's plug-in asks to unfreeze first, as a turn on Stage
     // does; B1 there leaves its sound as it was. Not frozen, Push loads it.
     if (mode == "presets-frozen") {
