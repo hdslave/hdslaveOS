@@ -188,6 +188,9 @@ class PluginHostTests(unittest.TestCase):
     def test_name_sheet_saves_what_it_was_opened_for(self):
         self.run_rack_fixture("name-target")
 
+    def test_a_copy_with_every_entry_in_use_keeps_the_undo_history(self):
+        self.run_rack_fixture("copy-full")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

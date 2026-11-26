@@ -405,7 +405,8 @@ public:
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     // A track copied onto `track`: its own entries at once (shell/plugin_jobs.cpp); `pending` the copy's edit, not kept yet.
     void own_plugins(unsigned track, const Edit* pending = nullptr);
-    int take_plugin_entry(const Edit* pending = nullptr); // an entry for a new plug-in, none an undo or redo names (-1 none)
+    // An entry for a new plug-in, none an undo or redo names (-1 none); `may_drop`: the oldest undo steps may go for it.
+    int take_plugin_entry(const Edit* pending = nullptr, bool may_drop = true);
     int fresh_entry(unsigned entry);  // that entry, emptied for a new plug-in
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

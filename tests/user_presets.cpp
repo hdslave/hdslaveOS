@@ -779,6 +779,17 @@ int main(int argc, char** argv) {
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
     }
+    if (mode == "copy-full") { // a second plug-in track, and every other entry in use: effects that will not open
+        project.plugins[1] = ref;
+        load_sound(project.tracks[1], EngineKind::Plugin, 0);
+        project.tracks[1].plugin = 1;
+        for (unsigned e = 2; e < max_plugins; ++e) {
+            std::snprintf(project.plugins[e].path, sizeof(project.plugins[e].path), "/nowhere/X%u.clap", e);
+            auto& slot = project.chain(2 + (e - 2) / track_slots).slots[(e - 2) % track_slots];
+            slot.kind = plugin_effect_kind;
+            slot.params[0] = int16_t(e);
+        }
+    }
     if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
         for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
     if (mode == "presets-track" || mode == "copy-presets" || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
@@ -1664,6 +1675,30 @@ int main(int argc, char** argv) {
         wait([&] { return rack->idling(entry) && rack->idling(gain); }); // and both sleep again
         sleeps_on(entry);
         sleeps_on(gain);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Every plug-in entry in use, some undo history, then track 1 copied onto track 2 (a plug-in track): no entry can
+    // be had for the copy without the one only the copy's own step names, so none is taken. The history stays, the
+    // copy's step with it (the copy shares track 1's plug-in meanwhile), and undo brings track 2's plug-in back.
+    if (mode == "copy-full") {
+        wait([&] { return ready(entry) && ready(1); });
+        for (int n = 0; n < 5; ++n) { Edit step; step.what = "Step"; c.edits.push(std::move(step)); }
+        c.open(PageId::Master);
+        button(SurfaceButton::PadBank, true);
+        tap(SurfaceButton::TopRight); // COPY
+        pad(0);
+        pad(1);
+        button(SurfaceButton::PadBank, false);
+        auto& t2 = project.tracks[1];
+        CHECK(t2.engine == EngineKind::Plugin && t2.plugin == entry);
+        CHECK(c.edits.size() == 6);
+        for (int k = 0; k < 10; ++k) tick();
+        CHECK(c.edits.size() == 6 && c.edits.can_undo() && t2.plugin == entry);
+        undo();
+        CHECK(t2.engine == EngineKind::Plugin && t2.plugin == 1 && fs::path(project.plugins[1].path).filename() == "Test.clap");
+        wait([&] { return ready(1); });
+        CHECK(c.edits.size() == 5);
         shell->set_plugins(nullptr);
         return 0;
     }

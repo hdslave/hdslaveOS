@@ -67,17 +67,23 @@ std::array<bool, max_plugins> named_by_history(const History& edits, const Edit*
 
 // An entry for a new plug-in: one never set first, else one nothing uses now. Never one an undo or a redo still names
 // (a cleared track's, a copy undone): its plug-in would come back as the new one. When every entry is used or named,
-// the redo steps go, then the oldest undo steps, until one is free (-1: all 32 are in use now). The entry taken starts
-// clean: its old name and path, and the rack's state kept for it, go.
-int Context::take_plugin_entry(const Edit* pending) {
+// and `may_drop`, the redo steps go, then the oldest undo steps, until one is free; never for an entry only `pending`
+// names, which no step let go can free (-1: none to be had). The entry taken starts clean: its old name and path, and
+// the rack's state kept for it, go.
+int Context::take_plugin_entry(const Edit* pending, bool may_drop) {
+    // What letting history go could ever free: an entry nothing uses now that the edit being made does not name.
+    // When there is none, nothing is dropped (dropping would only empty the history and free nothing).
+    std::array<bool, max_plugins> kept_by_pending {};
+    if (pending) kept_by_pending = named_by_history(History {}, pending);
     for (;;) {
         const auto named = named_by_history(edits, pending);
         for (unsigned e = 0; e < max_plugins; ++e) if (!project.plugins[e].used() && !named[e]) return fresh_entry(e);
         for (unsigned e = 0; e < max_plugins; ++e) if (!plugin_used_by(project, e) && !named[e]) return fresh_entry(e);
+        bool freeable = false;
+        for (unsigned e = 0; e < max_plugins; ++e) freeable |= !plugin_used_by(project, e) && !kept_by_pending[e];
+        if (!freeable || !may_drop) return -1;
         if (edits.can_redo()) { edits.clear_redo(); continue; }
-        bool any = false;
-        for (unsigned e = 0; e < max_plugins; ++e) any |= !plugin_used_by(project, e);
-        if (!any || !edits.drop_oldest()) return -1;
+        if (!edits.drop_oldest()) return -1;
     }
 }
 
@@ -128,8 +134,9 @@ void Context::split_shared_plugins() {
         if (entry >= max_plugins) return -1;
         if (!seen[entry]) { seen[entry] = true; return -1; }
         const PluginRef from = project.plugins[entry];
-        int copy = take_plugin_entry();
-        if (copy < 0 || seen[size_t(copy)]) return -1; // none free: it stays shared (and is heard twice)
+        // Every tick, so no undo step is let go for it: with none free it stays shared (and is heard twice).
+        int copy = take_plugin_entry(nullptr, false);
+        if (copy < 0 || seen[size_t(copy)]) return -1;
         project.plugins[size_t(copy)] = from;
         seen[size_t(copy)] = true;
         if (plugins) plugins->clone(entry, unsigned(copy));
