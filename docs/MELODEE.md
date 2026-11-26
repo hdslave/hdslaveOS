@@ -2548,7 +2548,10 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   request it answers (`PluginRack::browse()`), so only the one asked for
   moves the cursor, and a web page change or a delete lists again the
   folder asked for last, whether or not it is in yet (`relist()`), on the
-  row B1 was to land on when that is still to come.
+  row B1 was to land on when that is still to come. A later listing in
+  before B1's (the picker opened again meanwhile, both in before the shell
+  looked) lets B1's landing go, so the next one lands on the row under the
+  cursor, not on B1's.
   "Replace <name>?" keeps the plug-in it was asked about, and REPLACE
   loads that one wherever its row has moved, whichever folder the picker
   shows by then; one deleted from the card meanwhile says Not on the card.

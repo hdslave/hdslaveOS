@@ -1224,6 +1224,30 @@ int main(int argc, char** argv) {
         CHECK(rack->view().files.size() == 1 && rack->view().files[0].instrument < 0);
         open_picker();
         listing("Gamma", 1);
+
+        // B1 from Gamma while the plug-in opens again, the picker closed and opened again before that listing is in, and
+        // both listings (B1's, then the one opening asks for) in before the shell looks: B1's landing goes with the later
+        // one, so a web page change after that lists again on the row under the cursor, not on the row B1 was to land on.
+        rack->reload(entry);
+        tick(); // the plug-in opens again (60 ms): B1's listing waits behind it
+        tap(SurfaceButton::TopLeft); // BACK, to land on Gamma
+        const uint32_t back = c.plugin_landing;
+        CHECK(back != 0);
+        open_picker(); // listed afresh: a later listing than B1's
+        const auto later = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (rack->view().request != back + 1 && std::chrono::steady_clock::now() < later)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        CHECK(rack->view().request == back + 1 && fs::path(rack->view().folder).filename() == "Plugins");
+        tick();
+        wait([&] { return ready(entry); });
+        listing("Plugins", rack->view().files.size(), false);
+        cursor_on("C.clap");
+        fs::copy_file(plugin, folder / "Ab.clap"); // the web page installs one
+        rack->card_changed();
+        wait([&] { return row_of("Ab.clap") >= 0; });
+        listing("Plugins", rack->view().files.size(), false);
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(row_of("Ab.clap") >= 0 && int(ui.plugins_cursor) == row_of("C.clap"));
         unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;

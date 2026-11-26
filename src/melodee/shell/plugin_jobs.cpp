@@ -194,8 +194,11 @@ void Context::take_plugin_view() {
         if (plugin_view.came_from >= 0) ui.plugins_cursor = uint16_t(plugin_view.came_from);
         else if (other) ui.plugins_cursor = 0;
         plugin_landing = 0;
-    } else if (other) {
-        ui.plugins_cursor = 0;
+    } else {
+        // A later listing than the one to land on (another asked for since, and in before the shell looked): that one
+        // is never shown now, so its landing goes too. Kept, a web page change would list again onto its old row.
+        if (plugin_landing && int32_t(plugin_view.request - plugin_landing) > 0) plugin_landing = 0;
+        if (other) ui.plugins_cursor = 0;
     }
     if (ui.plugins_cursor >= ui.plugins_count) ui.plugins_cursor = uint16_t(ui.plugins_count ? ui.plugins_count - 1 : 0);
 }
