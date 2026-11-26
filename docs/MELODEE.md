@@ -100,7 +100,8 @@ one owner per piece of state.
   than a 64th note other than by the block's own frames (a locate, a loop
   told as a jump). The clock's own wobble (swung ticks, a tick on a
   block's edge, MTC's trim: at most a few thousandths of a quarter) is no
-  change. It is judged on the engine's clock whatever the plug-in's TRANSPORT. The block that
+  change. A plug-in with TRANSPORT off hears the song stopped throughout,
+  so none of this wakes it; switching its TRANSPORT does, once. The block that
   carries the change is run, with its transport and song position, so an
   effect resting through a stop hears it; a plug-in that hears no change
   sleeps on. A sleeping plug-in's load shows 0.

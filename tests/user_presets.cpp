@@ -694,8 +694,8 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
-    const bool steady = mode == "transport-steady";
-    if (mode == "transport-wake" || mode == "load-wake" || steady) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
+    if (mode == "transport-wake" || mode == "load-wake" || steady || deaf) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -759,12 +759,13 @@ int main(int argc, char** argv) {
         slot.params[0] = 2;
     }
     if (steady) { project.tempo = 1270; project.swing = 60; } // a tick no whole number of frames, and swung
-    if (mode == "transport-wake" || steady) { // and Test Gain on the master's chain (mixed, so run, even in silence)
+    if (mode == "transport-wake" || steady || deaf) { // and Test Gain on the master's chain (mixed, so run, even in silence)
         project.plugins[2] = ref;
         project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
         auto& slot = project.chain(master_chain).slots[0];
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
+        if (deaf) project.plugins[2].transport = false; // TRANSPORT off: it hears the song stopped throughout
     }
     if (mode == "turn-effect") { // Test Gain on track 1's chain too
         project.plugins[3] = ref;
@@ -1332,6 +1333,42 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // TRANSPORT off, a plug-in hears the song stopped throughout: Play, a locate and Stop wake nothing. Turning its
+    // TRANSPORT on runs it once, so it hears the song as it is now; turning it off again, the same.
+    if (deaf) {
+        const unsigned gain = 2;
+        auto heard = [&] {
+            auto bytes = rack->state(gain);
+            CHECK(bytes.size() == 4 + 6 * sizeof(double));
+            std::array<double, 6> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return std::pair<int, int> {int(v[3]), int(v[5])}; // playing, calls
+        };
+        wait([&] { return ready(gain) && rack->idling(gain); });
+        const int before = heard().second;
+        CHECK(host->send({Command::Type::Play}));
+        for (int k = 0; k < 40; ++k) tick();
+        Command jump {Command::Type::Locate};
+        jump.position = 0;
+        CHECK(host->send(jump));
+        for (int k = 0; k < 40; ++k) tick();
+        CHECK(heard().second == before && rack->idling(gain));
+        c.toggle_plugin_transport(gain); // TRANSPORT on
+        tick();
+        CHECK(heard().second > before && heard().first == 1);
+        wait([&] { return rack->idling(gain); });
+        const int on = heard().second;
+        c.toggle_plugin_transport(gain); // and off again
+        tick();
+        CHECK(heard().second > on && heard().first == 0);
+        wait([&] { return rack->idling(gain); });
+        const int off = heard().second;
+        CHECK(host->send({Command::Type::Stop}));
+        for (int k = 0; k < 40; ++k) tick();
+        CHECK(heard().second == off);
         shell->set_plugins(nullptr);
         return 0;
     }

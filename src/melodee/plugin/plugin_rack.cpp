@@ -680,8 +680,10 @@ private:
             // The engine's transport (as the engine has it, TRANSPORT on or off) against where its last block left it:
             // started, stopped, or the song's place moved other than by that block's frames (a locate, a loop told as
             // a jump). That block is run, asleep or not (render(): `moved`), so the plug-in hears the change.
+            // TRANSPORT off, it hears the song stopped throughout: none of this is a change for it (only the switch is).
             const double expected = song_seen + into_block / std::max(quarter_seen, 1.0);
-            moved = clock_seen && (now.playing != playing_seen || (now.playing && std::fabs(now.song - expected) > jump_quarters));
+            moved = clock_seen && transport.load(std::memory_order_relaxed)
+                    && (now.playing != playing_seen || (now.playing && std::fabs(now.song - expected) > jump_quarters));
             clock_seen = true;
             playing_seen = now.playing;
             song_seen = now.song;
@@ -814,6 +816,7 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
         std::lock_guard<std::mutex> held(lock);
         for (unsigned e = 0; e < max_plugins; ++e) {
             auto& entry = entries[e];
+            if (entry.live && entry.transport != project.plugins[e].transport) entry.live->note_change(); // TRANSPORT switched: heard at once
             entry.transport = project.plugins[e].transport;
             if (entry.live) entry.live->transport.store(entry.transport, std::memory_order_relaxed);
             if (entry.preset != project.plugins[e].preset) {

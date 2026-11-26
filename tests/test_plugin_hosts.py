@@ -170,6 +170,9 @@ class PluginHostTests(unittest.TestCase):
     def test_a_plugin_let_go_or_woken_before_its_freeze_sleep_keeps_its_state(self):
         self.run_rack_fixture("freeze-race")
 
+    def test_a_transport_off_plugin_wakes_only_when_its_transport_is_switched(self):
+        self.run_rack_fixture("transport-off")
+
     def test_a_sleeping_plugin_sleeps_on_while_the_song_plays_unchanged(self):
         self.run_rack_fixture("transport-steady")
 
