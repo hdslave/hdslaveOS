@@ -137,9 +137,9 @@ void Context::extract_slice() {
     notice("Extracting slice " + std::to_string(ui.chop_slice + 1));
 }
 
-void Context::save_sample_as(const std::string& name) {
-    const auto& t = track();
-    const auto& pad = t.pads[t.last_pad % sampler_pads];
+void Context::save_sample_as(const std::string& name, unsigned track_at, unsigned pad_at) {
+    const auto& t = project.tracks[track_at % track_count];
+    const auto& pad = t.pads[pad_at % sampler_pads];
     if (t.engine != EngineKind::Sampler || !pad.used() || !library) { notice("Save Sample: no sample"); return; }
     if (library->root().empty()) { notice("Save Sample: no card"); return; }
     if (!library->write(job(SampleJob::Kind::Save, pad.sample, -1, pad.start, pad.end, name, ""))) { notice("Save Sample: busy"); return; }

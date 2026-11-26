@@ -8,6 +8,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
+#include "melodee/shell/project_store.h"
 #include "melodee/shell/track_copy.h"
 #include "runtime/controller.h"
 #include <chrono>
@@ -1751,7 +1752,7 @@ int main(int argc, char** argv) {
         chord();
         tap(SurfaceButton::TopRight);
         wait([&] { return std::string(ui.notice) == "Preset name already used"; });
-    } else {
+    } else if (mode != "name-target") { // name-target: straight to the naming sheets below
         CHECK(has_patch(entry));
         CHECK(state()[0] == 0.5);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs; });
@@ -1822,6 +1823,51 @@ int main(int argc, char** argv) {
     tap(SurfaceButton::TopRight);
     samples->service(hardware);
     CHECK(fs::file_size(root / "Banks" / "KIT.mldb") > 0);
+    // The Name sheet saves what it was opened for, though another track is in hand at Done (MIDI Remote picks one).
+    if (mode == "name-target") {
+        auto& other = project.tracks[1]; // a kit with the same sample, all of it
+        load_sound(other, EngineKind::Sampler, 0);
+        other.last_pad = 0;
+        other.pads[0] = tr.pads[0];
+        other.pads[0].start = 0;
+        other.pads[0].end = 128;
+        c.select_track(0);
+        c.open(PageId::Edit);
+        chord();
+        CHECK(ui.name.target == NameTarget::Sample);
+        ui.name.set("Mine");
+        c.select_track(1);
+        tap(SurfaceButton::TopRight);
+        samples->service(hardware);
+        SampleData mine;
+        CHECK(read_wav((root / "Mine.wav").string(), mine).empty());
+        CHECK(mine.frames == 64); // track 1's pad's region, not track 2's whole sample
+        c.select_track(0);
+        c.open(PageId::Samples);
+        chord();
+        CHECK(ui.name.target == NameTarget::Bank);
+        ui.name.set("MINE");
+        c.select_track(1);
+        tap(SurfaceButton::TopRight);
+        samples->service(hardware);
+        std::ifstream in(root / "Banks" / "MINE.mldb", std::ios::binary);
+        const std::vector<uint8_t> bank((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(bank == save_bank(bank_of(project, 0, tr.bank, "MINE")) && bank != save_bank(bank_of(project, 1, other.bank, "MINE")));
+        setenv("MELODEE_PROJECTS", (fs::path(card) / "Melodee" / "Projects").c_str(), 1);
+        setenv("MELODEE_INTERNAL_PROJECTS", (fs::path(card) / "internal").c_str(), 1);
+        auto store = std::make_unique<ProjectStore>(); // Save sound needs somewhere to keep the sound
+        shell->set_store(store.get());
+        for (unsigned t : {2u, 3u}) load_sound(project.tracks[t], EngineKind::Midi, 0);
+        c.select_track(2);
+        c.open(PageId::Edit);
+        chord();
+        CHECK(ui.name.target == NameTarget::Sound);
+        ui.name.set("LEAD");
+        c.select_track(3);
+        tap(SurfaceButton::TopRight);
+        CHECK(std::string(project.tracks[2].name) == "LEAD" && std::string(project.tracks[3].name) != "LEAD");
+        shell->set_store(nullptr);
+    }
     shell->set_library(nullptr);
     shell->set_plugins(nullptr);
 }

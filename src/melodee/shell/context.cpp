@@ -1217,6 +1217,7 @@ void Context::name_marker(unsigned bar) {
 void Context::save_sound() {
     auto& t = track();
     if (t.engine == EngineKind::None || t.sampled() || !store) return; // a kit's or keygroup's sounds are files
+    name_sound_at = uint8_t(ui.track % track_count);
     open_name(NameTarget::Sound, t.name, name_length - 1, true);
 }
 
@@ -1237,6 +1238,8 @@ void Context::save_sample() {
     if (t.engine != EngineKind::Sampler || !sound.used()) { notice("Save Sample: no sample"); return; }
     if (refuse_instrument("Save Sample")) return;
     const auto& ref = project.samples[sound.sample % sample_slots];
+    name_sound_at = uint8_t(ui.track % track_count);
+    name_pad_at = uint8_t(t.last_pad % sampler_pads);
     open_name(NameTarget::Sample, ref.name, sizeof(project.name) - 1, false); // a file's name may run as long as a project's
 }
 
@@ -1248,6 +1251,8 @@ void Context::save_bank() {
     char letter = char('A' + t.bank % sampler_banks);
     if (!bank_of(project, ui.track, t.bank, "").used()) { notice(std::string("Save Bank: bank ") + letter + " is empty"); return; }
     std::string name = t.name[0] ? std::string(t.name) + " " + letter : std::string("BANK ") + letter;
+    name_sound_at = uint8_t(ui.track % track_count);
+    name_bank_at = uint8_t(t.bank % sampler_banks);
     open_name(NameTarget::Bank, name, name_length - 1, true);
 }
 
@@ -1284,8 +1289,8 @@ void Context::finish_name() {
         }
         break;
     }
-    case NameTarget::Sound: {
-        auto& t = track();
+    case NameTarget::Sound: { // the track it was opened for, whichever is in hand now
+        auto& t = project.tracks[name_sound_at % track_count];
         if (!store || t.engine == EngineKind::None || t.sampled()) break;
         t.name_from(text.c_str());
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
@@ -1294,11 +1299,11 @@ void Context::finish_name() {
     case NameTarget::PluginPreset:
         if (plugins) plugins->save_user_preset(name_preset_entry, name_preset_generation, text);
         break;
-    case NameTarget::Sample: save_sample_as(text); break;
+    case NameTarget::Sample: save_sample_as(text, name_sound_at, name_pad_at); break;
     case NameTarget::Bank: {
-        auto& t = track();
+        const auto& t = project.tracks[name_sound_at % track_count];
         if (!library || t.engine != EngineKind::Sampler) break;
-        library->write_bank(text, melodee::save_bank(bank_of(project, ui.track, t.bank, text.c_str())));
+        library->write_bank(text, melodee::save_bank(bank_of(project, name_sound_at % track_count, name_bank_at, text.c_str())));
         break;
     }
     case NameTarget::Mixdown: mixdown(text); break;

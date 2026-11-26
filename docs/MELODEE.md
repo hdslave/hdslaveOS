@@ -1608,7 +1608,10 @@ the file holds, to the bit.
   **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
   name and bank letter first), then `Melodee/Samples/Banks/<name>.mldb` with every
   pad's values, its own chain and the paths of the files it plays (nothing
-  is copied). Bank files show in the browser tagged BANK; **Push** on one
+  is copied). Save Bank, Save Sample and Save sound keep the track (its
+  bank, its pad) the Name sheet opened for: another track picked before
+  Done (MIDI Remote) does not change what is saved or named. Bank files
+  show in the browser tagged BANK; **Push** on one
   loads it into the bank in view (Pad Bank picks it): its sixteen pads and
   their chains replace that bank's, their mutes cleared; the other banks,
   the kit's own values and the patterns stay. Each file takes a sample slot

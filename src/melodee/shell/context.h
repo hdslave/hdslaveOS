@@ -352,6 +352,9 @@ public:
     std::array<bool, track_count> chained_sent {};
     uint8_t name_scene_at = 0;
     uint8_t name_track_at = 0;
+    // Save Sound, Save Bank and Save Sample: the track (and its bank, or its pad) the Name sheet was opened for. The
+    // track in hand may change before it is confirmed (MIDI Remote picks one): the name is still that track's.
+    uint8_t name_sound_at = 0, name_bank_at = 0, name_pad_at = 0;
     // Roadmap P5 (shell/scene_jobs.cpp): the song's tempo lane, a point at `bar` (0 tenths: none there), its shape.
     void set_song_tempo(unsigned bar, int tenths);
     void set_song_tempo_shape(unsigned bar, bool ramp);
@@ -750,7 +753,7 @@ public:
     // a pad's audio on the service thread, and the browser's loads.
     void trim_sample();                                  // Shift + Pad 13: the last pad's region as a file of its own, one undo
     void extract_slice();                                // Chop, Shift + B1: the slice as a file, onto the next empty pad
-    void save_sample_as(const std::string& name);        // Save Sample's Name sheet, Done: the region as Samples/<name>.wav
+    void save_sample_as(const std::string& name, unsigned track, unsigned pad); // Save Sample's Name sheet, Done: that pad's region as Samples/<name>.wav
     void load_file(const std::string& path, const std::string& name, bool next_empty); // the browser's Push, Shift + pad
     void files_landed();                                 // the library changed: made files onto their pads
     int next_empty_pad(unsigned after) const;            // the kit's next pad without a sample after `after`, -1 none
