@@ -1197,6 +1197,13 @@ void names() {
     unsigned listed = sound_list(*track, ui, list);
     const unsigned factory = engine_info(EngineKind::Midi).sound_count;
     CHECK(listed == factory + 2 && list[listed - 1] == factory + 1);
+    // Their names come from their own list, never from past the end of the engine's table (an AUDIO track with
+    // two sounds of one's own crashed the Sounds page: its table has one sound).
+    const auto& audio = engine_info(EngineKind::Audio);
+    const std::vector<std::string> own {"TAPE IN", "VOX"};
+    CHECK(audio.sound_count == 1 && std::string(sound_name(audio, 0, own)) == "AUDIO");
+    CHECK(std::string(sound_name(audio, 1, own)) == "TAPE IN" && std::string(sound_name(audio, 2, own)) == "VOX");
+    CHECK(sound_name(audio, 3, own) == nullptr && sound_name(audio, 1, {}) == nullptr);
 }
 } // namespace
 

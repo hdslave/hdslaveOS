@@ -969,6 +969,12 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
+    out.own_sounds.clear();
+    if (ui_.page == PageId::Sounds) { // in Context::user_sound()'s order, as sound_list() numbers them
+        EngineKind engine = project_->tracks[ui_.track % track_count].engine;
+        for (const auto& own : context_.user_sounds)
+            if (own.engine == engine) out.own_sounds.emplace_back(own.name, strnlen(own.name, sizeof(own.name)));
+    }
     out.plugin_skin = context_.plugins && ui_.plugin_panel.skin_page != -1 ? context_.plugins->skin(ui_.plugin_panel.entry) : nullptr;
     out.plugin_picture = context_.plugins && ui_.plugin_panel.screen ? context_.plugins->screen_picture() : nullptr;
     if (context_.plugins && ui_.page == PageId::Stage) { // Stage PRESETS: the track's plug-in's
