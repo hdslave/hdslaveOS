@@ -689,12 +689,12 @@ int main(int argc, char** argv) {
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
     if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag"
-        || mode == "turn-effect" || mode == "presets-frozen") {
+        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
-    if (mode == "transport-wake") setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    if (mode == "transport-wake" || mode == "load-wake") setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -1330,6 +1330,44 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A sleeping plug-in given a preset (one of its own, or a user preset, which opens it again with that state): it is
+    // run for at least the next block, so it can take the new values; one nobody touched sleeps on.
+    if (mode == "load-wake") {
+        auto calls = [&] {
+            auto bytes = rack->state(entry);
+            CHECK(bytes.size() == 4 + 6 * sizeof(double));
+            double v[6];
+            std::memcpy(v, bytes.data() + 4, sizeof(v));
+            return int(v[5]);
+        };
+        auto asleep_then = [&](auto load) { // asleep a while, then the load: run for the block after it
+            wait([&] { return ready(entry) && rack->idling(entry); });
+            const int before = calls();
+            for (int k = 0; k < 40; ++k) tick();
+            CHECK(calls() == before && rack->idling(entry));
+            load();
+        };
+        wait([&] { return ready(entry) && rack->programs(entry).list.size() == 3; });
+        const auto list = rack->programs(entry).list;
+        int was = 0;
+        asleep_then([&] { was = calls(); c.pick_plugin_program(entry, list[1].index); }); // as PRESETS or a companion screen picks
+        wait([&] { return rack->programs(entry).current == list[1].index && calls() > was; });
+        // A user preset: saved, then loaded while it sleeps (the rack opens it again with the preset's state).
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        button(SurfaceButton::Shift, true);
+        tap(SurfaceButton::SampleSelect);
+        button(SurfaceButton::Shift, false);
+        CHECK(ui.name.target == NameTarget::PluginPreset);
+        tap(SurfaceButton::TopRight);
+        wait([&] { return rack->programs(entry).list.size() == 4 && !rack->programs(entry).finding; });
+        c.open(PageId::Master);
+        asleep_then([&] { rack->load_user_preset(entry, "My Patch"); });
+        wait([&] { return ready(entry) && std::string(ref.preset) == "/user/My Patch"; });
+        wait([&] { return !rack->idling(entry) && calls() > 0; });
         shell->set_plugins(nullptr);
         return 0;
     }

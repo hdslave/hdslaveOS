@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_a_sleeping_plugin_is_run_after_a_preset_load(self):
+        self.run_rack_fixture("load-wake")
+
     def test_a_plugin_effect_picked_into_an_empty_slot_is_one_undo_step(self):
         self.run_rack_fixture("effect-undo")
 
