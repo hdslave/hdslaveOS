@@ -869,6 +869,9 @@ void PluginRack::set_states(PluginStates states) {
         entries[e].state = std::move(states[e]);
         entries[e].reload = true; // a new project: every entry it uses loads again, with its state
         entries[e].live_own = false;    // the plug-ins still open are the last project's
+        // and so is one still opening, with the last one's state: dropped when done, never taken as this one's (the
+        // next sync() opens it again). Only a load: a Sleep or an Unload still to run must still run.
+        if (entries[e].status == PluginStatus::Loading) ++entries[e].generation;
         entries[e].parked_path.clear(); // and nothing of the last one's comes back
         entries[e].parked.clear();
     }
@@ -973,6 +976,7 @@ void PluginRack::restore(unsigned entry, std::vector<uint8_t> state) {
     entries[entry].state = std::move(state);
     entries[entry].reload = true; // plan_plugin keeps this state for whichever plug-in loads
     entries[entry].live_own = false; // the plug-in still open is not where this state comes from
+    if (entries[entry].status == PluginStatus::Loading) ++entries[entry].generation; // nor one opening with the state before
     entries[entry].parked_path.clear();
     entries[entry].parked.clear();
 }

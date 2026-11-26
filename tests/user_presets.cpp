@@ -1678,6 +1678,25 @@ int main(int argc, char** argv) {
         rack->sync(project, 0); // thawed: opened with it
         wait([&] { return ready(entry) && ready(1); });
         CHECK(values(entry)[1] == 0);
+        // Another project opens (set_states), or a state is put back (restore), while the plug-in is opening again with
+        // the state it had, and that load is done before the shell's next sync: the plug-in it opened is not this
+        // state's. A read then (a save, a copy's clone) gives the state put in, and the next sync opens it with that.
+        for (bool whole : {true, false}) {
+            set_control("Wave", 1000);
+            wait([&] { return values(entry)[1] == 2; });
+            rack->reload(entry);
+            rack->sync(project, 0); // opening again (60 ms), with Wave 2
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            CHECK(rack->status(entry) == PluginStatus::Loading);
+            if (whole) rack->set_states(next);
+            else rack->restore(entry, fresh);
+            std::this_thread::sleep_for(std::chrono::milliseconds(300)); // no tick: the load is done meanwhile
+            CHECK(rack->state(entry) == fresh);
+            rack->sync(project, 0);
+            wait([&] { return ready(entry) && ready(1); });
+            for (int k = 0; k < 20; ++k) tick();
+            CHECK(values(entry)[1] == 0 && rack->state(entry) == fresh);
+        }
         unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;

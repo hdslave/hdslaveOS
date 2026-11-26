@@ -2741,7 +2741,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   A plug-in still open from the project before, or from before an undo gave
   its entry a state, is never where that entry's state is read from: until
   the plug-in that state is for has opened, a save, a copy or a deep
-  freeze keeps the state given (`PluginRack::Entry::live_own`).
+  freeze keeps the state given (`PluginRack::Entry::live_own`). One still
+  opening then, with the state before, is dropped when done and opened
+  again with the state given (its entry's `generation`).
 - A plug-in picked over one in use asks first ("Replace <name>?") and is one
   undo step: the old plug-in loads again with its state as it was, and a redo
   brings the new one back as it was when undone (`PluginSwap` in
