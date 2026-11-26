@@ -99,7 +99,7 @@ struct Snapshot {
     bool monitoring = false, speaker_quieted = false;
     uint8_t usb_state = 0;             // UsbStreamState
     std::vector<HistoryRow> history;   // the undo list's rows, top down, while it is open (shell/history_list.h)
-    uint8_t history_redos = 0;         // how many of them are undone: the row of the state in hand
+    uint16_t history_redos = 0;        // how many of them are undone: the row of the state in hand
     std::vector<SampleFile> files;     // Samples: the folder listed
     std::string sample_root;           // the card's Samples folder, Melodee/Samples; empty: no card
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)

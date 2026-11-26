@@ -2387,7 +2387,8 @@ while following.
   source too) follow it. One undo. Not during
   Seq Record, nor while a loop or Sample Record takes from either track.
   While picking, B2 and B3 switch between moving and copying, B1 steps back.
-- **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
+- **Undo** (Shift + −, redo Shift + +): the last 512 steps (fewer when they
+  hold more than 64 MB, the oldest going first). A take is one; a
   pot's turns are one per control (closed by another control, a press or
   two seconds still); a press on a page is one step of what the page edits.
   On Roll and Step Edit a pad is one step of the pattern from press

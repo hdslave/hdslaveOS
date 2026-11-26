@@ -140,7 +140,7 @@ until they meet. Change this in [Settings](settings.md) (**KNOBS**).
 ## Undo
 
 **SHIFT** + **−** undoes, **SHIFT** + **+** redoes. Melodee keeps the last
-32 steps.
+512 steps.
 
 Hold **SHIFT** + **−** for a moment to open the undo list. It shows the
 steps, newest on top, each with its track and how long ago. **NOW** marks

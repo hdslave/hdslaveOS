@@ -1010,7 +1010,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (ui_.history) { // the undo list's rows, top down: the steps undone, then the steps done (shell/history_list.h)
         const auto& edits = context_.edits;
         const unsigned redos = unsigned(edits.redos()), kept = unsigned(edits.size());
-        out.history_redos = uint8_t(redos);
+        out.history_redos = uint16_t(redos);
         for (unsigned row = 0; row + 1 < history_rows(redos, kept); ++row) {
             bool redo = false;
             unsigned index = 0;

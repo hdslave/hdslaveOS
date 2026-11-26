@@ -117,7 +117,7 @@ struct UiState {
     uint8_t menu = 0, menu_tile = 0, menu_row = 0;
     // The undo list (shell/history_list.h), Shift + Minus held: open, and the row the cursor is on.
     bool history = false;
-    uint8_t history_row = 0;
+    uint16_t history_row = 0;
     // A lesson (shell/lesson.h): which (0 none, else its number + 1), the step in hand, the button held with the
     // step's control (-1 none), where the step's knob stood when it first moved (-1 not yet), when the step began.
     uint8_t lesson = 0, lesson_step = 0;

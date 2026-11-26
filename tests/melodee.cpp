@@ -1208,7 +1208,7 @@ void names() {
 } // namespace
 
 // Undo and redo: edits move between the lists, a new one drops the redos,
-// and only the last 32 are kept.
+// and only the last 512 are kept, fewer when they hold more than the budget.
 void history() {
     Track t;
     t.pads[3].sample = 7; t.pads[3].pitch = 5; t.pad_fx.at[3].slots[0].kind = 2;
@@ -1219,10 +1219,11 @@ void history() {
 
     History h;
     CHECK(!h.undo() && !h.redo());
-    for (int n = 0; n < 40; ++n) { Edit e; e.pad = int16_t(n); h.push(std::move(e)); }
+    const int pushed = int(History::depth) + 8;
+    for (int n = 0; n < pushed; ++n) { Edit e; e.pad = int16_t(n); h.push(std::move(e)); }
     int undone = 0;
-    while (Edit* e = h.undo()) { CHECK(e->pad == 39 - undone); ++undone; }
-    CHECK(undone == int(History::depth));
+    while (Edit* e = h.undo()) { CHECK(e->pad == pushed - 1 - undone); ++undone; }
+    CHECK(History::depth == 512 && undone == int(History::depth));
     Edit* again = h.redo();
     CHECK(again && again->pad == 8);   // the oldest kept
     CHECK(h.can_redo());
@@ -1230,6 +1231,20 @@ void history() {
     h.push(std::move(fresh));          // a new edit: nothing to redo
     CHECK(!h.can_redo() && h.undo()->pad == 99 && h.undo()->pad == 8 && !h.can_undo());
 
+    { // The memory budget: steps that each hold a 4 MB pattern copy keep 16 of them, the newest; the count follows.
+        History big;
+        for (int n = 0; n < 40; ++n) {
+            Edit e; e.pad = int16_t(n);
+            e.pattern_before = std::make_unique<Pattern>();
+            e.pattern_before->events.resize((size_t(4) << 20) / sizeof(Event)); // about 4 MB of notes
+            big.push(std::move(e));
+        }
+        CHECK(big.size() < 40 && big.bytes() <= History::budget && big.last()->pad == 39);
+        CHECK(big.size() * (4u << 20) <= History::budget + (4u << 20));
+        while (big.undo()) {}
+        big.push(Edit {});                 // undone steps go with the next edit, and their memory with them
+        CHECK(big.size() == 1 && big.bytes() < 4096);
+    }
     // A Sample Record take: one edit for its pad and the pads cut during it, kept whole through undo and redo.
     History takes;
     Edit take; take.what = pad_text("Take on", 0);
