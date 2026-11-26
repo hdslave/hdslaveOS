@@ -407,6 +407,8 @@ public:
     void own_plugins(unsigned track, const Edit* pending = nullptr);
     // An entry for a new plug-in, none an undo or redo names (-1 none); `may_drop`: the oldest undo steps may go for it.
     int take_plugin_entry(const Edit* pending = nullptr, bool may_drop = true);
+    unsigned undo_dropped = 0;        // undo steps take_plugin_entry let go, to be said
+    std::string undo_dropped_note();  // "Oldest undo step let go", once; "" none
     int fresh_entry(unsigned entry);  // that entry, emptied for a new plug-in
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

@@ -1786,6 +1786,7 @@ int main(int argc, char** argv) {
         auto& t7 = project.tracks[6];
         CHECK(t7.engine == EngineKind::Plugin && t7.plugin == oldest);
         CHECK(c.edits.size() == named); // the oldest step dropped, the new track's kept
+        CHECK(std::string(ui.notice) == "Oldest undo step let go"); // and said
         shell->set_plugins(nullptr);
         return 0;
     }

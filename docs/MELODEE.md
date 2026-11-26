@@ -2765,7 +2765,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   at a time, until one is free (`Context::take_plugin_entry`); never when
   that cannot free one (all in use but one only the step being made names),
   and never for the split a tick makes. A copy that finds no entry then
-  shares the plug-in of the track copied, heard twice, until one is free. Copy Track
+  shares the plug-in of the track copied, heard twice, until one is free.
+  Undo steps let go are said, in place of the pick's or the copy's own
+  notice ("Oldest undo step let go"). Copy Track
   gives the copy entries of its own at once, the track copied keeping its
   own, and its redo brings back those same entries, so copying, undoing
   and redoing never takes up more of them (`Context::own_plugins`). A

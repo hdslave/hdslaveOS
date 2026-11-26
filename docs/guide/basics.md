@@ -156,7 +156,10 @@ where you are; steps you undid are above it, dim.
 - **B1** (**BACK**) closes the list with no change. Any other button closes
   it and does its own job. A recording take is one step. Turning a knob is one step per
 control. Mute, solo and the transport are not undo steps. Loading or
-creating a project clears the undo history.
+creating a project clears the undo history. When all 32 plug-in places
+are taken and a new plug-in needs one that an old undo step still holds,
+Melodee lets the oldest undo steps go to make room, and says so ("Oldest
+undo step let go").
 
 ## Erase and copy
 

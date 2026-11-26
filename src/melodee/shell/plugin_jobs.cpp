@@ -82,9 +82,18 @@ int Context::take_plugin_entry(const Edit* pending, bool may_drop) {
         bool freeable = false;
         for (unsigned e = 0; e < max_plugins; ++e) freeable |= !plugin_used_by(project, e) && !kept_by_pending[e];
         if (!freeable || !may_drop) return -1;
-        if (edits.can_redo()) { edits.clear_redo(); continue; }
+        if (edits.can_redo()) { edits.clear_redo(); continue; } // a new step clears them anyway
         if (!edits.drop_oldest()) return -1;
+        ++undo_dropped; // said with the pick's or the copy's notice (undo_dropped_note)
     }
+}
+
+// The notice for a pick or a copy that let undo steps go: that, in place of its own ("" none; once).
+std::string Context::undo_dropped_note() {
+    if (!undo_dropped) return {};
+    const std::string note = undo_dropped == 1 ? "Oldest undo step let go" : std::to_string(undo_dropped) + " oldest undo steps let go";
+    undo_dropped = 0;
+    return note;
 }
 
 int Context::fresh_entry(unsigned e) {
@@ -302,7 +311,8 @@ void Context::choose_plugin(const PluginFile& file) {
     ui.plugin_row[size_t(entry)] = 0;
     dirty = true;
     plugins->sync(project, plugins_asleep());
-    notice("Loading " + file.name);
+    const auto dropped = undo_dropped_note();
+    notice(dropped.empty() ? "Loading " + file.name : dropped);
     if (instrument && ui.plugin_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit); // its parameters
     open(ui.plugin_back);
     if (!instrument) picker_done(); // from the mixer's plus: back there

@@ -48,7 +48,8 @@ void copy_track(Context& c, unsigned from, unsigned to) {
     restore_track(c, to, *next); // the source's motion comes in its patterns
     c.own_plugins(to, &edit); // its plug-ins in entries of their own now, so a redo brings back these, not new ones each time
     edit.track_after = std::make_unique<TrackState>(track_state(c, to));
-    c.notice(what);
+    const auto dropped = c.undo_dropped_note();
+    c.notice(dropped.empty() ? what : dropped);
     c.edits.push(std::move(edit));
 }
 
