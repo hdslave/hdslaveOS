@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "melodee/engine/print_render.h"
+#include "melodee/pages/page.h" // draw_name_sheet: name-target draws the sheet
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
@@ -2376,6 +2377,42 @@ int main(int argc, char** argv) {
         c.select_track(3);
         tap(SurfaceButton::TopRight);
         CHECK(std::string(project.tracks[2].name) == "LEAD" && std::string(project.tracks[3].name) != "LEAD");
+        // Its header and accent say what it was opened for, whichever track or sequence is in hand when it is drawn: the
+        // band over the knobs is drawn the same with another in hand as with its own.
+        auto band = [&] {
+            shell->snapshot(*drawn, now);
+            juce::Image image(juce::Image::ARGB, int(ui::zone::width), int(ui::zone::height), true);
+            {
+                juce::Graphics g(image);
+                ui::Paint paint(g);
+                g.fillAll(ui::colour::bg);
+                draw_name_sheet(paint, *drawn);
+            }
+            std::vector<uint32_t> pixels;
+            for (int y = 0; y < int(ui::zone::knobs_y); ++y)
+                for (int x = 0; x < int(ui::zone::width); ++x) pixels.push_back(image.getPixelAt(x, y).getARGB());
+            return pixels;
+        };
+        auto same = [&](auto open, auto elsewhere, auto back) { // opened and drawn; another in hand, drawn again; cancelled
+            back();
+            open();
+            ui.name.set("NAME");
+            const auto own = band();
+            elsewhere();
+            const auto other = band();
+            CHECK(ui.name.open());
+            tap(SurfaceButton::TopLeft); // CANCEL
+            CHECK(!ui.name.open() && own == other);
+        };
+        project.tracks[1].bank = 1; // another bank letter in hand
+        same([&] { c.open(PageId::Edit); chord(); CHECK(ui.name.target == NameTarget::Sound); }, [&] { c.select_track(3); }, [&] { c.select_track(2); });
+        same([&] { c.open(PageId::Samples); chord(); CHECK(ui.name.target == NameTarget::Bank); }, [&] { c.select_track(1); },
+             [&] { c.select_track(0); });
+        same([&] { c.open(PageId::Edit); chord(); CHECK(ui.name.target == NameTarget::Sample); }, [&] { c.select_track(1); },
+             [&] { c.select_track(0); });
+        same([&] { c.name_track(2); CHECK(ui.name.target == NameTarget::Track); }, [&] { c.select_track(0); }, [&] { c.select_track(2); });
+        same([&] { c.name_scene(2); CHECK(ui.name.target == NameTarget::Scene); }, [&] { project.scene = 0; }, [&] { project.scene = 2; });
+        project.scene = 0;
         shell->set_store(nullptr);
     }
     shell->set_library(nullptr);

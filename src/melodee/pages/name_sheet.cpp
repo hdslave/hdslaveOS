@@ -20,8 +20,10 @@ using namespace ui;
 
 void draw_name_sheet(Paint& p, const Snapshot& s) {
     const auto& e = s.ui.name;
+    // What it was opened for (NameEntry: track, bank, scene), not what is in hand now: that is what Done saves.
+    const auto& target = s.project.tracks[e.track % track_count];
     bool sound = e.target == NameTarget::Sound || e.target == NameTarget::PluginPreset || e.target == NameTarget::Sample || e.target == NameTarget::Bank;
-    auto accent = sound ? colour_of(s) : colour::text;
+    auto accent = sound ? track_colour(e.track % track_count) : colour::text;
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     soft_keys(p, {{"CANCEL", e.caps_only ? "" : "Aa", "SAVE"}, e.lower ? 1 : 2, accent, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
 
@@ -32,17 +34,17 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     case NameTarget::ProjectRename: what = "RENAME PROJECT"; break;
     case NameTarget::Marker: what = "MARKER " + juce::String::fromUTF8("\xc2\xb7 BAR ") + juce::String(s.ui.song_cursor + 1); break;
     case NameTarget::PluginPreset: what = "SAVE PRESET"; break;
-    case NameTarget::Sound: what = "SAVE SOUND " + juce::String::fromUTF8("\xc2\xb7 ") + engine_info(s.track().engine).name; break;
+    case NameTarget::Sound: what = "SAVE SOUND " + juce::String::fromUTF8("\xc2\xb7 ") + engine_info(target.engine).name; break;
     case NameTarget::Sample: what = "SAVE SAMPLE"; break;
-    case NameTarget::Bank: what = "SAVE BANK " + juce::String::fromUTF8("\xc2\xb7 ") + juce::String::charToString(juce::juce_wchar('A' + s.track().bank % sampler_banks)); break;
+    case NameTarget::Bank: what = "SAVE BANK " + juce::String::fromUTF8("\xc2\xb7 ") + juce::String::charToString(juce::juce_wchar('A' + e.bank % sampler_banks)); break;
     case NameTarget::Mixdown: { // what Song's Export makes (the wheel's choice)
         static const char* const made[] {"AUDIO MIXDOWN", "AUDIO MIXDOWN", "AUDIO MIXDOWN", "STEMS", "MIDI FILE", "MPC 3 PROJECT", "ABLETON LIVE SET"};
         static_assert(std::size(made) == export_kinds::count);
         what = made[s.ui.export_kind % export_kinds::count];
         break;
     }
-    case NameTarget::Scene: what = "SEQUENCE " + juce::String(s.project.scene % pattern_count + 1); break; // roadmap P5
-    case NameTarget::Track: what = "TRACK " + juce::String(s.ui.track % track_count + 1); break;
+    case NameTarget::Scene: what = "SEQUENCE " + juce::String(e.scene % pattern_count + 1); break; // roadmap P5
+    case NameTarget::Track: what = "TRACK " + juce::String(e.track % track_count + 1); break;
     case NameTarget::None: break;
     }
     Header h = header_of(s);

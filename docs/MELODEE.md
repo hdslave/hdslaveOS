@@ -1625,8 +1625,10 @@ the file holds, to the bit.
   name and bank letter first), then `Melodee/Samples/Banks/<name>.mldb` with every
   pad's values, its own chain and the paths of the files it plays (nothing
   is copied). Save Bank, Save Sample and Save sound keep the track (its
-  bank, its pad) the Name sheet opened for: another track picked before
-  Done (MIDI Remote) does not change what is saved or named. Bank files
+  bank, its pad) the Name sheet opened for, as Name Track and a
+  sequence's name keep theirs (`NameEntry`): another track picked before
+  Done (MIDI Remote) does not change what is saved or named, nor the
+  sheet's header and colour, which go on naming it. Bank files
   show in the browser tagged BANK; **Push** on one
   loads it into the bank in view (Pad Bank picks it): its sixteen pads and
   their chains replace that bank's, their mutes cleared; the other banks,

@@ -33,6 +33,10 @@ struct NameEntry {
     uint32_t last_at = 0;
     uint8_t suggestion = 0;  // K1's place in the ready names
     char first_suggestion[capacity] {}; // the ready name made for this target (a free project name, a sound's)
+    // What it was opened for, saved there and shown in its header whichever track or sequence is in hand at Done (MIDI
+    // Remote picks tracks meanwhile): the track in hand when it opened, or the one Name Track names; Save Bank's bank,
+    // Save Sample's pad, a sequence's number.
+    uint8_t track = 0, bank = 0, pad_at = 0, scene = 0;
 
     bool open() const { return target != NameTarget::None; }
 
