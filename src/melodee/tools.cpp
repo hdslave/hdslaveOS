@@ -1917,6 +1917,7 @@ const Preview previews[] {
          s.ui.page = PageId::Samples; s.ui.track = 3; s.sample_root = "/media/card/Melodee/Samples"; s.files_folder = s.sample_root;
          s.project.tracks[3].bank = 1; s.sample = break_sample();
          s.ui.name.start(NameTarget::Bank, "KIT B", name_length - 1, true);
+         s.ui.name.track = 3; s.ui.name.bank = 1; // what it opened for, as Context::save_bank() sets it
      }},
     {"browserinternal", [](Shell&, Snapshot& s) { // B2: the internal drive's categories, preview on
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_drive = 1; s.ui.settings.preview = true; s.ui.files_cursor = 7;
@@ -2817,11 +2818,13 @@ const Preview previews[] {
     {"namesound", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.playing = true;
          s.ui.name.start(NameTarget::Sound, "PLUCK", name_length - 1, true);
+         s.ui.name.track = 2; // the track it opened for, as Context::open_name() sets it
          s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
      }},
     {"savesample", [](Shell&, Snapshot& s) { // Shift + Sample Select on a kit: Save Sample's Name sheet
          on_stage(s, 3, 0, 0); s.sample = break_sample();
          s.ui.name.start(NameTarget::Sample, "BREAK", name_length - 1, false);
+         s.ui.name.track = 3; s.ui.name.pad_at = uint8_t(s.project.tracks[3].last_pad % sampler_pads); // as save_sample()
      }},
     {"nameproject", [](Shell&, Snapshot& s) { // Save on a project with no file yet: a name first (QUICKSTART.md)
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;
@@ -3026,7 +3029,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     EngineHost host;
     Shell shell(host);
     board_project(shell);
-    unsigned written = 0, text_issues = 0, control_breaks = 0;
+    unsigned written = 0, text_issues = 0, control_breaks = 0, name_breaks = 0;
     // The controls audit (shell/controls_rules.h): every preview's B1-B3 and K1-K3, as a table beside the PNGs.
     std::string table = "preview\tpage\tover\tB1\tB2\tB3\tK1\tK2\tK3\tbreaks\n";
     if (names.empty()) { // every page: first the PNGs of pages that are gone, so no removed screen lingers among them
@@ -3054,6 +3057,21 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         // The pattern in view follows the track the preview picked (unless it set one of its own).
         const auto& track = snapshot->project.tracks[snapshot->ui.track];
         if (snapshot->pattern == before) snapshot->pattern = shell.patterns().at[snapshot->ui.track][track.pattern];
+        // A sound's Name sheet (Save Sound, Save Sample, Save Bank, a plug-in preset) as the shell opens it
+        // (Context::open_name and the job that asks): for the track in view, with Save Bank's bank and Save Sample's
+        // pad of that track. Aimed elsewhere, it would draw another track's header and colour than the page under it.
+        const auto sound = [](NameTarget t) {
+            return t == NameTarget::Sound || t == NameTarget::Sample || t == NameTarget::Bank || t == NameTarget::PluginPreset;
+        };
+        if (const auto& n = snapshot->ui.name; n.open() && sound(n.target)) {
+            const bool aimed = n.track == snapshot->ui.track % track_count
+                            && (n.target != NameTarget::Bank || n.bank == track.bank % sampler_banks)
+                            && (n.target != NameTarget::Sample || n.pad_at == track.last_pad % sampler_pads);
+            if (!aimed) {
+                std::printf("MELODEE_NAME %s: the Name sheet is not for track %u in view\n", preview.name, snapshot->ui.track % track_count + 1);
+                ++name_breaks;
+            }
+        }
         // MELODEE_PREVIEW_SCALE: one more size beside 1x and 2x (4: the docs' drawings, as <name>@4x.png).
         std::vector<int> scales {1, 2};
         if (auto* v = std::getenv("MELODEE_PREVIEW_SCALE"); v && std::atoi(v) > 2 && std::atoi(v) <= 8) scales.push_back(std::atoi(v));
@@ -3103,9 +3121,9 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     const bool flare = ui::hdslave_flare_ready();
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << " control_breaks=" << control_breaks
               << " flare=" << (flare ? "ok" : "BROKEN") << '\n';
-    // Text under the floor or cut by its box, a soft key or card against the controls rules, and an HDSLAVE flare that
-    // does not decode to 320 x 240, fail the build check.
-    return text_issues || control_breaks || !flare ? 1 : 0;
+    // Text under the floor or cut by its box, a soft key or card against the controls rules, a Name sheet not for the
+    // track in view, and an HDSLAVE flare that does not decode to 320 x 240, fail the build check.
+    return text_issues || control_breaks || name_breaks || !flare ? 1 : 0;
 }
 
 // Melodee's plug-in screen (sdk/melodee-screen/melodee_screen.h), as the MPC would show it: PLUGIN (a .clap) opened through the
