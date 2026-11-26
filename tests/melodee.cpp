@@ -8373,9 +8373,11 @@ void pad_lights() {
     CHECK(is(0, Hue::Red, 1) && is(12, Hue::None, 0));
     ui.erase = false; ui.copying = UiState::Copying::Pads; light(plays);
     CHECK(is(0, Hue::Track, 2) && is(12, Hue::None, 0));
-    ui.copy_from = 4; light(plays);
+    ui.copy_from = 4; ui.copy_track = 1; light(plays);
     CHECK(is(4, Hue::White, 4) && is(0, Hue::Red, 1) && is(12, Hue::Track, 1));
-    ui.copying = UiState::Copying::Off; ui.copy_from = -1;
+    ui.copy_track = 3; light(plays); // picked on another kit (issue 48): every pad here is a place it can go
+    CHECK(is(4, Hue::Red, 1) && is(0, Hue::Red, 1) && is(12, Hue::Track, 1));
+    ui.copying = UiState::Copying::Off; ui.copy_from = -1; ui.copy_track = 0;
     // The Name sheet: keys white, delete red, the one just typed bright for the retap window.
     ui.name.start(NameTarget::ProjectSave, "", 12, false); ui.name.last_pad = 6; ui.name.last_at = 900; light({}, 1000);
     CHECK(is(0, Hue::White, 2) && is(15, Hue::Red, 2) && is(6, Hue::White, 4));

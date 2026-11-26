@@ -804,13 +804,14 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
         else context_.delete_pad(kit);
         return;
     case PadContext::PadCopy:
-        if (ui_.copy_from < 0) { // first the pad to copy
-            if (context_.track().pads[kit].used()) { ui_.copy_from = int8_t(kit); context_.track().last_pad = uint8_t(kit); }
-            else context_.notice(pad_text("Empty", kit));
+        if (ui_.copy_from < 0) { // first the pad to copy, and its track: Pad Bank + pad between takes it to another kit (issue 48)
+            if (context_.track().pads[kit].used()) {
+                ui_.copy_from = int8_t(kit); ui_.copy_track = uint8_t(ui_.track % track_count); context_.track().last_pad = uint8_t(kit);
+            } else context_.notice(pad_text("Empty", kit));
             return;
         }
-        if (unsigned(ui_.copy_from) == kit) return; // then where it goes
-        context_.copy_pad(unsigned(ui_.copy_from), kit);
+        if (ui_.copy_track == ui_.track % track_count && unsigned(ui_.copy_from) == kit) return; // then where it goes
+        context_.copy_pad(ui_.copy_track, unsigned(ui_.copy_from), kit);
         context_.track().last_pad = uint8_t(kit);
         ui_.stop_copying();
         return;

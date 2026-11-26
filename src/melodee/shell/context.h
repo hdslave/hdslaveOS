@@ -299,7 +299,7 @@ public:
     void live_erase_release(unsigned pad);
     void live_erase_tick(); // each frame: the notes passed since the last one
     void live_erase_end();
-    void copy_pad(unsigned from, unsigned to);               // Shift + Erase, pad, pad: sound and effects
+    void copy_pad(unsigned from_track, unsigned from, unsigned to); // Shift + Erase, pad, pad: sound and effects, onto the selected track
     void restore_pattern(unsigned track, unsigned pattern, const Pattern& value);
     void restore_pad(unsigned track, unsigned kit, const PadState& value);
     void send_trims(unsigned track, unsigned kit); // round 3 "instrument C": the pad's zone trims, afresh

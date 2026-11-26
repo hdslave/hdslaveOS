@@ -783,7 +783,7 @@ Look copy_look(const PadScene& s, unsigned pad) {
     unsigned kit = kit_of(t, pad);
     bool used = t.pads[kit].used();
     if (ui.copy_from < 0) return used ? kit_hue(s, kit, dim) : Look {}; // the pad to copy
-    if (ui.copy_from == int(kit)) return white(full);
+    if (ui.copy_from == int(kit) && ui.copy_track == selected_index(s)) return white(full); // another kit's: none here
     return used ? red(faint) : track(selected_index(s), faint); // where: replaced, or landing clean
 }
 // Shift + Erase on a synth's keys, Roll or Step Edit: the keys with notes in the track's colour; then the key

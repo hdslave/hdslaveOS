@@ -206,7 +206,7 @@ creating a project clears the undo history.
 | Step Edit in STEPS mode | A step to another step |
 | Roll with marked notes | The marked notes: push the encoder to paste them at the cursor |
 | Roll, Step Edit in PLAY mode, the play pages of a keygroup, plug-in or MIDI track | A key's notes to another key |
-| A kit's play pages | Kit pads |
+| A kit's play pages | Kit pads. To copy to another kit, hold **PAD BANK** and press its pad between the source and the target. |
 | Song | The clip, placed after itself |
 | Project | The selected project |
 | Effect chains | The selected effect, placed after itself |

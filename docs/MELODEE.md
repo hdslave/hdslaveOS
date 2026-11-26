@@ -2388,7 +2388,8 @@ while following.
   target keeps its mix strip). Seq held, or Patterns: patterns. Step Edit in STEPS mode: a
   step onto another (a kit: the lane's notes). Roll, Step Edit in PLAY mode and a
   synth's play pages: a key's notes onto another key in the pattern. A
-  kit's play pages: kit pads. These pick: the first pad is the source, the
+  kit's play pages: kit pads, onto another kit too (Pad Bank + its pad
+  between the picks; the source keeps its track, issue 48). These pick: the first pad is the source, the
   next the target, whose own notes or sound go first (one undo). Again, or
   Erase, leaves. Song: the clip under the cursor after itself (DUPLICATE).
   Project: the project under the cursor (DUPLICATE). A chain: the effect

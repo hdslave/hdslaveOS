@@ -1742,15 +1742,19 @@ void Context::erase_pad_notes(unsigned kit) {
     notice(found ? what : pad_text("No notes on", kit));
 }
 
-void Context::copy_pad(unsigned from, unsigned to) {
-    from %= sampler_pads; to %= sampler_pads;
-    if (from == to) return;
+void Context::copy_pad(unsigned from_track, unsigned from, unsigned to) {
+    from_track %= track_count; from %= sampler_pads; to %= sampler_pads;
+    bool here = from_track == ui.track % track_count;
+    if (here && from == to) return;
+    const auto& source = project.tracks[from_track]; // another kit's (issue 48: the pad was read off the selected track)
+    if (source.engine != EngineKind::Sampler || !source.pads[from].used()) { notice(pad_text("Empty", from)); return; }
     auto& t = track();
     Edit edit;
     char a[4], b[4]; pad_label(from, a); pad_label(to, b);
-    edit.what = std::string("Copy ") + a + " to " + b; edit.track = ui.track; edit.pad = int16_t(to);
+    edit.what = std::string("Copy ") + (here ? "" : "T" + std::to_string(from_track + 1) + " ") + a + " to " + b;
+    edit.track = ui.track; edit.pad = int16_t(to);
     edit.pad_before = pad_state(t, to);
-    edit.pad_after = pad_state(t, from);
+    edit.pad_after = pad_state(source, from);
     restore_pad(ui.track, to, edit.pad_after);
     notice(edit.what);
     edits.push(std::move(edit));
