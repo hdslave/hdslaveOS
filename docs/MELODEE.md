@@ -2558,6 +2558,12 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   processing. The fork’s `--melodee-plugin-screen` command accepts
   `edit`, `stage`, `strip`, `pad:N` and `png:NAME` for rack previews.
   See [Using a plug-in’s screen](guide/plug-ins.md#a-plug-ins-own-screen).
+  Stage shows PANEL only while the plug-in's panel says it draws a page.
+  The shell reads that panel twenty times a second, at once when the page
+  or the track in hand shows another plug-in, and again before each
+  button or wheel turn acts (`Context::refresh_plugin_panel`). So − / +
+  and the wheel on a track's PANEL never act on its PRESETS just after
+  Pad Bank + pad, MIDI Remote or another page.
 - **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
   for each plug-in opened, made on the message thread. A bundle's presets
   (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot

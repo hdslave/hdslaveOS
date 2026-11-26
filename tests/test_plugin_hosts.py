@@ -149,6 +149,9 @@ class PluginHostTests(unittest.TestCase):
     def test_undo_brings_a_dropped_plugin_back_with_its_state(self):
         self.run_rack_fixture("undo-state")
 
+    def test_minus_plus_and_the_wheel_on_panel_never_load_a_preset(self):
+        self.run_rack_fixture("panel-lag")
+
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 

@@ -687,7 +687,7 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
-    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets") {
+    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -750,7 +750,7 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
     }
-    if (mode == "presets-track" || mode == "copy-presets") { // two tracks of the same synth, each its own instance, and a kit
+    if (mode == "presets-track" || mode == "copy-presets" || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -1211,6 +1211,40 @@ int main(int argc, char** argv) {
         std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
         wait([&] { return ready(entry); });
         CHECK(values(entry)[0] == 0.5 && values(entry)[1] == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Both plug-in tracks left on PANEL (their own screens). Another track picked (Pad Bank + pad, or as MIDI Remote
+    // picks one), or Stage opened again from the master's page: − / + and the wheel go to that track's PANEL at once,
+    // never to its PRESETS (the panel the shell reads twenty times a second still being the other track's, or none).
+    if (mode == "panel-lag") {
+        wait([&] { return ready(1); });
+        const auto panel = stage_find(EngineKind::Plugin, StageKind::PluginScreen);
+        CHECK(panel.found);
+        for (unsigned t : {0u, 1u}) { ui.stage_group[t] = uint8_t(panel.at.group); ui.stage_sub[t] = uint8_t(panel.at.sub); }
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.has_screen && ui.plugin_panel.status == PluginStatus::Ready; });
+        auto shown = [&] { const auto& t = project.tracks[ui.track % track_count]; return stage_page_now(ui, t, stage_skip(project, ui, t)).kind; };
+        CHECK(shown() == StageKind::PluginScreen);
+        const int first = rack->programs(entry).current, second = rack->programs(1).current;
+        auto none_armed = [&](SurfaceButton key, int detents) {
+            tap(key);
+            CHECK(!ui.preset_due);
+            turn(detents);
+            CHECK(!ui.preset_due && shown() == StageKind::PluginScreen);
+        };
+        pick_track(1);
+        none_armed(SurfaceButton::Plus, 1);
+        c.select_track(0); // as MIDI Remote picks a track: no button between
+        none_armed(SurfaceButton::Minus, -1);
+        c.select_track(1);
+        c.open(PageId::Master);
+        for (int k = 0; k < 30; ++k) tick();
+        c.open(PageId::Stage);
+        none_armed(SurfaceButton::Plus, 1);
+        c.stage_tick(UINT32_MAX);
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(rack->programs(entry).current == first && rack->programs(1).current == second);
         shell->set_plugins(nullptr);
         return 0;
     }

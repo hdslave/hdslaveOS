@@ -491,14 +491,26 @@ void Context::plugins_tick(uint32_t at) {
         plugins->screen_view(view);
     }
     companion_requests();
-    if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
+    // The cards' texts twenty times a second, and at once when the plug-in in view is another (refresh_plugin_panel).
+    const int focus = plugin_in_focus();
+    const bool moved = focus != (ui.plugin_panel.entry < max_plugins ? int(ui.plugin_panel.entry) : -1);
+    if (!moved && at - plugin_panel_at < 50) return;
     plugin_panel_at = at;
     { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)
         const auto& t = track();
         if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
         else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
     }
-    int entry = plugin_in_focus();
+    refresh_plugin_panel();
+}
+
+// The panel of the plug-in the page in view shows, read now: from plugins_tick (often), and by the shell before a
+// button or the wheel acts. Stage passes over PANEL unless this panel says the track's plug-in draws its own screen
+// (shell/features.h), so one twenty times a second, or another plug-in's (just after Pad Bank + pad, or back from the
+// mixer), made − / +, the wheel and B1 act on PRESETS there and load a preset into a track that was on its PANEL.
+void Context::refresh_plugin_panel() {
+    if (!plugins) return;
+    const int entry = plugin_in_focus();
     if (entry < 0) { ui.plugin_panel = PluginPanel {}; return; }
     plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], ui.plugin_panel);
     ui.plugin_row[size_t(entry)] = ui.plugin_panel.row; // clamped to its rows
