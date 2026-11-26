@@ -8451,6 +8451,8 @@ void erase_copy_everywhere() {
     ui.seq_held = true; CHECK(copy_here(*project, ui, true, false) == C::Patterns); ui.seq_held = false;
     ui.page = PageId::Mixer; CHECK(copy_here(*project, ui, false, false) == C::None); // SENDS: nothing (Pad Bank held: the tracks)
     ui.page = PageId::Patterns; CHECK(copy_here(*project, ui, true, false) == C::Patterns); // the page's patterns before the kit's pads
+    ui.page = PageId::Scenes; CHECK(copy_here(*project, ui, true, false) == C::Scenes); // Sequences: a sequence
+    ui.scene_capture = true; CHECK(copy_here(*project, ui, true, false) == C::None); ui.scene_capture = false; // CAPTURE waits for its pad
     ui.page = PageId::StepEdit; ui.step_pads = true; CHECK(copy_here(*project, ui, false, false) == C::Steps);
     ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::Keys);
     ui.page = PageId::StepEdit; ui.step_pads = false; CHECK(copy_here(*project, ui, false, false) == C::Keys);
@@ -8485,6 +8487,10 @@ void erase_copy_everywhere() {
     ui.page = PageId::Project; ui.project_list = false; CHECK(!erase_tap_page(ui));
     ui.project_list = true; CHECK(erase_tap_page(ui));
     ui.page = PageId::Stage; CHECK(!erase_tap_page(ui));
+    ui.plugin_panel.screen = true; CHECK(!erase_tap_page(ui)); // a plug-in's own page: only when it takes Erase
+    ui.plugin_panel.screen_keys = screen_key_mute; CHECK(!erase_tap_page(ui));
+    ui.plugin_panel.screen_keys = screen_key_mute | screen_key_erase; CHECK(erase_tap_page(ui));
+    ui.plugin_panel = PluginPanel {};
 
     // Erase lit wherever it has a job, Shift + Erase wherever Copy does.
     using B = SurfaceButton;
@@ -9420,6 +9426,22 @@ void pattern_motion() {
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength && !lock_place(*project, ui, q, tick, hold));
         ui.page = PageId::Roll; ui.roll_key = 60; ui.held_note = 4;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::Lock && lock_place(*project, ui, q, tick, hold) && hold == 48);
+        // Erase + pot on a lock card: that lane's lock out; the step's note, the other lane's lock and the lane's
+        // recorded moves stay, and the card shows the track's own value again.
+        const unsigned first = lane_param(cards[0].id), second = lane_param(cards[1].id);
+        q.write_motion(point(3, second, 9, 0, 48));
+        q.write_motion(point(5, first, 30)); // a recorded move
+        CHECK(erase_resets(cards[0]) && erase_resets(cards[1]));
+        CHECK(!remove_lock(q, 4 * sixteenth_ticks, first, 0) && !remove_lock(q, 5 * sixteenth_ticks, first, 0)); // none; a move is no lock
+        CHECK(remove_lock(q, 3 * sixteenth_ticks, first, 0) && !q.lock_at(3 * sixteenth_ticks, first, 0));
+        CHECK(q.lock_at(3 * sixteenth_ticks, second, 0) && q.lane_points(first, 0) == 1 && q.events.size() == 1);
+        CHECK(!remove_lock(q, 3 * sixteenth_ticks, first, 0));
+        ui.page = PageId::StepEdit; ui.held_step = 3;
+        int shown = 0; // the lanes with moves come first now: the card found by its lane
+        for (const auto& b : page_bindings(*project, ui, q, false))
+            if (b.kind == Binding::Kind::Lock && lane_param(b.id) == first)
+                shown += b.value == project->tracks[0].params[size_t(info.favourites[0])];
+        CHECK(shown == 1);
     }
 }
 
@@ -12226,6 +12248,193 @@ void sequence_links() {
         for (auto& t : p->tracks) { t.in_scene = {}; t.off = false; }
         p->scene = 0;
         CHECK(print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000) == with);
+    }
+    {   // Mutes kept per sequence: a pick and CAPTURE keep the mutes as they are; a mute by hand is kept in the
+        // sequence in hand (filling a new one as a pick does); a launch sets the mutes of the tracks it keeps.
+        auto p = std::make_unique<Project>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0); synth(p->tracks[2], 0); // track 4 unused
+        p->tracks[1].mix.mute = true;
+        CHECK(keep_pick(*p, 0, 0, 3, 0));
+        CHECK(!scene_muted(p->tracks[0], 0) && scene_muted(p->tracks[1], 0) && !scene_muted(p->tracks[2], 0));
+        // A mute in a new sequence: every used track keeps what it is on, the muted one its mute.
+        p->tracks[2].mix.mute = true;
+        CHECK(keep_mute(*p, 1, 2, true, 0));
+        CHECK(scene_kept(*p, 1) && p->tracks[0].in_scene[1] == 1 && p->tracks[2].in_scene[1] == 1 && p->tracks[3].in_scene[1] == 0);
+        CHECK(scene_muted(p->tracks[1], 1) && scene_muted(p->tracks[2], 1) && !scene_muted(p->tracks[0], 1));
+        // In a kept one: the mute alone, the patterns kept stay.
+        p->tracks[0].pattern = 9;
+        CHECK(!keep_mute(*p, 0, 0, true, 0) && scene_muted(p->tracks[0], 0) && p->tracks[0].in_scene[0] == 4);
+        CHECK(!keep_mute(*p, 0, 1, false, 0) && !scene_muted(p->tracks[1], 0));
+        // What a launch sets: the tracks the sequence keeps, and those muted.
+        auto m = scene_mutes_of(*p, 0);
+        CHECK(m.set == 0b111 && m.muted == 0b001);
+        CHECK(scene_mutes_of(*p, 5).set == 0); // a new sequence sets none: every mute stays
+        p->tracks[2].in_scene[0] = scene_off; // a track kept off has its mute set too
+        CHECK(scene_mutes_of(*p, 0).set == 0b111);
+        // Scenes far apart keep their own bits.
+        CHECK(keep_mute(*p, 100, 1, true, 0) && scene_muted(p->tracks[1], 100) && !scene_muted(p->tracks[1], 36));
+        // CAPTURE keeps the mutes now; ERASE forgets them.
+        p->tracks[0].mix.mute = false; p->tracks[1].mix.mute = true; p->tracks[2].mix.mute = false;
+        keep_all(*p, 0, 0);
+        CHECK(!scene_muted(p->tracks[0], 0) && scene_muted(p->tracks[1], 0) && !scene_muted(p->tracks[2], 0));
+        forget_scene(*p, 0);
+        CHECK(!scene_muted(p->tracks[1], 0) && scene_mutes_of(*p, 0).set == 0);
+        // The file: the mutes come back; a file from before (no SEQL) keeps each track's mute as saved.
+        auto bank = std::make_unique<PatternBank>();
+        keep_all(*p, 3, 0);
+        p->tracks[1].mix.mute = false;
+        auto bytes = save_project(*p, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty());
+        for (unsigned t = 0; t < track_count; ++t) CHECK(back->tracks[t].scene_mutes == p->tracks[t].scene_mutes);
+        CHECK(scene_muted(back->tracks[1], 3) && scene_muted(back->tracks[2], 1) && !back->tracks[1].mix.mute);
+        put(bank->at[0][1], 0, 60, 100); // a column with notes: kept in an old file
+        p->tracks[2].mix.mute = true;
+        auto old_bytes = save_project(*p, *bank);
+        std::vector<uint8_t> older(old_bytes.begin(), old_bytes.begin() + 8);
+        for (size_t at = 8; at + 8 <= old_bytes.size();) {
+            size_t size = size_t(old_bytes[at + 4]) | size_t(old_bytes[at + 5]) << 8 | size_t(old_bytes[at + 6]) << 16 | size_t(old_bytes[at + 7]) << 24;
+            if (std::memcmp(old_bytes.data() + at, "SEQL", 4) != 0) older.insert(older.end(), old_bytes.begin() + long(at), old_bytes.begin() + long(at + 8 + size));
+            at += 8 + size;
+        }
+        CHECK(load_project(older, *back, *back_bank).empty());
+        CHECK(back->tracks[2].in_scene[1] == 2 && scene_muted(back->tracks[2], 1) && !scene_muted(back->tracks[0], 1));
+        CHECK(!scene_muted(back->tracks[2], 5)); // a scene that keeps nothing keeps no mute
+        // A print's hash does not see them.
+        std::array<std::vector<uint8_t>, max_plugins> states;
+        const uint64_t with = print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000);
+        for (auto& t : p->tracks) t.scene_mutes = {};
+        CHECK(print_hash(*p, *bank, states, PrintTap::PostFx, PrintTail::Loop, 48000) == with);
+    }
+    {   // A sequence copied (Shift + Erase on Sequences): its name, tempo, colour and mutes, and each kept pattern a copy
+        // in the track's next free pattern; off and nothing kept as they are; no free pattern: the same one, shared.
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0); synth(p->tracks[1], 0); synth(p->tracks[2], 0); synth(p->tracks[3], 0);
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[1][4], 0, 62, 100);
+        p->tracks[0].in_scene[0] = 1; p->tracks[1].in_scene[0] = 5; p->tracks[2].in_scene[0] = scene_off; // track 4 plays on
+        set_scene_muted(p->tracks[1], 0, true);
+        p->scenes[0].set_name("VERSE"); p->scenes[0].tempo = 1000; p->scenes[0].colour = 3;
+        put(bank->at[0][1], 0, 60, 100);   // track 1's P2 has notes: not free
+        p->tracks[0].in_scene[7] = 3;      // its P3 is kept in SEQ 8: not free
+        p->tracks[0].pattern = 3;          // and it is on P4: not free
+        bank->at[0][4].follow.action = 1;  // P5 has a follow action: not free
+        Clip clip; clip.track = 0; clip.pattern = 5; clip.bar = 0; clip.bars = 1;
+        CHECK(p->song.place(clip));         // P6 plays in the song: not free
+        CHECK(free_pattern(*p, *bank, 0, 0, 1) == 6);
+        CHECK(free_pattern(*p, *bank, 0, 0, 7) == 2); // the scene copied onto may give up its own
+        CHECK(free_pattern(*p, *bank, 1, 4, 1) == 5);
+        std::vector<PatternCopy> copies;
+        CHECK(copy_scene_links(*p, *bank, 0, 1, copies) == 0);
+        CHECK(copies.size() == 2);
+        CHECK(copies[0].track == 0 && copies[0].from == 0 && copies[0].into == 6);
+        CHECK(copies[1].track == 1 && copies[1].from == 4 && copies[1].into == 5);
+        CHECK(p->tracks[0].in_scene[1] == 7 && p->tracks[1].in_scene[1] == 6);
+        CHECK(p->tracks[2].in_scene[1] == scene_off && p->tracks[3].in_scene[1] == 0);
+        CHECK(scene_muted(p->tracks[1], 1) && !scene_muted(p->tracks[0], 1));
+        CHECK(std::strcmp(p->scenes[1].name, "VERSE") == 0 && p->scenes[1].tempo == 1000 && p->scenes[1].colour == 3);
+        CHECK(p->tracks[0].in_scene[0] == 1 && p->tracks[1].in_scene[0] == 5); // the source as it was
+        // Onto itself: nothing.
+        copies.clear();
+        CHECK(copy_scene_links(*p, *bank, 1, 1, copies) == 0 && copies.empty());
+        // No free pattern on a track: it keeps the same pattern in both.
+        for (unsigned n = 0; n < pattern_count; ++n) if (bank->at[1][n].empty()) put(bank->at[1][n], 0, 64, 100);
+        copies.clear();
+        CHECK(copy_scene_links(*p, *bank, 0, 2, copies) == 1);
+        CHECK(p->tracks[1].in_scene[2] == 5 && copies.size() == 1 && copies[0].track == 0);
+    }
+    {   // The engine: a scene's mutes on the bar its patterns launch on; stopped, at once; a mute by hand meanwhile wins.
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 8, 60, 100); // two notes a bar
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        host->set_audio_format(44100, 384);
+        std::vector<int32_t> buffer(256);
+        auto play = [&](unsigned blocks) {
+            unsigned ons = 0;
+            for (unsigned b = 0; b < blocks; ++b) {
+                host->render(buffer.data(), 128, 1);
+                MidiOutEvent e;
+                while (host->take_midi(e)) ons += e.kind == MidiOutEvent::Kind::NoteOn;
+            }
+            return ons;
+        };
+        const unsigned bar = 690; // blocks of 128 frames in a bar at 120 BPM
+        host->send({Command::Type::Play});
+        CHECK(play(bar / 4) == 1);
+        host->send({Command::Type::SceneMutes, 0, 0, 1, 1}); // muted from the next bar: the rest of this one plays
+        CHECK(play(bar / 2) == 1);
+        CHECK(play(bar) == 0);
+        host->send({Command::Type::SceneMutes, 0, 0, 1, 0}); // back on at the next bar
+        CHECK(play(bar) <= 2);
+        CHECK(play(bar) == 2);
+        host->send({Command::Type::SceneMutes, 0, 0, 1, 1});
+        host->send({Command::Type::Mute, 0, 0, 0, 0}); // the hand's after it: it stays on
+        CHECK(play(2 * bar) >= 3);
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::SceneMutes, 0, 0, 1, 1}); // stopped: at once
+        host->send({Command::Type::Play});
+        CHECK(play(bar) == 0);
+        host->send({Command::Type::SceneMutes, 0, 0, 1, 0});
+        host->send({Command::Type::Stop}); // one waiting for its bar when the transport stops: set then
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 2); // the bar's two (the next bar's first may fall in the last block)
+    }
+    {   // Issue 59: a MIDI track plays from the first bar after Play, Locate or MTC, however far on it stopped, with a
+        // negative DELAY (read ahead) or none.
+        using namespace midi_track;
+        for (int delay : {0, -50}) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            load_sound(project->tracks[0], EngineKind::Midi, 0);
+            project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+            project->tracks[0].params[Delay] = delay;
+            project->tempo = 1200;
+            put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 8, 60, 100); // two notes a bar
+            auto host = std::make_unique<EngineHost>();
+            host->load(*project, *bank);
+            tones_for(*host, *project);
+            host->set_audio_format(44100, 384);
+            std::vector<int32_t> buffer(256);
+            auto play = [&](unsigned blocks) {
+                unsigned ons = 0;
+                for (unsigned b = 0; b < blocks; ++b) {
+                    host->render(buffer.data(), 128, 1);
+                    MidiOutEvent e;
+                    while (host->take_midi(e)) ons += e.kind == MidiOutEvent::Kind::NoteOn;
+                }
+                return ons;
+            };
+            const unsigned bar = 690; // blocks of 128 frames in a bar at 120 BPM
+            host->send({Command::Type::Play});
+            const unsigned before = play(5 * bar + bar / 2); // eleven (twelve when the read-ahead reaches the next note)
+            CHECK(before >= 11 && before <= 12);
+            host->send({Command::Type::Stop});
+            play(10);
+            host->send({Command::Type::Play}); // from the top: its first bar plays
+            CHECK(play(bar) >= 2);
+            play(3 * bar);
+            Command back {Command::Type::Locate}; // back to the first bar while playing
+            back.position = 0;
+            host->send(back);
+            CHECK(play(bar) >= 2);
+            play(3 * bar);
+            host->send({Command::Type::Stop});
+            play(10);
+            Command from {Command::Type::Play}; // Shift + Play: from a place before where it stopped
+            from.position = 4 * ticks_per_quarter;
+            host->send(from);
+            CHECK(play(bar) >= 2);
+        }
     }
     {   // The engine: off stops the track on the next bar, holds through Stop and Play, and a launch ends it.
         using namespace midi_track;

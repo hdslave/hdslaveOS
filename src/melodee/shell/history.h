@@ -166,6 +166,7 @@ struct SceneState {
     uint8_t index = 0;
     Scene scene;
     std::array<uint8_t, track_count> kept {};
+    uint16_t muted = 0; // the tracks it keeps muted, a bit each (Track::scene_mutes)
 };
 
 struct Edit {

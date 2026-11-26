@@ -176,6 +176,17 @@ class PluginHostTests(unittest.TestCase):
     def test_freeze_and_unfreeze_retry_when_the_audio_queue_is_full(self):
         self.run_rack_fixture("freeze-queue")
 
+    @unittest.skipUnless(shutil.which("zig"), "needs zig")
+    def test_clap_host_exits_after_a_static_runtime_plugin(self):
+        """A CLAP with zig's static libc++ crashed the host at exit once dlclose unmapped it."""
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "Test.clap"
+            subprocess.run(["zig", "c++", "-target", "aarch64-linux-gnu.2.28", "-Wno-nullability-completeness",
+                            "-std=c++20", "-O2", "-fPIC", "-DNDEBUG", "-shared",
+                            "-I" + str(ROOT / "build/deps/clap/include"), "-I" + str(ROOT / "sdk/melodee-screen"),
+                            str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
+
     def test_vst2_host_against_fixture(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.so"

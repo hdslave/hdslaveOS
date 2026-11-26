@@ -23,6 +23,7 @@
 #include "melodee/shell/progression_jobs.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/project_file.h"
+#include "melodee/model/scene_links.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/record_place.h"
@@ -1342,6 +1343,7 @@ void Context::pressure(unsigned pad, uint8_t value) {
 void Context::set_mute(unsigned t, bool on) {
     project.tracks[t % track_count].mix.mute = on;
     send({Type::Mute, uint8_t(t), 0, 0, int16_t(on)});
+    keep_mute(t, on); // kept in the sequence in hand (model/scene_links.h)
 }
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
@@ -1432,6 +1434,26 @@ void Context::write_lock(int lane, uint32_t tick, uint16_t hold, int value) {
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
     if (!p.write_motion(m)) { notice("Motion full"); return; }
     sync_motion(ui.track, t.pattern);
+}
+
+bool Context::clear_lock(const Binding& b, bool say_none) {
+    uint32_t tick = 0, hold = 0;
+    if (b.kind != Binding::Kind::Lock || b.id < 0 || !lock_place(project, ui, pattern(), tick, hold)) return false;
+    const int lane = int(b.id);
+    const unsigned param = lane_param(lane), pad = lane_pad(lane) % sampler_pads;
+    tick %= std::max<uint32_t>(pattern().length, 1);
+    const std::string name = lane_name(track(), lane, &project);
+    if (!pattern().lock_at(tick, param, pad)) {
+        if (say_none) notice("No lock on " + name);
+        return false;
+    }
+    if (frozen_edit(freeze_scope(project, ui, b))) return false; // a frozen track's prints hold it: "Unfreeze track N?" first
+    touch_gesture(b); // as a turn of the card: a held step's undo step takes it in
+    remove_lock(pattern(), tick, param, pad);
+    sync_motion(ui.track, track().pattern);
+    ui.held_edited = true; // Steps: letting the step go keeps it
+    notice("Erase " + name + " lock");
+    return true;
 }
 
 void Context::sync_motion(unsigned t, unsigned p) {
@@ -1790,7 +1812,10 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.jams_after : e.jams_before) { jams = *m; publish_jams(); } // a jam deleted (JAMS' ERASE)
     if (const auto& m = after ? e.scene_after : e.scene_before) { // a sequence kept or cleared
         project.scenes[m->index % pattern_count] = m->scene;
-        for (unsigned t = 0; t < track_count; ++t) project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
+        for (unsigned t = 0; t < track_count; ++t) {
+            project.tracks[t].in_scene[m->index % pattern_count] = m->kept[t];
+            set_scene_muted(project.tracks[t], m->index, m->muted >> t & 1);
+        }
     }
     if (const auto& m = after ? e.tempo_after : e.tempo_before) {
         for (unsigned n = 0; n < pattern_count; ++n)

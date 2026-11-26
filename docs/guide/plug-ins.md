@@ -224,7 +224,11 @@ until it reaches its value. **K1**–**K3** turn the three parameters it names.
 
 - **On a plug-in track**: on Stage, **B1** goes **PRESETS**, **PANEL** (its
   page), **EDIT** (Melodee's pages of its parameters). On its page the
-  encoder, its push and **−** / **+** are the plug-in's.
+  encoder, its push and **−** / **+** are the plug-in's. A page with a list of
+  its own (an effect chain inside the plug-in) can take **MUTE** and
+  **ERASE** taps too: **MUTE** switches the lit item off or on, **ERASE**
+  removes it, and **ERASE** lights while it can. Held with pads, **MUTE**
+  still mutes tracks.
 
 ![PANEL: a plug-in's own page](../images/screens/stagepluginpanel.png)
 

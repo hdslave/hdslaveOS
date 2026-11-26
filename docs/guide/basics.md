@@ -204,6 +204,7 @@ creating a project clears the undo history.
 | --- | --- |
 | **PAD BANK** held, or Tracks | Tracks |
 | **SEQ** held, or Patterns | The selected track's patterns |
+| Sequences | A sequence, with copies of its patterns (see [Sequences page](sequencing.md#sequences-page)) |
 | Step Edit in STEPS mode | A step to another step |
 | Roll with marked notes | The marked notes: push the encoder to paste them at the cursor |
 | Roll, Step Edit in PLAY mode, the play pages of a keygroup, plug-in or MIDI track | A key's notes to another key |
@@ -234,6 +235,10 @@ it is held.
 - **SHIFT** + **MUTE** unmutes everything.
 
 Muted pads light red. Soloed pads light white.
+
+A track mute is kept in the sequence in hand. Launching a sequence sets each
+track's mute as the sequence keeps it, at the next bar. See
+[Sequences](sequencing.md#sequences). Solo and kit pad mutes are not kept.
 
 **Mute** in [Settings](settings.md) (**SEQ**) sets what a mute does:
 

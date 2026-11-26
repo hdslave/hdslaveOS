@@ -394,6 +394,12 @@ Look scenes_look(const PadScene& s, unsigned pad) {
         waiting += hand && rolling && !tr.off && tr.pattern == unsigned(target) && int(s.host.pattern_of(t)) != target;
     }
     if (s.ui.erase) return s.project.scenes[n].plain() && !kept ? Look {} : red(dim);
+    if (s.ui.copying == UiState::Copying::Scenes) { // Shift + Erase on Sequences: the one to copy, then where
+        const bool has = kept || !s.project.scenes[n].plain();
+        if (s.ui.copy_from < 0) return has ? lit(dim) : Look {};
+        if (s.ui.copy_from == int(n)) return white(full);
+        return has ? red(faint) : lit(faint); // where: replaced, or landing clean
+    }
     if (hand && waiting) return (s.now / 150) % 2 ? lit(mid) : lit(faint);
     if (hand && kept) return lit(full);
     if (!kept) return s.project.scenes[n].plain() ? Look {} : lit(faint);

@@ -232,6 +232,10 @@ public:
     // held writes a lock there: `lane` holds `value` from `tick` for `hold` ticks. Recorded moves reach the audio
     // thread at most every motion_sync_ms (a pattern copy each), flush_motion() sending the last when it is due.
     void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
+    // Erase + pot on a lock card (Binding::Kind::Lock): that lane's lock on the held step or note (or the caret's step
+    // on LOCK) out, its notes kept, in the same undo step as a turn. False when it held none ("No lock on ..." when
+    // `say_none`).
+    bool clear_lock(const Binding& b, bool say_none);
     void sync_motion(unsigned track, unsigned pattern);
     void flush_motion();
     void take_arp_notes(); // Seq Record: the arp's (Note Repeat's) notes as they played, into their patterns
@@ -340,6 +344,8 @@ public:
     void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
     void follow_to_column();                          // and onto the pattern every other track is on, one undo
     void capture_scene(unsigned scene);               // CAPTURE: what every track is on kept in the sequence, one undo
+    void copy_scene(unsigned from, unsigned to);      // Shift + Erase on Sequences: `to` a copy, its patterns copied; one undo
+    void keep_mute(unsigned track, bool on);          // a mute by hand, kept in the sequence in hand (not while the song plays)
     void follow_tick();                               // MIDI thread, often: chains told, what came followed
     std::array<uint32_t, track_count> follows_seen {};
     std::array<bool, track_count> chained_sent {};
@@ -377,6 +383,7 @@ public:
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
+    bool plugin_screen_key(ScreenKey key); // MUTE or ERASE tapped: to the plug-in's own page when it takes the key; false: Melodee's job
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;

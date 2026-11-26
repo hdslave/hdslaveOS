@@ -1,7 +1,7 @@
 <h1 align="center">hdslaveOS</h1>
 
 <p align="center"><strong>A performance-tuned 16-track groovebox OS for the Akai MPC Sample</strong><br>
-hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.8.2.</p>
+hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.8.3.</p>
 
 <p align="center">
   <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Mixer, Step Edit, and Deep Freeze screens" width="760">

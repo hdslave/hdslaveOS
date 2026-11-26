@@ -252,9 +252,16 @@ int main(int argc, char** argv) {
         CHECK(sine->screenDraw(frame, changed) && changed && pixels[190] == 0xff8000u);
         melodee_screen_input_t step {MELODEE_SCREEN_STEP, 1, 0};
         CHECK(sine->screenInput(step, used) && !used); // Plus is not its
+        // The printed buttons its page takes: none until it says (melodee.screen-host/2), then Erase, then none again.
+        CHECK(sine->screenKeys() == 0);
+        melodee_screen_input_t push {MELODEE_SCREEN_PUSH, 1, 0}, erase {MELODEE_SCREEN_ERASE, 1, 0};
+        CHECK(sine->screenInput(push, used) && used && sine->screenKeys() == MELODEE_SCREEN_KEY_ERASE);
+        CHECK(sine->screenInput(erase, used) && used && sine->screenKeys() == 0);
         std::array<int, 3> controls {};
         CHECK(sine->screenControls(controls) && controls[0] == 0 && controls[1] == 1 && controls[2] == -1); // Level, Wave
         run(*sine);
+        sine->idle(); // Read the Push and Erase changes before testing the next value rescan.
+        CHECK(level->getValue() == 0.0f);
         // The audio thread has taken Level's queued event but the plug-in has not consumed it yet.
         // A main-thread rescan at that exact point must keep showing the new Level.
         auto beforeEvents = reinterpret_cast<void (*)(void (*)(void*), void*)>(dlsym(fixture, "fixture_before_events"));
