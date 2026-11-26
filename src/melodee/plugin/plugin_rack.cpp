@@ -934,9 +934,14 @@ PluginRack::Usage PluginRack::usage() const {
 
 // Under `lock`: an entry's state as it is now, from a plug-in that is open and working, kept as the entry's own (so
 // the last good state, the one it was opened with until it is first read); a dead bridge has nothing to say (its
-// parameters read as 0), so it, one that gives no state now, and one not open, keep the state they had. The read is the plug-in's own state
-// save, made on the thread that asks (the MIDI thread, from sync() as an entry is let go, as clone(), state() and
-// states() read it) and under the rack's lock: a plug-in with a large state holds the rack's thread that long.
+// parameters read as 0), so it, one that gives no state now, and one not open, keep the state they had.
+// The read is the plug-in's own state save, made on the thread that asks: the shell's (the MIDI thread, holding the
+// shell's lock), from sync() as an entry is let go or woken (its Rerate reads the same way), clone() for a copy,
+// state() for an undo step, and states() for every entry at each project save, print, export and Auto Sample. A
+// large state or a slow bridge holds that thread that long: MIDI in and the screen's snapshot (it waits on the
+// shell's lock) wait, the rack's thread waits on `lock`, and a bridged plug-in's audio block waits on its connection.
+// A CLAP plug-in's save is a main-thread call: it is made under the instance's main lock, so never during the rack
+// thread's own calls into it, but not on that thread.
 std::vector<uint8_t> PluginRack::kept_state(Entry& e) {
     // Open and working; or put to sleep by a deep freeze whose Sleep has not run yet (plan_plugin: status None, the
     // plug-in still live and playing), its state then the plug-in's own as it is now, not the one it was opened with.
