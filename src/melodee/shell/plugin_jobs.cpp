@@ -355,10 +355,10 @@ void Context::name_plugin_preset(unsigned entry) {
 
 void Context::open_plugin_presets(unsigned entry) {
     if (!plugins || entry >= max_plugins) return;
-    if (ui.preset_due && ui.presets_entry == entry) { // Stage's turn still to load: now, as the cursor means a row here
-        ui.preset_due = 0;
-        choose_plugin_program(ui.presets_cursor);
-    }
+    // A turn on Stage still to load (a plug-in's preset, or a synth's sound): now, onto the track it was turned on, as
+    // Stage would have once the turning stopped, before this list takes the cursor and the entry over (it may be
+    // an effect's). Left for later, it was dropped: the list's entry was no longer the track's.
+    if (ui.preset_due) stage_tick(UINT32_MAX);
     auto programs = plugins->programs(entry);
     if (programs.list.empty()) { notice(programs.finding ? "Looking for presets" : "No presets in this plug-in"); return; }
     auto place = preset_place(programs.list, programs.current);

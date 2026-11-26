@@ -688,7 +688,8 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
-    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag") {
+    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag"
+        || mode == "turn-effect") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -762,6 +763,13 @@ int main(int argc, char** argv) {
         auto& slot = project.chain(master_chain).slots[0];
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
+    }
+    if (mode == "turn-effect") { // Test Gain on track 1's chain too
+        project.plugins[3] = ref;
+        project.plugins[3].id = clap_id_hash("org.melodee.test.gain");
+        auto& slot = project.chain(0).slots[0];
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = 3;
     }
     if (mode == "freeze-race") { // a second track of the synth, its own instance
         project.plugins[1] = ref;
@@ -1322,6 +1330,29 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A preset turned on Stage's PRESETS, and within the quarter second before it loads, the PRESETS list of an effect
+    // on the track's chain opened (its slot's sheet): the turn still lands on the track's plug-in, and the effect's
+    // list takes the cursor over only then; the effect plays on as it was.
+    if (mode == "turn-effect") {
+        const unsigned gain = 3;
+        wait([&] { return ready(entry) && ready(gain) && rack->programs(gain).list.size() == 1; });
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        const auto list = rack->programs(entry).list;
+        CHECK(rack->programs(entry).current < 0);
+        turn(1); // none yet: the first
+        CHECK(ui.preset_due && ui.presets_entry == entry && ui.presets_cursor == 0);
+        c.open(PageId::Rack);
+        c.open_plugin_presets(gain);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == gain);
+        c.stage_tick(now += stage_preset_ms);
+        wait([&] { return rack->programs(entry).current == list[0].index; });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(rack->programs(gain).current < 0 && ui.presets_entry == gain);
         shell->set_plugins(nullptr);
         return 0;
     }
