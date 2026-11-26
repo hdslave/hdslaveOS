@@ -2558,6 +2558,17 @@ void sample_mode() {
         start->note_on(key, 127);
         float fallen = run(*start, 90, 80).first;
         CHECK(middle > 0.4f * 0.7071f && fallen < middle * 0.3f); // a centred pad: -3 dB a side
+        // Issue 64: at the sustain a pad has until it is turned (100) a one shot from the start still falls; Note On
+        // keeps its sustain.
+        pad.sustain = 100;
+        auto full = engine_with(pad);
+        full->note_on(key, 127);
+        CHECK(run(*full, 90, 80).first < middle * 0.3f);
+        pad.play = PadPlay::Gate; pad.sustain = 50;
+        auto gate = engine_with(pad);
+        gate->note_on(key, 127);
+        float held = run(*gate, 90, 80).first;
+        CHECK(held > middle * 0.35f && held < middle * 0.65f);
     }
     { // The pad filter: a low pass takes the high sine away and keeps the low one; a high pass the other way.
         PadSound pad = base; pad.end = 40000; pad.filter = PadFilter::Lpf4; pad.cutoff = 50;

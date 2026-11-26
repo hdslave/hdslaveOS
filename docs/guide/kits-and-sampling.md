@@ -68,7 +68,8 @@ has no **LAYERS** page (see [Sampled instruments](#sampled-instruments)).
 **AMP ENV**: **K1** attack, **K2** decay (release in Note On mode), **K3**
 velocity sensitivity. At 100 %, a hit at velocity 64 plays 6 dB below a
 full hit, and softer hits quieter still. **SHIFT** + **K2** sets whether
-decay starts from the start or the end.
+decay starts from the start or the end. From the start, a one shot fades
+to silence over its decay; sustain is for Note On mode.
 
 **SENDS**: the last pad's own sends. **K1** sets the pad's send to the bus
 shown, **K2** selects bus A–D, **K3** the bus return. The kit track's own
