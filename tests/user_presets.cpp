@@ -1529,6 +1529,7 @@ int main(int argc, char** argv) {
     // cleared then, or woken again, before it runs: the plug-in comes back as it was edited, not as it was opened.
     if (mode == "freeze-race") {
         wait([&] { return ready(entry) && ready(1); });
+        const auto fresh = rack->state(entry); // as opened: what another project's file gives this entry below
         set_control("Wave", 1000);
         wait([&] { return values(entry)[1] == 2; });
         setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);
@@ -1554,6 +1555,32 @@ int main(int argc, char** argv) {
         wait([&] { return ready(entry) && ready(1); });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(values(entry)[1] == 1);
+        // Another project opens while the Sleep waits, the same plug-in in the same entry and awake there: it opens with
+        // that project's state, not this one's edits.
+        PluginStates next {};
+        next[entry] = fresh;
+        next[1] = fresh;
+        busy_then_frozen();
+        rack->set_states(next);
+        rack->sync(project, 0);
+        CHECK(rack->state(entry) == fresh); // what a save now would keep
+        wait([&] { return ready(entry) && ready(1); });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(values(entry)[1] == 0);
+        // Another project opens in which that track is deep frozen: the Sleep keeps that project's state for the thaw.
+        set_control("Wave", 1000);
+        wait([&] { return values(entry)[1] == 2; });
+        rack->set_states(next);
+        rack->sync(project, 1);
+        CHECK(rack->state(entry) == fresh);
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (rack->status(entry) != PluginStatus::None && std::chrono::steady_clock::now() < until) // no tick: it would wake it
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(300)); // the rack's thread lets it go
+        CHECK(rack->state(entry) == fresh);
+        rack->sync(project, 0); // thawed: opened with it
+        wait([&] { return ready(entry) && ready(1); });
+        CHECK(values(entry)[1] == 0);
         unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;

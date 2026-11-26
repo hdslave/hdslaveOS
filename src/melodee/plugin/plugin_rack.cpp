@@ -850,7 +850,9 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             case PluginStep::Sleep: wanted.push_back({Job::Kind::Sleep, e, entry.generation, {}, 0}); break;
             case PluginStep::Unload: wanted.push_back({Job::Kind::Unload, e, entry.generation, {}, 0}); break;
             case PluginStep::Rerate: // keep what it is now through the reload
-                entry.state = state_now(entry.live, entry.state);
+                // plan_plugin has marked it loading already, so read the plug-in itself: when it is the entry's own
+                // (not another project's), and a dead bridge reads as nothing, which keeps the state it has.
+                if (entry.live_own) entry.state = state_now(entry.live, entry.state);
                 [[fallthrough]];
             case PluginStep::Load: wanted.push_back({Job::Kind::Load, e, entry.generation, want, rate, id}); break;
             }
@@ -866,6 +868,7 @@ void PluginRack::set_states(PluginStates states) {
     for (unsigned e = 0; e < max_plugins; ++e) {
         entries[e].state = std::move(states[e]);
         entries[e].reload = true; // a new project: every entry it uses loads again, with its state
+        entries[e].live_own = false;    // the plug-ins still open are the last project's
         entries[e].parked_path.clear(); // and nothing of the last one's comes back
         entries[e].parked.clear();
     }
@@ -936,7 +939,8 @@ PluginRack::Usage PluginRack::usage() const {
 std::vector<uint8_t> PluginRack::kept_state(const Entry& e) const {
     // Open and working; or put to sleep by a deep freeze whose Sleep has not run yet (plan_plugin: status None, the
     // plug-in still live and playing), its state then the plug-in's own as it is now, not the one it was opened with.
-    if (!e.live || (e.status != PluginStatus::Ready && !e.asleep)) return e.state;
+    // Never a plug-in that is not the entry's own any more (another project's states, an undo's, given since).
+    if (!e.live || !e.live_own || (e.status != PluginStatus::Ready && !e.asleep)) return e.state;
     auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
     if (bridged && bridged->bridgeDied()) return e.state;
     return state_now(e.live, e.state);
@@ -961,6 +965,7 @@ void PluginRack::restore(unsigned entry, std::vector<uint8_t> state) {
     std::lock_guard<std::mutex> held(lock);
     entries[entry].state = std::move(state);
     entries[entry].reload = true; // plan_plugin keeps this state for whichever plug-in loads
+    entries[entry].live_own = false; // the plug-in still open is not where this state comes from
     entries[entry].parked_path.clear();
     entries[entry].parked.clear();
 }
@@ -1742,6 +1747,7 @@ void PluginRack::load(const Job& job) {
             raw->transport.store(entry.transport, std::memory_order_relaxed); // before the audio thread first runs it
             raw->program = program_keyed(raw->programs, entry.preset); // its state already plays it: the name only
             entry.live = raw;
+            entry.live_own = true;
             entry.status = PluginStatus::Ready;
             entry.file.instrument = is_instrument ? 1 : 0;
             if (description.name.isNotEmpty() && named_inside(file.format)) entry.file.name = description.name.toStdString();
@@ -1811,6 +1817,7 @@ void PluginRack::unload(unsigned entry, uint32_t generation) {
         if (e.generation != generation) return;
         old = e.live;
         e.live = nullptr;
+        e.live_own = false;
         e.file = {};
         if (old) retiring.push_back(old);
     }
@@ -1833,9 +1840,10 @@ void PluginRack::sleep(unsigned entry, uint32_t generation) {
         old = e.live;
         e.live = nullptr;
         if (old) {
-            e.state = state_now(old, e.state);
+            if (e.live_own) e.state = state_now(old, e.state); // not over a state another project (or an undo) gave it
             retiring.push_back(old);
         }
+        e.live_own = false;
     }
     if (old && !offer(entry, nullptr)) {
         std::lock_guard<std::mutex> held(lock);

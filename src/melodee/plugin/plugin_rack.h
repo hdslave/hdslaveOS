@@ -172,6 +172,9 @@ public:
 private:
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
+        // `live` is this entry's own plug-in, its state the entry's: false once set_states() (another project) or
+        // restore() (an undo) has given the entry a state, until the plug-in loaded with it is in place (load()).
+        bool live_own = false;
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
         std::string preset;               // the preset picked last (PluginRef::preset), named again when it reopens
         uint32_t selection = 0;           // invalidates a pending user preset read when a later program is picked
