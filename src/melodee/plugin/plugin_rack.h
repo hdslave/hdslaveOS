@@ -81,15 +81,16 @@ public:
     // time its entry loads (sync() right after).
     void set_states(PluginStates states);
     // Saving: each entry's state as it is now (a plug-in still loading: what
-    // it will load with). Any thread but audio.
-    PluginStates states() const;
+    // it will load with; one that gives none now, a dead bridge's: the last
+    // it gave). Any thread but audio.
+    PluginStates states();
     // A copy of `entry` onto `copy` (a track copy): the same plug-in and state.
     void clone(unsigned entry, unsigned copy);
     // The same plug-in opened again at the next sync() (picked again after it failed or stopped working), with the
     // state it last had.
     void reload(unsigned entry);
     // One entry's state as it is now, as states() gives it.
-    std::vector<uint8_t> state(unsigned entry) const;
+    std::vector<uint8_t> state(unsigned entry);
     // Undo or redo of a plug-in replaced (shell/plugin_jobs.cpp): the entry opened again at the next sync() with
     // `state`, whichever plug-in the project names for it then.
     void restore(unsigned entry, std::vector<uint8_t> state);
@@ -215,7 +216,7 @@ private:
     void write_screen_problems(const std::string& top); // the companion screens' (plugin/companion_package.h)
     void find_companion(PluginHandle& handle, const PluginFile& file, const std::string& top, const std::string& stage);
     void destroy(PluginHandle* handle);
-    std::vector<uint8_t> kept_state(const Entry& e) const; // under `lock`
+    std::vector<uint8_t> kept_state(Entry& e); // under `lock`: each good read kept as the entry's state
     void screen_run();                              // the screen thread: draws the screen in view
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);

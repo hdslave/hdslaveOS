@@ -874,11 +874,11 @@ void PluginRack::set_states(PluginStates states) {
     }
 }
 
-PluginStates PluginRack::states() const {
+PluginStates PluginRack::states() {
     PluginStates out;
     std::lock_guard<std::mutex> held(lock);
     for (unsigned e = 0; e < max_plugins; ++e) {
-        const auto& entry = entries[e];
+        auto& entry = entries[e];
         out[e] = kept_state(entry); // a dead bridge's, or one not open: the state it had
     }
     return out;
@@ -932,18 +932,20 @@ PluginRack::Usage PluginRack::usage() const {
     return out;
 }
 
-// Under `lock`: an entry's state as it is now, from a plug-in that is open and working; a dead bridge has nothing to
-// say (its parameters read as 0), so it, and one not open, keep the state they had. The read is the plug-in's own state
+// Under `lock`: an entry's state as it is now, from a plug-in that is open and working, kept as the entry's own (so
+// the last good state, the one it was opened with until it is first read); a dead bridge has nothing to say (its
+// parameters read as 0), so it, one that gives no state now, and one not open, keep the state they had. The read is the plug-in's own state
 // save, made on the thread that asks (the MIDI thread, from sync() as an entry is let go, as clone(), state() and
 // states() read it) and under the rack's lock: a plug-in with a large state holds the rack's thread that long.
-std::vector<uint8_t> PluginRack::kept_state(const Entry& e) const {
+std::vector<uint8_t> PluginRack::kept_state(Entry& e) {
     // Open and working; or put to sleep by a deep freeze whose Sleep has not run yet (plan_plugin: status None, the
     // plug-in still live and playing), its state then the plug-in's own as it is now, not the one it was opened with.
     // Never a plug-in that is not the entry's own any more (another project's states, an undo's, given since).
     if (!e.live || !e.live_own || (e.status != PluginStatus::Ready && !e.asleep)) return e.state;
     auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
     if (bridged && bridged->bridgeDied()) return e.state;
-    return state_now(e.live, e.state);
+    e.state = state_now(e.live, e.state); // an empty read (a failed save) leaves the last good one
+    return e.state;
 }
 
 void PluginRack::reload(unsigned entry) {
@@ -954,7 +956,7 @@ void PluginRack::reload(unsigned entry) {
     e.reload = true;
 }
 
-std::vector<uint8_t> PluginRack::state(unsigned entry) const {
+std::vector<uint8_t> PluginRack::state(unsigned entry) {
     if (entry >= max_plugins) return {};
     std::lock_guard<std::mutex> held(lock);
     return kept_state(entries[entry]);

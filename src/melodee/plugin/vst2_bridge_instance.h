@@ -21,6 +21,7 @@
 #include "melodee/plugin/screen_source.h"
 #include "melodee/plugin/vst2_bridge_protocol.h"
 
+#include <atomic>
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 #include <array>
@@ -115,7 +116,7 @@ public:
         bridge::Shared* shared = nullptr;
         pid_t pid = -1;
         uint32_t sequence = 0;
-        bool dead = false;
+        std::atomic<bool> dead { false }; // read outside the lock (bridgeDied, getStateInformation)
         int unspunBlocks = 0; // process blocks still to wait without a spin, after one outlasted it (call)
         InheritingMutex lock; // around a whole exchange: its fields, the round trip, the answer
         bool call (bridge::Command, int timeoutMs = 2000);

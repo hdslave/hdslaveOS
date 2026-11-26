@@ -101,7 +101,7 @@ class PluginHostTests(unittest.TestCase):
             clap, lv2 = plugins / "Test.clap", plugins / "Tone.lv2"
             build_clap(clap)
             build_lv2(lv2)
-            for plugin, mode in ((clap, "failsave"), (clap, "mono"), (clap, "ringtail"), (clap, "dynamic-ring"),
+            for plugin, mode in ((clap, "failsave"), (clap, "dead-state"), (clap, "mono"), (clap, "ringtail"), (clap, "dynamic-ring"),
                                  (clap, "native-ring"), (lv2, "lv2wake")):
                 with self.subTest(mode=mode):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],

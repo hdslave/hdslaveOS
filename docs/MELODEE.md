@@ -2722,8 +2722,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   is read or written a parameter a lock. If the plug-in crashes, only the bridge goes:
   the page says it stopped working and picking it again reopens it. A dead
   bridge gives no state, so a project saved then, a track copy or that
-  reopening keeps the state the plug-in last had, never one of every
-  parameter at 0 (`Vst2BridgeInstance::getStateInformation`).
+  reopening keeps the last state it gave (each state read is kept, so the
+  edits a save before took), never one of every parameter at 0
+  (`Vst2BridgeInstance::getStateInformation`, `PluginRack::kept_state`).
 - **Saving.** A project names each plug-in by path (`Project::plugins`,
   32 entries) and keeps what each saves of itself (its state) in the file.
   A path not starting at `/` is the card's (`Melodee/Plugins/...` from its top): it

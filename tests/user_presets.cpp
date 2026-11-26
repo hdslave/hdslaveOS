@@ -674,7 +674,7 @@ int main(int argc, char** argv) {
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
     // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
     // a value set, and a mono plug-in heard through the rack (fixture env hooks in tests/clap_fixture.cpp).
-    bool failsave = mode == "failsave", lv2wake = mode == "lv2wake", mono = mode == "mono";
+    bool failsave = mode == "failsave", lv2wake = mode == "lv2wake", mono = mode == "mono", dead_state = mode == "dead-state";
     const bool dynamicRing = mode == "dynamic-ring";
     if (dynamicRing) setenv("MELODEE_TEST_DYNAMIC_TAIL", "1", 1);
     if (mode == "ringtail") setenv("MELODEE_TEST_RING_TAIL", "1", 1);
@@ -2002,11 +2002,27 @@ int main(int argc, char** argv) {
         });
         auto good = rack->state(entry);
         CHECK(good.size() == 4 + 3 * sizeof(double) && rack->states()[entry] == good);
-        set_control("Level", 250); // the live plug-in moves on; the kept state is the 0.75 one
+        set_control("Level", 250); // the live plug-in moves on, and is read at 0.25: that is the last good state
         wait([&] { return state()[0] == 0.25; });
+        const auto latest = rack->state(entry);
+        CHECK(latest != good && latest.size() == good.size());
         setenv("MELODEE_TEST_FAIL_SAVES", "1", 1);
-        CHECK(rack->state(entry) == good); // a failed save gives the kept state, never an empty or part one
-        CHECK(rack->states()[entry] == good);
+        CHECK(rack->state(entry) == latest); // a failed save gives the last good state, never an empty or part one
+        CHECK(rack->states()[entry] == latest);
+        unsetenv("MELODEE_TEST_FAIL_SAVES");
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A project saved with an edited plug-in, then saved again once the plug-in gives no state (a dead bridge, a save
+    // that fails): the second save keeps the edits the first saved, not the state the plug-in was opened with.
+    if (dead_state) {
+        const auto opened = rack->state(entry);
+        set_control("Wave", 1000);
+        wait([&] { return state()[1] == 2; });
+        const auto edited = rack->states()[entry];
+        CHECK(edited != opened && !edited.empty());
+        setenv("MELODEE_TEST_FAIL_SAVES", "1", 1);
+        CHECK(rack->states()[entry] == edited && rack->state(entry) == edited);
         unsetenv("MELODEE_TEST_FAIL_SAVES");
         shell->set_plugins(nullptr);
         return 0;
