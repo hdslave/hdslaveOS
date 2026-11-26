@@ -2613,7 +2613,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   go back where the list was opened from. An effect on any other chain (a
   bus, a submix, the master, a loop track) keeps its list. The same holds
   when a Copy Track gives the track in hand's copy a plug-in entry of its
-  own (`Context::presets_follow`). A preset turned to on Stage that has
+  own: at once, or, with all 32 in use then, at the tick after one is free
+  (`Context::presets_follow`). A preset turned to on Stage that has
   not loaded yet (its quarter second) loads as the list opens, onto the
   track it was turned on, whichever plug-in's list opens; turned away and
   back to the one it plays, it stays as edited, as on Stage. Push on a

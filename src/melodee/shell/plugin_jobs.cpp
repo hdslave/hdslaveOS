@@ -404,7 +404,8 @@ void Context::open_plugin_presets(unsigned entry) {
 
 // PRESETS is open for a track's list (open_plugin_presets: presets_track), and that is no longer what it lists: another
 // track was picked (select_track), or the track's plug-in moved to another entry (a Copy Track's copy gets its own at
-// the next tick, split_shared_plugins). Left so, the list would go on loading into a plug-in the pads no longer play.
+// once, own_plugins; with every entry in use then, it shares the plug-in copied until one is free, and gets that at the
+// tick after, split_shared_plugins). Left so, the list would go on loading into a plug-in the pads no longer play.
 // An instrument's list turns to the plug-in of the track in hand, where the preset picked last is; with no presets
 // there (another kind of track, a plug-in with none or still opening), and for an effect's list on a track's chain,
 // the page goes back where it was opened from. An effect on a bus's, a submix's, the master's or a loop track's chain
@@ -566,7 +567,7 @@ void Context::plugins_tick(uint32_t at) {
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it
     plugins->set_browsing(ui.page == PageId::Plugins); // the picker's rows probed in idle time only while it is open
     split_shared_plugins();
-    presets_follow(); // a copy's plug-in in its own entry now: an open PRESETS list follows it
+    presets_follow(); // a shared copy's plug-in in its own entry now: an open PRESETS list follows it
     plugins->sync(project, plugins_asleep());
     PluginRack::PresetResult result;
     while (plugins->take_preset_result(result)) {

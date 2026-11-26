@@ -688,7 +688,7 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
-    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag"
+    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "copy-presets-late" || mode == "panel-lag"
         || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
@@ -792,7 +792,8 @@ int main(int argc, char** argv) {
     }
     if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
         for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
-    if (mode == "presets-track" || mode == "copy-presets" || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
+    const bool late = mode == "copy-presets-late"; // copy-presets with every other entry in use: effects that will not open
+    if (mode == "presets-track" || mode == "copy-presets" || late || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -804,6 +805,15 @@ int main(int argc, char** argv) {
             slot.kind = plugin_effect_kind;
             slot.params[0] = int16_t(at);
         }
+        if (late)
+            for (unsigned e = 2, n = 0; e < max_plugins; ++e) {
+                if (e == 3 || e == 4) continue;
+                std::snprintf(project.plugins[e].path, sizeof(project.plugins[e].path), "/nowhere/X%u.clap", e);
+                auto& slot = project.chain(4 + n / track_slots).slots[n % track_slots]; // tracks 5 to 9's chains
+                slot.kind = plugin_effect_kind;
+                slot.params[0] = int16_t(e);
+                ++n;
+            }
     }
     if (mono || dynamicRing) {
         Step step;
@@ -1337,9 +1347,11 @@ int main(int argc, char** argv) {
         return 0;
     }
     // The whole PRESETS list of track 1's plug-in open, then track 1 copied onto track 4 (Pad Bank + B3 COPY + pad 1 +
-    // pad 4): the copy gets a plug-in entry of its own a tick later. The list then is never track 1's while track 4 is in
-    // hand, so a preset picked there never changes track 1's sound.
-    if (mode == "copy-presets") {
+    // pad 4): the copy gets a plug-in entry of its own at once. The list then is never track 1's while track 4 is in
+    // hand, so a preset picked there never changes track 1's sound. copy-presets-late: every entry in use, so the copy
+    // shares track 1's plug-in (the list is both tracks') until an entry is free, and gets one at the next tick
+    // (split_shared_plugins); the list follows it then.
+    if (mode == "copy-presets" || late) {
         wait([&] { return ready(1); });
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
         c.open(PageId::Stage);
@@ -1353,6 +1365,13 @@ int main(int argc, char** argv) {
         button(SurfaceButton::PadBank, false);
         for (int k = 0; k < 20; ++k) tick();
         auto& t4 = project.tracks[3];
+        if (late) {
+            CHECK(ui.track == 3 && t4.engine == EngineKind::Plugin && t4.plugin == entry);
+            CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+            c.set_effect(4, 0, EffectKind::None); // taken off with no undo step left naming its entry (one gone past the 32 kept)
+            CHECK(!c.edits.can_redo());
+            tick();
+        }
         CHECK(ui.track == 3 && t4.engine == EngineKind::Plugin && t4.plugin != entry && tr.plugin == entry);
         CHECK(ui.page != PageId::PluginPresets || ui.presets_entry == t4.plugin);
         wait([&] { return ready(t4.plugin); });

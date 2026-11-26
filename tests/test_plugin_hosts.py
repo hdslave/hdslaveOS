@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 
+    def test_presets_list_follows_a_copy_given_its_entry_later(self):
+        self.run_rack_fixture("copy-presets-late")
+
     def test_a_sleeping_plugin_is_run_after_a_preset_load(self):
         self.run_rack_fixture("load-wake")
 
