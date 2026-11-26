@@ -135,6 +135,11 @@ class PluginHostTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.run_rack_fixture(mode)
 
+    def test_minus_plus_walk_a_plugins_presets_on_stage(self):
+        for mode in ("preset-keys", "face-keys", "broken-keys"):
+            with self.subTest(mode=mode):
+                self.run_rack_fixture(mode)
+
     def test_deep_freeze_waits_for_its_pack_to_take_over(self):
         for mode in ("deep-freeze-live", "deep-freeze-replace"):
             with self.subTest(mode=mode):

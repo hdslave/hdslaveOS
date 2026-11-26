@@ -210,6 +210,7 @@ struct Provider {
     const clap_preset_discovery_indexer* indexer = nullptr;
 };
 bool providerInit(const clap_preset_discovery_provider* p) {
+    if (std::getenv("MELODEE_TEST_SLOW_PRESETS")) std::this_thread::sleep_for(std::chrono::milliseconds(60));
     auto* indexer = static_cast<Provider*>(p->provider_data)->indexer;
     clap_preset_discovery_filetype type {"Test preset", "", "tsp"};
     if (!indexer->declare_filetype(indexer, &type)) return false;

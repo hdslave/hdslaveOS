@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "melodee/engine/print_render.h"
+#include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
 #include "melodee/plugin/preset_rows.h"
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <sys/resource.h>
 #include <thread>
@@ -674,6 +676,14 @@ int main(int argc, char** argv) {
     if (dynamicRing) setenv("MELODEE_TEST_DYNAMIC_TAIL", "1", 1);
     if (mode == "ringtail") setenv("MELODEE_TEST_RING_TAIL", "1", 1);
     if (mono) setenv("MELODEE_TEST_MONO", "1", 1); // before the rack opens it: a mono main port
+    const bool presetKeys = mode == "preset-keys", faceKeys = mode == "face-keys", brokenKeys = mode == "broken-keys";
+    if (presetKeys) { // three presets of the fixture's own, in a folder beside it on the card
+        const auto folder = fs::path(plugin).parent_path() / "TestPresets";
+        fs::create_directories(folder);
+        std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\n";
+        setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);    // the fixture takes 60 ms to open, and 60 ms more to say where
+        setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
+    }
     const unsigned entry = fx ? 2 : mode == "load" ? 4 : 0;
     auto host = std::make_unique<EngineHost>();
     host->set_render_threads(0);
@@ -686,7 +696,7 @@ int main(int argc, char** argv) {
     auto& ref = project.plugins[entry];
     rack->set_card(card);
     shell->set_plugins(rack.get());
-    std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
+    std::snprintf(ref.path, sizeof(ref.path), "%s", (brokenKeys ? plugin + ".gone" : plugin).c_str()); // not on the card
     if (fx) {
         load_sound(tr, EngineKind::Sampler, 0);
         ref.id = clap_id_hash("org.melodee.test.gain");
@@ -756,6 +766,25 @@ int main(int argc, char** argv) {
         std::memcpy(values.data(), bytes.data() + 4, sizeof(values));
         return values;
     };
+    // A plug-in that would not open, on Stage's first page: Minus / Plus have no preset to walk to and leave the pads'
+    // keys alone too (a walk that ends in a failed open must not slip to the octave); Keys' octave still answers.
+    if (brokenKeys) {
+        wait([&] { return rack->status(entry) == PluginStatus::Failed; });
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        const int8_t octave = tr.octave;
+        const uint8_t bank = tr.bank;
+        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus, SurfaceButton::Minus}) {
+            tap(key);
+            CHECK(tr.octave == octave && tr.bank == bank && !ui.preset_due && ui.ask == UiState::Ask::None);
+        }
+        button(SurfaceButton::Sample, true);
+        tap(SurfaceButton::Plus);
+        button(SurfaceButton::Sample, false);
+        CHECK(tr.octave == octave + 1 && !ui.preset_due);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     wait([&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding; });
     if (mode.rfind("knob-", 0) == 0) {
         ui.settings.knob_takeover = mode == "knob-pickup" ? Takeover::Pickup
@@ -824,6 +853,177 @@ int main(int argc, char** argv) {
         }
         throw std::runtime_error(std::string("missing fixture control: ") + name);
     };
+    // Stage's PRESETS on a plug-in track: Minus / Plus walk its presets as the wheel does and stop at the list's
+    // ends; the pads keep their keys (the octave and the Drums bank those keys move elsewhere). Its face, a
+    // plug-in with no presets, and the track's other pages: the octave, as before.
+    if (presetKeys || faceKeys) {
+        for (unsigned n = 0; n < unsigned(PageId::Count); ++n) { // every page: the shell calls its handlers unasked
+            const auto& spec = page_spec(PageId(n));
+            CHECK(spec.draw && spec.pad && spec.wheel && spec.push && spec.soft && spec.nudge);
+        }
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        const int8_t octave = tr.octave;
+        const uint8_t bank = tr.bank;
+        if (faceKeys) {
+            wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.status == PluginStatus::Ready; });
+            CHECK(!ui.plugin_panel.programs);
+            tap(SurfaceButton::Plus);
+            CHECK(tr.octave == octave + 1 && !ui.preset_due);
+            shell->set_plugins(nullptr);
+            return 0;
+        }
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        const auto list = rack->programs(entry).list;
+        CHECK(list.size() == 3);
+        auto level = [&](unsigned n) { return list[n].name == "Low" ? 0.25 : list[n].name == "Mid" ? 0.5 : 0.75; };
+        auto rest = [&] { c.stage_tick(now += stage_preset_ms); }; // the turning stopped: the lights' tick loads it
+        auto lands = [&](unsigned n) {
+            CHECK(ui.preset_due && ui.presets_cursor == n);
+            rest();
+            wait([&] { return rack->programs(entry).current == list[n].index && state()[0] == level(n); });
+        };
+        auto wheel = [&](int detents) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(SurfaceControl::Wheel);
+            event.input.delta = detents;
+            shell->surface(event, ++now);
+        };
+        CHECK(rack->programs(entry).current < 0);
+        tap(SurfaceButton::Minus); // none yet: the first, whichever key
+        CHECK(ui.preset_due && ui.presets_cursor == 0);
+        ui.preset_due = 0; // let go before it landed: none still
+        tap(SurfaceButton::Plus);
+        lands(0);
+        tap(SurfaceButton::Plus);
+        lands(1);
+        button(SurfaceButton::Sample, true); // Sample held: the keys are Keys' octave, as its cards are Keys'
+        tap(SurfaceButton::Plus);
+        CHECK(tr.octave == octave + 1 && !ui.preset_due);
+        tap(SurfaceButton::Minus);
+        CHECK(tr.octave == octave && !ui.preset_due);
+        button(SurfaceButton::Sample, false);
+        CHECK(ui.page == PageId::Stage && stage_page_now(ui, tr, false).kind == StageKind::PluginSound);
+        auto edit = [&] { set_control("Level", 1000); wait([&] { return state()[0] == 1; }); };
+        auto kept = [&](unsigned n) { // nothing is sent to the plug-in: the preset it plays, as it was edited
+            c.dirty = false;
+            rest();
+            CHECK(!c.dirty && !ui.preset_due);
+            for (int k = 0; k < 20; ++k) tick();
+            CHECK(state()[0] == 1 && rack->programs(entry).current == list[n].index);
+        };
+        edit();
+        tap(SurfaceButton::Plus); // a press taken back before it lands
+        tap(SurfaceButton::Minus);
+        CHECK(ui.preset_due && ui.presets_cursor == 1);
+        kept(1);
+        wheel(1); // the wheel and the keys walk the same list
+        lands(2);
+        wheel(-1);
+        lands(1);
+        for (int n = 0; n < 3; ++n) tap(SurfaceButton::Plus); // three presses from the second: the last, no further
+        lands(2);
+        edit();
+        tap(SurfaceButton::Plus); // against the end: nothing is armed
+        CHECK(!ui.preset_due);
+        wheel(1);
+        CHECK(!ui.preset_due);
+        kept(2);
+        tap(SurfaceButton::Minus);
+        lands(1);
+        tap(SurfaceButton::Minus);
+        lands(0);
+        tap(SurfaceButton::Minus); // and against the start
+        CHECK(!ui.preset_due);
+        tr.layout = PadLayout::Drums; // a drum machine's pads: their bank stays too
+        tap(SurfaceButton::Plus);
+        lands(1);
+        CHECK(tr.octave == octave && tr.bank == bank);
+        tr.layout = PadLayout::Scale;
+
+        // Two user presets: loading one opens the plug-in again, then its presets are looked for again.
+        auto save = [&](const char* name, size_t count) {
+            chord();
+            CHECK(ui.name.target == NameTarget::PluginPreset);
+            if (name) ui.name.set(name);
+            tap(SurfaceButton::TopRight);
+            wait([&] { return rack->programs(entry).list.size() == count && ui.plugin_panel.programs == count; });
+        };
+        save(nullptr, 4);
+        save("Other", 5);
+        const auto all = rack->programs(entry).list; // High, Low, Mid, My Patch, Other
+        CHECK(all[3].user() && all[3].name == "My Patch" && all[4].user() && all[4].name == "Other");
+        auto playing = [&] { return rack->programs(entry).current; };
+        auto opening = [&] { return rack->status(entry) == PluginStatus::Loading; };
+        auto looking = [&] { return rack->status(entry) == PluginStatus::Ready && rack->programs(entry).finding; };
+        auto whole = [&] { return rack->status(entry) == PluginStatus::Ready && !rack->programs(entry).finding && ui.plugin_panel.programs == 5; };
+        auto to_factory = [&] { // back onto Mid, the last of the plug-in's own
+            wait(whole);
+            while (playing() != all[2].index) {
+                tap(SurfaceButton::Minus);
+                rest();
+                wait([&] { return whole() && playing() == all[ui.presets_cursor].index; });
+            }
+        };
+        to_factory();
+        tap(SurfaceButton::Plus);
+        CHECK(ui.preset_due && ui.presets_cursor == 3);
+        rest(); // My Patch: read from the card, then the plug-in opens again
+        wait(opening);
+        for (auto key : {SurfaceButton::Plus, SurfaceButton::Plus, SurfaceButton::Minus}) { // not the octave's meanwhile
+            tap(key);
+            CHECK(tr.octave == octave && !ui.preset_due);
+        }
+        c.freeze_requested[0].state = FreezeState::Frozen; // a frozen track asks, opening (or let go by a deep freeze)
+        tap(SurfaceButton::Plus);
+        CHECK(ui.ask == UiState::Ask::Unfreeze);
+        tap(SurfaceButton::TopLeft);
+        CHECK(ui.ask == UiState::Ask::None && opening());
+        c.freeze_requested[0] = {};
+        wait(looking); // open again, its list not whole yet: said, and nothing moves
+        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus}) {
+            ui.notice[0] = 0;
+            tap(key);
+            CHECK(std::string(ui.notice) == "Looking for presets" && tr.octave == octave && !ui.preset_due);
+        }
+        wait(whole);
+        CHECK(playing() == all[3].index && std::string(ref.preset) == "/user/My Patch");
+
+        // A press that lands while the list is looked for again is dropped: its place would name another preset.
+        to_factory();
+        tap(SurfaceButton::Plus);
+        rest(); // My Patch again
+        tap(SurfaceButton::Minus); // before the plug-in has it: from Mid to Low, the second of the whole list
+        CHECK(ui.preset_due && ui.presets_cursor == 1);
+        wait(looking); // only the user presets are listed: the second is Other
+        rest();
+        CHECK(!ui.preset_due);
+        bool again = false;
+        for (int k = 0; k < 120; ++k) { tick(); again |= opening() || std::string(ref.preset) != "/user/My Patch"; }
+        CHECK(!again && whole() && playing() == all[3].index);
+
+        // A frozen track asks before its preset changes, and not for a press against the list's end.
+        to_factory();
+        for (int n = 0; n < 2; ++n) { tap(SurfaceButton::Plus); }
+        CHECK(ui.preset_due && ui.presets_cursor == 4);
+        rest();
+        wait([&] { return whole() && playing() == all[4].index; });
+        c.freeze_requested[0].state = FreezeState::Frozen;
+        tap(SurfaceButton::Plus);
+        CHECK(ui.ask == UiState::Ask::None && !ui.preset_due);
+        tap(SurfaceButton::Minus);
+        CHECK(ui.ask == UiState::Ask::Unfreeze && !ui.preset_due);
+        tap(SurfaceButton::TopLeft); // B1: not now
+        CHECK(ui.ask == UiState::Ask::None);
+        c.freeze_requested[0] = {};
+        CHECK(tr.octave == octave && tr.bank == bank);
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::Arp)); // off PRESETS the keys are the octave still
+        tap(SurfaceButton::Plus);
+        CHECK(tr.octave == octave + 1 && !ui.preset_due);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     if (failsave) { // the rack keeps its good state when the plug-in's save fails (state_now), at rack level
         CHECK(rack->instrument(entry) == 1);
         set_control("Level", 750);
