@@ -51,7 +51,7 @@ struct Pot {
 // SD card access (parity phase 10b, shell/card_access.h): what the page shows.
 // `state` is the base's CardShareState (0 home, 1 lending, 2 lent, 3 returning).
 // Camera: a computer shows Screen Mirror's camera, which the drive would unplug (base drivers/screen_mirror.h).
-enum class CardNote : uint8_t { None, NoCard, InUse, Writing, Locked, Empty, Failed, Camera };
+enum class CardNote : uint8_t { None, NoCard, InUse, Writing, Locked, Empty, Failed, Camera, Network };
 struct CardView {
     uint8_t state = 0;
     bool connected = false, ejected = false, locked = false;

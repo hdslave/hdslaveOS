@@ -147,6 +147,25 @@ taking it out.
 
 ![SD card access](../images/screens/cardaccess.png)
 
+## File sharing
+
+While Melodee runs, a computer connected with USB-C can also open the card
+as a network drive. Melodee keeps working and keeps the card.
+
+1. Connect the MPC to the computer with a USB-C cable.
+2. On a Mac, choose **Melodee** under **Network** in the Finder sidebar,
+   or choose **Go** > **Connect to Server** and enter
+   **smb://melodee.local**. On Windows, open `\\192.168.155.1` in File
+   Explorer.
+3. Connect as **Guest**, or enter any name with an empty password.
+4. Open **SD Card**. Copy your files.
+5. Eject **SD Card** on the computer when you are done.
+
+File sharing is on until you turn it off in **SETTINGS** > **AUDIO** >
+**File sharing**. While the computer has **SD Card** open, SD card access
+does not start; eject it on the computer first. File sharing needs MPC
+firmware 1.3.0.12; on firmware 1.4 it does not start.
+
 While the card is mounted on the computer, the pads still play the selected
 track, and **PLAY**, **STOP** and **MAIN VOLUME** still work. The other
 controls wait. USB audio and USB MIDI keep working. If you press **B1**

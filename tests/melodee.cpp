@@ -5089,6 +5089,18 @@ void device_rates() {
         b.mirror = true; b.mirror_fps = 60; b.reset_factory();
         CHECK(!b.mirror && b.mirror_size == 3 && b.mirror_fps == 30);
     }
+    // File sharing: on until turned off, kept and read back; a file from before the row reads as on.
+    {
+        Settings a;
+        CHECK(a.file_sharing && a.value_text(Settings::FileSharingRow) == "On" && std::string(Settings::row_name(Settings::FileSharingRow)) == "File sharing");
+        a.step(Settings::FileSharingRow, 1);
+        CHECK(!a.file_sharing && a.value_text(Settings::FileSharingRow) == "Off" && a.text().find("\nfile_sharing=0\n") != std::string::npos);
+        Settings b;
+        b.read(a.text()); CHECK(!b.file_sharing);
+        Settings c;
+        c.read("screen_mirror=1\n"); CHECK(c.file_sharing);
+        b.reset_factory(); CHECK(b.file_sharing);
+    }
     // LIGHTS: Pad fade 100 ms and Tap Tempo light on until changed; kept and read back; the fade stops at the list's ends.
     {
         Settings a;

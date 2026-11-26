@@ -2942,6 +2942,21 @@ so a web site in the same browser cannot send files to the MPC. A first
 install still goes on the card: the stock web page only takes Akai firmware,
 and it is there again once Melodee has stopped.
 
+### File sharing
+
+Settings' AUDIO > **File sharing** (key `file_sharing`, on unless turned
+off) makes the card a network drive for the computer on USB-C:
+`App::file_sharing()` asks the base's File Sharing (`drivers/file_share.h`)
+for it under the name MELODEE, and the base serves the card's mount point as
+**SD Card** over SMB 2 and 3 while the card is the MPC's. A Mac finds it as
+**Melodee** under Network (the mDNS responder adds a DNS-SD `_smb._tcp`
+record, port 445 on `melodee.local`, while `session().file_share` is
+`serving`) or at **smb://melodee.local**. The name `guest` logs in as a
+guest; any other name with an empty password as a user. While the computer
+has **SD Card** open, SD card access shows **OPEN ON COMPUTER** and does not
+lend the card. Firmware 1.3.0.12 only: on 1.4 the base's module does not
+load and `file_share=failed` in `status`.
+
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
 patterns a track, 8 mod routes, 8192 motion points a pattern. Samples have
 no such limit (above, "Sampler").
