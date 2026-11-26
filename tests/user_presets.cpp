@@ -1090,7 +1090,7 @@ int main(int argc, char** argv) {
         tap(SurfaceButton::WheelPush);
         tap(SurfaceButton::WheelPush);
         wait([&] { return ready(entry); });
-        listing("Beta", 1, false); // its plug-in's kind: not looked for while the rack had other work (its presets)
+        listing("Beta", 1); // its plug-in's kind too, though the rack had other work queued behind the listing (its presets)
         for (int k = 0; k < 40; ++k) tick();
         CHECK(fs::path(rack->view().folder).filename() == "Beta" && ui.plugins_cursor == 0 && ui.plugins_count == 1);
         unsetenv("MELODEE_TEST_SLOW_OPEN");
