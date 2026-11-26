@@ -1846,6 +1846,7 @@ void Context::undo() {
     Edit* e = edits.undo();
     if (!e) { notice("Nothing to undo"); return; }
     apply_edit(*e, false);
+    plugins_follow(); // the rack as the project is now, before a plug-in swap reads it or the next step of a jump
     swap_plugin(*e, false);
     usage.undo(now, false, e->what, ui.page);
     notice("Undo " + e->what);
@@ -1861,6 +1862,7 @@ void Context::redo() {
     Edit* e = edits.redo();
     if (!e) { notice("Nothing to redo"); return; }
     apply_edit(*e, true);
+    plugins_follow();
     swap_plugin(*e, true);
     usage.undo(now, true, e->what, ui.page);
     notice("Redo " + e->what);

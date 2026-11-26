@@ -428,6 +428,10 @@ int Context::plugin_in_focus() const {
     return -1;
 }
 
+void Context::plugins_follow() {
+    if (plugins) plugins->sync(project, plugins_asleep());
+}
+
 void Context::plugins_tick(uint32_t at) {
     if (!plugins) return;
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it

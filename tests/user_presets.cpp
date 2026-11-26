@@ -692,6 +692,10 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
+    if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
+        setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
+        fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
+    }
     if (mode == "picker-rows") { // each file one instrument, so a row loads; two more beside it, and one in each of two folders
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         const auto folder = fs::path(plugin).parent_path();
@@ -1204,6 +1208,43 @@ int main(int argc, char** argv) {
         std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
         wait([&] { return ready(entry); });
         CHECK(values(entry)[0] == 0.5 && values(entry)[1] == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Undo two steps at once (no tick between them): a plug-in replaced, edited, its track cleared. The first step brings
+    // the track back, the second the plug-in before; redo then brings the edited one back as it was, not its defaults.
+    if (mode == "undo-steps") {
+        auto loaded = [&] { return fs::path(ref.path).filename().string(); };
+        open_picker();
+        listing("Plugins", 2);
+        cursor_on("C.clap");
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::ReplacePlugin);
+        tap(SurfaceButton::TopRight);
+        CHECK(loaded() == "C.clap");
+        wait([&] { return ready(entry); });
+        set_control("Wave", 1000);
+        wait([&] { return values(entry)[1] == 2; });
+        c.open(PageId::Master);
+        button(SurfaceButton::PadBank, true);
+        button(SurfaceButton::Erase, true);
+        pad(0);
+        button(SurfaceButton::Erase, false);
+        button(SurfaceButton::PadBank, false);
+        tap(SurfaceButton::TopRight);
+        CHECK(!tr.used());
+        wait([&] { return rack->status(entry) == PluginStatus::None; });
+        for (int k = 0; k < 20; ++k) tick();
+        undo(); // the clear
+        undo(); // and the replace, in the same tick
+        CHECK(tr.used() && loaded() == "Test.clap");
+        wait([&] { return ready(entry) && loaded() == "Test.clap"; });
+        CHECK(values(entry)[1] == 0);
+        redo();
+        CHECK(loaded() == "C.clap");
+        wait([&] { return ready(entry); });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(values(entry)[1] == 2);
         shell->set_plugins(nullptr);
         return 0;
     }

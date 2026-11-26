@@ -388,6 +388,10 @@ public:
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
+    // The rack told what the project uses now (PluginRack::sync), at once rather than at the next tick: after each undo
+    // or redo step, so a plug-in an earlier step of the same jump brought back has its kept state where a later step
+    // (a plug-in swap) reads it.
+    void plugins_follow();
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     bool plugin_screen_input(ScreenKey key, int value); // an input handed to the plug-in screen in view (shell/screen_view.h); false: none
     bool plugin_screen_key(ScreenKey key); // MUTE or ERASE tapped: to the plug-in's own page when it takes the key; false: Melodee's job
