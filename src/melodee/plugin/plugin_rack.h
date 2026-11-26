@@ -177,6 +177,12 @@ private:
         uint32_t selection = 0;           // invalidates a pending user preset read when a later program is picked
         std::string error;
         PluginFile file;
+        // Let go because nothing uses it now (its track cleared or copied over, its effect taken out): which plug-in
+        // it was and its state then, given back if that plug-in comes back here with no state of its own (an undo).
+        // Never saved with the project (states()); another plug-in here, a restore() or a new project drops it.
+        std::string parked_path;
+        int32_t parked_id = 0;
+        std::vector<uint8_t> parked;
     };
     struct PatchWrite;
     struct Job {
@@ -206,6 +212,7 @@ private:
     void write_screen_problems(const std::string& top); // the companion screens' (plugin/companion_package.h)
     void find_companion(PluginHandle& handle, const PluginFile& file, const std::string& top, const std::string& stage);
     void destroy(PluginHandle* handle);
+    std::vector<uint8_t> kept_state(const Entry& e) const; // under `lock`
     void screen_run();                              // the screen thread: draws the screen in view
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);

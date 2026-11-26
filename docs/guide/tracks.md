@@ -25,6 +25,9 @@ it is held, on any page.
 - During a move or copy the screen shows the tracks. **B1** (**BACK**) steps
   back.
 - Press **ERASE** + pad to clear that track (asks first).
+- **SHIFT** + **−** (undo) after clearing a plug-in track, copying a track
+  over it or removing a plug-in effect brings the plug-in back with its
+  settings and preset as they were.
 - Turn the encoder or press **−** / **+** to change the kit's bank.
 
 ![Moving a track](../images/screens/movetrack.png)

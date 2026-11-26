@@ -8,6 +8,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
+#include "melodee/shell/track_copy.h"
 #include "runtime/controller.h"
 #include <chrono>
 #include <cmath>
@@ -738,6 +739,13 @@ int main(int argc, char** argv) {
         kit_on(2);
         project.tracks[2].set_name("BASS");
     }
+    if (mode == "undo-state") { // and the fixture's effect on the master's chain
+        project.plugins[2] = ref;
+        project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
+        auto& slot = project.chain(master_chain).slots[0];
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = 2;
+    }
     if (mode == "presets-track") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
@@ -820,6 +828,13 @@ int main(int argc, char** argv) {
         event.input.index = uint8_t(SurfaceControl::Wheel);
         event.input.delta = detents;
         shell->surface(event, ++now);
+    };
+    auto values = [&](unsigned at) { // a fixture's Level, Wave and Gain, from its state
+        auto bytes = rack->state(at);
+        CHECK(bytes.size() == 4 + 3 * sizeof(double));
+        std::array<double, 3> v;
+        std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+        return v;
     };
     auto ready = [&](unsigned at) { return rack->status(at) == PluginStatus::Ready && !rack->programs(at).finding; };
     // The picker's row for a file or folder of that name on the card (-1 none), and the cursor put on it with the wheel.
@@ -938,18 +953,19 @@ int main(int argc, char** argv) {
         return 0;
     }
     // Rack slots follow each fixture's remote-controls page, which can differ from its parameter order.
-    auto set_control = [&](const char* name, int value) {
+    auto set_control_of = [&](unsigned at, const char* name, int value) {
         PluginPanel panel;
-        rack->panel(entry, 0, panel);
+        rack->panel(at, 0, panel);
         for (unsigned k = 0; k < panel.window.size(); ++k) {
             const auto& control = panel.window[k];
             if (control.used && std::strcmp(control.name, name) == 0) {
-                rack->set_param(entry, panel.window_first + k, value);
+                rack->set_param(at, panel.window_first + k, value);
                 return;
             }
         }
         throw std::runtime_error(std::string("missing fixture control: ") + name);
     };
+    auto set_control = [&](const char* name, int value) { set_control_of(entry, name, value); };
     // the picker opened on a plug-in track, then another track picked (Pad Bank + pad). Push loads onto the
     // track in hand: over a kit it asks first, as over another plug-in, and one undo brings the kit back.
     if (mode == "picker-track") {
@@ -1110,6 +1126,84 @@ int main(int argc, char** argv) {
         shell->snapshot(*drawn, now);
         CHECK(fs::path(rack->view().folder).filename() == "Plugins" && fs::path(drawn->plugins.folder).filename() == "Plugins");
         unsetenv("MELODEE_TEST_SLOW_OPEN");
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // undo after Clear Track, a track copied over it, or its effect removed brings the plug-in back as it was
+    // let go: its values and its preset, not its defaults.
+    if (mode == "undo-state") {
+        const unsigned gain = 2;
+        wait([&] { return ready(gain); });
+        const auto list = rack->programs(entry).list;
+        CHECK(list.size() == 3);
+        const auto high = std::find_if(list.begin(), list.end(), [](const PluginProgram& p) { return p.name == "High"; });
+        CHECK(high != list.end());
+        c.pick_plugin_program(entry, high->index); // a preset, then a value of its own on top of it
+        wait([&] { return values(entry)[0] == 0.75 && rack->programs(entry).current == high->index; });
+        set_control("Wave", 1000);
+        wait([&] { return values(entry)[1] == 2; });
+        const std::string preset = ref.preset;
+        CHECK(!preset.empty());
+        double wave = 2;
+        auto as_it_was = [&] {
+            wait([&] { return ready(entry); });
+            CHECK(tr.engine == EngineKind::Plugin && tr.plugin == entry);
+            CHECK(values(entry)[0] == 0.75 && values(entry)[1] == wave);
+            CHECK(std::string(ref.preset) == preset && rack->programs(entry).current == high->index);
+        };
+        auto let_go = [&](unsigned at) { // the rack has dropped it, and ticked on
+            wait([&] { return rack->status(at) == PluginStatus::None; });
+            for (int k = 0; k < 20; ++k) tick();
+        };
+        // Clear Track: Pad Bank + Erase + its pad, then B3. From the master's page, where the effect is too.
+        c.open(PageId::Master);
+        button(SurfaceButton::PadBank, true);
+        button(SurfaceButton::Erase, true);
+        pad(0);
+        button(SurfaceButton::Erase, false);
+        button(SurfaceButton::PadBank, false);
+        CHECK(ui.ask == UiState::Ask::ClearTrack);
+        tap(SurfaceButton::TopRight);
+        CHECK(!tr.used());
+        let_go(entry);
+        CHECK(rack->states()[entry].empty()); // nothing uses it: the project saved now does not carry it
+        undo();
+        as_it_was();
+        set_control("Wave", 500); // a value changed since, then cleared again: that comes back too
+        wait([&] { return values(entry)[1] == 1; });
+        wave = 1;
+        redo();
+        CHECK(!tr.used());
+        let_go(entry);
+        undo();
+        as_it_was();
+        // The kit copied over it.
+        copy_track(c, 1, 0);
+        CHECK(tr.engine == EngineKind::Sampler);
+        let_go(entry);
+        undo();
+        as_it_was();
+        // Its effect out of the master's chain: Erase on the chain's page.
+        set_control_of(gain, "Gain", 250);
+        wait([&] { return values(gain)[2] == 0.5; });
+        CHECK(ui.page == PageId::Master && project.chain(master_chain).count() == 1);
+        tap(SurfaceButton::Erase);
+        CHECK(project.chain(master_chain).count() == 0);
+        let_go(gain);
+        undo();
+        CHECK(project.chain(master_chain).count() == 1 && project.chain(master_chain).slots[0].params[0] == int(gain));
+        wait([&] { return ready(gain); });
+        CHECK(values(gain)[2] == 0.5);
+        as_it_was(); // and the track's own was not touched
+        // Another project: nothing of this one's comes back. The same plug-in in the same entry opens from its defaults.
+        c.new_project();
+        wait([&] { return rack->status(entry) == PluginStatus::None && rack->status(gain) == PluginStatus::None; });
+        for (int k = 0; k < 20; ++k) tick();
+        c.load_sound(0, EngineKind::Plugin, 0);
+        tr.plugin = uint8_t(entry);
+        std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
+        wait([&] { return ready(entry); });
+        CHECK(values(entry)[0] == 0.5 && values(entry)[1] == 0);
         shell->set_plugins(nullptr);
         return 0;
     }

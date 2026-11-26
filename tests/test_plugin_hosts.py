@@ -146,6 +146,9 @@ class PluginHostTests(unittest.TestCase):
     def test_picker_acts_on_the_row_it_draws(self):
         self.run_rack_fixture("picker-rows")
 
+    def test_undo_brings_a_dropped_plugin_back_with_its_state(self):
+        self.run_rack_fixture("undo-state")
+
     def test_stage_presets_shown_in_place_of_panel_has_its_presets(self):
         self.run_rack_fixture("stage-presets")
 

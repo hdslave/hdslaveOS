@@ -2705,6 +2705,14 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   hand by then, REPLACE is a Push for that one, which asks again when that
   track has a sound or another plug-in to lose; an empty one simply takes
   the plug-in, as its own undo step (`Context::choose_plugin`).
+- **Undo brings a plug-in back as it was let go.** A plug-in nothing uses
+  any more (its track cleared or copied over, turned another kind, its
+  effect taken out) is let go, and the rack keeps its state as it was then
+  (`PluginRack::sync`, `parked`). The undo that brings it back opens it
+  with that state, so its values and its preset come back with it; a redo
+  and another undo take the state again as it is then. The kept state is
+  not saved with the project, and goes once another plug-in takes its
+  entry or another project opens.
 - **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
   a kit pad's chain take no plug-ins; editors are never shown.
 - `tools/vst_probe/` is a command-line host on the same code, for trying a

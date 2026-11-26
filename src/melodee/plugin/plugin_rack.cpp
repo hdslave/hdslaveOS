@@ -798,6 +798,18 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             }
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
+            // Let go: what it is now kept, for an undo that brings it back. Not when another project has just opened
+            // (`reload`, set_states()): nothing of the last one's comes back in this one.
+            if (want.empty() && !entry.path.empty() && !entry.reload) {
+                entry.parked = kept_state(entry);
+                entry.parked_path = entry.path;
+                entry.parked_id = entry.id;
+            } else if (!want.empty() && entry.path.empty() && !entry.parked_path.empty()) { // used again
+                if (want == entry.parked_path && id == entry.parked_id && !entry.reload && entry.state.empty())
+                    entry.state = std::move(entry.parked); // the same plug-in, with nothing else to load: as it was let go
+                entry.parked_path.clear();
+                entry.parked.clear();
+            }
             // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
             bool only_asleep = !want.empty() && asleep && !plugin_used_awake(project, e, asleep);
             auto step = plan_plugin(entry, want, id, only_asleep, rate, entry.live != nullptr);
@@ -825,6 +837,8 @@ void PluginRack::set_states(PluginStates states) {
     for (unsigned e = 0; e < max_plugins; ++e) {
         entries[e].state = std::move(states[e]);
         entries[e].reload = true; // a new project: every entry it uses loads again, with its state
+        entries[e].parked_path.clear(); // and nothing of the last one's comes back
+        entries[e].parked.clear();
     }
 }
 
@@ -844,6 +858,8 @@ void PluginRack::clone(unsigned entry, unsigned copy) {
     auto& from = entries[entry];
     entries[copy].state = from.live && from.status == PluginStatus::Ready ? state_now(from.live, from.state)
                                                                            : from.state;
+    entries[copy].parked_path.clear(); // a copy of another: nothing of what was let go here comes back
+    entries[copy].parked.clear();
 }
 
 std::string PluginRack::summary() const {
@@ -885,15 +901,20 @@ PluginRack::Usage PluginRack::usage() const {
     return out;
 }
 
+// Under `lock`: an entry's state as it is now, from a plug-in that is open and working; a dead bridge has nothing to
+// say (its parameters read as 0), so it, and one not open, keep the state they had.
+std::vector<uint8_t> PluginRack::kept_state(const Entry& e) const {
+    if (!e.live || e.status != PluginStatus::Ready) return e.state;
+    auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
+    if (bridged && bridged->bridgeDied()) return e.state;
+    return state_now(e.live, e.state);
+}
+
 void PluginRack::reload(unsigned entry) {
     if (entry >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);
     auto& e = entries[entry];
-    if (e.live && e.status == PluginStatus::Ready) {
-        auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
-        if (!bridged || !bridged->bridgeDied()) // a working one keeps what it is now; a dead bridge has nothing to say
-            e.state = state_now(e.live, e.state);
-    }
+    e.state = kept_state(e); // a working one keeps what it is now
     e.reload = true;
 }
 
@@ -910,6 +931,8 @@ void PluginRack::restore(unsigned entry, std::vector<uint8_t> state) {
     std::lock_guard<std::mutex> held(lock);
     entries[entry].state = std::move(state);
     entries[entry].reload = true; // plan_plugin keeps this state for whichever plug-in loads
+    entries[entry].parked_path.clear();
+    entries[entry].parked.clear();
 }
 
 PluginStatus PluginRack::status(unsigned entry) const {
