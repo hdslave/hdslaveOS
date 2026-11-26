@@ -365,15 +365,15 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = m.info->label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(*m.info); c.fill = gauge_of(*m.info, b.value);
         break;
     }
-    case Kind::StepSound: { // Step Edit's SOUND row: the step's own sample by the pad it is on ("B01" Amen), else PAD
+    case Kind::StepSound: { // Step Edit's SOUND row: the step's own sample by the pad and track it is on ("B05" T1), else PAD
         c.label = "SOUND";
         const auto choices = step_sound_choices(s.project);
-        if (b.value > 0 && size_t(b.value) <= choices.size()) {
+        if (b.value > 0 && size_t(b.value) <= choices.size()) { // the panel names the sample
             const auto& choice = choices[size_t(b.value - 1)];
             char label[4];
             pad_label(choice.pad, label);
             c.value = label;
-            c.unit = juce::String::fromUTF8(s.project.samples[choice.slot].name);
+            c.unit = "T" + juce::String(choice.track + 1);
         } else if (b.id > 0 && unsigned(b.id) <= sample_slots) { // a sample no pad holds now: the step keeps it
             c.value = juce::String::fromUTF8(s.project.samples[unsigned(b.id) - 1].name);
         } else {
