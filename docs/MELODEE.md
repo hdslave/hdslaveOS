@@ -2174,7 +2174,7 @@ while following.
   **Autosave Off** (Settings > SEQ, issue 18; `Settings::autosave`, On by
   default, `autosave=` in the settings file): no background save. B1 reads
   **SAVE** (to the project's file; SAVE AS while it has none, SAVE AS NEW on
-  its sheet); the open project's sheet gains **REVERT** (TO SAVED, second
+  its sheet), Shift + B1 **SAVE AS** (issue 63); the open project's sheet gains **REVERT** (TO SAVED, second
   card) while it has a file and changes: pressed twice, the file is opened
   again. NEW asks with "Its changes are lost" and saves nothing; LOAD of
   another project says CHANGES LOST and asks once more; Exit's POWER OFF

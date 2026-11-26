@@ -39,6 +39,7 @@ To save only when you choose, turn **Autosave** off in
 
 - **B1** reads **SAVE** and writes the project to its file. A project
   with no file yet still gets **SAVE AS**.
+- **SHIFT** + **B1** (**SAVE AS**) saves it under a new name.
 - To go back to what was last saved, open the list, push the open project
   and pick **REVERT** (**TO SAVED**). Push it again to confirm.
 - **NEW**, **LOAD** of another project and the Exit screen don't save.
