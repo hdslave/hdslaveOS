@@ -7,7 +7,8 @@
 // Push loads the one under the cursor and stays, so the next can be heard
 // straight after (the pads play the track). Another track picked meanwhile
 // (Pad Bank + pad): a track's plug-in's list turns to that track's plug-in,
-// or the page goes back when it has no presets (Context::presets_follow_track).
+// or the page goes back when it has no presets (Context::presets_follow). So does a
+// Copy Track that gives the track in hand's copy a plug-in of its own.
 // The one picked last says LOADED
 // (LOADING until the plug-in has it). B1 goes back. A plug-in finds its
 // presets where it keeps them, under Melodee/Plugin Data on the card.

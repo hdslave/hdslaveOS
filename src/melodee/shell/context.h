@@ -380,7 +380,9 @@ public:
     uint32_t name_preset_generation = 0;
     void name_plugin_preset(unsigned entry);
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
-    void presets_follow_track(unsigned was);  // PRESETS open and the selected track changed from `was`: the list follows, or closes
+    void presets_follow();                    // PRESETS open for a track's list that it no longer lists: it follows, or closes
+    int8_t presets_track = -1;                // whose list PRESETS shows: a track's (its instrument's, or an effect's on its chain); -1 no track's
+    bool presets_instrument = false;          // the track's instrument's
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
     void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)

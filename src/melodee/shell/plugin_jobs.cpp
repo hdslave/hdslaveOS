@@ -294,33 +294,44 @@ void Context::open_plugin_presets(unsigned entry) {
     ui.presets_back = ui.page;
     set_presets_folder(ui, place.folder);
     ui.presets_cursor = uint16_t(place.row);
+    { // whose list it is: the track in hand's instrument, an effect on its chain, or no track's (presets_follow)
+        const auto& t = track();
+        presets_instrument = t.engine == EngineKind::Plugin && t.plugin == entry;
+        bool effect = false;
+        for (const auto& s : project.chain(ui.track % track_count).slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
+        presets_track = presets_instrument || effect ? int8_t(ui.track % track_count) : int8_t(-1);
+    }
     open(PageId::PluginPresets);
 }
 
-// PRESETS is open and another track was picked (select_track): a list opened for the track `was`, its plug-in's or
-// a plug-in effect's on its chain, would go on loading into that track while the pads play the one in hand. Its
-// plug-in's list turns to the plug-in of the track in hand, where the preset picked last is; with no presets there
-// (another kind of track, a plug-in with none or still opening), and for an effect's list, the page goes back where
-// it was opened from. An effect on a bus's, a submix's, the master's or a loop track's chain is no track's: its list stays.
-void Context::presets_follow_track(unsigned was) {
-    if (ui.page != PageId::PluginPresets || !plugins || ui.presets_entry >= max_plugins) return;
-    was %= track_count;
-    const unsigned entry = ui.presets_entry;
-    const auto& old = project.tracks[was];
-    const bool instrument = old.engine == EngineKind::Plugin && old.plugin == entry;
-    bool effect = false;
-    for (const auto& s : project.chain(was).slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
-    if (!instrument && !effect) return;
+// PRESETS is open for a track's list (open_plugin_presets: presets_track), and that is no longer what it lists: another
+// track was picked (select_track), or the track's plug-in moved to another entry (a Copy Track's copy gets its own at
+// the next tick, split_shared_plugins). Left so, the list would go on loading into a plug-in the pads no longer play.
+// An instrument's list turns to the plug-in of the track in hand, where the preset picked last is; with no presets
+// there (another kind of track, a plug-in with none or still opening), and for an effect's list on a track's chain,
+// the page goes back where it was opened from. An effect on a bus's, a submix's, the master's or a loop track's chain
+// is no track's: its list stays.
+void Context::presets_follow() {
+    if (ui.page != PageId::PluginPresets || !plugins || presets_track < 0 || ui.presets_entry >= max_plugins) return;
+    const unsigned owner = unsigned(presets_track) % track_count, here = ui.track % track_count;
     const auto& t = track();
-    if (instrument && t.engine == EngineKind::Plugin && t.plugin < max_plugins) {
-        auto programs = plugins->programs(t.plugin);
-        if (!programs.list.empty()) {
-            auto place = preset_place(programs.list, programs.current);
-            ui.presets_entry = t.plugin;
-            set_presets_folder(ui, place.folder);
-            ui.presets_cursor = uint16_t(place.row);
-            return;
+    if (presets_instrument) {
+        if (here == owner && t.engine == EngineKind::Plugin && t.plugin == ui.presets_entry) return; // still its own
+        if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) {
+            auto programs = plugins->programs(t.plugin);
+            if (!programs.list.empty()) {
+                auto place = preset_place(programs.list, programs.current);
+                ui.presets_entry = t.plugin;
+                presets_track = int8_t(here);
+                set_presets_folder(ui, place.folder);
+                ui.presets_cursor = uint16_t(place.row);
+                return;
+            }
         }
+    } else {
+        bool there = false;
+        for (const auto& s : project.chain(owner).slots) there |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == ui.presets_entry;
+        if (here == owner && there) return;
     }
     open(ui.presets_back);
 }
@@ -436,6 +447,7 @@ void Context::plugins_tick(uint32_t at) {
     if (!plugins) return;
     if (library) plugins->set_card(library->card()); // the card's top folder, as the sample library found it
     split_shared_plugins();
+    presets_follow(); // a copy's plug-in in its own entry now: an open PRESETS list follows it
     plugins->sync(project, plugins_asleep());
     PluginRack::PresetResult result;
     while (plugins->take_preset_result(result)) {

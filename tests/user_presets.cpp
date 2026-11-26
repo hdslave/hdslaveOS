@@ -687,7 +687,7 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_SLOW_PRESETS", "1", 1); // its presets are: both states last long enough to press keys in
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
-    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state") {
+    if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -750,7 +750,7 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
     }
-    if (mode == "presets-track") { // two tracks of the same synth, each its own instance, and a kit
+    if (mode == "presets-track" || mode == "copy-presets") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -1211,6 +1211,42 @@ int main(int argc, char** argv) {
         std::snprintf(ref.path, sizeof(ref.path), "%s", plugin.c_str());
         wait([&] { return ready(entry); });
         CHECK(values(entry)[0] == 0.5 && values(entry)[1] == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // The whole PRESETS list of track 1's plug-in open, then track 1 copied onto track 4 (Pad Bank + B3 COPY + pad 1 +
+    // pad 4): the copy gets a plug-in entry of its own a tick later. The list then is never track 1's while track 4 is in
+    // hand, so a preset picked there never changes track 1's sound.
+    if (mode == "copy-presets") {
+        wait([&] { return ready(1); });
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        button(SurfaceButton::PadBank, true);
+        tap(SurfaceButton::TopRight); // COPY
+        pad(0);
+        pad(3);
+        button(SurfaceButton::PadBank, false);
+        for (int k = 0; k < 20; ++k) tick();
+        auto& t4 = project.tracks[3];
+        CHECK(ui.track == 3 && t4.engine == EngineKind::Plugin && t4.plugin != entry && tr.plugin == entry);
+        CHECK(ui.page != PageId::PluginPresets || ui.presets_entry == t4.plugin);
+        wait([&] { return ready(t4.plugin); });
+        if (ui.page != PageId::PluginPresets) { // back on track 4's Stage PRESETS: Push opens its own list
+            CHECK(ui.page == PageId::Stage);
+            wait([&] { return ui.plugin_panel.entry == t4.plugin && ui.plugin_panel.programs == 3; });
+            tap(SurfaceButton::WheelPush);
+        }
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == t4.plugin);
+        const auto list = rack->programs(t4.plugin).list;
+        const auto rows = preset_rows(list, "", rack->programs(t4.plugin).current);
+        turn(1 - int(ui.presets_cursor));
+        tap(SurfaceButton::WheelPush);
+        wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
         shell->set_plugins(nullptr);
         return 0;
     }

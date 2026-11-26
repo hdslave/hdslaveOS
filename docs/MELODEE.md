@@ -2581,8 +2581,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   longer play; a track with no presets to list (a kit, a plug-in with none
   or still opening), and the list of an effect on the old track's chain,
   go back where the list was opened from. An effect on any other chain (a
-  bus, a submix, the master, a loop track) keeps its list
-  (`Context::presets_follow_track`). Picking
+  bus, a submix, the master, a loop track) keeps its list. The same holds
+  when a Copy Track gives the track in hand's copy a plug-in entry of its
+  own (`Context::presets_follow`). Picking
   the one loaded loads it again, dropping edits since. What a preset loads
   goes into the plug-in's state, so the project keeps it. Presets in
   folders (a CLAP plug-in's) list as those folders first, each with how

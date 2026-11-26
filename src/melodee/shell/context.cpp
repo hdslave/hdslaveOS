@@ -400,7 +400,7 @@ void Context::select_track(unsigned t) {
     ui.held_step = -1;
     if (ui.page == PageId::Sounds) ui.sounds_cursor = track().preset;
     if (ui.page == PageId::Edit && track().engine == EngineKind::Plugin) open(PageId::Edit); // to Stage's B1 EDIT
-    if (ui.track != was) presets_follow_track(was); // PRESETS: the list of the track in hand's plug-in (shell/plugin_jobs.cpp)
+    if (ui.track != was) presets_follow(); // PRESETS: the list of the track in hand's plug-in (shell/plugin_jobs.cpp)
 }
 
 void Context::note(unsigned t, int key, int velocity) {
