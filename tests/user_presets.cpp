@@ -689,7 +689,7 @@ int main(int argc, char** argv) {
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
     if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag"
-        || mode == "turn-effect") {
+        || mode == "turn-effect" || mode == "presets-frozen") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -1330,6 +1330,29 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Push on a preset in the whole PRESETS list of a frozen track's plug-in asks to unfreeze first, as a turn on Stage
+    // does; B1 there leaves its sound as it was. Not frozen, Push loads it.
+    if (mode == "presets-frozen") {
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        tap(SurfaceButton::WheelPush); // the whole list
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        const auto list = rack->programs(entry).list;
+        const auto rows = preset_rows(list, "", -1);
+        turn(1 - int(ui.presets_cursor));
+        c.freeze_requested[0].state = FreezeState::Frozen;
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::Unfreeze);
+        tap(SurfaceButton::TopLeft); // not now
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(ui.ask == UiState::Ask::None && rack->programs(entry).current < 0 && ref.preset[0] == 0);
+        c.freeze_requested[0] = {};
+        tap(SurfaceButton::WheelPush);
+        wait([&] { return rack->programs(entry).current == list[rows[1].at].index; });
         shell->set_plugins(nullptr);
         return 0;
     }

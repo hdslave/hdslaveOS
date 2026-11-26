@@ -430,7 +430,15 @@ void Context::push_plugin_preset() {
     auto rows = preset_rows(programs.list, inside, programs.current);
     if (rows.empty()) return;
     const auto& row = rows[std::min<size_t>(ui.presets_cursor, rows.size() - 1)];
-    if (!row.folder) { choose_plugin_program(int(row.at)); return; }
+    if (!row.folder) {
+        // A frozen track's sound, or an effect on its chain, asks first, as a turn on Stage does (freeze plan F2c).
+        if (presets_track >= 0) {
+            const auto t = uint8_t(presets_track % track_count);
+            if (frozen_edit(presets_instrument ? UndoScope {UndoScope::Kind::Sound, t, 0} : UndoScope {UndoScope::Kind::Chain, t, t})) return;
+        }
+        choose_plugin_program(int(row.at));
+        return;
+    }
     std::string into = inside.empty() ? row.name : inside + "/" + row.name;
     if (into.size() >= ui.presets_folder.size()) { notice("Folder name too long"); return; }
     set_presets_folder(ui, into);
