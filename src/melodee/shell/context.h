@@ -201,7 +201,7 @@ public:
     bool restore_chop();      // the sample's chop (its WAV's slices, or changed here), whatever the pad's region; false: none
     void layer_load();        // Shift + B1 on Layers (roadmap P3): Samples, its Push onto the layer in hand
     void layer_clear();       // Shift + B2 on Layers: the layer in hand (2-4) taken off the pad
-    void load_layer(const std::string& path, const std::string& name); // Push on Samples opened by layer_load()
+    void load_layer(const std::string& path, const std::string& name, uint32_t start = 0, uint32_t end = 0); // Push on Samples opened by layer_load()
     void toggle_warp_mode();  // Shift + Pad 15: Warp by Time stretch or Pitch (the kit's Follow how)
     void set_recording(bool on); // a take begins; when it ends it goes into the history
     void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording
@@ -711,7 +711,8 @@ public:
     void trim_sample();                                  // Shift + Pad 13: the last pad's region as a file of its own, one undo
     void extract_slice();                                // Chop, Shift + B1: the slice as a file, onto the next empty pad
     void save_sample_as(const std::string& name);        // Save Sample's Name sheet, Done: the region as Samples/<name>.wav
-    void load_file(const std::string& path, const std::string& name, bool next_empty); // the browser's Push, Shift + pad
+    // The browser's Push, Shift + pad; `start`, `end` (frames, end 0 the file's end): the trim sheet's, onto the pad.
+    void load_file(const std::string& path, const std::string& name, bool next_empty, uint32_t start = 0, uint32_t end = 0);
     void files_landed();                                 // the library changed: made files onto their pads
     int next_empty_pad(unsigned after) const;            // the kit's next pad without a sample after `after`, -1 none
     // The browser (Samples): the file under the cursor heard when B3 is on;
@@ -724,6 +725,19 @@ public:
     std::string files_folder_seen;
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
+    // Samples' trim sheet (shell/browse_trim.h, UiState::browse): K2 / K3 on an audio file read it into a slot and raise
+    // the sheet (`focus` the handle turned); B1, a move to another file or leaving the page lower it, the slot freed
+    // when nothing plays it; Erase alone puts both ends back. browse_tick: the kept part heard once a moved end is still,
+    // and the sheet down once its file is no longer under the cursor.
+    bool browse_open(unsigned focus);
+    void browse_close();
+    void browse_erase(int handle); // -1 both
+    void browse_tick(uint32_t ms);
+    std::string browse_path; // the file the sheet trims
+    uint16_t browse_cursor = 0;         // the row it was looked up at
+    unsigned browse_generation = 0;     // and the library's list then
+    uint16_t audio_cursor = 0xffff;     // UiState::files_audio: the row it was worked out for
+    unsigned audio_generation = ~0u;
     // Settings > SEQ > Note preview (shell/note_preview.h): `events` of the selected track's pattern heard once, the
     // earliest of them (a chord), each as long as the sequencer holds it; `settle`: once the wheel has rested. What
     // still sounds of the last preview ends first. Nothing while the setting is off.

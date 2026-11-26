@@ -69,6 +69,21 @@ struct ZoomView {
     uint32_t from = 0, to = 0, key = 0;
 };
 
+// Samples: the audio file under the cursor trimmed before it goes onto a pad (shell/browse_trim.h). K2 or K3 read it
+// into a sample slot, as Push would, and raise the sheet; Push or Shift + pad load it with START and END on the pad.
+struct BrowseTrim {
+    int16_t slot = -1;           // the slot the file is read into; -1: the sheet is down
+    bool fresh = false;          // the slot was taken for the sheet: it is freed again unless the file goes onto a pad
+    uint32_t start = 0, end = 0; // frames (44.1 kHz); end 0: the file's end
+    uint8_t focus = 0;           // 0 START, 1 END: the handle the zoom is on and the wheel moves
+    uint8_t zoom = 0;            // Shift + K2 / K3: 0..100 as on Trim (shell/zoom_view.h)
+    bool own_zoom = false;       // a zoom set by Shift + K2 / K3; else about 120 ms round the handle
+    ZoomView view;               // the view kept while an own zoom is set
+    uint32_t opened_at = 0;      // ms: the sheet's rise
+    uint32_t heard_at = 0;       // ms the kept part plays once, a moved end gone still (0: none due)
+    bool up() const { return slot >= 0; }
+};
+
 struct UiState {
     PageId page = PageId::Stage;
     // Back (Shift + Push): the pages opened before this one, oldest first.
@@ -309,6 +324,8 @@ struct UiState {
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)
+    bool files_audio = false;   // the row under the cursor is an audio file (K2 / K3 trim it), copied in by the shell
+    BrowseTrim browse;          // and its trim sheet
     uint8_t trim_zoom = 0;      // Trim: 0 the whole sample .. 100 a few hundred frames (shell/zoom_view.h)
     ZoomView trim_view;         // and the view it keeps
     uint8_t pad_layer = 0;      // Layers (roadmap P3): the layer in hand, 0-3

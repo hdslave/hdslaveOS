@@ -28,6 +28,7 @@
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/model/generators.h"
@@ -108,13 +109,6 @@ Binding cloud_card(const PadSound& pad, int id) {
 }
 // The Sample Mode cards of the last pad hit (parity phase 4).
 Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, zoom_top, ui.trim_zoom}; }
-// A handle's card in frames between lo and hi: zoomed in, the pot turns across the view on screen
-// (shell/zoom_view.h), which stays put while the handle is inside it.
-Binding handle_card(Kind kind, int id, uint32_t value, uint32_t lo, uint32_t hi, FrameView view) {
-    if (view.width() && value >= view.from && value <= view.to) { lo = std::max(lo, view.from); hi = std::min(hi, view.to); } // another handle's view: all of it
-    if (hi <= lo) { lo = std::min(lo, value); hi = std::max(hi, value + 1); }
-    return {kind, id, int(lo), int(hi), int(std::clamp(value, lo, hi))};
-}
 // Decay on One shot, Release on Note On (Gate), as the MPC swaps them; the other on row 2.
 Binding amp_second(const PadSound& pad, bool other) {
     bool decay = (pad.play == PadPlay::OneShot) != other;
@@ -767,6 +761,11 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
             return track.used() ? std::array<Binding, 3> {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}}
                                 : std::array<Binding, 3> {};
         return pattern_shift_cards(project, ui, pattern);
+    case PageId::Samples: { // Shift + K2 / K3: the trim sheet's zoom at START or END, as on Trim
+        if (ui.sheet_open || !(ui.browse.up() || ui.files_audio)) return {};
+        const auto zoom = browse_zoom_cards(project, ui.browse);
+        return {Binding {}, zoom[0], zoom[1]};
+    }
     case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
         if (!follow_shown(ui)) return pattern_shift_cards(project, ui, pattern); // Basic: as Patterns' Shift row
         if (!track.used()) return {};
@@ -1169,8 +1168,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::FlexBeat: // K1 One Shot / Loop, K3 mix (as on the MPC)
         return {Binding {Kind::FlexMode, 0, 0, 1, project.flex.mode}, Binding {}, Binding {Kind::FlexMix, 0, 0, 100, project.flex.mix}};
-    case PageId::Samples: // every list: K1 jumps, the other pots draw nothing
-        return {Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}, Binding {}};
+    case PageId::Samples: { // every list: K1 jumps; on an audio file K2 START, K3 END (the trim sheet, shell/browse_trim.h)
+        const Binding jump {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor};
+        if (ui.sheet_open || !(ui.browse.up() || ui.files_audio)) return {jump, Binding {}, Binding {}};
+        const auto trim = browse_cards(project, ui.browse);
+        return {jump, trim[0], trim[1]};
+    }
     case PageId::Plugins:
         return {Binding {Kind::PluginJump, 0, 0, std::max(int(ui.plugins_count) - 1, 1), ui.plugins_cursor}, Binding {}, Binding {}};
     case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards

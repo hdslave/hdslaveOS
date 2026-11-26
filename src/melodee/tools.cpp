@@ -11,6 +11,7 @@
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/controls_rules.h"
 #include "melodee/shell/usage_log.h"
 #include "melodee/shell/stage_map.h"
@@ -245,6 +246,33 @@ LoadedSample break_sample() {
     s.hit_count = 12;
     for (unsigned n = 0; n < 12; ++n) s.hits[n] = {230087u * n / 12, 200};
     return s;
+}
+
+// Samples' trim sheet (shell/browse_trim.h) over the card's Samples folder: DRUM LOOP read into slot 6 as BREAK's
+// waveform, START and END there (end 0: the file's), `focus` the end turned last; the closer view's own peaks.
+void trim_sheet(Snapshot& s, uint32_t start, uint32_t end, unsigned focus) {
+    s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.settings.preview = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Melodee/Samples";
+    s.files_folder = s.sample_root; s.files_top = false;
+    for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name, name, 0, true});
+    for (auto name : {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"})
+        s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
+    s.files[4].path = s.project.samples[4].path;
+    s.ui.files_count = uint16_t(s.files.size()); s.ui.files_audio = true;
+    s.sample = break_sample();
+    auto& ref = s.project.samples.edit(6);
+    std::snprintf(ref.path, sizeof(ref.path), "%s", s.files[5].path.c_str());
+    std::snprintf(ref.name, sizeof(ref.name), "DRUM LOOP");
+    ref.frames = s.sample.frames;
+    auto& b = s.ui.browse;
+    b.slot = 6; b.fresh = true; b.start = start; b.end = end; b.focus = uint8_t(focus); b.opened_at = s.now - 1000;
+    s.ui.turning = int8_t(1 + focus); s.ui.turned_at = s.now; s.ui.last_pot = int8_t(1 + focus);
+    const FrameView view = browse_view(s.project, b);
+    s.detail_from = view.from; s.detail_to = view.to;
+    for (unsigned c = 0; c < s.detail.size(); ++c) { // BREAK's hits a twelfth apart, each a decaying tone
+        const double at = view.from + double(view.width()) * c / s.detail.size(), hit = s.sample.frames / 12.0;
+        const double since = std::fmod(at, hit), level = std::exp(-since / 9000.0) * (0.4 + 0.6 * std::fabs(std::sin(since / 380.0)));
+        s.detail[c] = uint8_t(std::clamp(0.03 + 0.92 * level, 0.0, 1.0) * 255);
+    }
 }
 
 // Pads B: each used pad of the bank in view as a waveform of its own, a hit or a few and their decay.
@@ -1819,7 +1847,8 @@ const Preview previews[] {
          for (auto name : files) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
          s.files[6].path = s.project.samples[4].path;
          s.files[5].starred = true;
-         s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+         s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 0; s.ui.turned_at = s.now; // K1 JUMP turned
+         s.ui.files_audio = true; // a sample under the cursor: K2 START, K3 END (the trim sheet)
      }},
     {"samplesstar", [](Shell&, Snapshot& s) { // Shift held on the browser: B3 STAR, its LED lit on a starred file
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 2; s.sample_root = "/media/card/Melodee/Samples";
@@ -1899,11 +1928,30 @@ const Preview previews[] {
          const char* files[] {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"};
          for (auto name : files) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
          s.files[4].path = s.project.samples[4].path;
-         s.ui.files_count = uint16_t(s.files.size());
+         s.ui.files_count = uint16_t(s.files.size()); s.ui.files_audio = true;
          PlayHead h; // the audition voice on the preview slot
          h.serial = 50; h.pad = int16_t(sampler_pads); h.slot = uint16_t(preview_slot);
          h.from = 0; h.to = 137592; h.loop_at = 0; h.at = 52920; h.step = 1; h.level = 0.85f; h.wake = 1;
          s.heads[0] = h;
+     }},
+    {"samplestrim", [](Shell&, Snapshot& s) { // K2 turned on an audio file: the trim sheet up, the closer view round START
+         trim_sheet(s, 19000, 0, 0);
+     }},
+    {"samplestrimend", [](Shell&, Snapshot& s) { // K3 turned: the view round END, its last second heard once
+         trim_sheet(s, 19000, 210800, 1);
+         PlayHead h; // the sheet's audition voice
+         h.serial = 51; h.pad = int16_t(sampler_pads); h.slot = 6;
+         h.from = 210800 - 44100; h.to = 210800; h.loop_at = h.from; h.at = 209600; h.step = 1; h.level = 0.85f; h.wake = 1;
+         s.heads[0] = h;
+     }},
+    {"samplestrimrise", [](Shell&, Snapshot& s) { // 60 ms after the turn: the sheet on its way up from the cards
+         trim_sheet(s, 19000, 0, 0);
+         s.ui.browse.opened_at = s.now - 60;
+     }},
+    {"samplestrimloading", [](Shell&, Snapshot& s) { // the file still being read: no handles yet
+         trim_sheet(s, 0, 0, 0);
+         s.project.samples.edit(6).frames = 0; s.sample = LoadedSample {};
+         s.detail_from = s.detail_to = 0;
      }},
     {"banks", [](Shell&, Snapshot& s) { // the card's Samples/Banks: bank files, Push loads one into the bank in view
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Melodee/Samples";

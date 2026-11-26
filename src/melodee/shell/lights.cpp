@@ -194,6 +194,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     autosave_tick(now);
     usage_tick(now);
     context_.chop_tick(now); // Chop: a moved cut heard once, gone still
+    context_.browse_tick(now); // Samples' trim sheet: a moved end heard once, the sheet down off its file
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
     // The library found files or finished a sample: the lengths go into the project.
     if (library_ && library_->generation() != library_seen) {
@@ -346,7 +347,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const bool chop = ui_.page == PageId::Chop && ui_.slices.count;
         const auto& t = project_->tracks[ui_.track % track_count];
         const FrameView view = zoomed_view(); // a close view's frames too, drawn from memory (SampleLibrary::detail())
-        const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
+        const unsigned view_sample = ui_.page == PageId::Chop ? ui_.chop_sample
+                                   : ui_.page == PageId::Samples && ui_.browse.up() ? unsigned(ui_.browse.slot) // the trim sheet's file
+                                   : t.pads[t.last_pad % sampler_pads].sample;
         SlicedChops sliced; // slice hits' samples, their chops as they play them (issue 24)
         for (uint16_t slot : sliced_samples(*project_, context_.patterns)) sliced.emplace_back(slot, &context_.live_chop(slot));
         auto holds = stream_holds(*project_, chop ? &ui_.slices : nullptr, chop ? ui_.chop_sample : no_sample,

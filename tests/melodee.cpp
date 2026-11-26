@@ -70,6 +70,7 @@
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/pad_colour.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/sample_lists.h"
 #include "melodee/shell/history_list.h"
@@ -1230,7 +1231,6 @@ void history() {
     Edit fresh; fresh.pad = 99;
     h.push(std::move(fresh));          // a new edit: nothing to redo
     CHECK(!h.can_redo() && h.undo()->pad == 99 && h.undo()->pad == 8 && !h.can_undo());
-
     { // The memory budget: steps that each hold a 4 MB pattern copy keep 16 of them, the newest; the count follows.
         History big;
         for (int n = 0; n < 40; ++n) {
@@ -1245,6 +1245,7 @@ void history() {
         big.push(Edit {});                 // undone steps go with the next edit, and their memory with them
         CHECK(big.size() == 1 && big.bytes() < 4096);
     }
+
     // A Sample Record take: one edit for its pad and the pads cut during it, kept whole through undo and redo.
     History takes;
     Edit take; take.what = pad_text("Take on", 0);
@@ -2775,6 +2776,66 @@ void zoom_and_fine_edit() {
     CHECK(view.width() == zoom_closest && view.from <= 44100 && view.to >= 44100);
     CHECK(cards[0].min == int(view.from) && cards[0].max == int(view.to));
     CHECK(page_bindings(project, trim, none, true)[0].max == zoom_top);
+}
+
+// Samples' trim sheet (shell/browse_trim.h): K2 START and K3 END on an audio file under the cursor, none on a folder
+// or a kit; not read yet, cards that move nothing; read, START and END in frames across the whole file, the view about
+// follow_view round the end turned last and going along with it; Shift + K2 / K3 a zoom of one's own, and then the
+// pot turns across the view; the file's end kept as 0; what a moved end plays once.
+void browse_trim_sheet() {
+    using K = Binding::Kind;
+    Project project;
+    load_sound(project.tracks[0], EngineKind::Sampler, 0);
+    UiState ui;
+    ui.track = 0; ui.page = PageId::Samples; ui.files_count = 9; ui.files_cursor = 2;
+    Pattern none;
+    auto cards = page_bindings(project, ui, none, false);
+    CHECK(cards[0].kind == K::FileJump && !cards[1].bound() && !cards[2].bound()); // a folder or a kit: K1 alone
+    ui.files_audio = true;
+    cards = page_bindings(project, ui, none, false);
+    CHECK(cards[1].kind == K::BrowseStart && cards[1].id == 1 && cards[2].kind == K::BrowseEnd && cards[2].id == 1);
+    CHECK(page_bindings(project, ui, none, true)[1].kind == K::BrowseZoom && page_bindings(project, ui, none, true)[2].id == 1);
+    ui.sheet_open = true; // LOAD KIT's cards over the list: no trim
+    CHECK(!page_bindings(project, ui, none, false)[1].bound());
+    ui.sheet_open = false;
+
+    ui.browse.slot = 5; // read into slot 5, not loaded yet: nothing moves
+    CHECK(!browse_set(ui.browse, project, K::BrowseStart, 100) && !browse_view(project, ui.browse).width());
+    project.samples.edit(5).frames = 441000; std::snprintf(project.samples.edit(5).path, sizeof(SampleRef::path), "/x.wav");
+    cards = page_bindings(project, ui, none, false);
+    CHECK(cards[1].kind == K::BrowseStart && cards[1].id == 0 && cards[1].min == 0 && cards[1].max == 440999 && cards[1].value == 0);
+    CHECK(cards[2].kind == K::BrowseEnd && cards[2].min == 1 && cards[2].max == 441000 && cards[2].value == 441000);
+    FrameView view = browse_view(project, ui.browse);
+    CHECK(view.from == 0 && view.width() == zoom_width(441000, zoom_for_width(441000, follow_view)));
+    CHECK(browse_set(ui.browse, project, K::BrowseStart, 22050) && ui.browse.start == 22050);
+    view = browse_view(project, ui.browse);
+    CHECK(view.from < 22050 && view.to > 22050); // round START as it moves
+    CHECK(browse_set(ui.browse, project, K::BrowseEnd, 10) && ui.browse.end == 22051); // never before START
+    CHECK(browse_set(ui.browse, project, K::BrowseEnd, 500000) && ui.browse.end == 0); // the file's end: kept as 0
+    CHECK(!browse_set(ui.browse, project, K::BrowseEnd, 441000));
+    CHECK(browse_set(ui.browse, project, K::BrowseEnd, 300000) && browse_set(ui.browse, project, K::BrowseStart, 400000) && ui.browse.start == 299999);
+    CHECK(focus_handle(ui, page_bindings(project, ui, none, false)[2]) && ui.browse.focus == 1);
+    view = browse_view(project, ui.browse);
+    CHECK(view.from < 300000 && view.to > 300000); // round END now
+    CHECK(!focus_handle(ui, page_bindings(project, ui, none, false)[2]));
+    CHECK(focus_handle(ui, page_bindings(project, ui, none, true)[1]) && ui.browse.focus == 0);
+    CHECK(handle_kind(K::BrowseStart) && handle_kind(K::BrowseEnd) && !handle_kind(K::BrowseZoom));
+
+    // Shift + K2: a zoom of one's own; the pot then turns across the view on screen, kept while START moves inside it.
+    CHECK(browse_set(ui.browse, project, K::BrowseEnd, 441000) && ui.browse.end == 0);
+    ui.browse.own_zoom = true; ui.browse.zoom = zoom_top; ui.browse.view = {};
+    view = browse_view(project, ui.browse);
+    cards = page_bindings(project, ui, none, false);
+    CHECK(view.width() == zoom_closest && cards[1].min == int(view.from) && cards[1].max == int(view.to));
+    CHECK(browse_set(ui.browse, project, K::BrowseStart, int(view.from) + 3) && browse_view(project, ui.browse).from == view.from);
+    CHECK(browse_set(ui.browse, project, K::BrowseStart, int(view.to) + 100)); // past its edge: the view goes along
+    CHECK(browse_view(project, ui.browse).to >= ui.browse.start && browse_view(project, ui.browse).from > view.from);
+
+    // Heard once still: START plays the part kept; END its last second.
+    BrowseHandles h {441000, 100000, 300000};
+    CHECK(browse_heard(h, 0) == std::make_pair(100000u, 300000u) && browse_heard(h, 1) == std::make_pair(300000u - heard_tail, 300000u));
+    h.start = 290000;
+    CHECK(browse_heard(h, 1).first == 290000);
 }
 
 // Chop's Auto type (engine/auto_chop.cpp, shell/chop.h auto_chop()): a groove of drums reads as DRUMS and is cut on
@@ -12549,6 +12610,7 @@ void jam_list() {
 }
 
 int main() {
+    browse_trim_sheet();
     audio_monitor_choice();
     pad_value_erase();
     stems_lookup();

@@ -35,6 +35,7 @@
 #include "melodee/shell/pad_gap.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/page_stack.h"
@@ -108,6 +109,7 @@ unsigned Context::free_unused_samples() {
     auto used = samples_in_use(project, edits);
     for (const auto& f : pending_files) if (f.slot >= 0) used[size_t(f.slot) % sample_slots] = true;
     if (ui.chop_sample < sample_slots) used[ui.chop_sample] = true;
+    if (ui.browse.up()) used[unsigned(ui.browse.slot) % sample_slots] = true; // Samples' trim sheet (shell/browse_trim.h)
     unsigned freed = 0;
     for (unsigned n = 0; n < sample_slots; ++n) {
         if (!project.samples[n].used() || used[n]) continue;
@@ -951,6 +953,12 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_zoom_auto = false; ui.chop_focus = uint8_t(b.id % 2); ui.chop_view = {}; break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
+    case Kind::BrowseStart: case Kind::BrowseEnd: // Samples' trim sheet (shell/browse_trim.h): heard once it is still
+        if (b.id == 0 && browse_set(ui.browse, project, b.kind, value)) ui.browse.heard_at = std::max<uint32_t>(1, now + chop_heard_ms);
+        break;
+    case Kind::BrowseZoom:
+        ui.browse.zoom = uint8_t(value); ui.browse.own_zoom = true; ui.browse.focus = uint8_t(b.id % 2); ui.browse.view = {};
+        break;
     case Kind::PluginJump: ui.plugins_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;

@@ -35,6 +35,7 @@
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/progression_jobs.h"
 #include "melodee/shell/seq_layer.h"
@@ -612,6 +613,11 @@ void Shell::check_pickup(unsigned n, const Binding& binding) {
 void Shell::pot(unsigned n, int position, bool syncing) {
     if ((ui_.menu || ui_.history) && !syncing) return; // the MENU or the undo list is up: the cards under it wait
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
+    // Samples, K2 / K3 on an audio file: its trim sheet comes up, the file read (shell/browse_trim.h).
+    if (!syncing && !ui_.browse.up() && ui_.page == PageId::Samples
+        && (bindings[n].kind == Binding::Kind::BrowseStart || bindings[n].kind == Binding::Kind::BrowseEnd || bindings[n].kind == Binding::Kind::BrowseZoom)
+        && context_.browse_open(bindings[n].kind == Binding::Kind::BrowseZoom ? unsigned(bindings[n].id) : bindings[n].kind == Binding::Kind::BrowseEnd))
+        bindings = page_bindings(*project_, ui_, context_.pattern());
     // A Trim or Chop handle's pot: that handle in focus, the view zoomed in round it (shell/zoom_view.h).
     if (!syncing && focus_handle(ui_, bindings[n])) bindings = page_bindings(*project_, ui_, context_.pattern());
     if (!syncing && (bindings[n].kind == Binding::Kind::ChopStart || bindings[n].kind == Binding::Kind::ChopEnd) && ui_.chop_zoom_auto) {
@@ -660,6 +666,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     }
     if (ui_.erase && b.kind == Binding::Kind::PluginParam) { // a plug-in's: back to its default
         if (const auto* card = plugin_card(ui_.plugin_panel, b.id)) context_.apply(b, card->initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
+    if (ui_.erase && (b.kind == Binding::Kind::BrowseStart || b.kind == Binding::Kind::BrowseEnd)) { // the trim sheet: that end back to the file's
+        context_.browse_erase(b.kind == Binding::Kind::BrowseEnd);
         pot.engaged = false; pot.bound = 0;
         return;
     }
@@ -846,6 +857,7 @@ void Shell::end_copy_away() {
 FrameView Shell::zoomed_view() const {
     const auto& t = project_->tracks[ui_.track % track_count];
     if (ui_.page == PageId::Chop && ui_.chop_zoom) return chop_view(*project_, ui_);
+    if (ui_.page == PageId::Samples && ui_.browse.up()) return browse_view(*project_, ui_.browse); // the trim sheet's close view
     if (ui_.page == PageId::Stage && ui_.trim_zoom && stage_page_now(ui_, t, stage_skip(*project_, ui_, t)).kind == StageKind::Trim) return trim_view(*project_, ui_);
     return {};
 }
@@ -984,7 +996,9 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     }
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
-        unsigned slot = ui_.page == PageId::Chop ? context_.chop_cut_slot() : t.pads[t.last_pad % sampler_pads].sample; // Chop: CLEAN shows the drums stem
+        unsigned slot = ui_.page == PageId::Chop ? context_.chop_cut_slot() // Chop: CLEAN shows the drums stem
+                      : ui_.page == PageId::Samples && ui_.browse.up() ? unsigned(ui_.browse.slot) // the trim sheet's file
+                      : t.pads[t.last_pad % sampler_pads].sample;
         out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
         out.zone_file = out.sample.instrument && ui_.page != PageId::Chop ? library_->zone_file(slot, ui_.zone) : std::string();
         // Trim and Chop zoomed in: the view's own peaks, from the audio (the overview's 512 are too few that close).

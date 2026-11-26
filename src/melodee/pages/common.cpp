@@ -165,6 +165,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         if (!b.bound()) continue;
         if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
         if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui, s.track()); // the wheel's card
+        if (s.ui.page == PageId::Samples && s.ui.browse.up()) c.focus = int(n) == 1 + s.ui.browse.focus; // the trim sheet: the wheel's end
         if (s.ui.page == PageId::FaderPage) c.focus = followed.bound() && followed.kind == b.kind && followed.id == b.id;
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
@@ -682,6 +683,20 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::FileJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
         break;
+    case Kind::BrowseStart: case Kind::BrowseEnd: { // Samples' trim sheet (shell/browse_trim.h): frames, as seconds
+        c.label = b.kind == Kind::BrowseEnd ? "END" : "START";
+        uint32_t frames = uint32_t(std::max(b.value, 0));
+        if (b.id) { // not read yet: the file's length where this project has it already
+            frames = 0;
+            const auto* file = s.ui.files_cursor < s.files.size() ? &s.files[s.ui.files_cursor] : nullptr;
+            if (b.kind == Kind::BrowseEnd && file)
+                for (const auto& ref : s.project.samples) if (ref.used() && ref.frames && file->path == ref.path) { frames = ref.frames; break; }
+            if (b.kind == Kind::BrowseEnd && !frames) { c.value = juce::String::fromUTF8("\xe2\x80\x94"); break; } // an em dash: not known yet
+        }
+        c.value = juce::String(frames / 44100.0, !b.id && b.max - b.min < 4410 ? 4 : 3); c.unit = "s"; // zoomed under 0.1 s: a tenth of a ms
+        break;
+    }
+    case Kind::BrowseZoom: c.label = b.id ? "ZOOM END" : "ZOOM START"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PluginJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(int(s.plugins.files.size()));
         break;
