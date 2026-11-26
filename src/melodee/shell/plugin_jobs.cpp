@@ -468,6 +468,16 @@ void Context::back_plugin_presets() {
 
 void Context::pick_plugin_program(unsigned entry, int program) {
     if (!plugins || entry >= max_plugins) return;
+    // A frozen track's sound, or an effect on its chain, asks first, as PRESETS and Stage do (freeze plan F2c).
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& tr = project.tracks[t];
+        bool effect = false;
+        for (const auto& s : tr.fx.slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
+        const bool instrument = tr.engine == EngineKind::Plugin && tr.plugin == entry;
+        if (!instrument && !effect) continue;
+        if (frozen_edit(instrument ? UndoScope {UndoScope::Kind::Sound, uint8_t(t), 0} : UndoScope {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)})) return;
+        break;
+    }
     const auto programs = plugins->programs(entry);
     for (const auto& p : programs.list) {
         if (p.index != program) continue;

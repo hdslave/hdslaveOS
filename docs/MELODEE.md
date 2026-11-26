@@ -2616,7 +2616,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   track it was turned on, whichever plug-in's list opens; turned away and
   back to the one it plays, it stays as edited, as on Stage. Push on a
   preset of a frozen track's plug-in, or of an effect on its chain, asks
-  "Unfreeze track N?" first, as a turn on Stage does. Picking
+  "Unfreeze track N?" first, as a turn on Stage does; so does a program a
+  companion screen picks (`Context::pick_plugin_program`). Picking
   the one loaded loads it again, dropping edits since. What a preset loads
   goes into the plug-in's state, so the project keeps it. Presets in
   folders (a CLAP plug-in's) list as those folders first, each with how

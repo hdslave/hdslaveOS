@@ -689,7 +689,7 @@ int main(int argc, char** argv) {
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
     if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "panel-lag"
-        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake") {
+        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -1475,6 +1475,23 @@ int main(int argc, char** argv) {
         CHECK(master.count() == 1 && master.slots[0].kind == plugin_effect_kind && unsigned(master.slots[0].params[0]) == gain);
         wait([&] { return ready(gain); });
         CHECK(values(gain)[2] == 0.5);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A program picked by a companion screen (Context::pick_plugin_program) for a frozen track's plug-in asks to
+    // unfreeze first, as PRESETS and Stage do; not frozen, it loads.
+    if (mode == "companion-frozen") {
+        wait([&] { return ready(entry) && rack->programs(entry).list.size() == 3; });
+        const auto list = rack->programs(entry).list;
+        c.freeze_requested[0].state = FreezeState::Frozen;
+        c.pick_plugin_program(entry, list[1].index);
+        CHECK(ui.ask == UiState::Ask::Unfreeze);
+        tap(SurfaceButton::TopLeft);
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0);
+        c.freeze_requested[0] = {};
+        c.pick_plugin_program(entry, list[1].index);
+        wait([&] { return rack->programs(entry).current == list[1].index; });
         shell->set_plugins(nullptr);
         return 0;
     }

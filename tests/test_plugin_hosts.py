@@ -161,6 +161,9 @@ class PluginHostTests(unittest.TestCase):
     def test_a_plugin_effect_picked_into_an_empty_slot_is_one_undo_step(self):
         self.run_rack_fixture("effect-undo")
 
+    def test_a_companion_screens_program_pick_asks_on_a_frozen_track(self):
+        self.run_rack_fixture("companion-frozen")
+
     def test_presets_list_asks_before_changing_a_frozen_tracks_sound(self):
         self.run_rack_fixture("presets-frozen")
 
