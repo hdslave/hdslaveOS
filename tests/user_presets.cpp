@@ -763,6 +763,11 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 2;
     }
+    if (mode == "freeze-race") { // a second track of the synth, its own instance
+        project.plugins[1] = ref;
+        load_sound(project.tracks[1], EngineKind::Plugin, 0);
+        project.tracks[1].plugin = 1;
+    }
     if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
         for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
     if (mode == "presets-track" || mode == "copy-presets" || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
@@ -1317,6 +1322,40 @@ int main(int argc, char** argv) {
         wait([&] { return rack->programs(t4.plugin).current == list[rows[1].at].index; });
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current < 0 && ref.preset[0] == 0); // track 1's plug-in: as it was
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A deep freeze lets track 1's plug-in go (PluginRack::sync with its track asleep) while the rack's thread is busy
+    // opening another (60 ms), so the freeze's Sleep, which takes the plug-in's state, is still to run. Its track
+    // cleared then, or woken again, before it runs: the plug-in comes back as it was edited, not as it was opened.
+    if (mode == "freeze-race") {
+        wait([&] { return ready(entry) && ready(1); });
+        set_control("Wave", 1000);
+        wait([&] { return values(entry)[1] == 2; });
+        setenv("MELODEE_TEST_SLOW_OPEN", "1", 1);
+        auto busy_then_frozen = [&] {
+            rack->reload(1);
+            rack->sync(project, 0); // the other plug-in opening again, on the rack's thread
+            rack->sync(project, 1); // track 1 deep frozen: its plug-in to sleep once that is done
+            CHECK(rack->asleep(entry));
+        };
+        busy_then_frozen();
+        tr.engine = EngineKind::None; // cleared, the Sleep still to run
+        rack->sync(project, 1);
+        wait([&] { return ready(1) && rack->status(entry) == PluginStatus::None; });
+        for (int k = 0; k < 20; ++k) tick();
+        tr.engine = EngineKind::Plugin; // and back (an undo)
+        tr.plugin = uint8_t(entry);
+        wait([&] { return ready(entry); });
+        CHECK(values(entry)[1] == 2);
+        set_control("Wave", 500);
+        wait([&] { return values(entry)[1] == 1; });
+        busy_then_frozen();
+        rack->sync(project, 0); // thawed before the Sleep ran
+        wait([&] { return ready(entry) && ready(1); });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(values(entry)[1] == 1);
+        unsetenv("MELODEE_TEST_SLOW_OPEN");
         shell->set_plugins(nullptr);
         return 0;
     }

@@ -831,6 +831,8 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             }
             // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
             bool only_asleep = !want.empty() && asleep && !plugin_used_awake(project, e, asleep);
+            // Woken before its Sleep ran (that job is dropped now): it opens again with the state it has now.
+            if (entry.asleep && entry.live && !only_asleep && want == entry.path && id == entry.id) entry.state = kept_state(entry);
             auto step = plan_plugin(entry, want, id, only_asleep, rate, entry.live != nullptr);
             if (step == PluginStep::Keep) continue;
             moved = true;
@@ -925,7 +927,9 @@ PluginRack::Usage PluginRack::usage() const {
 // save, made on the thread that asks (the MIDI thread, from sync() as an entry is let go, as clone(), state() and
 // states() read it) and under the rack's lock: a plug-in with a large state holds the rack's thread that long.
 std::vector<uint8_t> PluginRack::kept_state(const Entry& e) const {
-    if (!e.live || e.status != PluginStatus::Ready) return e.state;
+    // Open and working; or put to sleep by a deep freeze whose Sleep has not run yet (plan_plugin: status None, the
+    // plug-in still live and playing), its state then the plug-in's own as it is now, not the one it was opened with.
+    if (!e.live || (e.status != PluginStatus::Ready && !e.asleep)) return e.state;
     auto* bridged = dynamic_cast<Vst2BridgeInstance*>(e.live->instance.get());
     if (bridged && bridged->bridgeDied()) return e.state;
     return state_now(e.live, e.state);

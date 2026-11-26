@@ -1105,7 +1105,9 @@ samples stay in memory.
 Unfreezing asks "Unfreeze track N?" as for a freeze. On B3 the track
 thaws: Stage shows THAWING while the plug-ins load again, off the audio
 thread, with the state they had when they were unloaded; the prints play
-meanwhile. Once every plug-in has been open for 1.5 s (time for work a
+meanwhile. A plug-in thawed, or its track cleared, before the rack has got
+round to unloading it (its thread busy opening another) keeps the state it
+has then, read from it as it plays (`PluginRack::kept_state`). Once every plug-in has been open for 1.5 s (time for work a
 plug-in does after loading its state, such as TONE3000 preparing its
 models) the track plays live ("Track N live"). One that does not open in 30 s, or fails, goes live anyway and
 says so.
