@@ -1738,13 +1738,13 @@ void button_remap() {
         off.reset_factory();
         CHECK(off.note_preview);
 
-        Event e; // a 16th at 120 BPM: 24 ticks of 125 ms, held a tenth of a step short
-        e.length = 24;
-        CHECK(preview_ms(e, 24, 1200) == 112);
-        e.length = 96 * 16; CHECK(preview_ms(e, 24, 1200) == preview_longest_ms); // four bars: a second
-        e.length = 1; CHECK(preview_ms(e, 24, 1200) == preview_shortest_ms);
-        e.length = 96; e.ratchet = 4; CHECK(preview_ms(e, 24, 1200) == 112); // a ratchet: its first hit
-        e.ratchet = 1; e.length = 24; CHECK(preview_ms(e, 24, 600) == 225); // half the tempo: twice as long
+        Event e; // a 16th at 120 BPM: 240 ticks of 125 ms, held a tenth of a step short
+        e.length = 240;
+        CHECK(preview_ms(e, 240, 1200) == 112);
+        e.length = 960 * 16; CHECK(preview_ms(e, 240, 1200) == preview_longest_ms); // four bars: a second
+        e.length = 1; CHECK(preview_ms(e, 240, 1200) == preview_shortest_ms);
+        e.length = 960; e.ratchet = 4; CHECK(preview_ms(e, 240, 1200) == 112); // a ratchet: its first hit
+        e.ratchet = 1; e.length = 240; CHECK(preview_ms(e, 240, 600) == 225); // half the tempo: twice as long
 
         std::array<Event, preview_notes_max> out {};
         std::vector<Event> notes;
@@ -2066,14 +2066,14 @@ void parity_1c() {
 void timing() {
     // The step view: notes keep where in the step they fell, and their own length while the step's is unchanged.
     Pattern p;
-    p.add({30, 40, 60, 100, 100, 0}); // step 1 of 1/16, six ticks late, held 40 ticks
-    p.add({31, 24, 62, 90, 100, 0});
-    for (uint8_t k = 0; k <= notes_per_step; ++k) p.add({24 * 3, 24, uint8_t(70 + k), 100, 100, 0}); // one note more than a step shows
+    p.add({300, 400, 60, 100, 100, 0}); // step 1 of 1/16, 60 ticks late, held 400 ticks
+    p.add({310, 240, 62, 90, 100, 0});
+    for (uint8_t k = 0; k <= notes_per_step; ++k) p.add({240 * 3, 240, uint8_t(70 + k), 100, 100, 0}); // one note more than a step shows
     Step one = p.step(1);
-    CHECK(one.notes[0].key == 60 && one.notes[0].offset == 6 && one.notes[1].offset == 7 && one.length == 2);
+    CHECK(one.notes[0].key == 60 && one.notes[0].offset == 60 && one.notes[1].offset == 70 && one.length == 2);
     one.notes[1].velocity = 50; // a velocity changed on Steps: places and lengths stay
     p.set_step(1, one);
-    CHECK(p.events[0] == Event({30, 40, 60, 100, 100, 0}) && p.events[1].velocity == 50 && p.events[1].tick == 31);
+    CHECK(p.events[0] == Event({300, 400, 60, 100, 100, 0}) && p.events[1].velocity == 50 && p.events[1].tick == 310);
     Step three = p.step(3);
     CHECK(three.notes[notes_per_step - 1].key == 70 + notes_per_step - 1);
     p.set_step(3, Step {}); // the notes shown go; the one past them stays
@@ -2081,56 +2081,56 @@ void timing() {
     CHECK(p.steps() == 16 && !p.empty());
     // Q is only the grid: a coarser one sees the same notes in fewer, longer steps.
     p.division = Division::Quarter;
-    CHECK(p.steps() == 4 && p.step(0).notes[0].offset == 30);
+    CHECK(p.steps() == 4 && p.step(0).notes[0].offset == 300);
     p.division = Division::Sixteenth;
-    CHECK(division_ticks(Division::SixtyFourth) == 6 && division_ticks(Division::QuarterTriplet) == 64 && std::string(division_name(Division::ThirtySecondTriplet)) == "1/32T");
+    CHECK(division_ticks(Division::SixtyFourth) == 60 && division_ticks(Division::QuarterTriplet) == 640 && std::string(division_name(Division::ThirtySecondTriplet)) == "1/32T");
 
     // Rec Quantize: the nearest step, the last step's second half onto the first.
     Pattern q;
-    q.length = 384;
-    CHECK(quantise_tick(q, 11) == 0 && quantise_tick(q, 13) == 24 && quantise_tick(q, 380) == 0);
+    q.length = 3840;
+    CHECK(quantise_tick(q, 110) == 0 && quantise_tick(q, 130) == 240 && quantise_tick(q, 3800) == 0);
     q.division = Division::EighthTriplet;
-    CHECK(quantise_tick(q, 40) == 32);
+    CHECK(quantise_tick(q, 400) == 320);
     // Onto a grid given in ticks, whatever the pattern's Q: 1/32, 1/32T, 1/64, a quarter; past the end, the first.
-    CHECK(quantise_tick(q, 13, division_ticks(Division::ThirtySecond)) == 12 && quantise_tick(q, 17, division_ticks(Division::ThirtySecond)) == 12);
-    CHECK(quantise_tick(q, 18, division_ticks(Division::ThirtySecond)) == 24);
-    CHECK(quantise_tick(q, 11, division_ticks(Division::ThirtySecondTriplet)) == 8 && quantise_tick(q, 12, division_ticks(Division::ThirtySecondTriplet)) == 16);
-    CHECK(quantise_tick(q, 4, division_ticks(Division::SixtyFourth)) == 6 && quantise_tick(q, 140, division_ticks(Division::Quarter)) == 96);
-    CHECK(quantise_tick(q, 382, division_ticks(Division::SixtyFourth)) == 0 && quantise_tick(q, 378, division_ticks(Division::SixtyFourth)) == 378);
-    CHECK(quantise_tick(q, 40, division_ticks(q.division)) == quantise_tick(q, 40)); // the pattern's Q
+    CHECK(quantise_tick(q, 130, division_ticks(Division::ThirtySecond)) == 120 && quantise_tick(q, 170, division_ticks(Division::ThirtySecond)) == 120);
+    CHECK(quantise_tick(q, 180, division_ticks(Division::ThirtySecond)) == 240);
+    CHECK(quantise_tick(q, 110, division_ticks(Division::ThirtySecondTriplet)) == 80 && quantise_tick(q, 120, division_ticks(Division::ThirtySecondTriplet)) == 160);
+    CHECK(quantise_tick(q, 40, division_ticks(Division::SixtyFourth)) == 60 && quantise_tick(q, 1400, division_ticks(Division::Quarter)) == 960);
+    CHECK(quantise_tick(q, 3820, division_ticks(Division::SixtyFourth)) == 0 && quantise_tick(q, 3780, division_ticks(Division::SixtyFourth)) == 3780);
+    CHECK(quantise_tick(q, 400, division_ticks(q.division)) == quantise_tick(q, 400)); // the pattern's Q
 
     // Double / Half Seq, Half / Double Speed.
     Pattern d;
-    d.add({0, 24, 36, 100, 100, 0}); d.add({100, 24, 38, 100, 100, 0}); d.add({384, 24, 40, 100, 100, 0}); // the last is past the end
-    CHECK(double_pattern(d, 128 * 384) && d.length == 768 && d.events.size() == 4 && d.events[2].tick == 384 && d.events[3].tick == 484);
-    CHECK(!double_pattern(d, 768 + 1));
+    d.add({0, 240, 36, 100, 100, 0}); d.add({1000, 240, 38, 100, 100, 0}); d.add({3840, 240, 40, 100, 100, 0}); // the last is past the end
+    CHECK(double_pattern(d, 128 * 3840) && d.length == 7680 && d.events.size() == 4 && d.events[2].tick == 3840 && d.events[3].tick == 4840);
+    CHECK(!double_pattern(d, 7680 + 1));
     { // Settings' Double Seq "Empty": twice as long, the new half bare
         Pattern e;
-        e.add({0, 24, 36, 100, 100, 0}); e.add({100, 24, 38, 100, 100, 0}); e.add({384, 24, 40, 100, 100, 0});
-        CHECK(double_pattern(e, 128 * 384, false) && e.length == 768 && e.events.size() == 2 && e.events[1].tick == 100);
+        e.add({0, 240, 36, 100, 100, 0}); e.add({1000, 240, 38, 100, 100, 0}); e.add({3840, 240, 40, 100, 100, 0});
+        CHECK(double_pattern(e, 128 * 3840, false) && e.length == 7680 && e.events.size() == 2 && e.events[1].tick == 1000);
     }
     half_pattern(d);
-    CHECK(d.length == 384 && d.events.size() == 2);
-    scale_pattern(d, true); // half speed: twice as far apart; 100 -> 200
-    CHECK(d.events.size() == 2 && d.events[1].tick == 200 && d.events[1].length == 48 && d.length == 384);
-    scale_pattern(d, true); // again: 400 falls past the end
+    CHECK(d.length == 3840 && d.events.size() == 2);
+    scale_pattern(d, true); // half speed: twice as far apart; 1000 -> 2000
+    CHECK(d.events.size() == 2 && d.events[1].tick == 2000 && d.events[1].length == 480 && d.length == 3840);
+    scale_pattern(d, true); // again: 4000 falls past the end
     CHECK(d.events.size() == 1);
-    d.add({300, 48, 38, 100, 100, 0});
+    d.add({3000, 480, 38, 100, 100, 0});
     scale_pattern(d, false); // double speed
-    CHECK(d.events.size() == 2 && d.events[1].tick == 150 && d.events[1].length == 24);
+    CHECK(d.events.size() == 2 && d.events[1].tick == 1500 && d.events[1].length == 240);
 
     // Time Correct: the chosen keys onto Q, the second sixteenth of each eighth late by the swing, then shifted.
     Pattern t;
-    t.length = 384;
-    t.add({5, 24, 36, 100, 100, 0}); t.add({27, 24, 36, 100, 100, 0}); t.add({27, 24, 42, 100, 100, 0}); t.add({370, 24, 36, 100, 100, 0}); // step 15 (370 + 12 rounds down), swung to 372
+    t.length = 3840;
+    t.add({50, 240, 36, 100, 100, 0}); t.add({270, 240, 36, 100, 100, 0}); t.add({270, 240, 42, 100, 100, 0}); t.add({3700, 240, 36, 100, 100, 0}); // step 15 (3700 + 120 rounds down), swung to 3720
     std::array<uint64_t, 3> keys {};
     keys[0] |= uint64_t(1) << 36;
     time_correct_all(t, &keys, 75, 0); // 75 %: half a sixteenth late on the off sixteenths
     CHECK(t.events.size() == 4 && t.events[0].tick == 0 && t.events[0].key == 36);
-    CHECK(t.events[1].tick == 27 && t.events[1].key == 42); // not chosen: where it was
-    CHECK(t.events[2].tick == 36 && t.events[2].key == 36); // step 1 + 12 of swing
-    time_correct_all(t, nullptr, 50, -2); // every note, two ticks early; the first wraps to the end
-    CHECK(t.events.back().tick == 382 && t.events.front().tick == 22);
+    CHECK(t.events[1].tick == 270 && t.events[1].key == 42); // not chosen: where it was
+    CHECK(t.events[2].tick == 360 && t.events[2].key == 36); // step 1 + 120 of swing
+    time_correct_all(t, nullptr, 50, -20); // every note, 20 ticks early; the first wraps to the end
+    CHECK(t.events.back().tick == 3820 && t.events.front().tick == 220);
 
     // A file from before phase 2: steps at 24 a quarter and their motion become ticks and sixteenths.
     {
@@ -2147,8 +2147,8 @@ void timing() {
         Project project; auto bank = std::make_unique<PatternBank>();
         CHECK(load_project(bytes, project, *bank).empty());
         const auto& old = bank->at[0][3];
-        CHECK(old.length == 32 * 48 && old.division == Division::Eighth && old.events.size() == 1);
-        CHECK(old.events[0] == Event({5 * 48, 2 * 48, 60, 100, 100, step_accent}));
+        CHECK(old.length == 32 * 480 && old.division == Division::Eighth && old.events.size() == 1);
+        CHECK(old.events[0] == Event({5 * 480, 2 * 480, 60, 100, 100, step_accent}));
         CHECK(old.motion.size() == 1 && old.motion[0].tick == 10 * sixteenth_ticks); // eighth 5 is sixteenth 10, in its pattern
         // Saved again it is an event list (EVNT), and loads the same.
         project.signature = 12; project.seq_tempo = true; project.pattern_tempo[3] = 905;
@@ -2159,7 +2159,7 @@ void timing() {
         Project again; auto again_bank = std::make_unique<PatternBank>();
         CHECK(load_project(data, again, *again_bank).empty());
         CHECK(again_bank->at[0][3] == old && again_bank->at[0][3].motion[0].tick == 10 * sixteenth_ticks);
-        CHECK(again.signature == 12 && again.time_signature().beats == 7 && again.bar_ticks() == 336 && again.seq_tempo && again.pattern_tempo[3] == 905);
+        CHECK(again.signature == 12 && again.time_signature().beats == 7 && again.bar_ticks() == 3360 && again.seq_tempo && again.pattern_tempo[3] == 905);
         CHECK(again.tempo_of(3) == 905 && again.tempo_of(2) == again.tempo);
     }
     // 128 bars of sixteenths: 2048 notes, saved and loaded whole.
@@ -2167,13 +2167,13 @@ void timing() {
         Project project; auto bank = std::make_unique<PatternBank>();
         auto& big = bank->at[2][0];
         big.length = project.max_length();
-        for (unsigned n = 0; n < 2048; ++n) big.events.push_back({n * 24, 12, uint8_t(36 + n % 24), 100, 100, 0});
+        for (unsigned n = 0; n < 2048; ++n) big.events.push_back({n * 240, 120, uint8_t(36 + n % 24), 100, 100, 0});
         auto data = save_project(project, *bank);
         Project copy; auto copy_bank = std::make_unique<PatternBank>();
-        CHECK(load_project(data, copy, *copy_bank).empty() && copy_bank->at[2][0] == big && big.length == 128 * 384);
+        CHECK(load_project(data, copy, *copy_bank).empty() && copy_bank->at[2][0] == big && big.length == 128 * 3840);
     }
 
-    // The engine: a note six ticks off the grid sounds six ticks late.
+    // The engine: a note 60 ticks off the grid sounds 60 ticks late.
     auto host_with = [](Pattern pattern, Project* settings = nullptr) {
         auto project = std::make_unique<Project>();
         if (settings) *project = *settings;
@@ -2197,7 +2197,7 @@ void timing() {
     };
     {
         Pattern late;
-        late.add({4 * 24 + 6, 24, 45, 110, 100, 0}); // tick 102: 23428 samples at 120 BPM
+        late.add({4 * 240 + 60, 240, 45, 110, 100, 0}); // tick 1020: 23428 samples at 120 BPM
         auto host = host_with(late);
         host->send({Command::Type::Play});
         auto left = render(*host, 240);
@@ -2206,7 +2206,7 @@ void timing() {
     // Count-In: a bar of clicks first, the pattern from its start after it.
     {
         Pattern first;
-        first.add({0, 24, 45, 110, 100, 0});
+        first.add({0, 240, 45, 110, 100, 0});
         auto host = host_with(first);
         host->send({Command::Type::Play, 1});
         render(*host, 2);
@@ -2245,7 +2245,7 @@ void timing() {
     // Time signature 3/4: a queued pattern starts after three beats, not four.
     {
         auto host = host_with(Pattern {});
-        host->send({Command::Type::Signature, 0, 0, 96, 288});
+        host->send({Command::Type::Signature, 0, 0, ticks_per_quarter, 3 * ticks_per_quarter});
         host->send({Command::Type::Play});
         render(*host, 10);
         host->send({Command::Type::Pattern, 0, 0, 0, 1});
@@ -2269,26 +2269,26 @@ void timing() {
     }
     // Locate: the wheel moves the playhead while it plays; Play from a position starts there.
     {
-        Pattern four; four.length = 4 * 384;
+        Pattern four; four.length = 4 * 3840;
         auto host = host_with(four);
         host->send({Command::Type::Play});
         render(*host, 4);
         Command to {Command::Type::Locate};
-        to.position = 2 * 384;
+        to.position = 2 * 3840;
         host->send(to);
         render(*host, 1);
-        CHECK(host->position_of(0) >= 2 * 384 && host->position_of(0) < 2 * 384 + 4);
+        CHECK(host->position_of(0) >= 2 * 3840 && host->position_of(0) < 2 * 3840 + 10);
         host->send({Command::Type::Stop});
         Command from {Command::Type::Play};
-        from.position = 384 + 96;
+        from.position = 3840 + 960;
         host->send(from);
         render(*host, 1);
-        CHECK(host->position_of(0) >= 384 + 96 && host->position_of(0) < 384 + 100);
+        CHECK(host->position_of(0) >= 3840 + 960 && host->position_of(0) < 3840 + 970);
     }
     // A note written just ahead of the playhead (Rec Quantize) was heard live: skipped once, then played.
     {
         Pattern ahead;
-        ahead.add({0, 24, 45, 110, 100, 0});
+        ahead.add({0, 240, 45, 110, 100, 0});
         auto host = host_with(ahead);
         Command wrote {Command::Type::Recorded, 0, 0, 45};
         wrote.position = 0;
@@ -2304,7 +2304,7 @@ void timing() {
     {
         Project project;
         UiState ui; ui.page = PageId::Patterns;
-        Pattern five; five.length = 5 * 384; five.free = false; // a length set by hand (Free: shell/free_length.h)
+        Pattern five; five.length = 5 * 3840; five.free = false; // a length set by hand (Free: shell/free_length.h)
         auto base = page_bindings(project, ui, five, false);
         CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == 7 && pattern_lengths[base[0].value] == 4);
         auto shifted = page_bindings(project, ui, five, true);
@@ -2331,17 +2331,17 @@ void step_edit_and_pad_motion() {
     // The events starting in a step of Q, and the selection kept inside it.
     Pattern p;
     p.length = 4 * ticks_per_quarter;
-    for (auto e : {Event {0, 24, 36, 100, 100, 0}, Event {24, 24, 38, 90, 100, 0}, Event {24, 12, 37, 80, 100, 0}, Event {31, 6, 40, 70, 100, 0}, Event {48, 24, 36, 60, 100, 0}})
+    for (auto e : {Event {0, 240, 36, 100, 100, 0}, Event {240, 240, 38, 90, 100, 0}, Event {240, 120, 37, 80, 100, 0}, Event {310, 60, 40, 70, 100, 0}, Event {480, 240, 36, 60, 100, 0}})
         p.add(e);
     auto in = step_events(p, 1);
-    CHECK(in.first == 1 && in.count == 3 && p.events[1].key == 37 && p.events[3].tick == 31);
+    CHECK(in.first == 1 && in.count == 3 && p.events[1].key == 37 && p.events[3].tick == 310);
     CHECK(step_events(p, 3).count == 0 && step_events(p, 2).count == 1);
     UiState ui;
     ui.step_cursor = 1; ui.step_event = 9; // past the step's last: its last
     CHECK(selected_event(p, ui) == 3);
     ui.step_cursor = 3;
     CHECK(selected_event(p, ui) == -1);
-    p.division = Division::Eighth; // Q 48: step 0 holds four
+    p.division = Division::Eighth; // Q 480: step 0 holds four
     ui.step_cursor = 0; ui.step_event = 0;
     CHECK(step_events(p, 0).count == 4 && selected_event(p, ui) == 0);
 
@@ -3258,7 +3258,7 @@ void audio_input_and_rendering() {
     in.monitor = Monitor::Auto; in.set_source(InputSource::Rear, true); CHECK(in.monitor == Monitor::Auto);
     CHECK(std::string(input_route(InputSource::Mic)) == "mic" && std::string(input_route(InputSource::RearR)) == "line"
           && std::string(input_route(InputSource::UsbL)) == "off" && std::string(input_route(InputSource::Resample)) == "off");
-    CHECK(rec_bars(rec_free) == 0 && rec_bars(rec_seq) == 0 && rec_bars(2) == 1 && rec_bars(rec_lengths - 1) == 16);
+    CHECK(rec_bars(rec_free) == 0 && rec_bars(rec_seq) == 0 && rec_bars(2) == 1 && rec_bars(17) == 16 && rec_bars(18) == 24 && rec_bars(rec_lengths - 1) == 128);
     // Kept with the settings; an older settings file (no input keys) gets the defaults.
     Settings saved;
     saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.before_mic = int8_t(Monitor::Off); saved.input.threshold = -72;
@@ -4426,7 +4426,7 @@ void midi_and_sync() {
         host.render(out.data(), 128, 1);
         auto stopped = drain();
         CHECK(!stopped.empty() && stopped[0].kind == K::Stop);
-        // MIDI clock in: Play waits for the first pulse, then four ticks a pulse, each let through at its frame.
+        // MIDI clock in: Play waits for the first pulse, then 40 ticks a pulse (a 24th of a quarter), each let through at its frame.
         host.send({Command::Type::ExtSync, 0, 0, 0, 1});
         host.send({Command::Type::Play});
         host.send({Command::Type::ExtSync, 0, 0, 3});
@@ -4437,9 +4437,9 @@ void midi_and_sync() {
         pulse.position = uint32_t(now + 64);
         host.send(pulse);
         host.render(out.data(), 128, 1);
-        CHECK(host.ticks() >= 1 && host.ticks() <= 4);
+        CHECK(host.ticks() >= 1 && host.ticks() <= 40);
         for (unsigned n = 0; n < 20; ++n) host.render(out.data(), 128, 1);
-        CHECK(host.ticks() == 4); // no more pulses: it waits
+        CHECK(host.ticks() == 40); // no more pulses: it waits
         host.send({Command::Type::ExtSync, 0, 0, 4});
         host.send({Command::Type::Stop});
         host.render(out.data(), 128, 1);
@@ -5872,14 +5872,14 @@ void roll() {
     roll_step(p, ui, 1); CHECK(ui.step_cursor == 9 && ui.roll_key == 57 && roll_focus(p, ui) < 0); // an empty step keeps the pitch
     roll_step(p, ui, 31); CHECK(ui.step_cursor == 40 && ui.roll_key == 69);   // a detent a step over empty bars
     roll_step(p, ui, 100); CHECK(ui.step_cursor == 63 && ui.roll_key == 69);  // stops at the pattern's end
-    { // Round 2: NUDGE on Shift + K1, the note in focus off its nearest grid line (1/16: -12 .. 11 ticks).
+    { // Round 2: NUDGE on Shift + K1, the note in focus off its nearest grid line (1/16: -120 .. 119 ticks).
         Pattern n;
         n.length = p.length;
         Event late; late.tick = 20 * sixteenth_ticks + 5; late.key = 50; CHECK(n.add(late));
         Event early; early.tick = 30 * sixteenth_ticks - 4; early.key = 51; CHECK(n.add(early));
         CHECK(nudge_base(n, late) == 20 * sixteenth_ticks && nudge_base(n, early) == 30 * sixteenth_ticks);
         auto card = nudge_card(n, late);
-        CHECK(card.kind == Binding::Kind::EventNudge && card.value == 5 && card.min == -12 && card.max == 11);
+        CHECK(card.kind == Binding::Kind::EventNudge && card.value == 5 && card.min == -120 && card.max == 119);
         CHECK(nudge_card(n, early).value == -4);
         Project project;
         UiState at; at.page = PageId::Roll; at.step_cursor = 20; at.roll_key = 50;
@@ -6154,15 +6154,15 @@ void zero_snap() {
     {
         PadSound plain;
         auto ticks = [](double per_frame, uint32_t frames) { return std::lround(per_frame * frames); };
-        CHECK(ticks(slice_ticks_per_frame(plain, false, 88200, 1200), 44100) == 192);  // as recorded: a second at 120 BPM, 2 beats
-        CHECK(ticks(slice_ticks_per_frame(plain, false, 88200, 900), 44100) == 144);   // the same second at 90 BPM
+        CHECK(ticks(slice_ticks_per_frame(plain, false, 88200, 1200), 44100) == 1920);  // as recorded: a second at 120 BPM, 2 beats
+        CHECK(ticks(slice_ticks_per_frame(plain, false, 88200, 900), 44100) == 1440);   // the same second at 90 BPM
         PadSound follows = plain; follows.own_tempo = 900;
-        CHECK(ticks(slice_ticks_per_frame(follows, true, 88200, 1200), 44100) == 144); // Follow: at its own 90, whatever the pattern's
-        CHECK(ticks(slice_ticks_per_frame(follows, false, 88200, 1200), 44100) == 192); // Follow off: as recorded
+        CHECK(ticks(slice_ticks_per_frame(follows, true, 88200, 1200), 44100) == 1440); // Follow: at its own 90, whatever the pattern's
+        CHECK(ticks(slice_ticks_per_frame(follows, false, 88200, 1200), 44100) == 1920); // Follow off: as recorded
         PadSound seq = plain; seq.warp = warp_seq; seq.beats = 8;                       // 8 beats in 4 s: 120 BPM of its own
-        CHECK(ticks(slice_ticks_per_frame(seq, false, 176400, 900), 44100) == 192);
+        CHECK(ticks(slice_ticks_per_frame(seq, false, 176400, 900), 44100) == 1920);
         PadSound twice = plain; twice.warp = 200;                                       // 200 %: twice as long
-        CHECK(ticks(slice_ticks_per_frame(twice, false, 88200, 1200), 44100) == 384);
+        CHECK(ticks(slice_ticks_per_frame(twice, false, 88200, 1200), 44100) == 3840);
         // Four slices of a bar at 120 BPM (2 s) on pads A01-A03 and A05: a bar with a note on each beat, as long as its slice.
         Slices sl;
         sl.whole(0, 88200); sl.add(22050, 88200); sl.add(44100, 88200); sl.add(66150, 88200);
@@ -6170,23 +6170,23 @@ void zero_snap() {
         keys.fill(-1);
         keys[0] = 36; keys[1] = 37; keys[2] = 38; keys[3] = 40;
         const double per = slice_ticks_per_frame(plain, false, 88200, 1200);
-        Pattern made = slice_pattern(sl, 88200, keys, per, 384, 384 * 64);
-        CHECK(made.length == 384 && made.events.size() == 4 && !made.free);
-        CHECK(made.events[0].tick == 0 && made.events[1].tick == 96 && made.events[3].tick == 288 && made.events[3].key == 40);
-        CHECK(made.events[2].length == 96 && made.events[2].velocity == 127);
+        Pattern made = slice_pattern(sl, 88200, keys, per, 3840, 3840 * 64);
+        CHECK(made.length == 3840 && made.events.size() == 4 && !made.free);
+        CHECK(made.events[0].tick == 0 && made.events[1].tick == 960 && made.events[3].tick == 2880 && made.events[3].key == 40);
+        CHECK(made.events[2].length == 960 && made.events[2].velocity == 127);
         keys[1] = -1; // a slice with no pad: no note
-        CHECK(slice_pattern(sl, 88200, keys, per, 384, 384 * 64).events.size() == 3);
+        CHECK(slice_pattern(sl, 88200, keys, per, 3840, 3840 * 64).events.size() == 3);
         keys[1] = 36; // KIT: two slices of one sound, one pad
-        made = slice_pattern(sl, 88200, keys, per, 384, 384 * 64);
+        made = slice_pattern(sl, 88200, keys, per, 3840, 3840 * 64);
         CHECK(made.events.size() == 4 && made.events[0].key == 36 && made.events[1].key == 36);
         // Near a bar's end it is that bar; past an eighth more, the next whole one; never past `most`.
         Slices near;
         near.whole(0, 86900);
-        CHECK(slice_pattern(near, 86900, keys, per, 384, 384 * 64).length == 384);
+        CHECK(slice_pattern(near, 86900, keys, per, 3840, 3840 * 64).length == 3840);
         Slices longer;
         longer.whole(0, 132300); // a bar and a half
-        CHECK(slice_pattern(longer, 132300, keys, per, 384, 384 * 64).length == 768);
-        CHECK(slice_pattern(longer, 132300, keys, per, 384, 384).length == 384);
+        CHECK(slice_pattern(longer, 132300, keys, per, 3840, 3840 * 64).length == 7680);
+        CHECK(slice_pattern(longer, 132300, keys, per, 3840, 3840).length == 3840);
         // PATTERN on at first, off kept.
         Settings none; none.slice_pattern = false;
         back.read(none.text());
@@ -9211,8 +9211,8 @@ void trig_conditions() {
 // Motion as each pattern's own at tick resolution, and locks (roadmap P1).
 void pattern_motion() {
     using namespace midi_track;
-    const double tick = 44100 * 60.0 / 120 / 96;
-    // A MIDI track's CC lane shows Motion as it plays: a point on tick 5, a lock on tick 48 for a sixteenth over the
+    const double tick = 44100 * 60.0 / 120 / ticks_per_quarter;
+    // A MIDI track's CC lane shows Motion as it plays: a point on tick 50, a lock on tick 480 for a sixteenth over the
     // point's value (back to it after), and a lock on another CC lane with nothing recorded (back to the track's own).
     {
         auto project = std::make_unique<Project>();
@@ -9223,11 +9223,11 @@ void pattern_motion() {
         project->tempo = 1200;
         auto& p = bank->at[0][0];
         p.length = ticks_per_quarter;
-        MotionPoint a; a.tick = 5; a.param = uint8_t(Cc1); a.value = 20;
+        MotionPoint a; a.tick = 50; a.param = uint8_t(Cc1); a.value = 20;
         MotionPoint lock = point(2, Cc1, 100, 0, sixteenth_ticks);
-        MotionPoint other = point(3, Cc2, 90, 0, 6);
+        MotionPoint other = point(3, Cc2, 90, 0, 60);
         CHECK(p.write_motion(a) && p.write_motion(lock) && p.write_motion(other));
-        CHECK(p.lock_at(48, Cc1, 0) && !p.lock_at(5, Cc1, 0) && p.lane_value(60, Cc1, 0, -1) == 20 && p.lane_value(4, Cc1, 0, -1) == -1);
+        CHECK(p.lock_at(480, Cc1, 0) && !p.lock_at(50, Cc1, 0) && p.lane_value(600, Cc1, 0, -1) == 20 && p.lane_value(40, Cc1, 0, -1) == -1);
         auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
         auto& host = *host_held;
         host.load(*project, *bank);
@@ -9245,20 +9245,20 @@ void pattern_motion() {
             for (const auto& e : ccs) if (e.a == cc && e.b == value) return int64_t(e.frame);
             return int64_t(-1);
         };
-        int64_t start = at(74, 20) - std::llround(5 * tick); // the point on tick 5 sets the run's frames
-        CHECK(at(74, 20) > 0 && std::llabs(at(74, 100) - start - std::llround(48 * tick)) <= 2);
-        CHECK(std::llabs(at(74, 20) - start - std::llround(5 * tick)) <= 2);
+        int64_t start = at(74, 20) - std::llround(50 * tick); // the point on tick 50 sets the run's frames
+        CHECK(at(74, 20) > 0 && std::llabs(at(74, 100) - start - std::llround(480 * tick)) <= 2);
+        CHECK(std::llabs(at(74, 20) - start - std::llround(50 * tick)) <= 2);
         unsigned back20 = 0;
         for (const auto& e : ccs) back20 += e.a == 74 && e.b == 20;
-        CHECK(back20 == 2); // tick 5, then the lock's end at tick 72
-        CHECK(at(71, 90) > 0 && at(71, 33) > at(71, 90) && std::llabs(at(71, 33) - at(71, 90) - std::llround(6 * tick)) <= 2);
+        CHECK(back20 == 2); // tick 50, then the lock's end at tick 720
+        CHECK(at(71, 90) > 0 && at(71, 33) > at(71, 90) && std::llabs(at(71, 33) - at(71, 90) - std::llround(60 * tick)) <= 2);
     }
     // A pattern's edits carry its Motion: doubled with the notes, halved, at half and double speed.
     {
         Pattern p;
         p.length = 16 * sixteenth_ticks;
         p.write_motion(point(2, engine_lane, 10)); p.write_motion(point(12, engine_lane, 90, 0, 12));
-        CHECK(double_pattern(p, 128 * 384) && p.motion.size() == 4 && p.motion[2].tick == 18 * sixteenth_ticks && p.motion[3].hold == 12);
+        CHECK(double_pattern(p, 128 * 3840) && p.motion.size() == 4 && p.motion[2].tick == 18 * sixteenth_ticks && p.motion[3].hold == 12);
         half_pattern(p);
         CHECK(p.motion.size() == 2);
         scale_pattern(p, true); // half speed: twice as far apart; past the end goes
@@ -9340,7 +9340,7 @@ void pattern_motion() {
         ui.held_step = -1;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength && !lock_place(*project, ui, q, tick, hold));
         ui.page = PageId::Roll; ui.roll_key = 60; ui.held_note = 4;
-        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::Lock && lock_place(*project, ui, q, tick, hold) && hold == 48);
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::Lock && lock_place(*project, ui, q, tick, hold) && hold == 2 * sixteenth_ticks);
         // Erase + pot on a lock card: that lane's lock out; the step's note, the other lane's lock and the lane's
         // recorded moves stay, and the card shows the track's own value again.
         const unsigned first = lane_param(cards[0].id), second = lane_param(cards[1].id);
@@ -9406,20 +9406,20 @@ void kit_lanes() {
         Pattern q;
         q.length = 16 * sixteenth_ticks;
         Event e;
-        e.key = b; e.length = 6;
-        e.tick = 24; q.add(e);
-        e.tick = 340; q.add(e); // past the lane's twelve steps
+        e.key = b; e.length = 60;
+        e.tick = 240; q.add(e);
+        e.tick = 3400; q.add(e); // past the lane's twelve steps
         q.set_lane_length(b, 12 * sixteenth_ticks);
         q.feel.strength = 100;
         auto played = feel_pattern(q);
-        CHECK(played.events.size() == 1 && played.events[0].tick == 24);
-        q.events[0].tick = 280; // nearest the lane's end
+        CHECK(played.events.size() == 1 && played.events[0].tick == 240);
+        q.events[0].tick = 2800; // nearest the lane's end
         CHECK(feel_pattern(q).events.size() == 1 && feel_pattern(q).events[0].tick == 0);
         q.feel = Feel {};
         time_correct_all(q, nullptr, 50, 0);
-        CHECK(q.events.size() == 2 && q.events[0].tick == 0 && q.events[1].tick == 340);
-        time_correct_all(q, nullptr, 50, -2); // shifted back: round the lane's end, not the pattern's
-        CHECK(q.events.size() == 2 && q.events[0].tick == 286 && q.events[1].tick == 340);
+        CHECK(q.events.size() == 2 && q.events[0].tick == 0 && q.events[1].tick == 3400);
+        time_correct_all(q, nullptr, 50, -20); // shifted back: round the lane's end, not the pattern's
+        CHECK(q.events.size() == 2 && q.events[0].tick == 2860 && q.events[1].tick == 3400);
     }
     // The file: LANE after the pattern's notes; without it every key loops with the pattern.
     {
@@ -9539,7 +9539,7 @@ void note_repeat_p1() {
     while (host.take_arp_written(w)) kept.push_back(w);
     CHECK(kept.size() == ons.size());
     for (size_t n = 0; n < kept.size(); ++n) {
-        CHECK(kept[n].track == 0 && kept[n].pattern == 0 && kept[n].key == 60 && kept[n].tick == n * sixteenth_ticks % 384);
+        CHECK(kept[n].track == 0 && kept[n].pattern == 0 && kept[n].key == 60 && kept[n].tick == n * sixteenth_ticks % (4 * ticks_per_quarter));
         CHECK(kept[n].velocity == ons[n].b && kept[n].length == sixteenth_ticks * 60 / 100);
     }
     // After a count-in, Seq Record writes the repeats from the take's first tick: the bar counted in is not part of
@@ -9612,57 +9612,57 @@ void note_repeat_p1() {
 void feel_p1() {
     auto note = [](Pattern& p, uint32_t tick, uint8_t key, uint8_t velocity) {
         Event e;
-        e.tick = tick; e.key = key; e.velocity = velocity; e.length = 6;
+        e.tick = tick; e.key = key; e.velocity = velocity; e.length = 60;
         p.add(e);
     };
     Pattern p;
-    note(p, 5, 60, 100); note(p, 30, 62, 100); note(p, 50, 64, 100);
+    note(p, 50, 60, 100); note(p, 300, 62, 100); note(p, 500, 64, 100);
     CHECK(feel_pattern(p) == p); // plain: as written
     p.feel.strength = 100;
     auto played = feel_pattern(p);
-    CHECK(played.events[0].tick == 0 && played.events[1].tick == 24 && played.events[2].tick == 48);
-    CHECK(p.events[0].tick == 5); // the notes as written stay
+    CHECK(played.events[0].tick == 0 && played.events[1].tick == 240 && played.events[2].tick == 480);
+    CHECK(p.events[0].tick == 50); // the notes as written stay
     p.feel.strength = 50;
     played = feel_pattern(p);
-    CHECK(played.events[0].tick == 3 && played.events[1].tick == 27 && played.events[2].tick == 49);
+    CHECK(played.events[0].tick == 25 && played.events[1].tick == 270 && played.events[2].tick == 490);
     p.feel.strength = 100; p.feel.swing = 75; // every second sixteenth half a sixteenth late
     played = feel_pattern(p);
-    CHECK(played.events[1].tick == 36 && played.events[2].tick == 48);
+    CHECK(played.events[1].tick == 360 && played.events[2].tick == 480);
     // Humanize: each note a little early or late (at most a quarter of a step) and softer or harder (at most 20),
     // the same each time it is laid, until its amount changes.
     Pattern h;
-    for (unsigned n = 0; n < 16; ++n) note(h, n * 24 + 12, uint8_t(40 + n), 100);
+    for (unsigned n = 0; n < 16; ++n) note(h, n * 240 + 120, uint8_t(40 + n), 100);
     h.feel.humanize = 100; h.feel.humanize_velocity = 100;
     auto a = feel_pattern(h), b = feel_pattern(h);
     CHECK(a == b);
     unsigned moved = 0, louder = 0, softer = 0;
     for (const auto& e : a.events) {
-        int off = int(e.tick) - int((e.key - 40) * 24 + 12);
-        CHECK(std::abs(off) <= 6 && std::abs(int(e.velocity) - 100) <= 20);
+        int off = int(e.tick) - int((e.key - 40) * 240 + 120);
+        CHECK(std::abs(off) <= 60 && std::abs(int(e.velocity) - 100) <= 20);
         moved += off != 0; louder += e.velocity > 100; softer += e.velocity < 100;
     }
     CHECK(moved >= 8 && louder >= 2 && softer >= 2);
-    // A groove taken from a pattern: its second sixteenth four ticks late and soft, laid on another's notes.
+    // A groove taken from a pattern: its second sixteenth 40 ticks late and soft, laid on another's notes.
     Pattern source;
-    for (unsigned n = 0; n < 16; ++n) note(source, n * 24 + (n % 2 ? 4 : 0), 36, n % 2 ? 60 : 120);
+    for (unsigned n = 0; n < 16; ++n) note(source, n * 240 + (n % 2 ? 40 : 0), 36, n % 2 ? 60 : 120);
     Pattern bass;
-    note(bass, 0, 40, 100); note(bass, 24, 41, 100);
+    note(bass, 0, 40, 100); note(bass, 240, 41, 100);
     groove_of(source, bass.feel);
-    CHECK(bass.feel.groove_offsets.size() == 16 && bass.feel.groove_offsets[1] == 4 && bass.feel.groove_offsets[0] == 0);
+    CHECK(bass.feel.groove_offsets.size() == 16 && bass.feel.groove_offsets[1] == 40 && bass.feel.groove_offsets[0] == 0);
     CHECK(bass.feel.groove_levels[0] == 133 && bass.feel.groove_levels[1] == 67);
     played = feel_pattern(bass);
-    CHECK(played.events[0].tick == 0 && played.events[0].velocity == 127 && played.events[1].tick == 28 && played.events[1].velocity == 67);
+    CHECK(played.events[0].tick == 0 && played.events[0].velocity == 127 && played.events[1].tick == 280 && played.events[1].velocity == 67);
     bass.feel.groove_amount = 50;
     played = feel_pattern(bass);
-    CHECK(played.events[1].tick == 26 && played.events[1].velocity == 84);
-    // Heard: the audio thread plays the feel (a note written on tick 5, at strength 100 on tick 0's frame).
+    CHECK(played.events[1].tick == 260 && played.events[1].velocity == 84);
+    // Heard: the audio thread plays the feel (a note written on tick 50, at strength 100 on tick 0's frame).
     {
         Pattern q;
-        note(q, 5, 60, 100); note(q, 2 * 24, 62, 100);
+        note(q, 50, 60, 100); note(q, 2 * 240, 62, 100);
         q.feel.strength = 100;
         auto notes = played_notes(q, 120);
-        const double tick = 44100 * 60.0 / 120 / 96;
-        CHECK(notes.size() == 2 && std::llabs(int64_t(notes[1].frame - notes[0].frame) - std::llround(48 * tick)) <= 2);
+        const double tick = 44100 * 60.0 / 120 / ticks_per_quarter;
+        CHECK(notes.size() == 2 && std::llabs(int64_t(notes[1].frame - notes[0].frame) - std::llround(480 * tick)) <= 2);
     }
     // The cards Time Correct's page lays out.
     CHECK(feel_cards(bass, 0)[0].kind == Binding::Kind::FeelStrength && feel_cards(bass, 1)[1].kind == Binding::Kind::GrooveFrom &&
@@ -9726,7 +9726,7 @@ void generators() {
     for (const auto& n : busy.events) CHECK(n.tick < line.length);
     auto loose = vary_pattern(line, Variation::Humanised, 1.0, 7, place);
     CHECK(loose.events.size() == line.events.size() && loose != line);
-    for (size_t n = 0; n < loose.events.size(); ++n) CHECK(std::abs(int(loose.events[n].tick) - int(line.events[n].tick)) <= 6);
+    for (size_t n = 0; n < loose.events.size(); ++n) CHECK(std::abs(int(loose.events[n].tick) - int(line.events[n].tick)) <= 60);
     CHECK(vary_pattern(line, Variation::Humanised, 1.0, 7, place) == loose); // the same dice, the same pattern
     auto back = vary_pattern(line, Variation::Reversed, 1.0, 1, place);
     CHECK(back.events.size() == line.events.size() && back.events.front().tick == 3 * sixteenth_ticks && back.events.back().tick == 15 * sixteenth_ticks);
@@ -9765,7 +9765,7 @@ void track_speed() {
     auto slow = speed_pattern(p, 0); // x1/2
     CHECK(slow.length == 32 * sixteenth_ticks && slow.events[1].tick == 8 * sixteenth_ticks);
     auto three = speed_pattern(p, 3); // x3/2: sixteenths become sixteenth triplets
-    CHECK(three.length == 256 && three.events[1].tick == 64);
+    CHECK(three.length == 2560 && three.events[1].tick == 640);
     CHECK(speed_pattern(p, speed_normal) == p && played_pattern(p, speed_normal) == p);
     CHECK(std::string(speed_name(4)) == "\xc3\x97" "2" && speed_of(1).num == 3 && speed_of(1).den == 4);
     // Heard: a track at x2 plays its sixteenths as thirty-seconds; its place is still read in the pattern as written.
@@ -9790,10 +9790,10 @@ void track_speed() {
             MidiOutEvent e;
             while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back(e);
         }
-        const double tick = 44100 * 60.0 / 120 / 96;
-        CHECK(ons.size() >= 2 && ons[0].a == 60 && ons[1].a == 62 && std::llabs(int64_t(ons[1].frame - ons[0].frame) - std::llround(48 * tick)) <= 2);
-        int at = host.position_of(0); // 12800 frames: 55 ticks played, 110 of the pattern as written
-        CHECK(at >= 108 && at <= 112);
+        const double tick = 44100 * 60.0 / 120 / ticks_per_quarter;
+        CHECK(ons.size() >= 2 && ons[0].a == 60 && ons[1].a == 62 && std::llabs(int64_t(ons[1].frame - ons[0].frame) - std::llround(480 * tick)) <= 2);
+        int at = host.position_of(0); // 12800 frames: 557 ticks played, 1114 of the pattern as written
+        CHECK(at >= 1100 && at <= 1120);
     }
     // An editor's loop (Loop on Roll or Step Edit) is sent in the pattern's ticks as written: on a track at another
     // speed it plays the same bar. Bar 2 of two looped: at x2 the loop was ignored (it starts past the pattern as it
@@ -9855,7 +9855,7 @@ void track_speed() {
         from.position = uint32_t(played_ticks(uint32_t(stopped), speed));
         host->send(from);
         host->render(out.data(), 128, 1);
-        CHECK(stopped > 0 && std::abs(host->position_of(0) - stopped) <= 1);
+        CHECK(stopped > 0 && std::abs(host->position_of(0) - stopped) <= 12); // a block on: 5.6 ticks played
         host->send({Command::Type::Stop});
         host->render(out.data(), 128, 1);
     }
@@ -10493,7 +10493,7 @@ void mix_motion_p4() {
     project->buses[0].level = 100;
     auto& pattern = bank->at[0][0];
     pattern.length = 4 * ticks_per_quarter;
-    Event e; e.tick = 0; e.length = uint16_t(4 * ticks_per_quarter - 4); e.key = 60;
+    Event e; e.tick = 0; e.length = 4 * ticks_per_quarter - 40; e.key = 60;
     pattern.add(e);
     for (auto [tick, value] : {std::pair<uint32_t, int>{0, 0}, {2 * ticks_per_quarter, 100}}) {
         MotionPoint m; m.tick = tick; m.param = uint8_t(motion_level); m.value = int16_t(value);
@@ -10513,8 +10513,8 @@ void mix_motion_p4() {
         int at = host->position_of(0);
         float stem = 0, mix = 0;
         for (unsigned f = 0; f < 128; ++f) { stem = std::max(stem, std::fabs(stems[f])); mix = std::max(mix, std::fabs(out[2 * f] / 2147483648.0f)); }
-        if (at > 20 && at < 180) early = std::max(early, stem);
-        if (at > 220 && at < 370) { late = std::max(late, stem); mix_late = std::max(mix_late, mix); }
+        if (at > 200 && at < 1800) early = std::max(early, stem);
+        if (at > 2200 && at < 3700) { late = std::max(late, stem); mix_late = std::max(mix_late, mix); }
     }
     CHECK(early < 0.01f && late > 0.1f);
     CHECK(mix_late < late * 1.2f); // the return held at 0: the bus not heard beside the track
@@ -10985,8 +10985,8 @@ void tempo_lane_p5() {
             host->render(buffer.data(), 128, 1);
             MidiOutEvent e;
             while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back(e.frame);
-            if (host->song_bar() == 1 && host->ticks() % 384 >= 100 && !tempo_in_bar2) { tempo_in_bar2 = host->tempo_now(); quarter_in_bar2 = effect_clock.quarter; }
-            if (host->song_bar() == 2 && host->ticks() % 384 == 192) tempo_mid_ramp = host->tempo_now();
+            if (host->song_bar() == 1 && host->ticks() % 3840 >= 1000 && !tempo_in_bar2) { tempo_in_bar2 = host->tempo_now(); quarter_in_bar2 = effect_clock.quarter; }
+            if (host->song_bar() == 2 && host->ticks() % 3840 >= 1920 && !tempo_mid_ramp) tempo_mid_ramp = host->tempo_now(); // the first block past half way
         }
         CHECK(ons.size() >= 4);
         if (ons.size() >= 4) {
@@ -11010,7 +11010,7 @@ void tempo_lane_p5() {
         project->song.tempo.set(1, 900, false);
         project->song.tempo.set(3, 1200, true);
         auto tempos = smf_tempos(*project);
-        CHECK(!tempos.empty() && tempos[0].first == 384 && tempos[0].second == 900 && tempos.back().second == 1200 && tempos.size() > 10);
+        CHECK(!tempos.empty() && tempos[0].first == 4 * smf_ppq && tempos[0].second == 900 && tempos.back().second == 1200 && tempos.size() > 10);
         auto bytes = write_smf({}, 1200, 4, 4, tempos);
         unsigned count = 0;
         for (size_t n = 0; n + 2 < bytes.size(); ++n) count += bytes[n] == 0xff && bytes[n + 1] == 0x51 && bytes[n + 2] == 3;
@@ -11295,7 +11295,7 @@ void pad_sends_stage() {
 // another track in its sequence it takes theirs; K1 shows Free below 1 bar; the file keeps it; the audio thread
 // counts a growing take from its own bar (Rebase).
 void free_length() {
-    const uint32_t bar = 384, most = max_bars * bar, grace = ticks_per_quarter / 2;
+    const uint32_t bar = 4 * ticks_per_quarter, most = max_bars * bar, grace = ticks_per_quarter / 2;
     auto note = [](uint32_t tick, unsigned key) { Event e; e.tick = tick; e.key = uint8_t(key); return e; };
     {   // A new pattern is Free while it is empty; Free counts only then.
         Pattern p;
@@ -11311,7 +11311,7 @@ void free_length() {
         CHECK(free_grown(bar, bar, most) == 3 * bar && free_grown(5 * bar + 7, bar, most) == 7 * bar);
         CHECK(free_grown(most - 1, bar, most) == most);
         // Ending: the end of the bar playing; in the first eighth of a bar after the first, that bar line, wrapped.
-        auto end = free_end(3 * bar + 100, bar, grace, most);
+        auto end = free_end(3 * bar + 1000, bar, grace, most); // past the first eighth of bar 4
         CHECK(end.length == 4 * bar && !end.wrap);
         end = free_end(4 * bar + 20, bar, grace, most);
         CHECK(end.length == 4 * bar && end.wrap);
@@ -11400,9 +11400,9 @@ void free_length() {
         tones_for(host, *project);
         host.send({Command::Type::Play});
         std::vector<int32_t> block(256);
-        for (unsigned n = 0; n < 1034; ++n) host.render(block.data(), 128, 1); // 1.5 bars: tick 576
+        for (unsigned n = 0; n < 1034; ++n) host.render(block.data(), 128, 1); // 1.5 bars: tick 5760
         int before = host.position_of(0);
-        CHECK(before >= 180 && before < 200);
+        CHECK(before >= 1800 && before < 2000);
         host.send({Command::Type::Rebase, 0, 0, 0xffff});
         Command grown {Command::Type::PatternData, 0, 0};
         grown.data = new Pattern;
@@ -11410,10 +11410,10 @@ void free_length() {
         host.send(grown);
         host.render(block.data(), 128, 1);
         int after = host.position_of(0);
-        CHECK(after >= before && after < before + 3); // not 576: from the bar it was in
+        CHECK(after >= before && after < before + 20); // not 5760: from the bar it was in
         for (unsigned n = 0; n < 689; ++n) host.render(block.data(), 128, 1); // a bar on: into its second bar
-        CHECK(host.position_of(0) >= int(bar) + before && host.position_of(0) < int(bar) + before + 5);
-        CHECK(host.position_of(1) >= 2 * int(bar) + before && host.position_of(1) < 2 * int(bar) + before + 5);
+        CHECK(host.position_of(0) >= int(bar) + before && host.position_of(0) < int(bar) + before + 30);
+        CHECK(host.position_of(1) >= 2 * int(bar) + before && host.position_of(1) < 2 * int(bar) + before + 30);
         // With track 2 (the same number): it counts from where track 2's pattern began.
         Command four {Command::Type::PatternData, 0, 0};
         four.data = new Pattern;
@@ -11434,19 +11434,19 @@ void free_length() {
 // the next page; a step there makes the pattern grow to the end of its bar; nothing past 128 bars; the cards and
 // the selection see no step there.
 void spare_steps() {
-    Project project; // 4/4: a bar is 384 ticks
+    Project project; // 4/4: a bar is 3840 ticks
     Pattern p;
     p.free = false; // a bar of sixteenths: 16 steps, a full page
     CHECK(p.steps() == 16 && spare_page_end(p) == 32 && spare_end(project, p) == 32);
-    CHECK(spare_length(project, p, 15) == 0 && spare_length(project, p, 16) == 768 && spare_length(project, p, 31) == 768);
+    CHECK(spare_length(project, p, 15) == 0 && spare_length(project, p, 16) == 7680 && spare_length(project, p, 31) == 7680);
     Pattern eighths = p;
     eighths.division = Division::Eighth; // 8 steps: the rest of the page is spare, a step there makes two bars
-    CHECK(eighths.steps() == 8 && spare_end(project, eighths) == 16 && spare_length(project, eighths, 8) == 768);
+    CHECK(eighths.steps() == 8 && spare_end(project, eighths) == 16 && spare_length(project, eighths, 8) == 7680);
     Pattern full = p;
     full.length = project.max_length(); // 128 bars: nothing to grow into
     CHECK(spare_length(project, full, full.steps()) == 0 && spare_end(project, full) == full.steps());
     Pattern almost = p;
-    almost.length = project.max_length() - 384;
+    almost.length = project.max_length() - 3840;
     CHECK(spare_length(project, almost, almost.steps()) == project.max_length());
     // The caret: a spare step while step_cursor marks the last step on Step Edit.
     UiState ui;
@@ -11457,11 +11457,11 @@ void spare_steps() {
     ui.page = PageId::StepEdit; ui.spare_step = 32; CHECK(!in_spare(ui, p)); // past the spare page
     ui.spare_step = -1; CHECK(spare_mark(project, ui, p)); // on the last page
     Pattern two = p;
-    two.length = 768;
+    two.length = 7680;
     ui.step_cursor = 3; CHECK(!spare_mark(project, ui, two)); // the first of two pages
     ui.step_cursor = 17; CHECK(spare_mark(project, ui, two) && !spare_mark(project, ui, full));
     // A step in the spare steps holds nothing: no selection, no step cards (only what a pad writes).
-    Event e; e.tick = 15 * 24; e.key = 60;
+    Event e; e.tick = 15 * 240; e.key = 60;
     p.add(e);
     ui.step_cursor = 15; ui.spare_step = -1;
     CHECK(selected_event(p, ui) == 0);

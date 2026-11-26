@@ -156,7 +156,7 @@ void set_event_velocity(Context& c, int velocity) {
 
 void set_event_length(Context& c, int steps) {
     const int64_t q = c.pattern().q();
-    edit_selected(c, [&](Event& e) { e.length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * q, 1, 0xffff)); });
+    edit_selected(c, [&](Event& e) { e.length = note_ticks(uint64_t(std::max(steps, 1)) * q); });
 }
 
 void set_event_chance(Context& c, int chance) {
@@ -247,7 +247,7 @@ void entry_write(Context& c, int key, const Level& level, uint8_t velocity) {
     e.pitch = int8_t(std::clamp(level.semitones, -48, 48));
     if (level.cutoff >= 0) e.cutoff = uint8_t(std::min(level.cutoff, 100) + 1);
     e.velocity = ui.entry_velocity ? ui.entry_velocity : level.velocity ? uint8_t(level.velocity) : std::max<uint8_t>(velocity, 1);
-    e.length = uint16_t(std::min<uint32_t>({uint32_t(ui.entry_length) * q, p.length, 65535u}));
+    e.length = note_ticks(std::min<uint32_t>(uint32_t(ui.entry_length) * q, p.length));
     e.chance = ui.entry_chance;
     p.add(e); // a note of the same key already there is replaced
     c.sync_pattern(ui.track, c.track().pattern);

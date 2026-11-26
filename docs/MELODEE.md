@@ -520,7 +520,7 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
   state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change waiting blinks)
   and its length (a loop at another tempo shows the tempo it was recorded
   at, amber); K1 the loop,
-  K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
+  K2 its length (Free, 1, 2, 4, 8, 16, 32, 64, 128 bars; before a take), K3 its level;
   Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
   take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,
   K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet, one screen,
@@ -567,7 +567,8 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
 ### Sequencing
 
-The clock runs at 96 ticks a quarter. A pattern is a list of note events
+The clock runs at 960 ticks a quarter, as on the MPC. Projects saved at
+96 ticks a quarter load with every tick ten times. A pattern is a list of note events
 (tick, length, key, velocity, chance, accent / slide / tie, a ratchet) up
 to 128 bars of the project's time signature; its **Q** (1/4 .. 1/64 with
 triplets) is only the grid. Swing (50–75 %) stretches the first sixteenth
@@ -1004,7 +1005,7 @@ hold to steer, Shift + Seq to zoom in**.
   come in more passes of the song, its chance, S&H and the kits' random
   picks reseeded at each; every file the same frames, each pass in real
   time), a MIDI FILE
-  (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
+  (`Melodee/MIDI/<name>.mid`, format 1 at 960 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
   song each track's pattern once; a kit's pads as notes 36 on, on channel
   10, a MIDI track on its own), an MPC 3 project
@@ -1820,7 +1821,7 @@ the file holds, to the bit.
 - **Input Config** (Shift + Sample; B2 on Record): K1 source (Mic, Rear,
   Rear L, Rear R, Resample, USB, USB L, USB R, then **Track n** for each
   track with a sound of its own: a synth, another kit; not the kit
-  in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars), K3
+  in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars, 24, 32, 48, 64, 96, 128 bars), K3
   threshold (−96..0 dB), Shift + K3 gain; with a track, Shift + K1 its tap:
   **Post FX** (after its chain, level and pan, before mute: a muted track
   still records) or **Pre FX** (the engine alone). B1 back (as on every

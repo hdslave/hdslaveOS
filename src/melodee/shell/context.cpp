@@ -563,7 +563,7 @@ void Context::record(int key, int velocity, int cutoff) {
         at = snapped;
     }
     Event e;
-    e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
+    e.tick = at; e.length = note_ticks(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
     if (cutoff >= 0 && track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // roadmap P3
     if (note_slice(key) >= 0 && track().engine == EngineKind::Sampler) e.slice = uint8_t(note_slice(key) + 1); // issue 24: a slice hit
     if (!p.add(e)) { notice("Pattern full"); return; }
@@ -585,7 +585,7 @@ void Context::record_release(int key) {
         int32_t held = int32_t(ticks - h.since); // let go before the first tick (an early hit): the shortest
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
             if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8) && p.events[n].slice == uint8_t(note_slice(key) + 1)) {
-                p.events[n].length = uint16_t(std::clamp<int32_t>(held, 1, 65535));
+                p.events[n].length = note_ticks(uint64_t(std::max<int32_t>(held, 1)));
                 sync_pattern(h.track, h.pattern);
                 break;
             }
@@ -738,7 +738,7 @@ void Context::apply(const Binding& b, int value) {
         uint32_t q = p.q();
         bool any = edit_lane(p, at, steps_lane(t), [&](Event& e) {
             switch (b.kind) {
-            case Kind::StepLength: e.length = uint16_t(std::clamp<uint32_t>(uint32_t(std::max(value, 1)) * q, 1, 0xffff)); break;
+            case Kind::StepLength: e.length = note_ticks(uint64_t(std::max(value, 1)) * q); break;
             case Kind::StepVelocity: e.velocity = uint8_t(std::clamp(value, 1, 127)); break;
             case Kind::StepChance: e.chance = uint8_t(std::clamp(value, 0, 100)); break;
             case Kind::StepRatchet: e.ratchet = uint8_t(std::clamp<int>(value, 1, int(max_ratchet))); break;
@@ -1080,7 +1080,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::Lock: { // a step or a note held: the lane locked there (roadmap P1)
         uint32_t tick = 0, hold = 0;
         if (!lock_place(project, ui, pattern(), tick, hold)) break;
-        write_lock(int(b.id), tick, uint16_t(std::min<uint32_t>(hold, 0xffff)), value);
+        write_lock(int(b.id), tick, hold, value);
         ui.held_edited = true; // Steps: letting the step go keeps it
         break;
     }
@@ -1408,16 +1408,21 @@ void Context::record_motion(int lane, int value) {
     MotionPoint m;
     m.tick = uint32_t(std::max(host.position_of(ui.track), 0)) % std::max<uint32_t>(p.length, 1);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
+    // A point a 96th of a quarter at most on a lane, as recording kept them before the clock went to 960: a move
+    // inside that replaces the one before, so a pot turned fast fills the pattern's Motion no faster than it did.
+    constexpr uint32_t thin = ticks_per_quarter / 96;
+    for (size_t n = p.motion_lower(m.tick); n-- > 0 && p.motion[n].tick + thin > m.tick;)
+        if (p.motion[n].on(m.param, m.pad) && !p.motion[n].lock()) { p.motion.erase(p.motion.begin() + long(n)); break; }
     if (!p.write_motion(m)) return; // full: the move still sounds, it is just not kept
     sync_motion(ui.track, t.pattern);
 }
 
-void Context::write_lock(int lane, uint32_t tick, uint16_t hold, int value) {
+void Context::write_lock(int lane, uint32_t tick, uint32_t hold, int value) {
     if (lane < 0) return;
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
-    m.tick = tick % std::max<uint32_t>(p.length, 1); m.hold = std::max<uint16_t>(hold, 1);
+    m.tick = tick % std::max<uint32_t>(p.length, 1); m.hold = note_ticks(hold);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
     if (!p.write_motion(m)) { notice("Motion full"); return; }
     sync_motion(ui.track, t.pattern);
@@ -1461,7 +1466,7 @@ void Context::take_arp_notes() {
         if (!ui.recording) continue;
         auto& p = patterns.at[w.track % track_count][w.pattern % pattern_count];
         Event e;
-        e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = std::max<uint16_t>(w.length, 1);
+        e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = note_ticks(w.length);
         e.key = uint8_t(w.key & 0xff); e.pitch = int8_t(w.key >> 8); e.velocity = uint8_t(std::clamp<int>(w.velocity, 1, 127));
         e.cutoff = w.cutoff; // a 16 Levels Filter repeat's cutoff + 1 (roadmap P3)
         if (!p.add(e)) { notice("Pattern full"); continue; }
@@ -1521,7 +1526,7 @@ void Context::record_launch(unsigned t, unsigned p) {
 }
 
 // Each bar the clips being written grow by one, so the song always holds the
-// bar after the one playing; past 16 bars a new clip carries on.
+// bar after the one playing; past 128 bars (max_bars) a new clip carries on.
 void Context::song_tick() {
     bool on = ui.recording && host.song_playing();
     if (!on) {
@@ -1543,7 +1548,7 @@ void Context::song_tick() {
         if (index < 0) { recording_tracks &= uint16_t(~(1u << t)); continue; }
         Clip clip = song.clips[size_t(index)];
         if (clip.end() != bar + 1 || bar + 1 >= song_bars) continue;
-        if (clip.bars >= 16) { // a new clip carries on
+        if (clip.bars >= max_bars) { // a new clip carries on
             song.place({clip.track, clip.pattern, uint16_t(bar + 1), 1, false});
             recording_from[t] = uint16_t(bar + 1);
             continue;

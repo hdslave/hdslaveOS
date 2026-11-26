@@ -103,7 +103,7 @@ inline bool remove_lock(Pattern& p, uint32_t tick, unsigned param, unsigned pad)
 inline bool add_lane_note(Pattern& p, unsigned s, uint8_t lane, uint8_t velocity) {
     Event e;
     e.tick = uint32_t(s) * p.q();
-    e.length = uint16_t(std::min<uint32_t>(p.q(), 0xffff));
+    e.length = note_ticks(p.q());
     e.key = lane;
     e.velocity = velocity;
     return p.add(e);

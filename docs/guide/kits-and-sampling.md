@@ -512,8 +512,8 @@ Press **SAMPLE RECORD** on a kit to open **Record**.
 
 ![Record](../images/screens/record.png)
 
-1. Use **K1** to choose the source, **K2** the length (Free, Seq, or 1–16
-   bars) and **K3** the threshold.
+1. Use **K1** to choose the source, **K2** the length (Free, Seq, 1–16
+   bars, or 24 to 128 bars) and **K3** the threshold.
 2. Tap a pad, or push the encoder to record onto the first empty pad.
    Recording starts at the threshold, or when the pattern comes round if
    the length is Seq. To start at once, push the encoder again.

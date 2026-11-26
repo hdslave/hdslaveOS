@@ -1088,7 +1088,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;
         return {Binding {Kind::SongZoom, 0, 0, int(sizeof(song_zooms) / sizeof(song_zooms[0])) - 1, ui.song_zoom},
                 Binding {Kind::SongPattern, int16_t(clip), 0, int(pattern_count) - 1, pattern_value},
-                Binding {Kind::SongLength, int16_t(clip), 1, 16, length_value}};
+                Binding {Kind::SongLength, int16_t(clip), 1, int(max_bars), length_value}};
     }
     case PageId::Rack:
     case PageId::Bus:

@@ -55,7 +55,7 @@ struct Snapshot {
     bool following = false;                  // MIDI clock in leads the transport (parity phase 9)
     bool following_mtc = false;              // and MTC in (parity phase 9b)
     std::array<uint8_t, track_count> playing_patterns {};
-    uint32_t ticks = 0;                      // 96 a quarter since Play
+    uint32_t ticks = 0;                      // ticks_per_quarter a quarter since Play
     bool song_playing = false;
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};

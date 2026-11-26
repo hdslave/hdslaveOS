@@ -26,7 +26,7 @@ struct Binding {
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds (id: the slice)
         FileJump, PluginJump,              // Samples, the plug-in picker
-        RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. 1..16 bars)
+        RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. bars: rec_bars())
         ProjectJump, ProjectSort,          // Project
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)
         Features,                          // Settings' K1: 0 Basic, 1 Full (shell/features.h)

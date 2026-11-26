@@ -27,6 +27,8 @@ const char* refusal(looper::Error e) {
     case looper::Error::TooLong: return "too long at this tempo";
     case looper::Error::Tempo: return "cannot fit this tempo";
     case looper::Error::Busy: return "busy, try again";
+    case looper::Error::Growing: return "making memory, press again";
+    case looper::Error::NoRoom: return "not enough memory for it";
     default: return "";
     }
 }
@@ -62,7 +64,7 @@ void looper_do(Context& c, Do what, unsigned loop, int value, uint32_t position)
     case Do::Enable: lp.on = value != 0; break;
     case Do::Length:
         if (view.state != Looper::State::Empty && view.state != Looper::State::Armed) { c.notice(loop_name(loop) + ": length before a take"); return; }
-        lp.loops[loop].bars = uint8_t(std::clamp(value, 0, 16));
+        lp.loops[loop].bars = uint8_t(std::clamp(value, 0, int(looper::longest_bars)));
         break;
     case Do::Feedback: lp.loops[loop].feedback = uint8_t(std::clamp(value, 0, 100)); break;
     case Do::Source:
@@ -266,7 +268,7 @@ bool parse_looper(const std::string& argument, LooperAsk& out, std::string& erro
         if (!loop_of(a)) return false;
         out.what = Do::Length;
         out.value = b == "free" ? 0 : std::atoi(b.c_str());
-        if (b != "free" && std::find(looper::lengths.begin(), looper::lengths.end(), out.value) == looper::lengths.end()) { error = "length 1, 2, 4, 8, 16 or free"; return false; }
+        if (b != "free" && std::find(looper::lengths.begin(), looper::lengths.end(), out.value) == looper::lengths.end()) { error = "length 1, 2, 4, 8, 16, 32, 64, 128 or free"; return false; }
         return true;
     }
     if (verb == "feedback") { if (!loop_of(a)) return false; out.what = Do::Feedback; out.value = std::clamp(int(std::atof(b.c_str()) * 100 + 0.5), 0, 100); return true; }
@@ -321,7 +323,7 @@ bool parse_looper(const std::string& argument, LooperAsk& out, std::string& erro
         return true;
     }
     if (verb == "commit") { if (!loop_of(a)) return false; out.op = Op::Commit; out.value = b == "note"; return true; }
-    error = "melodee-looper status | on | off | rec|toggle|halt|now|undo|clear N | length N 1-16|free | feedback N 0-1 | "
+    error = "melodee-looper status | on | off | rec|toggle|halt|now|undo|clear N | length N 1-128|free | feedback N 0-1 | "
             "level|pan|send|bus N V | mute|solo N 0|1 | quantize bar|beat|off | then play|overdub|stop | source N input|track M|loop M|mix|rear [l|r]|usb [l|r]|mic | "
             "latency FRAMES|auto | transport follow|free | commit N [note]";
     return false;

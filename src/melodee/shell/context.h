@@ -231,7 +231,7 @@ public:
     // Roadmap P1: Motion is each pattern's own. A pot turned with a step (Steps) or a note (Roll, a pad held on it)
     // held writes a lock there: `lane` holds `value` from `tick` for `hold` ticks. Recorded moves reach the audio
     // thread at most every motion_sync_ms (a pattern copy each), flush_motion() sending the last when it is due.
-    void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
+    void write_lock(int lane, uint32_t tick, uint32_t hold, int value);
     // Erase + pot on a lock card (Binding::Kind::Lock): that lane's lock on the held step or note (or the caret's step
     // on LOCK) out, its notes kept, in the same undo step as a turn. False when it held none ("No lock on ..." when
     // `say_none`).
