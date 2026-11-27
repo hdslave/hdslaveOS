@@ -74,6 +74,7 @@ private:
     std::array<MidiPacket, 32> thru {};  // Thru: what came in, sent on in the next pump
     unsigned thru_count = 0;
     ClockFollower follower;
+    TempoSteady steady;                  // its tempo, held through a tenth's wobble
     ProgramBanks banks;                  // the Bank Select CCs heard, for Receive program change: Plug-in
     unsigned tempo_sent = 0;
     uint32_t song_position = 0; // ticks, from Song Position: where Continue carries on

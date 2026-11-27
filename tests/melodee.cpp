@@ -4473,6 +4473,18 @@ void midi_and_sync() {
         for (unsigned n = 1; n < 30; ++n) f.pulse(at + 96 * 20833333ull + 500000000ull + n * 15625000ull); // 160 BPM
         CHECK(f.tempo_tenths() >= 1599 && f.tempo_tenths() <= 1601);
     }
+    // The tempo clock in sets, held through a tenth's wobble (an SMK-37 at 120 read 119.9 now and then, and the header
+    // shook); a tenth that holds four beats is taken, a bigger change at once, a pause starts over.
+    {
+        TempoSteady t;
+        CHECK(t.take(0) == 0 && t.take(1200) == 1200);
+        for (unsigned n = 0; n < 500; ++n) CHECK(t.take(n % 7 == 3 ? 1199 : n % 11 == 5 ? 1201 : 1200) == 1200);
+        for (unsigned n = 1; n < TempoSteady::steady_pulses; ++n) CHECK(t.take(1201) == 1200);
+        CHECK(t.take(1201) == 1201);       // a slow ramp: taken after four beats
+        CHECK(t.take(1250) == 1250);       // a real change: at once
+        CHECK(t.take(0) == 1250);          // no reading: kept
+        t.reset(); CHECK(t.take(900) == 900);
+    }
     // The clocks out, from the tempo (not the swung ticks), to the frame.
     {
         using K = MidiOutEvent::Kind;

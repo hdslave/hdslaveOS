@@ -198,7 +198,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (last_pulse_ns && packet.timestamp_ns - last_pulse_ns < 2000000) bunched.fetch_add(1, std::memory_order_relaxed);
         last_pulse_ns = packet.timestamp_ns;
         follower.pulse(packet.timestamp_ns);
-        unsigned tempo = follower.tempo_tenths();
+        unsigned tempo = steady.take(follower.tempo_tenths());
         if (tempo && tempo != tempo_sent) { c.send({Type::ExtSync, 0, 0, 2, int16_t(tempo)}); tempo_sent = tempo; tempo_seen.store(tempo); }
         jitter_in.store(follower.jitter_us(), std::memory_order_relaxed);
         if (ext_running.load(std::memory_order_relaxed)) {
@@ -462,7 +462,7 @@ void MidiIo::follow_mtc(Context& c, const MtcReader::Event& e) {
 void MidiIo::lost(Context& c) {
     c.midi_release_all();
     if (ext_running.exchange(false)) c.send({Type::ExtSync, 0, 0, 4});
-    follower.reset();
+    follower.reset(); steady.reset();
 }
 
 // --- Out ---
@@ -480,7 +480,7 @@ void MidiIo::configure(Context& c, bool force) {
         bool follow = config.sync_in == MidiSync::Clock;
         if (!configured || follow != (config_sent.sync_in == MidiSync::Clock)) {
             c.send({Type::ExtSync, 0, 0, 0, int16_t(follow)});
-            if (!follow) { ext_running.store(false); tempo_sent = 0; tempo_seen.store(0); follower.reset(); }
+            if (!follow) { ext_running.store(false); tempo_sent = 0; tempo_seen.store(0); follower.reset(); steady.reset(); }
         }
         if (config.sync_in != MidiSync::Mtc && configured && config_sent.sync_in == MidiSync::Mtc) { // MTC no longer leads
             mtc.reset();

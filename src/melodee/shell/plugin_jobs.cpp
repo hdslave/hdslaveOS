@@ -326,7 +326,7 @@ void Context::midi_program(uint16_t tracks, unsigned place) {
         const auto programs = plugins->programs(e);
         if (place < programs.list.size()) {
             take_program(*this, e, programs.list[place], place, false); // in by MIDI: not sent back
-            said = "Program change: " + programs.list[place].name;
+            said = "Program " + std::to_string(place + 1) + ": " + programs.list[place].name;
         } else if (said.empty()) {
             said = programs.list.empty() ? (programs.finding ? "Looking for presets" : "No presets in this plug-in")
                                          : "No preset " + std::to_string(place + 1);

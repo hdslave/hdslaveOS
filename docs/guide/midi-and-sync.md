@@ -193,8 +193,8 @@ ignore MIDI program changes.
 | Bank Select CC 0 = 1, CC 32 = 0, then program 1 | Preset 16385 |
 
 1. Select the plug-in track.
-2. On the controller, send program 5. The screen shows **Program change** and
-   the name of the fifth preset.
+2. On the controller, send program 5. The screen shows **Program 5** and the
+   name of the fifth preset.
 3. Press **SHIFT** + **B2** (**PRESETS**) to see the preset in the list.
 
 The bank stays set on that channel until the next Bank Select. A program past
