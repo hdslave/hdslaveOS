@@ -77,6 +77,9 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     double getTailLengthSeconds() const override;
     bool takeTailChange (double& seconds); // audio thread, before the rack decides whether to sleep
+    // Frames (at its rate) of blocks the rack let it sleep through, without a processBlock: CLAP's steady_time counts
+    // them too, so the plug-in can tell from it how long it slept (melodee-hdslave). Audio thread.
+    void slept (int64_t frames) { steadyTime += frames; }
     bool acceptsMidi() const override { return notePort >= 0; }
     bool producesMidi() const override { return false; }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }

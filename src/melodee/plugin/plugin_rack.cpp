@@ -531,6 +531,12 @@ public:
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
             if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
+            if (clap) { // its steady_time counts these frames, at its own rate (one bridged a whole frame at a time)
+                slept_frames += double(frames) * plugin_rate / sample_rate;
+                const auto whole = int64_t(slept_frames);
+                slept_frames -= double(whole);
+                clap->slept(whole);
+            }
             if (watched.load(std::memory_order_relaxed)) {
                 static const std::array<float, EngineHost::block> quiet {};
                 measure(quiet.data(), quiet.data(), frames, true);
@@ -739,6 +745,7 @@ private:
     static constexpr double jump_quarters = 1.0 / 16;
     bool clock_seen = false, playing_seen = false, moved = false;
     uint32_t turns_seen = 0;
+    double slept_frames = 0;   // frames at its rate slept through and not yet told its steady_time (under one)
     double song_seen = 0, quarter_seen = 1;
     double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top
     double per_frame = 0;      // and how far a frame at the plug-in's rate moves it

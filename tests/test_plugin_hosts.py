@@ -228,6 +228,9 @@ class PluginHostTests(unittest.TestCase):
     def test_midi_start_while_playing_plays_from_the_top(self):
         self.run_rack_fixture("midi-start")
 
+    def test_steady_time_counts_the_frames_a_plugin_slept(self):
+        self.run_rack_fixture("steady-sleep")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

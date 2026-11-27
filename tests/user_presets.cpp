@@ -702,7 +702,9 @@ int main(int argc, char** argv) {
     }
     if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
-    if (mode == "transport-wake" || mode == "load-wake" || steady || deaf) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    const bool slept = mode == "steady-sleep";
+    if (mode == "transport-wake" || mode == "load-wake" || steady || deaf || slept) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    if (slept) setenv("MELODEE_TEST_CLOCK", "1", 1); // and its steady_time and loop
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -773,7 +775,7 @@ int main(int argc, char** argv) {
         slot.params[0] = 2;
     }
     if (steady) { project.tempo = 1270; project.swing = 60; } // a tick no whole number of frames, and swung
-    if (mode == "transport-wake" || steady || deaf) { // and Test Gain on the master's chain (mixed, so run, even in silence)
+    if (mode == "transport-wake" || steady || deaf || slept) { // and Test Gain on the master's chain (mixed, so run, even in silence)
         project.plugins[2] = ref;
         project.plugins[2].id = clap_id_hash("org.melodee.test.gain");
         auto& slot = project.chain(master_chain).slots[0];
@@ -1875,6 +1877,39 @@ int main(int argc, char** argv) {
         CHECK(host->send({Command::Type::Play}) && host->send({Command::Type::Stop}));
         tick();
         CHECK(heard(gain).calls > effect_stopped && heard(gain).playing == 0);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // CLAP's steady_time is a steady sample counter: a plug-in can tell from it how long it slept. Test Gain on the
+    // master's chain run for a value set, left to fall asleep, then run again for another: that call's steady_time is
+    // the first's plus every frame since, the ones it slept through too.
+    if (slept) {
+        const unsigned gain = 2;
+        struct Clock { int calls; double steady, frames; };
+        auto clock = [&] {
+            auto bytes = rack->state(gain);
+            CHECK(bytes.size() == 4 + 11 * sizeof(double));
+            std::array<double, 11> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Clock {int(v[5]), v[6], v[7]};
+        };
+        wait([&] { return ready(gain) && rack->idling(gain); });
+        const int before = clock().calls;
+        set_control_of(gain, "Gain", 500);
+        tick(); // a block runs for it
+        const auto first = clock();
+        CHECK(first.calls == before + 1 && first.frames == EngineHost::block);
+        uint64_t blocks = 0; // every one rendered since, each EngineHost::block frames
+        while (!rack->idling(gain) && blocks < 20000) { tick(); ++blocks; }
+        for (int k = 0; k < 100; ++k) { tick(); ++blocks; }
+        const auto asleep = clock();
+        CHECK(rack->idling(gain) && asleep.calls > first.calls && uint64_t(asleep.calls - first.calls) < blocks);
+        set_control_of(gain, "Gain", 600);
+        tick();
+        ++blocks;
+        const auto woken = clock();
+        CHECK(woken.calls == asleep.calls + 1);
+        CHECK(woken.steady == first.steady + double(blocks * EngineHost::block));
         shell->set_plugins(nullptr);
         return 0;
     }

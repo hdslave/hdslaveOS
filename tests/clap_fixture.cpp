@@ -65,6 +65,9 @@ struct Plugin {
     std::atomic<int> seenPlaying {-1};
     std::atomic<double> seenBeats {-1};
     std::atomic<int> processCalls {0};
+    // And with MELODEE_TEST_CLOCK too: its last process call's steady_time and frames, and the loop it was told
+    // (CLAP_TRANSPORT_IS_LOOP_ACTIVE, and its start and end in quarter notes).
+    std::atomic<double> seenSteady {-1}, seenFrames {0}, seenLoop {0}, seenLoopStart {0}, seenLoopEnd {0};
 
     void main() { if (threads && !threads->is_main_thread(host)) ++wrongThread; }
     void audio() { if (threads && !threads->is_audio_thread(host)) ++wrongThread; }
@@ -114,13 +117,18 @@ const clap_plugin_params params {paramCount, paramInfo, paramValue, valueText, t
 // environment where the test cannot reach this copy's globals: a part-written save that then fails). With
 // MELODEE_TEST_TRANSPORT, three more after them: whether its last process call was told the song plays (-1 none yet),
 // the song position it was told in quarter notes, and how many process calls it has had (load() reads the first three).
+// With MELODEE_TEST_CLOCK as well, five more: that call's steady_time and frames, whether it was told a loop, and the
+// loop's start and end in quarter notes.
 bool save(const clap_plugin* p, const clap_ostream* out) {
     of(p).main();
     double v[3] {of(p).level, of(p).wave, of(p).gain};
     if (failSaves || std::getenv("MELODEE_TEST_FAIL_SAVES")) { out->write(out, v, sizeof(double)); return false; }
     if (std::getenv("MELODEE_TEST_TRANSPORT")) {
-        const double w[6] {v[0], v[1], v[2], double(of(p).seenPlaying.load()), of(p).seenBeats.load(), double(of(p).processCalls.load())};
-        return out->write(out, w, sizeof(w)) == int64_t(sizeof(w));
+        const auto& s = of(p);
+        const double w[11] {v[0], v[1], v[2], double(s.seenPlaying.load()), s.seenBeats.load(), double(s.processCalls.load()),
+                            s.seenSteady.load(), s.seenFrames.load(), s.seenLoop.load(), s.seenLoopStart.load(), s.seenLoopEnd.load()};
+        const int64_t size = std::getenv("MELODEE_TEST_CLOCK") ? int64_t(sizeof(w)) : int64_t(6 * sizeof(double));
+        return out->write(out, w, uint64_t(size)) == size;
     }
     return out->write(out, v, sizeof(v)) == int64_t(sizeof(v));
 }
@@ -301,7 +309,12 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
     if (const auto* t = proc->transport) {
         s.seenPlaying.store((t->flags & CLAP_TRANSPORT_IS_PLAYING) ? 1 : 0);
         s.seenBeats.store(double(t->song_pos_beats) / double(CLAP_BEATTIME_FACTOR));
+        s.seenLoop.store((t->flags & CLAP_TRANSPORT_IS_LOOP_ACTIVE) ? 1 : 0);
+        s.seenLoopStart.store(double(t->loop_start_beats) / double(CLAP_BEATTIME_FACTOR));
+        s.seenLoopEnd.store(double(t->loop_end_beats) / double(CLAP_BEATTIME_FACTOR));
     }
+    s.seenSteady.store(double(proc->steady_time));
+    s.seenFrames.store(double(proc->frames_count));
     s.processCalls.fetch_add(1);
     if (beforeEvents) beforeEvents(beforeEventsData);
     for (uint32_t i = 0, n = proc->in_events->size(proc->in_events); i < n; ++i) event(s, proc->in_events->get(proc->in_events, i));
