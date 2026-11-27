@@ -24,7 +24,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 #### Song (#60)
 
 - **All tracks**: **PAD BANK** shows the 16 tracks at once. Press it again for the selected track's lanes.
-- **Loop range**: on empty time, press **LOOP** at the first bar, move the cursor and press **LOOP** at the last bar. A third press turns it off.
+- **Loop range**: press **LOOP** at the first bar, move the cursor and press **LOOP** at the last bar, over clips or empty time. Press it twice on a clip without moving to loop that clip. With a loop on, a press turns it off.
 - **Copy, paste and take out sections**: with a loop range, **SHIFT** + **ERASE** copies its bars, and Push pastes them at the cursor. What is there moves on to make room; push again for another copy after it. **ERASE** takes the range's bars out and closes the gap. With all tracks shown, this works on every track and moves markers and tempo points too.
 
 #### Kits and instruments

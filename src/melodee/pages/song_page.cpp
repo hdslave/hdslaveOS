@@ -18,7 +18,7 @@
 // the cursor's bar (roadmap P5; under 30 BPM, none there), Shift + K2 its
 // shape, a step on its bar or a ramp from the point before; with points the
 // lane is a strip over the tracks, its tempo at the cursor beside it. Issue 60 (shell/song_range.h): Pad Bank shows
-// every lane at once; Loop on empty time sets the loop range's first and last bar; with a range Shift + Erase copies
+// every lane at once; Loop sets the loop range's first and last bar (twice on one bar of a clip: the clip's); with a range Shift + Erase copies
 // its bars, Push pastes them as an insert, Erase takes them out; K2 steps through the patterns that hold notes.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -619,33 +619,18 @@ void song_repeat(Context& c) {
     c.sync_song();
 }
 
-// Loop: on a clip, the brace on its bars, again off. On empty time (issue 60): the first tap the loop's start at the
-// cursor, the next its end (the cursor's bar the last in it, either way round), a third off.
+// Loop (issue 60), on a clip or not: the first tap the loop's start at the cursor, the next its end (the cursor's bar
+// the last in it, either way round). Two taps on one bar of a clip, the cursor not moved: the clip's bars. With a loop
+// on, a tap turns it off.
 bool song_loop(Context& c) {
     if (c.ui.jam_sheet) return true; // JAMS: the song is not in view
     auto& song = c.project.song;
     auto& ui = c.ui;
-    int index = clip_index(c);
-    if (index >= 0) {
-        bool same = song.loop_start == song.clips[size_t(index)].bar && song.loop_end == song.clips[size_t(index)].end();
-        if (same) song.loop_start = song.loop_end = 0;
-        else { song.loop_start = song.clips[size_t(index)].bar; song.loop_end = song.clips[size_t(index)].end(); }
-        ui.song_loop_in = -1;
-        c.sync_song();
-        return true;
+    switch (song_loop_tap(song, ui.song_loop_in, ui.song_cursor, clip_index(c))) { // shell/song_range.h
+    case SongLoopTap::Set: c.sync_song(); c.notice("Loop " + std::to_string(song.loop_start + 1) + "-" + std::to_string(song.loop_end)); break;
+    case SongLoopTap::Off: c.sync_song(); c.notice("Loop off"); break;
+    case SongLoopTap::Start: c.notice("Loop from " + std::to_string(ui.song_cursor + 1) + ": LOOP at end"); break;
     }
-    if (ui.song_loop_in >= 0) { // the end
-        const unsigned a = unsigned(ui.song_loop_in), b = ui.song_cursor;
-        song.loop_start = uint16_t(std::min(a, b));
-        song.loop_end = uint16_t(std::max(a, b) + 1);
-        ui.song_loop_in = -1;
-        c.sync_song();
-        c.notice("Loop " + std::to_string(song.loop_start + 1) + "-" + std::to_string(song.loop_end));
-        return true;
-    }
-    if (song.looping()) { song.loop_start = song.loop_end = 0; c.sync_song(); c.notice("Loop off"); return true; }
-    ui.song_loop_in = int16_t(ui.song_cursor); // the start: the end at the next tap
-    c.notice("Loop from bar " + std::to_string(ui.song_cursor + 1) + ": move, then LOOP");
     return true;
 }
 

@@ -1786,6 +1786,17 @@ void button_remap() {
         CHECK((list == std::vector<uint8_t> {0, 3, 20, 70, 71}) && song_pattern_index(list, 20) == 2);
         CHECK((song_pattern_list({}, 0) == std::vector<uint8_t> {0}));
         CHECK(print_pattern_name(17) == "B2");
+        // LOOP: start and end at the cursor over clips or empty time; twice on one bar of a clip, its bars; then off.
+        Song looped = song;
+        int16_t waiting = -1;
+        CHECK(song_loop_tap(looped, waiting, 1, looped.clip_at(0, 1)) == SongLoopTap::Start && waiting == 1 && !looped.looping()); // on a clip: a start
+        CHECK(song_loop_tap(looped, waiting, 5, looped.clip_at(0, 5)) == SongLoopTap::Set && looped.loop_start == 1 && looped.loop_end == 6 && waiting == -1);
+        CHECK(song_loop_tap(looped, waiting, 3, -1) == SongLoopTap::Off && !looped.looping());
+        CHECK(song_loop_tap(looped, waiting, 6, looped.clip_at(0, 6)) == SongLoopTap::Start);
+        CHECK(song_loop_tap(looped, waiting, 6, looped.clip_at(0, 6)) == SongLoopTap::Set && looped.loop_start == 4 && looped.loop_end == 8); // the clip's bars
+        CHECK(song_loop_tap(looped, waiting, 9, -1) == SongLoopTap::Off);
+        CHECK(song_loop_tap(looped, waiting, 9, -1) == SongLoopTap::Start && song_loop_tap(looped, waiting, 7, -1) == SongLoopTap::Set &&
+              looped.loop_start == 7 && looped.loop_end == 10); // either way round
         auto long_song = std::make_unique<Project>(); // a clip longer than a pattern (an MPC song's) keeps its length
         long_song->song.place({0, 0, 0, 200, true});
         auto bank = std::make_unique<PatternBank>();

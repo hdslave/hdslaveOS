@@ -1012,7 +1012,7 @@ hold to steer, Shift + Seq to zoom in**.
   **Shift + B2** its Motion, **Shift + B3** its Own Pattern, **Push** opens
   its notes (Roll, or Step Edit on a kit; on empty time Places), **Chop**
   splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
-  next marker, **Loop** loops its bars (again, or on empty time, off): when
+  next marker, **Loop** sets the loop (below): when
   the loop comes round, every track's clip plays its pattern from where
   the song is, a longer clip on another track too. A clip changed while
   it plays is heard from the next bar. Each
@@ -1020,9 +1020,10 @@ hold to steer, Shift + Seq to zoom in**.
   (on a marker, names it). Play here plays the song from the cursor (from
   past the loop's end it plays on to the song's end and stops). Issue 60
   (shell/song_range.h): **Pad Bank** tap shows all sixteen lanes at once in
-  the six's room (header ALL, every clip bright, no names); **Loop** on
-  empty time sets the loop's first bar, a second tap at the cursor its last
-  (either way round), a third off; with a loop range **Shift + Erase**
+  the six's room (header ALL, every clip bright, no names); **Loop**, on a
+  clip or not, sets the loop's first bar at the cursor, a second tap its
+  last (either way round; twice on one bar of a clip, the cursor not
+  moved, the clip's bars); with a loop on, a tap turns it off; with a loop range **Shift + Erase**
   copies its bars (the lane's, or with ALL every lane's; header COPY) and
   **Push** pastes them at the cursor as an insert (what is there on moves
   on, a clip across the cursor cut there; again for the next copy), and

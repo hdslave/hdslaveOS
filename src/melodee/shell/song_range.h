@@ -126,6 +126,23 @@ inline bool song_remove_bars(Song& song, unsigned from, unsigned to, uint16_t la
     return true;
 }
 
+// LOOP on Song (issue 60), on a clip or not: the first tap the loop's start at `cursor` (kept in `waiting`), the next
+// its end (the cursor's bar the last in it, either way round); two taps on one bar of a clip (`clip`, its index; -1
+// none), the cursor not moved, the clip's bars. With a loop on and none waiting, a tap turns it off. What it did.
+enum class SongLoopTap : uint8_t { Start, Set, Off };
+inline SongLoopTap song_loop_tap(Song& song, int16_t& waiting, unsigned cursor, int clip) {
+    if (waiting >= 0) {
+        const unsigned a = unsigned(waiting), b = cursor;
+        if (a == b && clip >= 0 && unsigned(clip) < song.count) { song.loop_start = song.clips[size_t(clip)].bar; song.loop_end = song.clips[size_t(clip)].end(); }
+        else { song.loop_start = uint16_t(std::min(a, b)); song.loop_end = uint16_t(std::max(a, b) + 1); }
+        waiting = -1;
+        return SongLoopTap::Set;
+    }
+    if (song.looping()) { song.loop_start = song.loop_end = 0; return SongLoopTap::Off; }
+    waiting = int16_t(cursor);
+    return SongLoopTap::Start;
+}
+
 // K2 PATTERN on Song (issue 60): the track's patterns that hold notes (`used`, a bit each), the first empty one after
 // the last of them (else the first empty), and `current` whatever it is, in order.
 inline std::vector<uint8_t> song_pattern_list(const std::array<uint64_t, 2>& used, unsigned current) {
