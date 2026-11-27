@@ -381,16 +381,19 @@ void MidiIo::follow_mtc(Context& c, const MtcReader::Event& e) {
         if (c.ui.page == PageId::Song && !lane.empty()) // through the song's tempo lane, bar by bar, as mtc_place() counts it
             ticks = lane.bars_at(std::max(0.0, e.seconds), double(c.project.bar_ticks()) / ticks_per_quarter, c.project.tempo)
                   * c.project.bar_ticks();
+        // The tick it falls on, rounded up as mtc_place() rounds it: a time on a bar line that works out a hair under
+        // it is that bar, not the one before.
+        const uint64_t at = uint64_t(std::ceil(std::max(0.0, ticks) - 1e-9));
         if (c.ui.page == PageId::Song) { // the bar it falls in, as MTC places the song (EngineHost::mtc_place): past
             // the loop, there (Play from there plays on); past the song's end, round the loop (a looped song vamped
             // under a longer timeline)
             const auto& song = c.project.song;
-            auto bar = unsigned(ticks / c.project.bar_ticks());
+            auto bar = unsigned(at / c.project.bar_ticks());
             if (song.looping() && bar >= song.loop_end && bar >= std::max(song.length(), 1u))
                 bar = song.loop_start + (bar - song.loop_start) % (song.loop_end - song.loop_start);
             c.ui.song_cursor = uint16_t(std::min(bar, 65535u));
         } else {
-            c.ui.locate = uint32_t(written_ticks(uint64_t(ticks), c.track().speed) % std::max<uint32_t>(c.pattern().length, 1));
+            c.ui.locate = uint32_t(written_ticks(at, c.track().speed) % std::max<uint32_t>(c.pattern().length, 1));
         }
         break;
     }

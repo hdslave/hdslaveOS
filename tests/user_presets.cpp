@@ -2535,6 +2535,18 @@ int main(int argc, char** argv) {
         }
         CHECK(ui.song_cursor == 2);
         project.song.tempo = {};
+        // A cue on a bar line counts as that bar, as MTC places the song there (rounded up, not down): at 125 BPM,
+        // 0:00:36:12 is bar 20's line, though the time works out a hair under it in floating point.
+        project.tempo = 1250;
+        {
+            MidiPacket cue;
+            const uint8_t bytes[] {0xf0, 0x7f, 0x7f, 0x01, 0x01, 0x20, 0x00, 0x24, 0x0c, 0xf7};
+            std::memcpy(cue.bytes.data(), bytes, sizeof(bytes));
+            cue.size = sizeof(bytes);
+            shell->midi(port, cue, ++now);
+        }
+        CHECK(ui.song_cursor == 19);
+        project.tempo = 1200;
         shell->set_plugins(nullptr);
         return 0;
     }
