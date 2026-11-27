@@ -679,13 +679,17 @@ private:
         if (now.block != block_seen) {
             // The engine's transport (as the engine has it, TRANSPORT on or off) against where its last block left it:
             // started, stopped, or the song's place moved other than by that block's frames (a locate, a loop told as
-            // a jump). That block is run, asleep or not (render(): `moved`), so the plug-in hears the change.
+            // a jump). That block is run, asleep or not (render(): `moved`), so the plug-in hears the change. A Stop
+            // and a Play taken before one block, at the same place, leave `playing` and the place as they were: the
+            // clock's count of turns tells them (EffectClock::turns).
             // TRANSPORT off, it hears the song stopped throughout: none of this is a change for it (only the switch is).
             const double expected = song_seen + into_block / std::max(quarter_seen, 1.0);
             moved = clock_seen && transport.load(std::memory_order_relaxed)
-                    && (now.playing != playing_seen || (now.playing && std::fabs(now.song - expected) > jump_quarters));
+                    && (now.playing != playing_seen || now.turns != turns_seen
+                        || (now.playing && std::fabs(now.song - expected) > jump_quarters));
             clock_seen = true;
             playing_seen = now.playing;
+            turns_seen = now.turns;
             song_seen = now.song;
             quarter_seen = now.quarter;
             block_seen = now.block;
@@ -734,6 +738,7 @@ private:
     // by a beat) and a song's jump by bars are told; one by a 64th, the finest Q, may not be, and barely moves the place.
     static constexpr double jump_quarters = 1.0 / 16;
     bool clock_seen = false, playing_seen = false, moved = false;
+    uint32_t turns_seen = 0;
     double song_seen = 0, quarter_seen = 1;
     double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top
     double per_frame = 0;      // and how far a frame at the plug-in's rate moves it

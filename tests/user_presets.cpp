@@ -1849,6 +1849,16 @@ int main(int argc, char** argv) {
         tick();
         CHECK(heard(gain).calls > before_jump.calls && heard(gain).playing == 1 && heard(gain).beats < 0.25);
         wait([&] { return rack->idling(gain); });
+        sleeps_on(gain);
+        // A Stop and a Play taken before one block, at the same place: playing before and after, the place as it was.
+        // That block is run all the same.
+        const auto before_turns = heard(gain);
+        Command again {Command::Type::Play};
+        again.position = host->ticks(); // where it is
+        CHECK(host->send({Command::Type::Stop}) && host->send(again));
+        tick();
+        CHECK(heard(gain).calls > before_turns.calls && heard(gain).playing == 1);
+        wait([&] { return rack->idling(gain); });
         const int instrument_before = heard(entry).calls, effect_still = heard(gain).calls;
         CHECK(host->send({Command::Type::Stop}));
         tick(); // the block that stops it: the effect asleep, the instrument quiet long enough to sleep at once
@@ -1857,6 +1867,11 @@ int main(int argc, char** argv) {
         wait([&] { return rack->idling(entry) && rack->idling(gain); }); // and both sleep again
         sleeps_on(entry);
         sleeps_on(gain);
+        // Stopped, a Play and a Stop taken before one block: stopped before and after, and that block run too.
+        const int effect_stopped = heard(gain).calls;
+        CHECK(host->send({Command::Type::Play}) && host->send({Command::Type::Stop}));
+        tick();
+        CHECK(heard(gain).calls > effect_stopped && heard(gain).playing == 0);
         shell->set_plugins(nullptr);
         return 0;
     }

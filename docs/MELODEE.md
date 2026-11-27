@@ -98,7 +98,10 @@ one owner per piece of state.
   change of the transport (hdslaveOS): the song started or stopped
   (after a count-in, as plug-ins hear Play), or its place moved by more
   than a 64th note other than by the block's own frames (a locate, a loop
-  told as a jump). The clock's own wobble (swung ticks, a tick on a
+  told as a jump). A Stop and a Play taken before one block count too,
+  though the song plays (or not) before and after at the same place: the
+  engine's clock counts each turn of Play (`EffectClock::turns`), as a
+  MIDI Start while playing makes one. The clock's own wobble (swung ticks, a tick on a
   block's edge, MTC's trim: at most a few thousandths of a quarter) is no
   change. A plug-in with TRANSPORT off hears the song stopped throughout,
   so none of this wakes it; switching its TRANSPORT does, once. The block that
