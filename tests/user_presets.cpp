@@ -893,9 +893,10 @@ int main(int argc, char** argv) {
         clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 8;
         CHECK(project.song.place(clip));
     }
-    if (looped) { // a song of four bars of track 1's pattern, its loop braced round bars 2 and 3
+    if (looped) { // a song of five bars of track 1's pattern at 240 BPM, its loop braced round bars 2 and 3
+        project.tempo = 2400;
         Clip clip;
-        clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 4;
+        clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 5;
         CHECK(project.song.place(clip));
         project.song.loop_start = 1;
         project.song.loop_end = 3;
@@ -2005,8 +2006,10 @@ int main(int argc, char** argv) {
         return 0;
     }
     // The loop a plug-in is told (CLAP_TRANSPORT_IS_LOOP_ACTIVE, loop_start_beats, loop_end_beats): the song's on Song
-    // with its loop braced, in quarter notes from the song's top as its place is told (bars 2 and 3 of 4/4: 4 to 12).
-    // Patterns play on with the place counting up (each loops on its own, the place never does): no loop told.
+    // with its loop braced while the place is inside the brace, in quarter notes from the song's top as its place is
+    // told (bars 2 and 3 of 4/4: 4 to 12). Played from past the brace, or with the brace moved behind the place, none
+    // is told, and the song plays to its end and stops rather than on for ever. Patterns play on with the place
+    // counting up (each loops on its own, the place never does): no loop told.
     if (looped) {
         struct Told { int playing; double loop, from, to; };
         auto told = [&] {
@@ -2017,12 +2020,27 @@ int main(int argc, char** argv) {
             return Told {int(v[3]), v[8], v[9], v[10]};
         };
         wait([&] { return ready(entry); });
-        CHECK(host->send({Command::Type::Play, 0, 0, 0, 1})); // the song, from its first bar
+        CHECK(host->send({Command::Type::Play, 0, 0, 1, 1})); // the song, from its second bar: inside the brace
         wait([&] { return told().playing == 1; });
         for (int k = 0; k < 4; ++k) tick();
         auto song = told();
         CHECK(song.playing == 1 && song.loop == 1 && song.from == 4 && song.to == 12);
+        wait([&] { return host->song_bar() == 2; });
+        wait([&] { return host->song_bar() == 1; }); // round the loop
+        CHECK(host->playing() && told().loop == 1);
         CHECK(host->send({Command::Type::Stop}));
+        wait([&] { return told().playing == 0; });
+        CHECK(host->send({Command::Type::Play, 0, 0, 4, 1})); // from bar 5, past the brace
+        wait([&] { return told().playing == 1; });
+        for (int k = 0; k < 4; ++k) tick();
+        CHECK(told().loop == 0);
+        wait([&] { return !host->playing(); }); // the song's end, a bar on
+        CHECK(host->send({Command::Type::Play, 0, 0, 1, 1}));
+        wait([&] { return told().playing == 1 && told().loop == 1; });
+        CHECK(host->send({Command::Type::SongLoop, 0, 0, 0, 1})); // the brace moved round bar 1, behind the place
+        for (int k = 0; k < 4; ++k) tick();
+        CHECK(host->playing() && told().loop == 0);
+        wait([&] { return !host->playing(); }); // bars 2 to 5, then the end
         wait([&] { return told().playing == 0; });
         CHECK(host->send({Command::Type::Play})); // the patterns
         wait([&] { return told().playing == 1; });

@@ -1013,7 +1013,11 @@ hold to steer, Shift + Seq to zoom in**.
   splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
   next marker, **Loop** loops its bars (again, or on empty time, off): when
   the loop comes round, every track's clip plays its pattern from where
-  the song is, a longer clip on another track too. A clip changed while
+  the song is, a longer clip on another track too. The loop goes round
+  for a song that comes to its end from inside it (or from before it);
+  played from past it (the cursor after the brace, or the brace moved
+  behind the place), the song plays on to its end and stops, as with no
+  loop. A clip changed while
   it plays is heard from the next bar. Each
   is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor.
@@ -2736,8 +2740,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   count-in is over, the place in quarter notes from the song's top (as
   Song Position counts it), the tempo and the time signature, from the
   engine host's clock at the block's start (`EffectClock`). On Song with
-  its loop braced, while the song plays (not the mixdown, which plays it
-  once), the play head says it loops, from the brace's first bar to its
+  its loop braced, while the song plays inside the brace (not before or
+  past it, and not the mixdown, which plays it once), the play head says
+  it loops, from the brace's first bar to its
   end, in the same quarter notes; patterns play on with the place counting
   up (each pattern loops on its own, the place never goes back), so no
   loop is told there. VST3 and LV2
