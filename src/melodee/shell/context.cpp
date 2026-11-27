@@ -2448,6 +2448,11 @@ void Context::play_continue(bool external, bool after_stop, int64_t song_ticks) 
     const uint32_t bar = std::max(project.bar_ticks(), 1u);
     if (played_song && external) {
         int64_t at = song_ticks >= 0 ? song_ticks : int64_t(host.song_bar()) * bar + host.ticks() % bar;
+        // A Song Position past a looped song's end is the song gone round its loop under the master's longer
+        // timeline, as MTC places it (EngineHost::mtc_place): folded into the loop, in phase.
+        const auto& song = project.song;
+        if (const int64_t b = at / bar; song.looping() && b >= song.loop_end && b >= int64_t(std::max(song.length(), 1u)))
+            at = (song.loop_start + (b - song.loop_start) % (song.loop_end - song.loop_start)) * int64_t(bar) + at % bar;
         Command c {Type::Play, uint8_t(count), 0, uint16_t(std::min<int64_t>(at / bar, 0xffff)), 1};
         c.position = uint32_t(at % bar);
         send(c);

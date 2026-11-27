@@ -2427,6 +2427,26 @@ int main(int argc, char** argv) {
         CHECK(host->playing() && host->song_playing() && host->song_bar() == 2);
         midi(0xfc);
         tick();
+        // The whole song braced (bars 1-8): a Song Position past its end (bar 17) is the song gone round its loop under
+        // a longer timeline, as MTC there places it: a Continue plays bar 1, in phase, rather than stopping.
+        project.song.loop_start = 0;
+        project.song.loop_end = 8;
+        CHECK(host->send({Command::Type::SongLoop, 0, 0, 0, 8}));
+        {
+            MidiPacket position;
+            position.bytes[0] = 0xf2;
+            position.bytes[1] = 0; // 256 sixteenths: bar 17's top
+            position.bytes[2] = 2;
+            position.size = 3;
+            shell->midi(port, position, ++now);
+        }
+        midi(0xfb);
+        clocked(2);
+        CHECK(host->playing() && host->song_playing() && host->song_bar() == 0);
+        midi(0xfc);
+        tick();
+        project.song.loop_start = project.song.loop_end = 0;
+        CHECK(host->send({Command::Type::SongLoop, 0, 0, 0, 0}));
         // MTC: a cue while stopped, on Song, puts the cursor on the bar the master's time falls in, past the song's loop
         // (bars 3 and 4) too, where Play plays on, as MTC places a song there.
         ui.settings.midi.sync_in = MidiSync::Mtc;

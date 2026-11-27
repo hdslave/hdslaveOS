@@ -37,7 +37,8 @@ round every track's clip plays its pattern from where the song is, so a
 loop inside a longer clip stays in time. The loop catches the song as it
 reaches the loop's end from inside it; play from a bar after the loop, or
 move the loop behind the playhead, and the song plays on to its end and
-stops. A clip you change while it plays
+stops (following MTC or MIDI clock, it then goes round the loop in time
+with the master instead). A clip you change while it plays
 is heard from the next bar.
 
 **Tempo lane**: **SHIFT** + **K1** (**BAR TEMPO**) sets the tempo from the

@@ -1027,7 +1027,9 @@ hold to steer, Shift + Seq to zoom in**.
   for a song that comes to its end from inside it (or from before it);
   played from past it (the cursor after the brace, or the brace moved
   behind the place), the song plays on to its end and stops, as with no
-  loop. A clip changed while
+  loop; under a master that runs on (MTC, MIDI clock) it goes round its
+  loop from there instead, in phase, as the master's time places it. A
+  clip changed while
   it plays is heard from the next bar. Each
   is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor.
@@ -2200,10 +2202,12 @@ while following.
   0:00:00:00 (hours left out) through the tempo playing, kept on the
   master's time by a pace trim of up to 0.5 %. On Song the master's time
   is the song's place, as a cursor there: before or inside the loop the
-  song goes round it, past it it plays on to its end. A time past the
-  song's end, with a loop, is the song gone round its loop under a longer
-  timeline (a looped song vamping under a master's): folded into the
-  loop, in phase; with none, the song stops. A cue while stopped puts the
+  song goes round it, past it it plays on to its end, and on from there
+  round its loop, still following. A time past the song's end, with a
+  loop, is the song gone round its loop under a longer timeline (a looped
+  song vamping under a master's): folded into the loop, in phase; with
+  none, the song stops. A MIDI Song Position there, with a Continue, is
+  folded the same way. A cue while stopped puts the
   cursor the same way, the time counted through the song's tempo lane
   when it has one, as the song is placed. A song going round its loop that falls far behind
   and is placed again keeps going round, the master's time folded into the
