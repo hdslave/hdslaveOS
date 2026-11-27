@@ -11,7 +11,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
 #include "melodee/shell/project_store.h"
-#include "melodee/shell/screen_view.h" // plugin_screen_place: shared-frozen checks the frozen track's PANEL shows its screen
+#include "melodee/shell/screen_view.h" // plugin_screen_place: shared-frozen checks where a frozen track's PANEL shows its screen
 #include "melodee/shell/track_copy.h"
 #include "runtime/controller.h"
 #include <chrono>
@@ -697,6 +697,7 @@ int main(int argc, char** argv) {
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
+    if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
     if (mode == "transport-wake" || mode == "load-wake" || steady || deaf) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
@@ -1879,9 +1880,10 @@ int main(int argc, char** argv) {
     // Track 1 copied onto track 2 with every entry in use: the copy shares track 1's plug-in. Track 2 frozen, a program
     // or preset loaded into that plug-in asks "Unfreeze track 2?" first, from track 1 too: a companion screen's pick,
     // Push on PRESETS and − / + on Stage's PRESETS; so does a turn of one of its parameters (K2 on PANEL), and the
-    // wheel, Push and − on its own screen, from track 1 and from frozen track 2. Both frozen, the question names the
-    // track in hand first, for the screen as for K2. Not now (B1) leaves it as it was; unfrozen, the screen, the turn
-    // and the pick go through.
+    // wheel, Push and − on its own screen, from track 1 and from frozen track 2 while its print is being made. Both
+    // frozen, the question names the track in hand first, for the screen as for K2. Not now (B1) leaves it as it was;
+    // unfrozen, the screen, the turn and the pick go through. Once track 2's print is made, its own PANEL shows the
+    // print, not the screen: input there is the page's, and asks nothing.
     if (mode == "shared-frozen") {
         wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
         c.open(PageId::Master);
@@ -1946,7 +1948,7 @@ int main(int argc, char** argv) {
             CHECK(values(entry) == as_was);
         };
         screen_asks();
-        c.select_track(1); // the frozen track itself, on its PANEL: Stage draws its print, the screen is not shown
+        c.select_track(1); // the frozen track itself, on its PANEL, its print still to be made: the screen shows, and asks
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
         wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
         // Track 1 frozen too: the wheel on its screen and K2 each ask about track 2, the track in hand, first.
@@ -1960,7 +1962,7 @@ int main(int argc, char** argv) {
         unchanged();
         CHECK(values(entry) == as_was);
         c.freeze_requested[0] = {};
-        CHECK(plugin_screen_place(project, ui).entry == int(entry));
+        CHECK(plugin_screen_place(project, ui, c.prints.freeze).entry == int(entry));
         screen_asks();
         c.select_track(0);
         wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
@@ -1970,6 +1972,31 @@ int main(int argc, char** argv) {
         k2(126);
         k2(127);
         wait([&] { return values(entry)[1] == 2; });
+        tap(SurfaceButton::WheelPush); // Wave on; the fixture's page takes Mute (and Erase) from now on
+        wait([&] { return values(entry)[1] == 0 && (rack->screen_keys(entry) & screen_key_mute); });
+        // Track 2's print made: Stage of track 2 draws it, so on its own PANEL the plug-in's screen is not in view. The
+        // wheel, Push, − and Mute take the page's own jobs there, with no question and nothing handed to the plug-in;
+        // Mute latches. The screen is not told it is in view (the panel says so once read again).
+        c.prints.freeze[1].state = FreezeState::Frozen;
+        c.select_track(1);
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
+        CHECK(plugin_screen_place(project, ui, c.prints.freeze).entry < 0);
+        const auto printed = values(entry);
+        turn(3);
+        CHECK(ui.ask == UiState::Ask::None);
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.ask == UiState::Ask::None);
+        tap(SurfaceButton::Minus);
+        CHECK(ui.ask == UiState::Ask::None && !ui.mute_latch);
+        tap(SurfaceButton::Mute);
+        CHECK(ui.ask == UiState::Ask::None && ui.mute_latch);
+        tap(SurfaceButton::Mute);
+        CHECK(ui.ask == UiState::Ask::None && !ui.mute_latch);
+        wait([&] { return ui.plugin_panel.entry == entry && !ui.plugin_panel.screen; });
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(values(entry) == printed && (rack->screen_keys(entry) & screen_key_mute));
+        c.prints.freeze[1] = {};
+        c.select_track(0);
         c.pick_plugin_program(entry, list[1].index);
         wait([&] { return rack->programs(entry).current == list[1].index; });
         shell->set_plugins(nullptr);

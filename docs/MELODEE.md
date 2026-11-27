@@ -2632,7 +2632,13 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   (`Context::follow_plugin_focus`), the rack told the page in view then
   too. So − / + and the wheel on a track's PANEL never act on its
   PRESETS just after Pad Bank + pad, MIDI Remote or another page, and the
-  first of them reaches the plug-in's screen, drawn yet or not.
+  first of them reaches the plug-in's screen, drawn yet or not. Stage of a
+  frozen track draws its print instead (freeze plan F2c): while it does,
+  that track's plug-in screen is not in view there. The rack is not told
+  it is, so it does not draw, and the wheel, Push, − / +, Mute and Erase
+  do the page's own jobs (its parameter rows and pages, the cards, Mute's
+  latch), with no question and nothing handed to the plug-in
+  (`plugin_screen_place`).
 - **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
   for each plug-in opened, made on the message thread. A bundle's presets
   (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot
@@ -2674,9 +2680,13 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   names the track in hand first, then the others by number. A turn of
   one of its parameters (K1-K3, Erase + a knob, a companion screen's
   edit) asks the same way, and so does
-  input on its own screen (the wheel, Push, − / +, and Mute or Erase where
-  its page takes them): the host cannot tell which of those change the
-  sound, and Stage of a frozen track draws the print, not the screen. Picking
+  input on its own screen where it is in view (the wheel, Push, − / +,
+  and Mute or Erase where its page takes them). A live, visible screen
+  whose plug-in a frozen track shares asks for every input: an edit there
+  would change the frozen track's sound, and the host cannot tell
+  navigation from an edit. On the frozen track's own Stage, which draws
+  the print, the screen is not in view and its input is the page's (see
+  "A plug-in's own screen"). Picking
   the one loaded loads it again, dropping edits since. What a preset loads
   goes into the plug-in's state, so the project keeps it. Presets in
   folders (a CLAP plug-in's) list as those folders first, each with how

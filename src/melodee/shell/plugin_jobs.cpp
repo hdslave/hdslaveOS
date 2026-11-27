@@ -534,9 +534,10 @@ void Context::companion_requests() {
 // it, though the screen may not have drawn for this page yet (just after Pad Bank + pad), so none is lost. A plug-in
 // a frozen track plays (its sound, an effect on its chain; any track it plays on, frozen_plugin_edit) asks "Unfreeze
 // track N?" first, as a turn of its parameters does: what its screen does with an input may change the sound the
-// prints were made from (and Stage of a frozen track draws the print, not the screen). Asked: true, nothing handed on.
+// prints were made from, and the host cannot tell navigation from an edit. Asked: true, nothing handed on. Stage of a
+// frozen track draws the print, not the screen: no place there (screen_view.h), so the page's own job takes it.
 bool Context::plugin_screen_input(ScreenKey key, int value) {
-    const auto at = plugin_screen_place(project, ui);
+    const auto at = plugin_screen_place(project, ui, prints.freeze);
     if (at.entry < 0 || !plugins) return false;
     if (frozen_plugin_edit(unsigned(at.entry))) return true;
     plugins->screen_input(unsigned(at.entry), {key, int32_t(value), ui.shift});
@@ -546,7 +547,7 @@ bool Context::plugin_screen_input(ScreenKey key, int value) {
 // MUTE or ERASE tapped on a plug-in's own page (not an effect's strip, where the chain's own jobs act): handed to it
 // when its page takes that button (melodee_screen.h keys()), asked now rather than from the panel's last refresh.
 bool Context::plugin_screen_key(ScreenKey key) {
-    const auto at = plugin_screen_place(project, ui);
+    const auto at = plugin_screen_place(project, ui, prints.freeze);
     if (at.entry < 0 || at.area != 0 || !plugins) return false;
     const uint8_t bit = key == ScreenKey::Mute ? screen_key_mute : key == ScreenKey::Erase ? screen_key_erase : 0;
     if (!bit || !(plugins->screen_keys(unsigned(at.entry)) & bit)) return false;
@@ -635,7 +636,7 @@ void Context::plugins_tick(uint32_t at) {
 void Context::tell_screen_view() {
     if (!plugins) return;
     ScreenView view;
-    if (const auto at = plugin_screen_place(project, ui); at.entry >= 0) {
+    if (const auto at = plugin_screen_place(project, ui, prints.freeze); at.entry >= 0) {
         view.entry = uint8_t(at.entry);
         view.area = at.area;
         view.shift = ui.shift;

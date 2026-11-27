@@ -246,7 +246,7 @@ void push(Context& c) {
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return;
     if (ui.fx_panel) { c.plugin_screen_input(ScreenKey::Push, 1); return; } // its full page's
-    if (!ui.picker_open && !ui.sheet_open && plugin_screen_place(c.project, ui).area == 1) { ui.fx_panel = true; return; } // its full page
+    if (!ui.picker_open && !ui.sheet_open && plugin_screen_place(c.project, ui, c.prints.freeze).area == 1) { ui.fx_panel = true; return; } // its full page
     const auto& chain = c.project.chain(n);
     unsigned cursor = std::min<unsigned>(ui.fx_cursor[at], chain.count());
     if (ui.picker_open) {

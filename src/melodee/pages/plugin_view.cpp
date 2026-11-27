@@ -460,7 +460,7 @@ void draw_screen_picture(Paint& p, const ScreenPicture& picture, float x, float 
 }
 
 bool plugin_screen_shown(const Snapshot& s, uint8_t area) {
-    const auto at = plugin_screen_place(s.project, s.ui);
+    const auto at = plugin_screen_place(s.project, s.ui, s.freeze);
     const auto& picture = s.plugin_picture;
     return at.entry >= 0 && at.area == area && s.ui.plugin_panel.screen && picture && picture->entry == unsigned(at.entry)
         && picture->area == area;

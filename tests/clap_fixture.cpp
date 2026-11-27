@@ -388,10 +388,14 @@ bool screenInput(const void* p, const melodee_screen_input_t* in) {
     else if (in->kind == MELODEE_SCREEN_PUSH && s.instrument) s.wave = std::fmod(s.wave + 1, 3);
     else if (in->kind == MELODEE_SCREEN_STEP && in->value < 0 && s.instrument) s.secondBank = !s.secondBank;
     else if (in->kind == MELODEE_SCREEN_ERASE && s.instrument) s.level = 0;
+    else if (in->kind == MELODEE_SCREEN_MUTE && s.instrument && std::getenv("MELODEE_TEST_SCREEN_MUTE")) s.level = 0;
     else return false;
-    if (s.instrument) // Push: its page takes Erase from now on; Erase (Level to 0): no longer
+    // Push: its page takes Erase from now on (and Mute, with MELODEE_TEST_SCREEN_MUTE); Erase or Mute (Level to 0), or
+    // any other input: no longer.
+    const uint32_t pushed = MELODEE_SCREEN_KEY_ERASE | (std::getenv("MELODEE_TEST_SCREEN_MUTE") ? uint32_t(MELODEE_SCREEN_KEY_MUTE) : 0u);
+    if (s.instrument)
         if (auto* told = static_cast<const melodee_screen_host_2_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST_2)))
-            told->keys(s.host, in->kind == MELODEE_SCREEN_PUSH ? uint32_t(MELODEE_SCREEN_KEY_ERASE) : 0u);
+            told->keys(s.host, in->kind == MELODEE_SCREEN_PUSH ? pushed : 0u);
     if (auto* told = static_cast<const melodee_screen_host_t*>(s.host->get_extension(s.host, MELODEE_SCREEN_CLAP_HOST)))
         told->redraw(s.host, MELODEE_SCREEN_RUN);
     if (auto* hp = static_cast<const clap_host_params*>(s.host->get_extension(s.host, CLAP_EXT_PARAMS)))

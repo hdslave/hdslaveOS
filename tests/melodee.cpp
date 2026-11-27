@@ -5792,9 +5792,14 @@ void stage() {
     { // A plug-in that draws its own screen (shell/screen_view.h): B1 PRESETS -> PANEL -> EDIT; Plug-in screens off, no PANEL.
         ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
-        CHECK(plugin_screen_place(*project, ui).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui).area == 0);
+        CHECK(plugin_screen_place(*project, ui, {}).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui, {}).area == 0);
+        std::array<TrackFreeze, track_count> frozen {};
+        frozen[1].state = FreezeState::Frozen; // another track's print: the screen in view
+        CHECK(plugin_screen_place(*project, ui, frozen).entry == int(project->tracks[0].plugin));
+        frozen[0].state = FreezeState::Frozen; // its own: Stage draws the print, no screen in view (freeze plan F2c)
+        CHECK(plugin_screen_place(*project, ui, frozen).entry < 0);
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
-        CHECK(plugin_screen_place(*project, ui).entry < 0); // EDIT: Melodee's pages
+        CHECK(plugin_screen_place(*project, ui, {}).entry < 0); // EDIT: Melodee's pages
         ui.settings.plugin_skins = false;
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
