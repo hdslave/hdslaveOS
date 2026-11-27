@@ -210,10 +210,10 @@ The latest complete installer and the standalone collection contain the same
 eleven MPC plug-ins. The included `MPC-PLUGINS.tsv` lists the exact source
 revisions and file hashes. [Complete installer](https://github.com/hdslave/hdslaveOS/releases/latest) · [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/latest)
 
-Select **hdslave Slink** and open **Stage → Panel** to see its silver panel.
+The installer includes **hdslave Slink 0.8.1**. Select Slink and open **Stage → Panel** to see its silver panel. [Standalone MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.1)
 Keep the supplied `hdslave TB-MPC-3-P-0.clap` filename for saved projects.
 
-<a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.8.0/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.8.0/docs/slink-mpc-pattern.png" width="320" alt="Slink 0.8.0 playing in Stage on its silver MPC panel"></a>
+<a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.8.1/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.8.1/docs/slink-mpc-pattern.png" width="320" alt="Slink silver MPC panel in Stage"></a>
 
 The Melodee synths are free downloads:
 [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
