@@ -560,6 +560,8 @@ without moving the notes, until you apply it.
 
 ### Take the groove from another pattern
 
+![Time Correct with B2 held](../images/screens/timecorrectgroove.png)
+
 1. Hold **B2** (**GROOVE**). The pads and the screen show the track's
    patterns: the groove's pattern lit, the pattern you are correcting
    white, patterns with notes dim.
