@@ -34,9 +34,28 @@ it is held, on any page.
 
 ## Track speed
 
-A track can play its patterns slower or faster: ×½, ×¾, ×1, ×1½ or ×2. Set
-it on Patterns with **SHIFT** + **K3** (**SPEED**). The Patterns header
-shows it when it is not ×1.
+A track can play its patterns slower or faster: ×1/64, ×1/32, ×1/16, ×1/8,
+×¼, ×½, ×¾, ×1, ×1½, ×2 or ×4. Set it on Patterns with **SHIFT** + **K3**
+(**SPEED**). At ×1/64 one bar of the pattern lasts 64 bars. The notes stay as
+written. The Patterns header and track list show the speed when it is not ×1.
+
+## Track direction
+
+A track can play its patterns' steps forward (**FWD**), backward (**REV**) or
+in a new order each pass (**RND**). Press **SHIFT** + **LOOP** on Patterns to
+step through them. A step is one step of the pattern's Q; each note keeps its
+place in its step and its length.
+
+- **REV** plays the last step first.
+- **RND** plays every step once a pass, in an order of its own each pass.
+  The orders are the same each time the pattern plays from the top.
+- Motion and its locks follow the steps. A kit lane of its own length turns
+  round on its own length.
+- The editors' playhead shows the step that plays.
+- An audio track plays forward.
+
+The Patterns header shows ◀ or a die beside the speed, and so does the
+playing pattern's cell.
 
 ## Make a new track
 

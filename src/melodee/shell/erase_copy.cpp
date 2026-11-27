@@ -96,7 +96,9 @@ bool erase_tap(Context& c) {
     case PageId::LayersPage: c.layer_clear(); return true;
     case PageId::ModPage: mod_remove(c); return true;
     case PageId::Project: return project_erase(c);
-    case PageId::Samples: return samples_erase(c);
+    case PageId::Samples: // the trim sheet up: both its ends back; else the file goes from the card
+        if (c.ui.browse.up()) { c.browse_erase(-1); return true; }
+        return samples_erase(c);
     case PageId::Plugins: return plugins_erase(c);
     default: return false;
     }

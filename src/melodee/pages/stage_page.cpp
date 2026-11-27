@@ -617,7 +617,8 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         bool amp = page.kind == StageKind::AmpEnv;
         bool gate = pad.play == PadPlay::Gate, from_end = !gate && !pad.decay_from_start;
         int a = amp ? pad.attack : pad.filter_attack, d = amp ? pad.decay : pad.filter_decay, rl = amp ? pad.release : pad.filter_release;
-        float sustain = (amp ? pad.sustain : pad.filter_sustain) / 100.0f;
+        // A one shot from the start falls to silence over its decay (issue 64): its sustain is Note On's.
+        float sustain = amp && !gate ? 0.0f : (amp ? pad.sustain : pad.filter_sustain) / 100.0f;
         bool hold = amp && d >= 100;
         double decay = time_seconds(d) * (amp ? t.params[sampler::Decay] / 100.0 : 1.0);
         float soft = amp ? 1.0f - 0.6f * pad.velocity_sense / 100.0f : 1.0f; // K3: how much softer a soft hit plays

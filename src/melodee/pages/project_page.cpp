@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PROJECT (Shift + Pad 16): the open project's three jobs as tiles under
 // the keys: B1 SAVE AS (the Name sheet, then a file of its own; the project
-// saves itself in the background, shell/autosave.h), B2 OPEN (the list), B3
+// saves itself in the background, shell/autosave.h; Autosave off: B1 SAVE,
+// Shift + B1 SAVE AS), B2 OPEN (the list), B3
 // NEW (asks first, as the MPC does). The wheel moves the highlight across
 // the three, Push presses it (SAVE AS first). Settings and About are Shift + Pad 8's.
 // The list behind OPEN: projects are files on the SD card, as many as it
@@ -97,8 +98,8 @@ void draw_tiles(Paint& p, const Snapshot& s, const ProjectStore::View& v) {
     h.right.push_back(label(s.project.name));
     unsigned pick = s.ui.project_pick % 3; // the wheel's tile, raised; Push presses its key
     // The project saves itself: B1 saves it under a new name. Autosave Off (issue 18): B1 saves it to its file
-    // (SAVE AS while it has none; SAVE AS NEW stays on its sheet in the list).
-    bool by_hand = !s.ui.settings.autosave && !s.project_path.empty();
+    // (SAVE AS while it has none), Shift + B1 SAVE AS (issue 63: B1 SAVE alone left no way to a new name here).
+    bool by_hand = !s.ui.settings.autosave && !s.project_path.empty() && !s.ui.shift;
     SoftKeys keys {{by_hand ? "SAVE" : "SAVE AS", "OPEN", "NEW"}, int(pick), colour::text};
     keys.glyphs = {Icon::Save, Icon::Folder, Icon::Plus};
     frame(p, s, keys, h);
@@ -380,7 +381,7 @@ void push(Context& c) {
 
 void soft(Context& c, int key) {
     if (!c.ui.project_list) { // SAVE, OPEN, NEW
-        if (key == 0 && !c.ui.settings.autosave && !c.project_path.empty()) { c.save_project(); c.notice("Saved"); } // Autosave Off: SAVE
+        if (key == 0 && !c.ui.settings.autosave && !c.project_path.empty() && !c.ui.shift) { c.save_project(); c.notice("Saved"); } // Autosave Off: SAVE
         else if (key == 0) c.name_project(true); // SAVE AS: the Name sheet, then a file of its own (the project saves itself otherwise)
         if (key == 1) open_list(c);
         if (key == 2) c.ask_new_project(); // asks first, as the MPC does; the open one is saved first if it has a file

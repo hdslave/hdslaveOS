@@ -418,11 +418,13 @@ to close it.
 
 ![The Fader page](../images/screens/fader.png)
 
-- **K1**–**K3** are the track's favourite values. Turn one, or any knob on
-  any page, and the fader takes it.
+- **K1**–**K3** are the track's favourite values. Turn one and the fader
+  takes it. Any knob on any page does the same while the fader is not
+  pinned.
 - **B2** (**PIN**) keeps the fader on its current target.
 - **B3** (**FADER**) turns the fader on or off.
-- Turn the encoder to choose a fader target. On a kit track: Pad Volume,
+- Turn the encoder to choose a fader target. The target you choose is
+  pinned: **B2** unpins it. On a kit track: Pad Volume,
   Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume. On
   every track: Mod Wheel, Track Level, Track Pan, Send A, Send B, Send C,
   Send D. On a plug-in, keygroup or MIDI track: Pitch Bend, after Mod Wheel.

@@ -146,12 +146,12 @@ cards.
 | Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the mixer | FX Select: the effect chains, Track → Bus → Master (on the mixer, the channel in hand's; at once) |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks, a pad picks one (the screen stays the page's; Pad FX + Knob FX shows the tracks); −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
-| Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
+| Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks (and pins, issue 57), or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts. Every pad held repeats together on each step; the arp is separate (Stage's ARP, Shift + K2). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
+| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad (on Chop, the slice in hand); held half a second: the Looper on or off (off asks first while a loop holds audio) |
 | 16 Levels | A tap: the last pad (or a synth's last note) on all sixteen pads, again off; the page stays. Held: K1–K3 are its settings on any page (the type, then the two ends or the key's root and scale) and − / + its octave or Zones' page; let go after a hold, nothing. Of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
 | Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
@@ -223,7 +223,12 @@ grammar (`shell/pad_light.h`):
 - **Colour** says whose pad it is: the track's colour (a loop's on the
   Looper; a kit pad's own colour where it has one, Stage's COLOUR or its MPC
   kit's), white for the panel's own jobs and the pad in your hand, red for
-  a loss or a recording (muted, about to be erased, the take).
+  a loss or a recording (muted, about to be erased, the take). The
+  sixteen track colours, the loops' and the submixes' are screen colours:
+  they reach the LEDs with each channel squared, as a level is, and the
+  brightest raised to full (`pad_light::led()`), so a pad lights as vivid
+  as the screen draws it (Coral drives FF3A21, not a pale FF7A5C). An MPC
+  kit's colours go to the LEDs as they came.
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2
   a colour falls apart; Faint is the lowest rung at which all sixteen track
@@ -356,7 +361,7 @@ beat; the meters show the mix.
     onto; Follow on or off is an LED in the header. COLOUR: the bank's pads as
     they sit, each filled with the colour it lights in, the last pad ringed; K1 and the wheel walk that pad's colour
     (`PadSound::colour`, `shell/pad_colour.h`): Track (0, the track's), the sixteen track colours by name, then Kit, the
-    pad's own when it is none of those (an MPC kit's), until another is picked. The Pads page draws each pad in its
+    colour the pad's MPC kit brought, there to go back to after another is picked (`PadSound::kit_colour`). The Pads page draws each pad in its
     colour too; names, the header and the cards keep the track's. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
     print. CLOUD
     (the selected pad as a grain cloud, each pad its own): K1 position, K2 grain size, K3
@@ -414,9 +419,18 @@ beat; the meters show the mix.
   the channel; −/+ move through the lit block (a row, a group of bands, an effect); Shift + Push names a track; Mute +
   pad mutes (Shift: solos) the row's channels; Erase + pad clears a track. Pads light in the channel's colour by its
   meter. Shift + Knob FX opens the channel's full FX page; B1 MIXER comes back to it.
-- **Track speed** (Patterns, Shift + K3): ×½, ×¾, ×1, ×1½, ×2: the track's patterns play that much faster or slower
-  against the tempo, their notes and motion as written, ×1½ turning sixteenths into sixteenth triplets; Patterns'
-  header names it; kept in TSPD. CPU and the selected track's share are on the MENU's header.
+- **Track speed** (Patterns, Shift + K3): ×1/64, ×1/32, ×1/16, ×1/8, ×¼, ×½, ×¾, ×1, ×1½, ×2, ×4: the track's
+  patterns play that much faster or slower against the tempo, their notes and motion as written, ×1½ turning
+  sixteenths into sixteenth triplets; Patterns' header and track list name it; kept in TSP2 (and TSPD, the five older
+  builds read). CPU and the selected track's share are on the MENU's header.
+- **Track direction** (Patterns, Shift + Loop): FWD, REV or RND, the steps of Q played forward, backward or shuffled
+  each pass (every step once, the same orders from the top); notes keep their place in their step; Motion follows;
+  kept in TDIR (core model/step_order.h).
+- **Step SOUND** (Step Edit's B1 SOUND on a kit or keygroup; Elektron's sample lock): K1 any sample on a kit or
+  keygroup pad of the project played through the step's pad, K2 SLICE (PAD, a slice, RND), K3 PLAY (PAD, FWD, REV,
+  RND); Erase + knob back to PAD; Sample Select with a step held puts the sounds on the pads (−/+ the track, Pad Bank
+  the bank, the wheel the next sound, B1 CLEAR, B2 SLICES). Kept in ESMP (the sample), SLCE (255: RND) and the
+  note's flags (bits 4-5: PLAY).
 - **Keys** (Sample held on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
   filled in the track's colour, the pad played white; the key and scale are
@@ -542,7 +556,7 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
   state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change waiting blinks)
   and its length (a loop at another tempo shows the tempo it was recorded
   at, amber); K1 the loop,
-  K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
+  K2 its length (Free, 1, 2, 4, 8, 16, 32, 64, 128 bars; before a take), K3 its level;
   Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
   take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,
   K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet, one screen,
@@ -589,7 +603,8 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
 ### Sequencing
 
-The clock runs at 96 ticks a quarter. A pattern is a list of note events
+The clock runs at 960 ticks a quarter, as on the MPC. Projects saved at
+96 ticks a quarter load with every tick ten times. A pattern is a list of note events
 (tick, length, key, velocity, chance, accent / slide / tie, a ratchet) up
 to 128 bars of the project's time signature; its **Q** (1/4 .. 1/64 with
 triplets) is only the grid. Swing (50–75 %) stretches the first sixteenth
@@ -687,8 +702,8 @@ hold to steer, Shift + Seq to zoom in**.
   pattern (next bar; stopped, at once); hold a pad and tap another to
   copy; Erase + pad asks, then clears it; Shift + pad keeps the printed
   Shift jobs. Pad Bank steps the bank A–H (the bank lights show it), as
-  Seq held + Pad Bank. Minus / Plus move the track. K1 length (Free, 1,
-  2, 4 .. 128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
+  Seq held + Pad Bank. Minus / Plus move the track. K1 length (Free, 1 ..
+  16 bars, 24, 32, 48, 64, 96, 128, issue 52; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
   K3 swing (Shift: metronome level). The wheel selects the track; the
   selected track's pattern is the sequence in view (cell n is also sequence n),
   and Push launches it.
@@ -1026,7 +1041,7 @@ hold to steer, Shift + Seq to zoom in**.
   come in more passes of the song, its chance, S&H and the kits' random
   picks reseeded at each; every file the same frames, each pass in real
   time), a MIDI FILE
-  (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
+  (`Melodee/MIDI/<name>.mid`, format 1 at 960 ticks a quarter, the tempo
   and time signature first: the song's tracks as they play it, or with no
   song each track's pattern once; a kit's pads as notes 36 on, on channel
   10, a MIDI track on its own), an MPC 3 project
@@ -1613,7 +1628,8 @@ the file holds, to the bit.
   region and loop; the pads' colours (the program's ProgramPads: each pad's
   RGB, or the one Universal colour on every pad; pads that follow the track's
   colour keep Melodee's), raised to full brightness so the rungs still read
-  (`mpc_pad_colours()`, `PadSound::colour`, saved in PCOL, a bank's BCOL).
+  (`mpc_pad_colours()`, `PadSound::colour`, saved in PCOL, a bank's BCOL;
+  the kit's colour again as `PadSound::kit_colour`, in PKCL and BKCL, for COLOUR's Kit).
   Shift + pad on it says Push loads a kit.
 - **MPC expansions** (`.xpn`, tagged INSTALL): Push installs one onto the card,
   a file a pass, into `Melodee/Samples/Expansions/<its title>` (from its
@@ -1708,10 +1724,22 @@ the file holds, to the bit.
     wave; CLOUD POSITION as a line, SIZE the band round it, Spread a paler
     band, Scan an arrow, its place in seconds at the line and its LED in
     the header.
-- **Loop, Shift + Loop, Shift + Chop** act on the last pad from any page;
+- **Loop, Shift + Loop, Shift + Chop** act on the last pad from any page
+  (on Chop, Shift + Loop reverses the slice in hand alone);
   the sample pages' title shows note, loop and reverse icons.
 - **Chop** (Chop): the last pad's region in slices that touch. Pads play and
-  pick slices; K1 start, K2 end, K3 type (Threshold, Regions, Beats,
+  pick slices: a slice's pad plays it through the kit pad holding the sample
+  (a slice hit, `Context::slice_hit`), so it sounds as its hits will, with
+  all the pad has (Mono / Poly, mute group, Note On, Loop, envelopes,
+  filter, Warp, pad FX); with no kit pad holding the sample, as the file
+  is. Shift + Loop reverses the slice in hand alone (`Slices::reverse`, its
+  own Reverse against the kit pad's: on a reversed pad it plays forwards);
+  a reversed slice shows the reverse arrow at its top left and, Shift held,
+  Loop lights while the slice in hand plays backwards; one undo step. A cut
+  inside a reversed slice leaves both halves reversed, Merge and Erase + pad
+  keep the slice before's, and a new chop by type or amount keeps it on a
+  slice starting within 10 ms. TO PADS and the MPC 3 export lay a reversed
+  slice as a reversed pad. K1 start, K2 end, K3 type (Threshold, Regions, Beats,
   Manual, Auto; the type picked last is kept in the settings as
   `chop_mode` and a sample with no chop opens on it), Shift + K3 its amount, Shift + K1 / K2 zoom. Auto
   (`engine/auto_chop.cpp`, read with the hits when a sample loads) cuts by
@@ -1786,8 +1814,9 @@ the file holds, to the bit.
   the chop. As on the MPC, slices belong to the sample and live in its WAV
   file (the `atem` and `slic` chunks, `shell/mpc_wav_slices.cpp`; beside
   them Melodee's own `mlch` chunk, JSON, which other software passes over:
-  the chop's Type and Amount, the hand cuts (Hand) and the cuts taken out by
-  hand (Out), at the file's rate; a file without it reads as Manual and its
+  the chop's Type and Amount, the hand cuts (Hand), the cuts taken out by
+  hand (Out) and the starts of the slices reversed on their own (Reverse),
+  at the file's rate; a file without it reads as Manual and its
   hand cuts are told from what its type cuts now, `infer_hand`; an automatic
   cut within a quarter of its own spacing of a hand cut gives way to it,
   `give_way_reach`): read
@@ -1841,7 +1870,7 @@ the file holds, to the bit.
 - **Input Config** (Shift + Sample; B2 on Record): K1 source (Mic, Rear,
   Rear L, Rear R, Resample, USB, USB L, USB R, then **Track n** for each
   track with a sound of its own: a synth, another kit; not the kit
-  in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars), K3
+  in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars, 24, 32, 48, 64, 96, 128 bars), K3
   threshold (−96..0 dB), Shift + K3 gain; with a track, Shift + K1 its tap:
   **Post FX** (after its chain, level and pan, before mute: a muted track
   still records) or **Pre FX** (the engine alone). B1 back (as on every
@@ -2077,7 +2106,9 @@ The fader follows the pot turned last on its track: any of the track's
 values (an engine parameter, an effect on its chain, a kit pad's own value
 on the last pad hit, its level, pan or a send); a pot on anything else (a
 tempo, a pattern's length, a bus's effect) leaves it where it is. **PIN**
-keeps what it has. The **Fader page** (Shift + Pad 9) shows what it
+keeps what it has; a target the wheel picks pins (issue 57: a plug-in's
+FILTER / ECHO / SPACE took a picked target away), and K1–K3 on the Fader
+page still take it while pinned. The **Fader page** (Shift + Pad 9) shows what it
 follows: that pot's knob in its shade, its name and value, a dashed arrow
 to the fader (the pin on it while PIN holds), and while the fader waits to
 pick a value up, where the hand has it and the way to move. K1–K3 there are
@@ -2185,7 +2216,7 @@ while following.
   **Autosave Off** (Settings > SEQ, issue 18; `Settings::autosave`, On by
   default, `autosave=` in the settings file): no background save. B1 reads
   **SAVE** (to the project's file; SAVE AS while it has none, SAVE AS NEW on
-  its sheet); the open project's sheet gains **REVERT** (TO SAVED, second
+  its sheet), Shift + B1 **SAVE AS** (issue 63); the open project's sheet gains **REVERT** (TO SAVED, second
   card) while it has a file and changes: pressed twice, the file is opened
   again. NEW asks with "Its changes are lost" and saves nothing; LOAD of
   another project says CHANGES LOST and asks once more; Exit's POWER OFF
@@ -2400,7 +2431,8 @@ while following.
   target keeps its mix strip). Seq held, or Patterns: patterns. Step Edit in STEPS mode: a
   step onto another (a kit: the lane's notes). Roll, Step Edit in PLAY mode and a
   synth's play pages: a key's notes onto another key in the pattern. A
-  kit's play pages: kit pads. These pick: the first pad is the source, the
+  kit's play pages: kit pads, onto another kit too (Pad Bank + its pad
+  between the picks; the source keeps its track, issue 48). These pick: the first pad is the source, the
   next the target, whose own notes or sound go first (one undo). Again, or
   Erase, leaves. Song: the clip under the cursor after itself (DUPLICATE).
   Project: the project under the cursor (DUPLICATE). A chain: the effect
@@ -2416,7 +2448,8 @@ while following.
   source too) follow it. One undo. Not during
   Seq Record, nor while a loop or Sample Record takes from either track.
   While picking, B2 and B3 switch between moving and copying, B1 steps back.
-- **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
+- **Undo** (Shift + −, redo Shift + +): the last 512 steps (fewer when they
+  hold more than 64 MB, the oldest going first). A take is one; a
   pot's turns are one per control (closed by another control, a press or
   two seconds still); a press on a page is one step of what the page edits.
   On Roll and Step Edit a pad is one step of the pattern from press
@@ -3070,6 +3103,21 @@ not an IP address or localhost and any POST without an `X-Melodee` header,
 so a web site in the same browser cannot send files to the MPC. A first
 install still goes on the card: the stock web page only takes Akai firmware,
 and it is there again once Melodee has stopped.
+
+### File sharing
+
+Settings' AUDIO > **File sharing** (key `file_sharing`, on unless turned
+off) makes the card a network drive for the computer on USB-C:
+`App::file_sharing()` asks the base's File Sharing (`drivers/file_share.h`)
+for it under the name MELODEE, and the base serves the card's mount point as
+**SD Card** over SMB 2 and 3 while the card is the MPC's. A Mac finds it as
+**Melodee** under Network (the mDNS responder adds a DNS-SD `_smb._tcp`
+record, port 445 on `melodee.local`, while `session().file_share` is
+`serving`) or at **smb://melodee.local**. The name `guest` logs in as a
+guest; any other name with an empty password as a user. While the computer
+has **SD Card** open, SD card access shows **OPEN ON COMPUTER** and does not
+lend the card. Firmware 1.3.0.12 only: on 1.4 the base's module does not
+load and `file_share=failed` in `status`.
 
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
 patterns a track, 8 mod routes, 8192 motion points a pattern. Samples have

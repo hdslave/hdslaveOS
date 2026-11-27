@@ -15,7 +15,7 @@ cursor's bar and time, and the loop.
 | Encoder | Move the cursor by a bar. |
 | Pads | Select a lane. An empty track opens its [new track cards](tracks.md#make-a-new-track), then comes back to Song. |
 | **K1** | Zoom (4–64 bars). |
-| **K2** / **K3** | The next clip's pattern and length (1–16 bars), or those of the clip under the cursor. |
+| **K2** / **K3** | The next clip's pattern and length (1–128 bars), or those of the clip under the cursor. |
 | **B3** | Place a clip of the pattern and length on **K2** and **K3**. On a clip: duplicate it after itself. |
 | **B2** | Mute or unmute the clip. |
 | **SHIFT** + **B2** (**MOTION**) | Open the clip's pattern on the Motion page. |
@@ -54,7 +54,7 @@ becomes a clip.
 2. Press **SEQ RECORD**.
 3. Launch patterns or sequences: on Patterns, on Sequences, or with **SEQ**
    held. Each launch starts a clip on that track's lane at the next bar.
-   The clip grows a bar at a time while the pattern plays. After 16 bars a
+   The clip grows a bar at a time while the pattern plays. After 128 bars a
    new clip carries on.
 4. Press **SEQ RECORD** again, or **STOP**. Each clip ends with the bar that
    was playing.

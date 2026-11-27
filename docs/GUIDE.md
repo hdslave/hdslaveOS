@@ -27,6 +27,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
 4. [Tracks](guide/tracks.md)
    - [Select a track](guide/tracks.md#select-a-track)
    - [Track speed](guide/tracks.md#track-speed)
+   - [Track direction](guide/tracks.md#track-direction)
    - [Make a new track](guide/tracks.md#make-a-new-track)
    - [Freeze a track](guide/tracks.md#freeze-a-track)
 5. [Kits and sampling](guide/kits-and-sampling.md)

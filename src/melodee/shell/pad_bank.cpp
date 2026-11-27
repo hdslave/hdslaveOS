@@ -6,6 +6,8 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/shell/step_edit.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/model/slice_banks.h"
 #include <algorithm>
 
@@ -70,6 +72,7 @@ void pad_bank_button(Context& c, bool pressed) {
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (ui.page == PageId::Mixer) { ui.mixer_bank = ui.mixer_bank ? 0 : 1; return; } // the tracks, or the submixes, buses, input and master
     if (ui.page == PageId::Chop) { step_slice_bank(c, ui.shift ? -1 : 1); return; } // the next sixteen slices
+    if (sounds_open(ui)) { sounds_bank_step(c, ui.shift ? -1 : 1); return; } // Step Edit's sounds on the pads: their bank
     if (c.track().engine == EngineKind::Sampler || drum_pads(c.track()) || prog_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
     if (ui.page == PageId::Roll) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
 }

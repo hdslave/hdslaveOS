@@ -13,6 +13,7 @@
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/shell/step_sounds.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/midi_engine.h"
@@ -36,6 +37,7 @@
 #include "melodee/shell/pad_gap.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/zoom_view.h"
+#include "melodee/shell/browse_trim.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/page_stack.h"
@@ -109,6 +111,7 @@ unsigned Context::free_unused_samples() {
     auto used = samples_in_use(project, edits);
     for (const auto& f : pending_files) if (f.slot >= 0) used[size_t(f.slot) % sample_slots] = true;
     if (ui.chop_sample < sample_slots) used[ui.chop_sample] = true;
+    if (ui.browse.up()) used[unsigned(ui.browse.slot) % sample_slots] = true; // Samples' trim sheet (shell/browse_trim.h)
     unsigned freed = 0;
     for (unsigned n = 0; n < sample_slots; ++n) {
         if (!project.samples[n].used() || used[n]) continue;
@@ -333,6 +336,7 @@ void Context::browse_for_track() {
 
 void Context::open(PageId page) {
     if (page != PageId::Scenes) ui.scene_capture = false; // CAPTURE waits for a pad on Scenes only
+    ui.sounds_step = -1; // Step Edit's sounds on the pads close with any page opened (shell/step_sounds.h)
     if (page == PageId::Samples) browse_for_track();
     // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
     if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
@@ -575,7 +579,7 @@ void Context::record(int key, int velocity, int cutoff) {
         at = snapped;
     }
     Event e;
-    e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
+    e.tick = at; e.length = note_ticks(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
     if (cutoff >= 0 && track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // roadmap P3
     if (note_slice(key) >= 0 && track().engine == EngineKind::Sampler) e.slice = uint8_t(note_slice(key) + 1); // issue 24: a slice hit
     if (!p.add(e)) { notice("Pattern full"); return; }
@@ -598,7 +602,7 @@ void Context::record_release(int key) {
         int32_t held = int32_t(ticks - h.since); // let go before the first tick (an early hit): the shortest
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
             if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8) && p.events[n].slice == uint8_t(note_slice(key) + 1)) {
-                p.events[n].length = uint16_t(std::clamp<int32_t>(held, 1, 65535));
+                p.events[n].length = note_ticks(uint64_t(std::max<int32_t>(held, 1)));
                 sync_pattern(h.track, h.pattern);
                 break;
             }
@@ -751,7 +755,7 @@ void Context::apply(const Binding& b, int value) {
         uint32_t q = p.q();
         bool any = edit_lane(p, at, steps_lane(t), [&](Event& e) {
             switch (b.kind) {
-            case Kind::StepLength: e.length = uint16_t(std::clamp<uint32_t>(uint32_t(std::max(value, 1)) * q, 1, 0xffff)); break;
+            case Kind::StepLength: e.length = note_ticks(uint64_t(std::max(value, 1)) * q); break;
             case Kind::StepVelocity: e.velocity = uint8_t(std::clamp(value, 1, 127)); break;
             case Kind::StepChance: e.chance = uint8_t(std::clamp(value, 0, 100)); break;
             case Kind::StepRatchet: e.ratchet = uint8_t(std::clamp<int>(value, 1, int(max_ratchet))); break;
@@ -761,6 +765,30 @@ void Context::apply(const Binding& b, int value) {
             }
         });
         if (!any) break;
+        sync_pattern(ui.track, t.pattern);
+        ui.held_edited = true;
+        break;
+    }
+    case Kind::StepSound:
+    case Kind::StepSlice:
+    case Kind::StepPlay: { // Step Edit's SOUND row: the held step's (else the caret's) notes, on a kit its lane's
+        auto& p = pattern();
+        const unsigned at = sound_step(ui, p);
+        const auto choices = b.kind == Kind::StepSound ? step_sound_choices(project) : std::vector<StepSoundChoice> {};
+        bool any = edit_lane(p, at, steps_lane(t), [&](Event& e) {
+            if (b.kind == Kind::StepSound) {
+                const uint16_t was = e.sample;
+                e.sample = value > 0 && size_t(value) <= choices.size() ? uint16_t(choices[size_t(value - 1)].slot + 1) : 0;
+                if (e.sample != was && e.slice != slice_random && e.slice > step_sound_slices(project, t, e.key, e.sample)) e.slice = 0; // past its chop
+            } else if (b.kind == Kind::StepSlice) {
+                const unsigned slices = step_sound_slices(project, t, e.key, e.sample);
+                e.slice = !slices || value <= 0 ? 0 : unsigned(value) > slices ? slice_random : uint8_t(value);
+            } else {
+                e.flags = with_play(e.flags, StepPlay(std::clamp(value, 0, int(StepPlay::Count) - 1)));
+            }
+        });
+        if (!any) break;
+        if (b.kind == Kind::StepSlice) p.sort(); // a note's slice is part of where it sorts
         sync_pattern(ui.track, t.pattern);
         ui.held_edited = true;
         break;
@@ -889,7 +917,7 @@ void Context::apply(const Binding& b, int value) {
         break;
     case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadLoopXfade: pad().loop_xfade = uint8_t(std::clamp(value, 0, int(max_loop_xfade))); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadColour: pad().colour = colour_at(value, pad().colour); break; // lights and screens only: the engine plays on
+    case Kind::PadColour: pick_colour(pad(), value); break; // lights and screens only: the engine plays on
     case Kind::LayerPick: ui.pad_layer = uint8_t(unsigned(value) % pad_layers); break;
     case Kind::ZonePick: ui.zone = uint16_t(std::max(value, 0)); break;
     case Kind::ZoneTune: case Kind::ZoneLevel: { // round 3 "instrument C": the zone in hand's trim on the last pad
@@ -964,6 +992,12 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_zoom_auto = false; ui.chop_focus = uint8_t(b.id % 2); ui.chop_view = {}; break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
+    case Kind::BrowseStart: case Kind::BrowseEnd: // Samples' trim sheet (shell/browse_trim.h): heard once it is still
+        if (b.id == 0 && browse_set(ui.browse, project, b.kind, value)) ui.browse.heard_at = std::max<uint32_t>(1, now + chop_heard_ms);
+        break;
+    case Kind::BrowseZoom:
+        ui.browse.zoom = uint8_t(value); ui.browse.own_zoom = true; ui.browse.focus = uint8_t(b.id % 2); ui.browse.view = {};
+        break;
     case Kind::PluginJump: ui.plugins_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
@@ -1093,7 +1127,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::Lock: { // a step or a note held: the lane locked there (roadmap P1)
         uint32_t tick = 0, hold = 0;
         if (!lock_place(project, ui, pattern(), tick, hold)) break;
-        write_lock(int(b.id), tick, uint16_t(std::min<uint32_t>(hold, 0xffff)), value);
+        write_lock(int(b.id), tick, hold, value);
         ui.held_edited = true; // Steps: letting the step go keeps it
         break;
     }
@@ -1427,16 +1461,21 @@ void Context::record_motion(int lane, int value) {
     MotionPoint m;
     m.tick = uint32_t(std::max(host.position_of(ui.track), 0)) % std::max<uint32_t>(p.length, 1);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
+    // A point a 96th of a quarter at most on a lane, as recording kept them before the clock went to 960: a move
+    // inside that replaces the one before, so a pot turned fast fills the pattern's Motion no faster than it did.
+    constexpr uint32_t thin = ticks_per_quarter / 96;
+    for (size_t n = p.motion_lower(m.tick); n-- > 0 && p.motion[n].tick + thin > m.tick;)
+        if (p.motion[n].on(m.param, m.pad) && !p.motion[n].lock()) { p.motion.erase(p.motion.begin() + long(n)); break; }
     if (!p.write_motion(m)) return; // full: the move still sounds, it is just not kept
     sync_motion(ui.track, t.pattern);
 }
 
-void Context::write_lock(int lane, uint32_t tick, uint16_t hold, int value) {
+void Context::write_lock(int lane, uint32_t tick, uint32_t hold, int value) {
     if (lane < 0) return;
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
-    m.tick = tick % std::max<uint32_t>(p.length, 1); m.hold = std::max<uint16_t>(hold, 1);
+    m.tick = tick % std::max<uint32_t>(p.length, 1); m.hold = note_ticks(hold);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
     if (!p.write_motion(m)) { notice("Motion full"); return; }
     sync_motion(ui.track, t.pattern);
@@ -1480,7 +1519,7 @@ void Context::take_arp_notes() {
         if (!ui.recording || freeze_protects_track(w.track)) continue;
         auto& p = patterns.at[w.track % track_count][w.pattern % pattern_count];
         Event e;
-        e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = std::max<uint16_t>(w.length, 1);
+        e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = note_ticks(w.length);
         e.key = uint8_t(w.key & 0xff); e.pitch = int8_t(w.key >> 8); e.velocity = uint8_t(std::clamp<int>(w.velocity, 1, 127));
         e.cutoff = w.cutoff; // a 16 Levels Filter repeat's cutoff + 1 (roadmap P3)
         if (!p.add(e)) { notice("Pattern full"); continue; }
@@ -1540,7 +1579,7 @@ void Context::record_launch(unsigned t, unsigned p) {
 }
 
 // Each bar the clips being written grow by one, so the song always holds the
-// bar after the one playing; past 16 bars a new clip carries on.
+// bar after the one playing; past 128 bars (max_bars) a new clip carries on.
 void Context::song_tick() {
     bool on = ui.recording && host.song_playing();
     if (!on) {
@@ -1562,7 +1601,7 @@ void Context::song_tick() {
         if (index < 0) { recording_tracks &= uint16_t(~(1u << t)); continue; }
         Clip clip = song.clips[size_t(index)];
         if (clip.end() != bar + 1 || bar + 1 >= song_bars) continue;
-        if (clip.bars >= 16) { // a new clip carries on
+        if (clip.bars >= max_bars) { // a new clip carries on
             song.place({clip.track, clip.pattern, uint16_t(bar + 1), 1, false});
             recording_from[t] = uint16_t(bar + 1);
             continue;
@@ -1722,15 +1761,19 @@ void Context::erase_pad_notes(unsigned kit) {
     notice(found ? what : pad_text("No notes on", kit));
 }
 
-void Context::copy_pad(unsigned from, unsigned to) {
-    from %= sampler_pads; to %= sampler_pads;
-    if (from == to) return;
+void Context::copy_pad(unsigned from_track, unsigned from, unsigned to) {
+    from_track %= track_count; from %= sampler_pads; to %= sampler_pads;
+    bool here = from_track == ui.track % track_count;
+    if (here && from == to) return;
+    const auto& source = project.tracks[from_track]; // another kit's (issue 48: the pad was read off the selected track)
+    if (source.engine != EngineKind::Sampler || !source.pads[from].used()) { notice(pad_text("Empty", from)); return; }
     auto& t = track();
     Edit edit;
     char a[4], b[4]; pad_label(from, a); pad_label(to, b);
-    edit.what = std::string("Copy ") + a + " to " + b; edit.track = ui.track; edit.pad = int16_t(to);
+    edit.what = std::string("Copy ") + (here ? "" : "T" + std::to_string(from_track + 1) + " ") + a + " to " + b;
+    edit.track = ui.track; edit.pad = int16_t(to);
     edit.pad_before = pad_state(t, to);
-    edit.pad_after = pad_state(t, from);
+    edit.pad_after = pad_state(source, from);
     restore_pad(ui.track, to, edit.pad_after);
     notice(edit.what);
     edits.push(std::move(edit));
@@ -2078,6 +2121,7 @@ Slices Context::type_chop(bool* capped) const {
 void Context::rechop() {
     end_take(); ui.chop_more = false; ui.chop_take_from = 0; // a take in progress is kept as it was; no red left over
     if (!library || ui.chop_sample >= sample_slots) { ui.slices = {}; return; }
+    const Slices was = ui.slices; // its reversed slices stay where they start
     bool capped = false, full = false;
     const uint32_t frames = chop_frames(project, ui);
     uint32_t clear = 0; // Auto keeps an eighth note (or 150 ms) clear of a hand cut: no sliver beside one
@@ -2085,6 +2129,7 @@ void Context::rechop() {
     ui.slices = with_hand(type_chop(&capped), ui.chop_hand, frames, &full, clear); // the cuts made by hand stay
     if (capped || full) notice("128 slices, the most: the last runs to the end");
     snap_slices();
+    ui.slices.keep_reverse(was, hand_reach);
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_take_at = 0;
 }
@@ -2396,8 +2441,9 @@ void Context::play_continue(bool external) {
     if (external) send({Type::ExtSync, 0, 0, 3});
 }
 
-// Shift + Loop: the last pad plays backwards, or forwards again.
+// Shift + Loop: the last pad plays backwards, or forwards again. On Chop, the slice in hand alone.
 void Context::toggle_reverse() {
+    if (ui.page == PageId::Chop && ui.slices.count) { reverse_slice(); return; }
     auto& t = track();
     if (t.engine != EngineKind::Sampler || !pad().used()) { notice("Reverse: no sample"); return; }
     pad().reverse = !pad().reverse;
