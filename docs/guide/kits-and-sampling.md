@@ -254,7 +254,7 @@ icon and its type at the right.
 | --- | --- |
 | SFZ | `.sfz`, shown as **SFZ**. Regions chosen by a controller (`locc`, `hicc`, for example a hi-hat on CC 4) follow it as you play. |
 | MPC keygroup program | `.xpm` (**XPM**), or `.xty` from MPC 3 (**XTY**) |
-| MPC drum program | `.xpm` or `.xty` with a pads icon: Push opens **LOAD KIT** (see [Loading banks of an MPC kit](#loading-banks-of-an-mpc-kit)) |
+| MPC drum program | `.xpm`, `.xty` or an MPC 3 drum kit's `.xtd` (**XTD**), with a pads icon: Push opens **LOAD KIT** (see [Loading banks of an MPC kit](#loading-banks-of-an-mpc-kit)) |
 | MPC expansion | `.xpn` with a down arrow: installs into `Melodee/Samples/Expansions` |
 | Logic EXS24 / Sampler | `.exs` (**EXS**), with its samples in the same folder |
 | SoundFont | `.sf2` (**SF2**): opens as a folder of presets |

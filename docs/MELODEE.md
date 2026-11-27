@@ -1631,7 +1631,8 @@ the file holds, to the bit.
   the amp envelope, sample start, end and loop, groups and tags on or off),
   so a start set past a file's silence plays from there; a layer at volume
   0 is left out.
-- **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push reads the
+- **MPC drum programs** (`.xpm` or `.xty` of type Drum, or an MPC 3 kit's `.xtd`,
+  issue 62, the same JSON as an .xty; tagged KIT, the format chip XTD): Push reads the
   program, then opens the LOAD KIT sheet (cards: LOAD, WHOLE KIT, BANK A-H). Each bank card
   steps through the program's filled banks, then none; the bank in view starts with the first.
   LOAD puts only those banks' filled pads into the kit's banks picked, with their chains and
@@ -1644,7 +1645,12 @@ the file holds, to the bit.
   velocities, tune, volume and pan) while the project's free sample slots
   hold every layer's file; one of more, or one the slots no longer hold,
   plays its layers as an instrument named `<program>.xpm#<pad>`, streamed
-  from the card as an SFZ is, as before. MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
+  from the card as an SFZ is, as before. An MPC 3 kit's layers may name a
+  file one up from its data folder (`../Samples/Hats.wav`: the kit's
+  folder's `Samples/`) and play one slice of it, its `sliceIndex` in the
+  WAV's own slices (the atem chunk, `mpc_file_slices()`), unless the layer
+  gives a region inside the file; a layer naming only a folder plays
+  nothing (shell/mpc_program.cpp `slice_layers`). MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
   Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
   the two-pole kind) and filter envelope; each layer's tune, volume, pan,
   region and loop; the pads' colours (the program's ProgramPads: each pad's

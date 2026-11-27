@@ -3338,7 +3338,7 @@ static int mpc_import(const char* path) {
     MpcImport report;
     auto began = std::chrono::steady_clock::now();
     const std::string kind = std::filesystem::path(path).extension().string();
-    auto error = kind == ".xpm" || kind == ".XPM" ? import_mpc_program(bytes, path, *project, report)
+    auto error = is_mpc_program(path) ? import_mpc_program(bytes, path, *project, report) // .xpm, .xty, .xtd (issue 62)
                                                   : import_mpc_project(bytes, path, *project, *patterns, report);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }

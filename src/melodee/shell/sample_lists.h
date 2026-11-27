@@ -29,7 +29,7 @@ inline bool part_of_file(const std::string& path, std::string* file = nullptr) {
     if (mark == std::string::npos || mark < 4 || mark + 1 >= path.size() || path[mark - 4] != '.') return false;
     std::string kind = path.substr(mark - 3, 3);
     for (auto& ch : kind) ch = char(std::tolower(static_cast<unsigned char>(ch)));
-    if (kind != "xpm" && kind != "xty" && kind != "xpj" && kind != "sf2") return false;
+    if (kind != "xpm" && kind != "xty" && kind != "xtd" && kind != "xpj" && kind != "sf2") return false;
     if (file) *file = path.substr(0, mark);
     return true;
 }
