@@ -111,8 +111,11 @@ one owner per piece of state.
   again, as after a note. So an effect resting through a stop hears it; a
   plug-in that hears no change sleeps on. A sleeping plug-in's load shows 0.
   A CLAP plug-in's `steady_time` counts the frames it slept through too
-  (at its own rate), so on waking it can tell how long it slept; one in a
-  bypassed slot, which the engine does not run at all, counts none.
+  (at its own rate), so on waking it can tell how long it slept: a call's
+  `steady_time` is the last call's plus the last call's frames plus those
+  slept since (calls differ in size: an instrument is played in parts of
+  a block, split where a note falls). One in a bypassed slot, which the
+  engine does not run at all, counts none.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it

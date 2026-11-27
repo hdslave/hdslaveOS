@@ -839,6 +839,13 @@ int main(int argc, char** argv) {
                 ++n;
             }
     }
+    if (slept) { // track 1's pattern a note every sixteenth: a note's frame splits the block its instrument is played in
+        Step step;
+        step.notes[0] = {69, 100};
+        step.length = 6;
+        auto& pattern = shell->patterns().at[0][0];
+        for (unsigned n = 0; n < 16; ++n) pattern.set_step(n, step);
+    }
     if (looped) { // a song of four bars of track 1's pattern, its loop braced round bars 2 and 3
         Clip clip;
         clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 4;
@@ -1890,8 +1897,8 @@ int main(int argc, char** argv) {
         struct Clock { int calls; double steady, frames; };
         auto clock = [&] {
             auto bytes = rack->state(gain);
-            CHECK(bytes.size() == 4 + 11 * sizeof(double));
-            std::array<double, 11> v;
+            CHECK(bytes.size() == 4 + 15 * sizeof(double));
+            std::array<double, 15> v;
             std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
             return Clock {int(v[5]), v[6], v[7]};
         };
@@ -1912,6 +1919,29 @@ int main(int argc, char** argv) {
         const auto woken = clock();
         CHECK(woken.calls == asleep.calls + 1);
         CHECK(woken.steady == first.steady + double(blocks * EngineHost::block));
+        // Track 1's Test Sine played while its pattern plays, in parts of a block where a note's frame falls: each call's
+        // steady_time is the one before's plus the frames of that one before, whatever their sizes.
+        struct Parts { double steady, frames, prior_steady, prior_frames, gaps, fewest; };
+        auto parts = [&] {
+            auto bytes = rack->state(entry);
+            CHECK(bytes.size() == 4 + 15 * sizeof(double));
+            std::array<double, 15> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Parts {v[6], v[7], v[11], v[12], v[13], v[14]};
+        };
+        CHECK(host->send({Command::Type::Play}));
+        for (int k = 0; k < 20; ++k) tick(); // awake now, the song playing
+        const double gaps = parts().gaps;
+        bool unequal = false; // a call whose size was not the one before's
+        for (int k = 0; k < 400; ++k) {
+            tick();
+            const auto now_parts = parts();
+            unequal |= now_parts.frames != now_parts.prior_frames;
+            CHECK(now_parts.steady == now_parts.prior_steady + now_parts.prior_frames);
+        }
+        const auto played = parts();
+        CHECK(played.gaps == gaps && played.fewest < EngineHost::block && unequal);
+        CHECK(host->send({Command::Type::Stop}));
         shell->set_plugins(nullptr);
         return 0;
     }
@@ -1922,8 +1952,8 @@ int main(int argc, char** argv) {
         struct Told { int playing; double loop, from, to; };
         auto told = [&] {
             auto bytes = rack->state(entry);
-            CHECK(bytes.size() == 4 + 11 * sizeof(double));
-            std::array<double, 11> v;
+            CHECK(bytes.size() == 4 + 15 * sizeof(double));
+            std::array<double, 15> v;
             std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
             return Told {int(v[3]), v[8], v[9], v[10]};
         };
