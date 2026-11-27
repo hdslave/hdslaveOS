@@ -124,7 +124,10 @@ one owner per piece of state.
   twice, as each run must. While a project loads (the engine parked, its
   state the loader's) or the sample rate is being changed, the engine
   runs nothing and tells no plug-in anything: those blocks are not
-  counted.
+  counted. The counting can be heard: a plug-in that moves its clocks on
+  by the gaps in `steady_time` (an LFO, a sequence; Cortex Filter 0.3.4
+  does, by design) moves them through a bypass, a frozen or emptied track
+  or an unplayed chain too, where before they stood still.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
