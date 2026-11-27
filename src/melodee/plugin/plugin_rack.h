@@ -270,9 +270,11 @@ private:
     // A pot turned on a screen's page just come into view again, before the screen thread asked the screen its three:
     // the entry and generation, where it was turned to (0..plugin_param_max), the card's value it was turned from, and
     // whether as a relative turn. Under `lock`; given by give_held_pots().
-    struct HeldPot { int entry = -1; uint32_t generation = 0; int value = 0, card = 0; bool relative = false; };
+    // And the page it was turned on (screen_pages when it was held): given only while that page is the one in view.
+    struct HeldPot { int entry = -1; uint32_t generation = 0; int value = 0, card = 0; bool relative = false; uint64_t page = 0; };
     std::array<HeldPot, 3> held_pots {};
-    void give_held_pots(PluginHandle& h, unsigned entry, const std::array<int, 3>& controls);
+    uint64_t screen_pages = 0; // under `screen_lock`: one more for each page in view another (its entry or area)
+    void give_held_pots(PluginHandle& h, unsigned entry, uint64_t page, const std::array<int, 3>& controls);
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
     std::mutex screen_calls;

@@ -215,9 +215,20 @@ std::vector<PresetLine> presetFile(const char* path) {
 std::string besideLibrary(const char* folder) { return libraryPath.substr(0, libraryPath.rfind('/') + 1) + folder; }
 bool isFolder(const std::string& path) { struct stat st {}; return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode); }
 
+// MELODEE_TEST_PRESET_HOLD names a file: while it is there, a preset load waits (at most 20 s), having made <file>.in.
+// The host holds the plug-in's main lock meanwhile, so its screen cannot be asked its three (busy, as in a slow load).
+void presetHold() {
+    const char* hold = std::getenv("MELODEE_TEST_PRESET_HOLD");
+    if (!hold) return;
+    struct stat st {};
+    if (stat(hold, &st) != 0) return;
+    std::ofstream(std::string(hold) + ".in") << "in";
+    for (int n = 0; n < 4000 && stat(hold, &st) == 0; ++n) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+}
 bool fromLocation(const clap_plugin* p, uint32_t kind, const char* location, const char* key) {
     auto& s = of(p);
     s.main();
+    presetHold();
     if (kind != CLAP_PRESET_DISCOVERY_LOCATION_FILE || location == nullptr) return false;
     auto lines = presetFile(location);
     size_t n = key != nullptr ? std::strtoul(key, nullptr, 10) : 0;

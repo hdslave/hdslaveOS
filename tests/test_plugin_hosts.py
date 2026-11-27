@@ -156,7 +156,9 @@ class PluginHostTests(unittest.TestCase):
         self.run_rack_fixture("panel-lag")
 
     def test_a_pot_turned_as_a_page_returns_turns_what_its_screen_names_now(self):
-        self.run_rack_fixture("screen-mode")
+        for mode in ("screen-mode", "screen-held"):
+            with self.subTest(mode=mode):
+                self.run_rack_fixture(mode)
 
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")

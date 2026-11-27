@@ -733,13 +733,16 @@ int main(int argc, char** argv) {
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
     if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "copy-presets-late" || mode == "panel-lag"
-        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen" || mode == "shared-frozen") {
+        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen" || mode == "shared-frozen"
+        || mode == "screen-held") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
     if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
     if (mode == "screen-mode") setenv("MELODEE_TEST_SCREEN_MODE", "1", 1); // its screen's K1 and K2 follow its Mode
+    const auto preset_hold = fs::path(card).parent_path() / "preset-hold";
+    if (mode == "screen-held") setenv("MELODEE_TEST_PRESET_HOLD", preset_hold.c_str(), 1); // a preset load waits while that file is there
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
     if (mode == "relative-stage") { // a stage named relative to where it runs (its card's folder)
         fs::current_path(fs::path(card).parent_path());
@@ -867,7 +870,8 @@ int main(int argc, char** argv) {
     if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
         for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
     const bool late = mode == "copy-presets-late"; // copy-presets with every other entry in use: effects that will not open
-    if (mode == "presets-track" || mode == "copy-presets" || late || mode == "panel-lag" || mode == "screen-mode") { // two tracks of the same synth, each its own instance, and a kit
+    if (mode == "presets-track" || mode == "copy-presets" || late || mode == "panel-lag" || mode == "screen-mode"
+        || mode == "screen-held") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -1526,6 +1530,48 @@ int main(int argc, char** argv) {
         wait([&] { return values(1)[1] == 2; }); // Wave to its top
         CHECK(values(1)[0] == before[0]);
         wait([&] { return std::string(ui.plugin_panel.params[0].name) == "Wave"; }); // and the card says so, read again
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A turn held for a page whose screen cannot be asked its three yet is given on that page only, not when the page
+    // is opened again later. Track 2's plug-in busy loading a preset (its main lock held, so its screen cannot answer),
+    // its page left and opened again, K1 turned (held), Song opened, the load let finish, then track 2's page again:
+    // the old turn is not given then.
+    if (mode == "screen-held") {
+        wait([&] { return ready(1) && rack->programs(1).list.size() >= 2; });
+        const auto panel = stage_find(EngineKind::Plugin, StageKind::PluginScreen);
+        CHECK(panel.found);
+        for (unsigned t : {0u, 1u}) { ui.stage_group[t] = uint8_t(panel.at.group); ui.stage_sub[t] = uint8_t(panel.at.sub); }
+        c.open(PageId::Stage);
+        c.select_track(1);
+        wait([&] { return ui.plugin_panel.entry == 1 && ui.plugin_panel.screen; }); // drawn: its panel names its three
+        for (int k = 0; k < 20; ++k) tick();
+        ui.settings.knob_takeover = Takeover::Instant;
+        std::ofstream(preset_hold) << "hold";
+        const auto list = rack->programs(1).list;
+        rack->select_program(1, list[1].index); // the rack's thread loads it, and waits holding the plug-in's lock
+        const auto started = std::chrono::steady_clock::now();
+        while (!fs::exists(fs::path(preset_hold.string() + ".in")) && std::chrono::steady_clock::now() - started < patience)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        CHECK(fs::exists(fs::path(preset_hold.string() + ".in")));
+        // No tick while it waits: a panel read would wait on that lock too. The rack told of each page by hand.
+        auto view = [&](PageId page) { c.open(page); c.tell_screen_view(); std::this_thread::sleep_for(std::chrono::milliseconds(60)); };
+        view(PageId::Song);
+        view(PageId::Stage); // back on track 2's page: its screen not asked its three again (busy)
+        SurfaceEvent turn_k1;
+        turn_k1.input.kind = SurfaceInput::Kind::Control;
+        turn_k1.input.index = uint8_t(SurfaceControl::K1);
+        turn_k1.input.value = 127;
+        shell->surface(turn_k1, ++now); // held
+        view(PageId::Song);
+        fs::remove(preset_hold);
+        wait([&] { return rack->programs(1).current == list[1].index; });
+        for (int k = 0; k < 20; ++k) tick();
+        const auto loaded = values(1);
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == 1 && ui.plugin_panel.screen; }); // back, its three asked again
+        for (int k = 0; k < 40; ++k) tick();
+        CHECK(values(1) == loaded);
         shell->set_plugins(nullptr);
         return 0;
     }

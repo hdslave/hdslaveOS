@@ -1185,13 +1185,14 @@ bool PluginRack::set_screen_param(const PluginPanel& panel, unsigned k, int valu
     if (!panel.screen || k >= panel.targets.size()) return false;
     const auto& target = panel.targets[k];
     if (target.entry >= max_plugins || target.index < 0) return false;
-    uint64_t revision = 0, given = 0;
+    uint64_t revision = 0, given = 0, page = 0;
     int area = -1;
     {
         std::lock_guard<std::mutex> seen(screen_lock);
         revision = screen_revision.load();
         if (screen_now.entry == target.entry) area = screen_now.area;
         given = screen_given[target.entry];
+        page = screen_pages;
     }
     std::lock_guard<std::mutex> held(lock);
     const auto& e = entries[target.entry];
@@ -1209,8 +1210,8 @@ bool PluginRack::set_screen_param(const PluginPanel& panel, unsigned k, int valu
         // its three for that page. The turn is held and given to the one it names on that pot once asked
         // (give_held_pots()): not lost, nor sent to the one it named before.
         auto& pot = held_pots[k];
-        if (pot.entry != int(target.entry) || pot.generation != target.generation)
-            pot = {int(target.entry), target.generation, 0, panel.params[k].value, false};
+        if (pot.entry != int(target.entry) || pot.generation != target.generation || pot.page != page)
+            pot = {int(target.entry), target.generation, 0, panel.params[k].value, false, page};
         pot.value = std::clamp(value, 0, plugin_param_max); // a later turn before it is given: its place, from the first card
         pot.relative = relative;
         return true;
@@ -1235,13 +1236,14 @@ bool PluginRack::set_screen_param(const PluginPanel& panel, unsigned k, int valu
 
 // The screen thread, under `lock`, its three just asked with no input pending: turns held for this page given to the
 // parameters it names on those pots now. An absolute turn takes its place; a relative one (Scaled, Pickup) moves the
-// parameter now named by as much as it would have moved the card it was turned on. Ones held for another page are let go.
-void PluginRack::give_held_pots(PluginHandle& h, unsigned entry, const std::array<int, 3>& controls) {
+// parameter now named by as much as it would have moved the card it was turned on. Ones held for another page, or for
+// this one before it was left (`page`: another page came into view since), are let go.
+void PluginRack::give_held_pots(PluginHandle& h, unsigned entry, uint64_t page, const std::array<int, 3>& controls) {
     const auto& params = h.instance->getParameters();
     for (unsigned k = 0; k < held_pots.size(); ++k) {
         auto pot = held_pots[k];
         held_pots[k] = {};
-        if (pot.entry < 0 || pot.entry != int(entry) || pot.generation != h.generation) continue;
+        if (pot.entry < 0 || pot.entry != int(entry) || pot.generation != h.generation || pot.page != page) continue;
         if (controls[k] < 0 || controls[k] >= params.size()) continue;
         auto* param = params[controls[k]];
         int to = pot.value;
@@ -2122,7 +2124,7 @@ void PluginRack::screen_view(const ScreenView& view) {
         std::lock_guard<std::mutex> held(screen_lock);
         if (screen_stop) return;
         if (view.entry != no_plugin && !screen_thread.joinable()) screen_thread = std::thread([this] { screen_run(); });
-        if (view.entry != screen_now.entry || view.area != screen_now.area) ++screen_revision;
+        if (view.entry != screen_now.entry || view.area != screen_now.area) { ++screen_revision; ++screen_pages; }
         poke = view != screen_now;
         screen_now = view;
         screen_poked = screen_poked || poke;
@@ -2183,7 +2185,7 @@ void PluginRack::screen_run() {
     };
     for (;;) {
         ScreenView view;
-        uint64_t revision;
+        uint64_t revision, page = 0;
         {
             std::unique_lock<std::mutex> held(screen_lock);
             screen_wake.wait_for(held, wait, [&] { return screen_stop || screen_poked || !screen_inputs.empty(); });
@@ -2192,6 +2194,7 @@ void PluginRack::screen_run() {
             screen_poked = false;
             view = screen_now;
             revision = screen_revision.load();
+            page = screen_pages;
             for (auto& in : screen_inputs) inputs.push_back(in);
             screen_inputs.clear();
         }
@@ -2304,7 +2307,7 @@ void PluginRack::screen_run() {
                 h->screen_controls = controls;
                 if (inputs.empty()) {
                     h->controls_revision = revision;
-                    give_held_pots(*h, view.entry, controls);
+                    give_held_pots(*h, view.entry, page, controls);
                 }
             }
         }

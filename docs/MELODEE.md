@@ -2693,6 +2693,9 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   its three for that page is held, and given to the parameter it names on
   that pot once asked, within the next blocks: none is lost or sent to the
   one it named before (`PluginRack::set_screen_param`, `give_held_pots`).
+  It is given only while that page stays in view: a page left before its
+  screen could answer (a slow preset load holding the plug-in) lets it go,
+  so it never lands when the page is opened again later.
   With no input since the panel was read, a turn goes to what the screen
   names now; after one (Minus: another bank), only to an unmoved pot. Stage of a
   frozen track draws its print instead (freeze plan F2c): while it does,
