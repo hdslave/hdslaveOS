@@ -60,7 +60,9 @@ as MIDI passes.
   header shows **EXT CLOCK**. Continue plays on from the Song Position,
   counted at the selected track's speed (see
   [Track speed](tracks.md#track-speed)), as **SHIFT** + **PLAY**
-  counts it.
+  counts it. While the clock comes in, it sets the tempo: turning the
+  tempo or tapping **TAP TEMPO** shows **Tempo locked to MIDI sync**. Set
+  **MIDI sync in** to **Off** to set the tempo on the MPC.
 - **MTC in** (24, 25, 29.97 drop-frame and 30 fps): Melodee follows the
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.

@@ -376,6 +376,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
     if (ui_.colour_sheet && ui_.track != ui_.colour_track) track_colour_button(context_, SurfaceButton::TopRight); // TRACK COLOUR: kept as it is
     show_track_colours(*project_); // issue 69: the colour each track shows, for the pads and the screen
+    ui_.tempo_locked = ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in(); // MIDI clock in leads the tempo
     if (ui_.page == PageId::Song) { // issue 60: K2's list, the selected track's patterns that hold notes
         ui_.song_used = {};
         const unsigned t = ui_.track % track_count;

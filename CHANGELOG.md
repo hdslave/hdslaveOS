@@ -48,7 +48,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 ### Fixed
 
 - **A project from another card** (#72): a project, bank or settings file copied to a new card finds its samples and plug-ins at the same place on the new card.
-- **MIDI clock tempo**: the tempo shown and played no longer flickers between two values while following MIDI clock.
+- **MIDI clock tempo**: the tempo shown and played no longer flickers between two values while following MIDI clock. Changing the tempo while the clock leads shows **Tempo locked to MIDI sync**.
 - **MIDI Learn**: a knob learned after a wait that ran out is no longer taken early, and a control just learned does nothing until it rests.
 - **Song**: played from a bar after the loop range, the song plays on to its end and stops. A Song clip longer than 128 bars keeps its length when the project opens again.
 

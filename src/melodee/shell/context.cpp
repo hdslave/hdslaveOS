@@ -2568,6 +2568,7 @@ void Context::stop() {
 
 // The tempo in play: the global one, or with BPM per pattern the lead pattern's own.
 void Context::set_tempo(int tenths) {
+    if (ui.tempo_locked) { notice("Tempo locked to MIDI sync"); return; } // MIDI clock in plays its own (Sync In)
     tenths = std::clamp(tenths, 300, 3000);
     touch_tempo(*this);
     if (project.seq_tempo) {
