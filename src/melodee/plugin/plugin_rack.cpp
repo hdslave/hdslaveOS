@@ -1612,15 +1612,15 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
 }
 
 // Opens each listed plug-in whose kind is not known yet just long enough to ask, one at a time, so the picker can
-// say INSTRUMENT or EFFECT, or how many plug-ins a bundle holds. Stops when other work comes in, and goes on once the
-// rack's queue is empty again while the picker is open (run(), set_browsing(): each plug-in is opened once, so nothing
-// is asked twice).
+// say INSTRUMENT or EFFECT, or how many plug-ins a bundle holds. Only while the picker is open (set_browsing()), and
+// stops between two when other work comes in or the picker closes; goes on once the rack's queue is empty again with
+// the picker open (run(): each plug-in is opened once, so nothing is asked twice).
 void PluginRack::probe_listed() {
     for (;;) {
         PluginFile file;
         {
             std::lock_guard<std::mutex> held(lock);
-            if (stopping || !jobs.empty()) return;
+            if (stopping || !jobs.empty() || !browsing.load(std::memory_order_relaxed)) return;
             auto it = std::find_if(shown.files.begin(), shown.files.end(), [&](const PluginFile& f) {
                 // A VST3 bundle or a CLAP is opened once even when its kind is known: it may hold several.
                 if (!f.loadable() || f.id != 0 || (f.instrument >= 0 && !named_inside(f.format))) return false;

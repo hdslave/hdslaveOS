@@ -705,6 +705,13 @@ int main(int argc, char** argv) {
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "B.clap");
     }
+    if (mode == "probe-closed") { // each file one instrument, eight more in a folder, each 60 ms to ask its kind
+        setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
+        setenv("MELODEE_TEST_SLOW_ENTRY", "1", 1);
+        const auto many = fs::path(plugin).parent_path() / "Many";
+        fs::create_directories(many);
+        for (int n = 1; n <= 8; ++n) fs::copy_file(plugin, many / ("M" + std::to_string(n) + ".clap"));
+    }
     if (mode == "picker-rows") { // each file one instrument, so a row loads; two more beside it, and one in each of two folders
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         const auto folder = fs::path(plugin).parent_path();
@@ -910,6 +917,7 @@ int main(int argc, char** argv) {
             if (fs::path(view.folder).filename() != folder || view.files.size() != rows || ui.plugins_count != rows) return false;
             for (const auto& f : view.files) if (kinds && !f.folder && f.instrument < 0) return false;
             shell->snapshot(*drawn, now);
+            for (const auto& f : drawn->plugins.files) if (kinds && !f.folder && f.instrument < 0) return false; // as Push acts on them
             return fs::path(drawn->plugins.folder).filename() == folder && drawn->plugins.files.size() == rows;
         });
     };
@@ -1029,7 +1037,7 @@ int main(int argc, char** argv) {
         auto& kit = project.tracks[1];
         open_picker();
         listing("Plugins", 1);
-        wait([&] { return rack->view().files[0].several(); });
+        wait([&] { return rack->view().files[0].several() && !c.plugin_view.files.empty() && c.plugin_view.files[0].several(); });
         tap(SurfaceButton::WheelPush); // the fixture's library: its two plug-ins
         listing("Test.clap", 2);
         const auto rows = rack->view().files;
@@ -1769,6 +1777,34 @@ int main(int argc, char** argv) {
         CHECK(t2.engine == EngineKind::Plugin && t2.plugin == 1 && fs::path(project.plugins[1].path).filename() == "Test.clap");
         wait([&] { return ready(1); });
         CHECK(c.edits.size() == 5);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A folder of eight plug-ins whose kinds the picker asks one at a time (60 ms each), closed while it asks: the rack
+    // stops asking at the next one, as other work would stop it; a probe left for later can hold up a thaw's job.
+    if (mode == "probe-closed") {
+        auto probed = [&] {
+            unsigned n = 0;
+            const auto view = rack->view();
+            if (fs::path(view.folder).filename() != "Many") return 0u;
+            for (const auto& f : view.files) n += f.plugins > 0; // asked: how many it holds is known
+            return n;
+        };
+        wait([&] { return ready(entry); });
+        open_picker();
+        listing("Plugins", 2, false); // Many, Test
+        cursor_on("Many");
+        tap(SurfaceButton::WheelPush);
+        wait([&] { return probed() >= 1; });
+        c.open(PageId::Stage); // the picker closed
+        tick();
+        const unsigned at_close = probed();
+        CHECK(at_close < 8);
+        for (int k = 0; k < 400; ++k) tick(); // 0.8 s or more: all eight would have been asked by now
+        CHECK(probed() <= at_close + 1); // the one being asked as it closed, and no more
+        open_picker(); // open again, the rest are asked
+        wait([&] { return probed() == 8; });
+        unsetenv("MELODEE_TEST_SLOW_ENTRY");
         shell->set_plugins(nullptr);
         return 0;
     }

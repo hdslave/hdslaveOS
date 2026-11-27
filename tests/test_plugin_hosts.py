@@ -146,6 +146,9 @@ class PluginHostTests(unittest.TestCase):
     def test_picker_acts_on_the_row_it_draws(self):
         self.run_rack_fixture("picker-rows")
 
+    def test_the_picker_closed_stops_asking_plugins_their_kind(self):
+        self.run_rack_fixture("probe-closed")
+
     def test_undo_brings_a_dropped_plugin_back_with_its_state(self):
         self.run_rack_fixture("undo-state")
 

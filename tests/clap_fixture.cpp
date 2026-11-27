@@ -471,7 +471,10 @@ const clap_plugin_factory factory {count, descriptor, create};
 extern "C" {
 const clap_plugin_entry clap_entry { // exported by its declaration in clap/entry.h
     CLAP_VERSION_INIT,
-    [](const char* path) { libraryPath = path; ++inits; return true; },
+    [](const char* path) { // MELODEE_TEST_SLOW_ENTRY: each opening of the library takes 60 ms, as a large plug-in's probe does
+        if (std::getenv("MELODEE_TEST_SLOW_ENTRY")) std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        libraryPath = path; ++inits; return true;
+    },
     [] { --inits; },
     [](const char* id) -> const void* {
         if (!std::strcmp(id, CLAP_PLUGIN_FACTORY_ID)) return &factory;

@@ -175,6 +175,7 @@ void Context::open_plugin_picker(UiState::PluginTarget target, unsigned chain, u
     ui.plugin_slot = uint8_t(slot);
     ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Stage : ui.page; // an instrument: Stage's B1 EDIT once loaded
     take_plugin_view(); // the rows as they are listed now, until the new listing is in (never none: NO CARD)
+    plugins->set_browsing(true); // open: that listing's plug-ins are asked their kind at once (plugins_tick keeps it)
     plugins->relist(); // where the picker was left, listed afresh, on the row it was on
     if (ui.page != PageId::Plugins) ui.plugin_from = ui.page;
     open(PageId::Plugins);
