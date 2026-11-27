@@ -75,6 +75,7 @@
 #include "melodee/shell/browse_trim.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/sample_lists.h"
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
@@ -7695,6 +7696,62 @@ void card_plugin_paths() {
     fs::remove_all(top);
 }
 
+// Files saved on another card (shell/card_paths.h, issue 72): a card mounts at /media/<its volume id>, so a project,
+// bank or settings file from another card names its files under a folder that is not there. They are looked for at
+// the same place on the card in now. A path on this card, off the mounts, relative, or still there stays as saved.
+void card_paths_moved() {
+    namespace fs = std::filesystem;
+    auto mounts = fs::temp_directory_path() / ("melodee-mounts-" + std::to_string(getpid()));
+    fs::remove_all(mounts);
+    const std::string m = mounts.string(), top = m + "/NEW-CARD", old = m + "/3265-3932";
+    const std::string kick = "/Melodee/Samples/Kit/Kick.wav";
+    fs::create_directories(top + "/Melodee/Samples/Kit");
+    CHECK(on_card_now(old + kick, top) == top + kick);
+    CHECK(on_card_now(old + kick, top + "/") == top + kick);
+    CHECK(on_card_now(old + "/Melodee/../Melodee/Samples/Kit/Kick.wav", top) == top + kick);
+    CHECK(on_card_now(top + kick, top) == top + kick);                                  // this card
+    CHECK(on_card_now("/content/Samples/Kick.wav", top) == "/content/Samples/Kick.wav"); // the internal drive
+    CHECK(on_card_now("Melodee/Plugins/X.vst3", top) == "Melodee/Plugins/X.vst3");       // relative
+    CHECK(on_card_now("(memory) Take 1", top) == "(memory) Take 1");
+    CHECK(on_card_now(old, top) == old);                                                 // the mount itself
+    CHECK(on_card_now(m + "2/x.wav", top) == m + "2/x.wav");                              // beside the mounts
+    CHECK(on_card_now(old + kick, "") == old + kick);                                     // no card
+    CHECK(on_card_now("", top).empty());
+    CHECK(on_card_now("/x.wav", "/card") == "/x.wav");                                    // a card at the top: no mounts
+    fs::create_directories(m + "/USB-STICK/Drums");
+    { std::ofstream(m + "/USB-STICK/Drums/Snare.wav") << "x"; }
+    CHECK(on_card_now(m + "/USB-STICK/Drums/Snare.wav", top) == m + "/USB-STICK/Drums/Snare.wav"); // another drive in
+
+    Project project;
+    std::snprintf(project.samples.edit(3).path, sizeof(SampleRef::path), "%s", (old + kick).c_str());
+    std::snprintf(project.samples.edit(700).path, sizeof(SampleRef::path), "%s", (top + "/a.wav").c_str());
+    std::snprintf(project.plugins[1].path, sizeof(project.plugins[1].path), "%s", (old + "/Melodee/Plugins/Surge XT.vst3").c_str());
+    std::snprintf(project.plugins[2].path, sizeof(project.plugins[2].path), "%s", "Melodee/Plugins/Mine");
+    CHECK(samples_on_card_now(project, top));
+    CHECK(std::string(project.samples[3].path) == top + kick);
+    CHECK(std::string(project.samples[700].path) == top + "/a.wav");
+    CHECK(!project.samples[4].used());
+    CHECK(std::string(project.plugins[1].path) == top + "/Melodee/Plugins/Surge XT.vst3");
+    CHECK(std::string(project.plugins[2].path) == "Melodee/Plugins/Mine");
+    CHECK(!samples_on_card_now(project, top)); // already on this card
+    CHECK(!samples_on_card_now(project, ""));
+    Project full; // 255 characters saved; on a card whose folder name is longer it would not fit: kept as saved
+    const std::string longest = old + "/" + std::string(sizeof(SampleRef::path) - old.size() - 2, 'x');
+    std::snprintf(full.samples.edit(5).path, sizeof(SampleRef::path), "%s", longest.c_str());
+    CHECK(std::string(full.samples[5].path) == longest);
+    CHECK(!samples_on_card_now(full, m + "/A-LONGER-CARD"));
+    CHECK(std::string(full.samples[5].path) == longest);
+
+    BankFile bank;
+    std::snprintf(bank.samples[0].path, sizeof(SampleRef::path), "%s", (old + kick).c_str());
+    std::snprintf(bank.samples[17].path, sizeof(SampleRef::path), "%s", "/content/Samples/Kick.wav");
+    samples_on_card_now(bank, top);
+    CHECK(std::string(bank.samples[0].path) == top + kick);
+    CHECK(std::string(bank.samples[17].path) == "/content/Samples/Kick.wav");
+    CHECK(!bank.samples[1].used());
+    fs::remove_all(mounts);
+}
+
 // An Open MPC skin's Q-Link pages (plugin/plugin_files.h): a "Column" page (every toolkit skin) is read in its
 // layout's slot order, Q-Links 13, 9, 5, 1, 14, ... 4, so each three are one K1-K3 row as the skin shows them; any
 // other direction in Q-Link number order. -1 skipped, each parameter once.
@@ -12999,6 +13056,7 @@ int main() {
     preset_folders();
     nam_page();
     card_plugin_paths();
+    card_paths_moved();
     qlink_pages();
     plugin_json();
     xpl_presets();

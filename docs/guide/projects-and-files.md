@@ -134,6 +134,14 @@ not changed. **SAVE AS** on the Project page makes a Melodee project
   group, envelope, loop, Warp, filter, and pads with several layers.
 - Not carried over: Pad FX, insert effects and sends.
 
+## A new card
+
+A project plays its samples from where they are on the card. It keeps no
+copies. To move to a new card, copy the folders from the old card to the new
+one with the same names, for example `Melodee/Projects`, `Melodee/Samples`
+and `Melodee/Plugins`. Projects and bank files then find their samples and
+plug-ins at the same place on the new card.
+
 ## SD card access
 
 Connect the MPC to a computer to copy files to and from the card, without

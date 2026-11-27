@@ -20,6 +20,7 @@
 // held for them; files_landed() puts them on their pads once they are in.
 // Melodee writes only to the card: Trim and Extract go to Samples/Edits;
 // without a card they stay in memory for the session.
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/sample_library.h"
@@ -274,7 +275,7 @@ void Context::files_landed() {
         BankFile bank;
         if (!bank_bytes.error.empty()) notice("Load Bank: " + bank_bytes.error);
         else if (!melodee::load_bank(bank_bytes.bytes, bank)) notice("Load Bank: not a bank file");
-        else load_bank(bank, name);
+        else { samples_on_card_now(bank, library->card()); load_bank(bank, name); } // saved on another card: this one's files
     }
     stems_landed(); // a sample's four stems together (shell/stems_jobs.cpp)
     for (auto& p : pending_files) {

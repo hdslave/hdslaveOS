@@ -53,6 +53,7 @@ struct LoadedProject {
     // Freeze plan F3: an import's audio takes, copied beside the projects as "<audio_from without .mldp> Audio" (a
     // hidden folder) until the project is first saved: Save copies them in as a Save As would ("" none).
     std::string audio_from;
+    std::string card;      // the card's top when it was read: files saved on another card are looked for there (shell/card_paths.h)
 };
 
 class ProjectStore {

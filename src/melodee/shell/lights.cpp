@@ -16,6 +16,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/model/slice_hits.h"
 #include "melodee/shell/autosave.h"
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
@@ -252,6 +253,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             PrintTable prints;
             if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states, &prints).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
+                samples_on_card_now(*project, loaded->card); // saved on another card: its files at the same place on this one
                 if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
                 else if (loaded->imported) { // not saved yet: the .xpj stays as it is (its takes wait beside the projects)
