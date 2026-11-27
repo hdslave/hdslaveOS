@@ -2,6 +2,56 @@
 
 Changes in Melodee for the Akai MPC Sample. Install and update steps, and the notes of earlier versions, are on the [releases page](https://github.com/keremimo/melodee-sample/releases).
 
+## 0.10.0 (2026-11-27)
+
+Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colour you picked shows as the colour of the track's place, and a pad whose layers follow a CC plays as **Random hold**.
+
+### Changed: read this first
+
+- **Mutes land on the grid** (#40). While a pattern plays with **Rec Quantize** on (**SHIFT** + **Pad 10**, on by default), a mute or solo waits for the next step of the pattern's **Q**. The pad blinks until then. Press it again before that to call it off. Turn **Rec Quantize** off for mutes at once.
+- **SFZ regions follow their controller** (#66). Regions chosen by a controller (`locc`, `hicc`), such as a hi-hat's on CC 4, now switch as the controller moves. Before, only the region at the controller's starting value played. Regions started by a controller move (`on_locc`) are left out.
+- **ERASE on Song with a loop range** takes the range's bars out (see Song below). Turn the loop off to delete one clip.
+- **Song's patterns are named A1 to H16**, as on the pads, and **K2** steps through the track's patterns that hold notes and the next empty one.
+- **A plug-in with its own screen opens on PANEL**, the first page under **B1**.
+
+### New
+
+#### Sequencer
+
+- **SEQ + pad for sequences** (#50): in Settings > **SEQ**, set **Seq + pad** to **Sequences**. **SEQ** + pad then launches a sequence and **SEQ** + **SHIFT** + pad a pattern.
+- **Time Correct APPLY** (#55): **B1** (**APPLY**) moves the notes to where Time Correct plays them, with the velocities you hear, and sets Time Correct back to off. Roll and Step Edit then show the notes on the grid. One undo step.
+
+#### Song (#60)
+
+- **All tracks**: **PAD BANK** shows the 16 tracks at once. Press it again for the selected track's lanes.
+- **Loop range**: on empty time, press **LOOP** at the first bar, move the cursor and press **LOOP** at the last bar. A third press turns it off.
+- **Copy, paste and take out sections**: with a loop range, **SHIFT** + **ERASE** copies its bars, and Push pastes them at the cursor. What is there moves on to make room; push again for another copy after it. **ERASE** takes the range's bars out and closes the gap. With all tracks shown, this works on every track and moves markers and tempo points too.
+
+#### Kits and instruments
+
+- **Layers chosen by a MIDI CC** (#66): on **LAYERS**, **SHIFT** + **K1** past **Random hold** is **CC 1** to **CC 127**. **K2** / **K3** set the controller values that play each layer, for a hi-hat pedal on CC 4: closed, quarter, half and open. With **SEQ RECORD** on, the controller is recorded as a **CC** lane on Motion.
+- **MPC 3 drum kits** (#62): `.xtd` kits from MPC 3 expansions show in the browser with a pads icon and load with **LOAD KIT**, their shared samples and slices included.
+- **Track colour** (#69): on the mixer, hold the encoder for the Menu and push **TRACK COLOUR**. The pads light in the 16 colours: press one, or turn the encoder. **B3** (**DONE**) keeps it, **B1** (**BACK**) goes back, **B2** (**DEFAULT**) gives the track the colour of its place. The track's patterns, Song clips, pads and fader light take it.
+- **Progression folders** (#65): 16 Levels **FILE** shows the progressions one folder at a time. **B3** (**OPEN**) or Push opens a folder, **B1** (**BACK**) goes up. Subfolders of `Melodee/Progressions` and `Progressions` are read four deep.
+- **Preview level** (#39): in the sample browser, the fader sets the preview level, also of the file playing. Melodee keeps it when you restart.
+
+#### MIDI
+
+- **Start and stop from a foot pedal** (#7): in MIDI Config, learn a pedal as **Remote play CC**. A press plays, the next stops. **Remote record CC** does what **SEQ RECORD** does.
+- **Program changes to plug-ins**: **Receive program change** set to **Plug-in** loads that preset into the plug-in of the track the message reaches, with Bank Select for more than 128. **Send program change** sends a preset you pick on a plug-in track to the track's MIDI channel.
+- **Remote preset CC**: learn a controller knob to step the selected track's presets. Push on a Remote CC row learns it.
+
+#### Screen
+
+- **Screensaver** (#49): in Settings > **SCREEN**, after 1, 2, 5, 10 or 30 minutes at rest, the Melodee logo bounces around the screen. Off by default.
+
+### Fixed
+
+- **A project from another card** (#72): a project, bank or settings file copied to a new card finds its samples and plug-ins at the same place on the new card.
+- **MIDI clock tempo**: the tempo shown and played no longer flickers between two values while following MIDI clock.
+- **MIDI Learn**: a knob learned after a wait that ran out is no longer taken early, and a control just learned does nothing until it rests.
+- **Song**: played from a bar after the loop range, the song plays on to its end and stops. A Song clip longer than 128 bars keeps its length when the project opens again.
+
 ## 0.9.1 (2026-11-27)
 
 ### Fixed
