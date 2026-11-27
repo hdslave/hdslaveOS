@@ -5,7 +5,8 @@ Previous: [Mixer and effects](mixer-and-effects.md) · [Contents](../GUIDE.md) �
 Press **SHIFT** + **Pad 8**, then open **MIDI**. Turn the encoder to a row.
 **K1** sets it: its card shows the row's name and value. **−** / **+** step
 it one value at a time. **MIDI panic** and **Reset factory settings** are
-done with **Push**. **B1** goes back. The header lights **IN** and **OUT**
+done with **Push**. **Push** on a Remote CC row learns it: move a control on
+the controller, and the row takes its CC and **Remote channel** its channel. **B1** goes back. The header lights **IN** and **OUT**
 as MIDI passes.
 
 ![MIDI Config](../images/screens/midiconfig.png)
@@ -27,6 +28,8 @@ as MIDI passes.
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
 | Remote sequence CC | Launches a sequence. Value 0 is the first sequence. Default CC 104. |
+| Remote preset CC | Off or a CC: a knob that steps the selected track's presets. See [Example 6](#example-6-step-presets-with-a-knob). |
+| Remote preset knob | How that knob sends: Absolute, Binary offset, 2's complement, Signed bit or Signed bit 2 |
 | CV/sync out | On or off: clock pulses on the sync output. **CV/sync base** (1–8) and **CV/sync division** (1–24) set how many a quarter note. |
 | Parameter, Knob FX and Fader takeover | As in Settings, **KNOBS**: Pickup, Scaled or Instant |
 | MIDI panic | Push: ends every note on every channel and port |
@@ -200,6 +203,39 @@ frozen track keeps its preset.
 Program changes that come quickly, from a held **PROG +** button or a knob
 that sends one a step, do not queue up. The preset loading finishes, then the
 last one sent loads. A single program change loads at once.
+
+### Example 6: step presets with a knob
+
+Learn a knob of the controller as **Remote preset CC**. Turning it right
+loads the next preset of the selected track, turning it left the previous
+one, on any page.
+
+1. Open **MIDI** (**SHIFT** + **Pad 8**). Turn the encoder to **Remote preset CC**.
+2. Press **Push**. The row shows **Learning**.
+3. Turn the knob slowly to the right. The screen shows the CC, the channel and
+   how the knob sends. **Remote channel** is set to the knob's channel.
+4. Select a plug-in track and turn the knob. The screen shows each preset's
+   name. The preset loads when the knob stops.
+
+| Track | The knob steps |
+| --- | --- |
+| Plug-in | Its presets, as the encoder does on **PRESETS** |
+| MIDI | **PROGRAM** 1–128, sent at once |
+
+If the knob steps the wrong way or skips, set **Remote preset knob** to how
+the controller sends:
+
+| Remote preset knob | The controller sends | For example |
+| --- | --- | --- |
+| Absolute | Its position, 0–127 | A knob with ends. It stops stepping at the ends. |
+| Binary offset | 65 one step right, 63 one step left | MiniLab 3 encoders in Relative1, SMK-37 knobs in DAW mode REL |
+| 2's complement | 1 one step right, 127 one step left | MiniLab 3 encoders in Relative2 |
+| Signed bit | 1 one step right, 65 one step left | |
+| Signed bit 2 | 65 one step right, 1 one step left | |
+
+Use an endless encoder in a relative mode: it keeps stepping in both
+directions. **Push** again on the row stops learning. Learning also stops
+after 10 seconds, or when you leave **MIDI**.
 
 ---
 

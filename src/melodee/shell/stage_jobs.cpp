@@ -38,6 +38,29 @@ void Context::plugin_preset_turn(int delta) {
     ui.preset_due = std::max<uint32_t>(now + stage_preset_ms, 1);
 }
 
+void Context::remote_preset(int steps) {
+    const auto& t = track();
+    if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && plugins) {
+        const bool still = frozen(ui.track); // asks "Unfreeze track N?" first (plugin_preset_turn)
+        plugin_preset_turn(steps);
+        if (still) return;
+        const auto programs = plugins->programs(t.plugin);
+        if (ui.preset_due && ui.presets_entry == t.plugin && ui.presets_cursor < programs.list.size())
+            notice(programs.list[ui.presets_cursor].name); // its name now, wherever you are; it loads once the knob rests
+        else if (programs.list.empty())
+            notice(programs.finding ? "Looking for presets" : "No presets in this plug-in");
+        return;
+    }
+    if (t.engine == EngineKind::Midi) { // PROGRAM 1-128 (0: none sent), sent as the PROGRAM page sends it
+        const int was = t.params[midi_track::Program], next = std::clamp(was + steps, 1, 128);
+        if (next == was) return;
+        apply({Binding::Kind::Param, midi_track::Program, 0, 128, was}, next);
+        notice("Program " + std::to_string(t.params[midi_track::Program]));
+        return;
+    }
+    notice("Preset knob: plug-in and MIDI tracks");
+}
+
 void Context::stage_tick(uint32_t at) {
     if (!ui.preset_due || at < ui.preset_due) return;
     ui.preset_due = 0;

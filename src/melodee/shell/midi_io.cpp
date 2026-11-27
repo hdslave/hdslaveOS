@@ -96,6 +96,25 @@ void Context::set_midi(unsigned row, unsigned value) {
     settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
 }
 
+void Context::midi_learn(unsigned row) {
+    if (!midi_row_learns(row)) return;
+    if (midi_learning() && ui.midi_learn_row == row) { ui.midi_learn_until = 0; notice("Learn off"); return; }
+    ui.midi_learn_row = uint8_t(row);
+    ui.midi_learn_until = std::max<uint32_t>(now + learn_ms, 1);
+    notice(row == PresetCcRow ? "Turn a knob to the right" : "Move a control");
+}
+
+bool Context::midi_learning() const { return ui.midi_learn_until && now < ui.midi_learn_until && ui.page == PageId::MidiConfig; }
+
+void Context::learned_midi(unsigned row) {
+    const auto& m = ui.settings.midi;
+    const unsigned cc = row == TrackCcRow ? m.track_cc : row == PatternCcRow ? m.pattern_cc : row == SceneCcRow ? m.scene_cc : m.preset_cc;
+    std::string said = std::string(midi_row_name(row)) + " " + std::to_string(cc) + ", ch " + std::to_string(m.remote_channel);
+    if (row == PresetCcRow) said += ", " + std::string(knob_mode_name(m.preset_knob));
+    notice(said);
+    if (store) store->save_settings(ui.settings.text());
+}
+
 void Context::midi_panic() {
     midi_release_all();
     send({Type::AllNotesOff, 255}); // the engines, and the notes the engine host still owes an off
@@ -129,13 +148,19 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (own[t] && track_hears(c.project.tracks[t].midi_in, port.driver, port.surface)) heard = uint16_t(heard | 1u << t);
     }
     juce::MidiMessage m(packet.bytes.data(), int(packet.size));
+    // The preset knob and Learn (shell/program_in.h): heard from any port, as Remote is, and not passed on.
+    const bool knob = channel_message && m.isController() &&
+        (c.midi_learning() ? learnable_cc(unsigned(m.getControllerNumber()))
+                           : config.remote_channel && config.preset_cc && unsigned(m.getChannel()) == config.remote_channel &&
+                                 unsigned(m.getControllerNumber()) == config.preset_cc);
     const RemoteJob remote = channel_message && m.isController()
         ? remote_cc(config, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())) : RemoteJob {};
-    if (!config_port && remote.kind == RemoteJob::Kind::None &&
+    if (!config_port && remote.kind == RemoteJob::Kind::None && !knob &&
         !(channel_message && note_tracks(config, own, heard, c.ui.track, unsigned(m.getChannel()), false)))
         return; // not for anything here
     ins.fetch_add(1, std::memory_order_relaxed);
     c.ui.midi_in_at = c.now;
+    if (knob) { remote_knob(c, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())); return; }
     if (remote.kind != RemoteJob::Kind::None) { do_remote(c, remote); return; }
     // Roadmap P4 (docs/MIDI_TRACKS.md M3): a channel message for a MIDI track goes out again on its own port and channel
     // (notes, pressure, bend; CCs as they came), unless it would come straight back in (the input is one of its
@@ -295,6 +320,33 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
             }
         }
     }
+}
+
+// The preset knob's turn, or a CC while Push learns a Remote CC row: the first CC takes a track, pattern or sequence
+// row; the preset row waits for learn_values of one control, to guess how it sends.
+void MidiIo::remote_knob(Context& c, unsigned channel, unsigned cc, unsigned value) {
+    auto& m = c.ui.settings.midi;
+    if (c.midi_learning()) {
+        const unsigned row = c.ui.midi_learn_row;
+        if (row == PresetCcRow) {
+            if (!learn_count || learn_channel != channel || learn_number != cc) { learn_count = 0; learn_channel = uint8_t(channel); learn_number = uint8_t(cc); }
+            learn_got[learn_count++] = uint8_t(value);
+            if (learn_count < learn_values) return;
+            m.preset_cc = uint8_t(cc);
+            m.preset_knob = guess_knob(learn_got);
+            preset_last = -1;
+        } else if (row == TrackCcRow) m.track_cc = uint8_t(cc);
+        else if (row == PatternCcRow) m.pattern_cc = uint8_t(cc);
+        else m.scene_cc = uint8_t(cc);
+        m.remote_channel = uint8_t(channel);
+        learn_count = 0;
+        c.ui.midi_learn_until = 0;
+        c.learned_midi(row);
+        return;
+    }
+    const int steps = knob_steps(m.preset_knob, value, preset_last);
+    preset_last = int(value);
+    if (steps) c.remote_preset(steps);
 }
 
 // Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene.

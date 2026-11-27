@@ -379,6 +379,14 @@ public:
     // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
     // track) to the preset at `place` in its list; the header says which.
     void midi_program(uint16_t tracks, unsigned place);
+    // Remote preset CC (MIDI Config): the selected track's presets `steps` on (- back), whatever page is open: a
+    // PLUGIN track's as PRESETS' wheel turns them (loaded once the knob rests), a MIDI track's PROGRAM (sent at once).
+    void remote_preset(int steps);
+    // Push on a Remote CC row (midi_row_learns()): the next CCs in take it (MidiIo), for learn_ms or until Push again;
+    // midi_learning() while it waits (on MIDI Config only); learned_midi() once it has one.
+    void midi_learn(unsigned row);
+    bool midi_learning() const;
+    void learned_midi(unsigned row);
     void companion_requests(); // what companion screens asked for, made here (plugin/companion_screen.h)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from

@@ -208,6 +208,8 @@ struct UiState {
     Pot fader;
     uint32_t fader_moved_at = 0;
     uint8_t midi_cursor = 0;                  // MIDI Config: the row under the cursor (shell/midi_config_rows.h)
+    uint8_t midi_learn_row = 0;               // and the Remote CC row Push is learning, until midi_learn_until (ms; 0 none)
+    uint32_t midi_learn_until = 0;
     uint32_t midi_in_at = 0, midi_out_at = 0; // ms: MIDI last came in, went out (the page's lights)
     std::array<uint32_t, track_count> track_out_at {}; // ms: a MIDI track last sent on its own port (Edit's DEVICE picture)
     // midi-track A (round 2): the last notes MIDI tracks sent, for their DEVICE picture: the track, key and velocity,

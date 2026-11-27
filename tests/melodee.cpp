@@ -4218,6 +4218,7 @@ void midi_and_sync() {
         set.midi.port = MidiPort::Usb; set.midi.in_channel = 10; set.midi.out_channel = 16; set.midi.pad_out = PadMidiOut::Empty;
         set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = program_plugin;
         set.midi.cv_out = true; set.midi.cv_base = 4; set.midi.cv_division = 24; set.midi.pad_in = false;
+        set.midi.preset_cc = 74; set.midi.preset_knob = knob_signed_bit_2;
         Settings back; back.read(set.text());
         CHECK(back.midi == set.midi && back.midi.cv_ppqn() == 96);
         Settings older; older.read("pad_response=2\nscreen=80\n");
@@ -4225,6 +4226,9 @@ void midi_and_sync() {
         Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\nprogram_change=9\n");
         CHECK(bad.midi.cv_base == 8 && bad.midi.cv_division == 1 && bad.midi.out_channel == 1 && bad.midi.in_channel == 16);
         CHECK(bad.midi.program_change == program_plugin);
+        Settings knob; knob.read("remote_preset_cc=200\nremote_preset_knob=9\n");
+        CHECK(knob.midi.preset_cc == 127 && knob.midi.preset_knob == knob_signed_bit_2);
+        CHECK(MidiConfig {}.preset_cc == 0 && MidiConfig {}.preset_knob == knob_binary_offset); // Off; Saadet's and the MiniLab 3's Relative1
         Settings on; on.read("program_change=1\n"); // an older file's On: Sequence, as before
         CHECK(on.midi.program_change == program_sequence);
         set.toggle_favourite(0, 3); set.screen = 50;
@@ -4259,6 +4263,18 @@ void midi_and_sync() {
         midi_row_step(set, track, ProgramChangeRow, -1); CHECK(set.midi.program_change == program_plugin);
         midi_row_set(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_sequence);
         midi_row_set(set, track, ProgramChangeRow, 0);
+        // The preset knob's rows, after Remote sequence CC; Push learns the four CC rows, not the knob's mode.
+        CHECK(std::string(midi_row_name(PresetCcRow)) == "Remote preset CC" && midi_row_value(set, track, PresetCcRow) == "Off");
+        CHECK(midi_row_choices(PresetCcRow) == 128 && midi_row_choices(PresetKnobRow) == 5);
+        CHECK(midi_row_value(set, track, PresetKnobRow) == "Binary offset");
+        midi_row_step(set, track, PresetKnobRow, 1); CHECK(midi_row_value(set, track, PresetKnobRow) == "2's complement");
+        midi_row_step(set, track, PresetKnobRow, -1); midi_row_step(set, track, PresetKnobRow, -1);
+        CHECK(midi_row_value(set, track, PresetKnobRow) == "Absolute");
+        midi_row_set(set, track, PresetKnobRow, 4); CHECK(set.midi.preset_knob == knob_signed_bit_2 && midi_row_choice(set, track, PresetKnobRow) == 4);
+        midi_row_set(set, track, PresetCcRow, 74); CHECK(midi_row_value(set, track, PresetCcRow) == "74");
+        CHECK(midi_row_learns(TrackCcRow) && midi_row_learns(PatternCcRow) && midi_row_learns(SceneCcRow) && midi_row_learns(PresetCcRow));
+        CHECK(!midi_row_learns(PresetKnobRow) && !midi_row_learns(RemoteChannelRow) && !midi_row_learns(PanicRow));
+        set.midi.preset_cc = 0; set.midi.preset_knob = knob_binary_offset;
         // Scale on white keys: off at first, a toggle, kept in the settings file, off again after Reset.
         CHECK(std::string(midi_row_name(ScaleKeysRow)) == "Scale on white keys" && midi_row_choices(ScaleKeysRow) == 2);
         CHECK(!set.scale_keys && midi_row_value(set, track, ScaleKeysRow) == "Off" && midi_row_choice(set, track, ScaleKeysRow) == 0);
@@ -4352,6 +4368,18 @@ void midi_and_sync() {
             CHECK(program_entries(*p, 0xffff, 1u << 2) == (1u << 3));   // track 3 frozen
             CHECK(program_entries(*p, (1u << 3) | (1u << 4), 0) == 0);   // a kit, a PLUGIN track with no plug-in
         }
+        // The preset knob: steps a message, + next, - previous, in each of the five ways knobs send.
+        CHECK(knob_steps(knob_binary_offset, 65, -1) == 1 && knob_steps(knob_binary_offset, 63, -1) == -1 && knob_steps(knob_binary_offset, 68, -1) == 4);
+        CHECK(knob_steps(knob_binary_offset, 64, -1) == 0);
+        CHECK(knob_steps(knob_twos_complement, 1, -1) == 1 && knob_steps(knob_twos_complement, 127, -1) == -1 && knob_steps(knob_twos_complement, 124, -1) == -4);
+        CHECK(knob_steps(knob_signed_bit, 1, -1) == 1 && knob_steps(knob_signed_bit, 65, -1) == -1 && knob_steps(knob_signed_bit, 67, -1) == -3);
+        CHECK(knob_steps(knob_signed_bit_2, 65, -1) == 1 && knob_steps(knob_signed_bit_2, 1, -1) == -1);
+        CHECK(knob_steps(knob_absolute, 40, -1) == 0 && knob_steps(knob_absolute, 41, 40) == 1 && knob_steps(knob_absolute, 30, 41) == -1);
+        CHECK(knob_steps(knob_absolute, 127, 127) == 0); // at its end: nothing more
+        // Learn: turned right, rising values are a knob's position; the same value again a relative knob.
+        CHECK(guess_knob({40, 41, 43}) == knob_absolute && guess_knob({65, 65, 65}) == knob_binary_offset);
+        CHECK(guess_knob({1, 1, 2}) == knob_twos_complement && guess_knob({127, 127, 127}) == knob_binary_offset);
+        CHECK(!learnable_cc(0) && !learnable_cc(32) && !learnable_cc(6) && !learnable_cc(99) && !learnable_cc(123) && learnable_cc(74) && learnable_cc(1));
         // Program changes in quick succession: one waiting per plug-in, the last asked; another plug-in's, a load and
         // a replaced plug-in's (another generation) left as they are.
         {
