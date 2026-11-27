@@ -745,6 +745,13 @@ int main(int argc, char** argv) {
         fs::current_path(fs::path(card).parent_path());
         setenv("MELODEE_PLUGIN_STAGE", "relative-stage", 1);
     }
+    if (mode == "stage-error") { // a stage named relative to a working folder that is gone: no absolute path for it
+        const auto gone = fs::path(card).parent_path() / "gone";
+        fs::create_directories(gone);
+        fs::current_path(gone);
+        fs::remove(gone);
+        setenv("MELODEE_PLUGIN_STAGE", "relative-stage", 1);
+    }
     const bool slept = mode == "steady-sleep", looped = mode == "song-loop";
     if (mode == "transport-wake" || mode == "load-wake" || steady || deaf || slept || looped) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (slept || looped) setenv("MELODEE_TEST_CLOCK", "1", 1); // and its steady_time and loop
@@ -2307,6 +2314,15 @@ int main(int argc, char** argv) {
         const fs::path support = plugin_support_folder();
         CHECK(support.is_absolute() && fs::is_directory(support));
         CHECK(support == fs::absolute("relative-stage-support"));
+        CHECK(fs::path(plugin_stage_folder()) == fs::absolute("relative-stage")); // the rack's copies there too
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // The same with the working folder gone, so no absolute path can be had for it: the stage and the support fall back
+    // to where the app puts them (/run, or the temp folder), never a relative path.
+    if (mode == "stage-error") {
+        wait([&] { return ready(entry); });
+        CHECK(fs::path(plugin_stage_folder()).is_absolute() && fs::path(plugin_support_folder()).is_absolute());
         shell->set_plugins(nullptr);
         return 0;
     }

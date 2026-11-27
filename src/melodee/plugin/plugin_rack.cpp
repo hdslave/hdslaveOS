@@ -96,7 +96,11 @@ std::string tidy(std::string text) {
 
 // Where plug-ins are copied to run from: RAM (/run on the MPC; the card is noexec).
 fs::path stage_root() {
-    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) { std::error_code e; return fs::absolute(own, e); }
+    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) { // absolute, or where the app's goes
+        std::error_code e;
+        auto made = fs::absolute(own, e);
+        if (!e && made.is_absolute()) return made;
+    }
     std::error_code error;
     if (fs::is_directory("/run", error) && access("/run", W_OK) == 0) return "/run/melodee-plugins/stage";
     return fs::temp_directory_path(error) / "melodee-plugins/stage";
@@ -1477,6 +1481,8 @@ std::string PluginRack::use_plugin_home() {
     if (!now || home != fs::path(now)) setenv("HOME", home.c_str(), 1);
     return home.string();
 }
+
+std::string plugin_stage_folder() { return stage_root().string(); }
 
 void PluginRack::set_card(const std::string& top) {
     std::string wanted_root = plugin_folder(top);

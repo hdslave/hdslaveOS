@@ -232,14 +232,16 @@ class PluginHostTests(unittest.TestCase):
         self.run_rack_fixture("midi-start")
 
     def test_a_relative_plugin_stage_unpacks_support_at_an_absolute_path(self):
-        self.run_rack_fixture("relative-stage")
+        for mode in ("relative-stage", "stage-error"):
+            with self.subTest(mode=mode):
+                self.run_rack_fixture(mode)
 
     def test_the_screen_tool_removes_its_stage(self):
         """--melodee-plugin-screen with a rack (a png: step) stages the plug-in in /tmp/melodee-plugin-screen-PID and
         unpacks the plug-in support beside it: it removes both when it is done."""
         melodee = ROOT / "build/melodee"
-        if not melodee.is_file():
-            self.skipTest("needs build/melodee")
+        # The make that built the objects this class needs (it is skipped without them) builds build/melodee too.
+        self.assertTrue(melodee.is_file(), "build/melodee is missing, though make built the plug-in host's objects")
         left = lambda: sorted(p.name for p in Path("/tmp").glob("melodee-plugin-screen-*"))
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "Test.clap"

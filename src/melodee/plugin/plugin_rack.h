@@ -36,6 +36,10 @@
 // $HOME points at Melodee/Plugin Data on the card.
 namespace melodee {
 
+// Where the rack copies plug-ins to run from (RAM, /run on the MPC; MELODEE_PLUGIN_STAGE's folder, made absolute, for a
+// test run or the screen tool). Any thread.
+std::string plugin_stage_folder();
+
 class EngineHost;
 class PluginHandle;
 class CompanionHost;

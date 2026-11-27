@@ -2843,7 +2843,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   A process given a plug-in stage of its own (`MELODEE_PLUGIN_STAGE`: a
   test run, the screen tool) unpacks them beside it instead (`<stage>-support`,
   made absolute, as is the stage: the 32-bit bridge is found there through
-  `juce::File`), since each unpack removes and rewrites the folder: runs
+  `juce::File`; with no absolute path to be had, the working folder gone,
+  both go where the app's do), since each unpack removes and rewrites the folder: runs
   side by side sharing one died (SIGBUS) or could not open their
   plug-ins. The screen tool's own stage (`/tmp/melodee-plugin-screen-PID`)
   and its support folder (about 11 MB) are removed when it is done.
