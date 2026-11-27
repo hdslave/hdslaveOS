@@ -46,7 +46,7 @@ bool Context::plugin_preset_turn(int delta) {
     else for (size_t n = 0; n < programs.list.size(); ++n) if (programs.list[n].index == programs.current) at = int(n);
     const int to = std::clamp(at + delta, 0, int(programs.list.size()) - 1);
     if (to == at) return true;
-    if (frozen_edit(sound)) return true;
+    if (frozen_edit(sound) || frozen_plugin_edit(t.plugin)) return true; // the track in hand first, then any it shares with
     ui.presets_entry = t.plugin;
     ui.presets_cursor = uint16_t(to);
     ui.preset_due = std::max<uint32_t>(now + stage_preset_ms, 1);

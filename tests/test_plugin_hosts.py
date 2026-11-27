@@ -194,6 +194,9 @@ class PluginHostTests(unittest.TestCase):
     def test_a_copy_with_every_entry_in_use_keeps_the_undo_history(self):
         self.run_rack_fixture("copy-full")
 
+    def test_a_shared_plugin_asks_for_a_frozen_track_it_plays_on(self):
+        self.run_rack_fixture("shared-frozen")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

@@ -462,10 +462,7 @@ void Context::push_plugin_preset() {
     const auto& row = rows[std::min<size_t>(ui.presets_cursor, rows.size() - 1)];
     if (!row.folder) {
         // A frozen track's sound, or an effect on its chain, asks first, as a turn on Stage does (freeze plan F2c).
-        if (presets_track >= 0) {
-            const auto t = uint8_t(presets_track % track_count);
-            if (frozen_edit(presets_instrument ? UndoScope {UndoScope::Kind::Sound, t, 0} : UndoScope {UndoScope::Kind::Chain, t, t})) return;
-        }
+        if (frozen_plugin_edit(ui.presets_entry)) return;
         choose_plugin_program(int(row.at));
         return;
     }
@@ -487,18 +484,23 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
-void Context::pick_plugin_program(unsigned entry, int program) {
-    if (!plugins || entry >= max_plugins) return;
-    // A frozen track's sound, or an effect on its chain, asks first, as PRESETS and Stage do (freeze plan F2c).
+// A program or a preset about to load into plug-in `entry`: "Unfreeze track N?" first when a frozen track plays it, as
+// its sound or as an effect on its chain (freeze plan F2c); true: asked, nothing to load now. Every track it plays on,
+// not only the one in hand or the first: a copy made with no entry free shares its plug-in until one is.
+bool Context::frozen_plugin_edit(unsigned entry) {
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = project.tracks[t];
         bool effect = false;
         for (const auto& s : tr.fx.slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
-        const bool instrument = tr.engine == EngineKind::Plugin && tr.plugin == entry;
-        if (!instrument && !effect) continue;
-        if (frozen_edit(instrument ? UndoScope {UndoScope::Kind::Sound, uint8_t(t), 0} : UndoScope {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)})) return;
-        break;
+        if (tr.engine == EngineKind::Plugin && tr.plugin == entry && frozen_edit(UndoScope {UndoScope::Kind::Sound, uint8_t(t), 0})) return true;
+        if (effect && frozen_edit(UndoScope {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)})) return true;
     }
+    return false;
+}
+
+void Context::pick_plugin_program(unsigned entry, int program) {
+    if (!plugins || entry >= max_plugins) return;
+    if (frozen_plugin_edit(entry)) return; // as PRESETS and Stage ask
     const auto programs = plugins->programs(entry);
     for (const auto& p : programs.list) {
         if (p.index != program) continue;

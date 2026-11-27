@@ -690,7 +690,7 @@ int main(int argc, char** argv) {
     }
     // The fixture's three presets, as preset-keys has them, without its slow opening.
     if (mode == "stage-presets" || mode == "presets-track" || mode == "undo-state" || mode == "copy-presets" || mode == "copy-presets-late" || mode == "panel-lag"
-        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen") {
+        || mode == "turn-effect" || mode == "presets-frozen" || mode == "load-wake" || mode == "companion-frozen" || mode == "shared-frozen") {
         const auto folder = fs::path(plugin).parent_path() / "TestPresets";
         fs::create_directories(folder);
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
@@ -780,7 +780,7 @@ int main(int argc, char** argv) {
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
     }
-    if (mode == "copy-full") { // a second plug-in track, and every other entry in use: effects that will not open
+    if (mode == "copy-full" || mode == "shared-frozen") { // a second plug-in track, and every other entry in use: effects that will not open
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -1769,6 +1769,46 @@ int main(int argc, char** argv) {
         CHECK(t2.engine == EngineKind::Plugin && t2.plugin == 1 && fs::path(project.plugins[1].path).filename() == "Test.clap");
         wait([&] { return ready(1); });
         CHECK(c.edits.size() == 5);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // Track 1 copied onto track 2 with every entry in use: the copy shares track 1's plug-in. Track 2 frozen, a program
+    // or preset loaded into that plug-in asks "Unfreeze track 2?" first, from track 1 too: a companion screen's pick,
+    // Push on PRESETS and − / + on Stage's PRESETS. Not now (B1) leaves it as it was; unfrozen, the pick loads.
+    if (mode == "shared-frozen") {
+        wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
+        c.open(PageId::Master);
+        button(SurfaceButton::PadBank, true);
+        tap(SurfaceButton::TopRight); // COPY
+        pad(0);
+        pad(1);
+        button(SurfaceButton::PadBank, false);
+        auto& t2 = project.tracks[1];
+        CHECK(t2.engine == EngineKind::Plugin && t2.plugin == entry && tr.plugin == entry);
+        c.freeze_requested[1].state = FreezeState::Frozen;
+        const auto list = rack->programs(entry).list;
+        auto unchanged = [&] {
+            CHECK(ui.ask == UiState::Ask::Unfreeze);
+            tap(SurfaceButton::TopLeft); // not now
+            for (int k = 0; k < 20; ++k) tick();
+            CHECK(ui.ask == UiState::Ask::None && rack->programs(entry).current < 0 && ref.preset[0] == 0);
+        };
+        c.pick_plugin_program(entry, list[1].index);
+        unchanged();
+        c.select_track(0);
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        tap(SurfaceButton::Plus); // Stage's PRESETS: the next preset
+        unchanged();
+        tap(SurfaceButton::WheelPush); // the whole list
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        turn(1 - int(ui.presets_cursor));
+        tap(SurfaceButton::WheelPush);
+        unchanged();
+        c.freeze_requested[1] = {};
+        c.pick_plugin_program(entry, list[1].index);
+        wait([&] { return rack->programs(entry).current == list[1].index; });
         shell->set_plugins(nullptr);
         return 0;
     }
