@@ -210,7 +210,7 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
         sound.loop = false; sound.warp = warp_off; sound.beats = 0;
         const PadSound fresh; // its zones are its layers: the pad's own layers go
         sound.layers = fresh.layers; sound.low_velocity = fresh.low_velocity; sound.high_velocity = fresh.high_velocity;
-        sound.layer_play = fresh.layer_play;
+        sound.layer_play = fresh.layer_play; sound.layer_cc = fresh.layer_cc;
         landing_pads.push_back({ui.track, uint8_t(kit), uint16_t(slot)});
     }
     if (keyed && !keep) { sound.mono = false; sound.play = PadPlay::Gate; } // a keygroup's WAV across the keys: held, chords

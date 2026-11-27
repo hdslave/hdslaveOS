@@ -433,7 +433,7 @@ void layers_picture(Paint& p, const Snapshot& s) {
             p.text(both, nx, y + rh - 15, nw, 13, plain(colour::mid, type::small));
         }
         const float ly = y + rh / 2;
-        if (pad.layer_play == LayerPlay::Velocity) { // 1..127 across the lane, the range filled, its ends in K2's and K3's shades
+        if (pad.layer_play == LayerPlay::Velocity || pad.layer_play == LayerPlay::Cc) { // 1..127 across the lane (CC, issue 66: the controller's values), the range filled, its ends in K2's and K3's shades
             auto x_of = [&](int v) { return lane_x + lane_w * float(v - 1) / 126.0f; };
             p.fill(lane_x, ly - 1, lane_w, 2, colour::line, 1);
             float x0 = x_of(l.low), x1 = x_of(l.high);
@@ -462,7 +462,8 @@ HeaderItem layers_pill(const Snapshot& s) {
     const auto& pad = sampler_pad(s);
     unsigned count = 0;
     for (unsigned n = 0; n < pad_layers; ++n) count += pad.layer(n).used();
-    return pill(juce::String(layer_play_name(pad.layer_play)), count > 1 ? colour_of(s) : colour::mid);
+    const juce::String play = pad.layer_play == LayerPlay::Cc ? "CC " + juce::String(pad.layer_cc) : juce::String(layer_play_name(pad.layer_play)); // issue 66
+    return pill(play, count > 1 ? colour_of(s) : colour::mid);
 }
 
 // Shift on LAYERS: B1 LOAD onto the layer in hand, B2 CLEAR it (dim on layer 1 or an empty layer).

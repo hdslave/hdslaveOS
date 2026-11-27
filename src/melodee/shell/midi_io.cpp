@@ -18,6 +18,13 @@ namespace melodee {
 using Type = Command::Type;
 
 namespace {
+// Issue 66: whether a kit or keygroup track records controller `cc` as a Motion lane: the foot controller's (CC 4,
+// a hi-hat's pedal, which SFZ drum kits' CC regions follow too), or one its pads' CC layers follow.
+bool cc_layers_follow(const Track& track, unsigned cc) {
+    if (cc == layer_cc_first) return true;
+    for (const auto& pad : track.pads) if (pad.used() && pad.layer_play == LayerPlay::Cc && pad.layer_cc == cc) return true;
+    return false;
+}
 int64_t ns_of(MidiIo::Clock::time_point t) {
     return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count());
 }
@@ -326,6 +333,10 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
                 for (int k = 0; k < 128; ++k) if (c.midi_held[t].test(size_t(k))) c.midi_key(t, k, 0, false);
             } else if (tr.engine == EngineKind::Plugin || tr.sampled()) { // the sustain pedal and the rest, as they came
                 c.send({Type::Control, uint8_t(t), 0, uint16_t(number), int16_t(value)}); // (a MIDI track's went out above)
+                // Issue 66: a controller a pad's CC layers follow, kept as its lane with Seq Record on, so the take
+                // plays the hi-hat's openness back.
+                if (t == c.ui.track % track_count && tr.sampled() && cc_layers_follow(tr, unsigned(number)))
+                    c.record_motion(motion_lane(motion_cc, unsigned(number)), value);
             }
         }
     }

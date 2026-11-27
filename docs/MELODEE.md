@@ -1692,7 +1692,21 @@ the file holds, to the bit.
     LAYERS there (a track left on it shows ZONES, and LAYERS again on a
     sample pad), and loading an instrument onto a pad takes the pad's layers
     off (one undo with the load). Kept in the file's `LAYR` section and
-    bank files' `BLSM` / `BLYR`.
+    bank files' `BLSM` / `BLYR`. Issue 66: past Random hold, Shift + K1
+    turns on to **CC 1**..**CC 127** (`LayerPlay::Cc`, `PadSound::layer_cc`,
+    4 first; LYCC / BLCC keep one that is not 4): the layers whose range
+    (K2 CC LOW, K3 CC HIGH; 0 counts as 1) holds the controller's value now
+    play, whatever the velocity, the first while none has come. Picked
+    first with every used layer on the whole range, the range is split
+    evenly between them (four: 0-31, 32-63, 64-95, 96-127). The kit's
+    sampler keeps every controller from MIDI in on its channel (and the mod
+    wheel as CC 1); with Seq Record on, CC 4 and the CCs its pads follow are
+    recorded as the selected track's **CC n** Motion lane (`motion_cc`, the
+    point's pad the CC number) and played back in order with the notes.
+    SFZ `locc`/`hicc` (and `lohdcc`/`hihdcc`) of one controller other than
+    the sustain pedal's are followed as it plays (`SampleZone::cc`, from
+    `set_cc` until one comes); `on_locc` / `on_hicc` regions are left out.
+    An older build reads a CC pad as Random hold.
   - Mix: K1 volume in dB (−inf, −74..+6) with its meter, K3 pan, Shift + K2
     kit volume.
   - Amp Env: attack, decay (One shot) or release (Note On), velocity

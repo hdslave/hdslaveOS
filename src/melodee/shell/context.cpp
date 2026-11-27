@@ -934,7 +934,7 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::LayerPitch: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::LayerGain: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].gain = int16_t(value * 10); send_pad(ui.track, t.last_pad); break;
-    case Kind::LayerPlayMode: pad().layer_play = LayerPlay(std::clamp(value, 0, int(LayerPlay::Count) - 1)); send_pad(ui.track, t.last_pad); break;
+    case Kind::LayerPlayMode: set_layer_play_choice(pad(), value); send_pad(ui.track, t.last_pad); break; // issue 66: CC n past RANDOM HOLD
     case Kind::PadOffset: case Kind::PadVelSense: case Kind::PadCutoff: case Kind::PadResonance:
     case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: {
         // values Motion records as lanes of the pad

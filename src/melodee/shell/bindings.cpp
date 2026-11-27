@@ -125,6 +125,7 @@ Binding filter_second(const PadSound& pad, bool other) {
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
 const ParamInfo bend_info {"PITCH BEND", -64, 63, 0, Format::Number};
 const ParamInfo pad_mute_info {"MUTE", 0, 1, 0, Format::Switch}; // issue 32: a kit pad's mute lane
+const ParamInfo cc_info {"CC", 0, 127, 0, Format::Number};          // issue 66: a kit's controller lane
 
 // Roadmap P4: the mix's lanes as Motion shows them.
 const ParamInfo level_info {"LEVEL", 0, 127, 100, Format::Level};
@@ -154,6 +155,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
         return {&strip_infos[unsigned(param) - motion_strip_base], strip_get(track.strip, strip_lane_part(unsigned(param)))};
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? MotionParam {&bend_info, track.bend} : MotionParam {};
+    if (unsigned(param) == motion_cc) return track.sampled() ? MotionParam {&cc_info, 0} : MotionParam {}; // issue 66
     if (is_mix_lane(unsigned(param))) { // roadmap P4
         unsigned p = unsigned(param);
         if (p == motion_level) return {&level_info, track.mix.level};
@@ -191,6 +193,7 @@ std::string lane_name(const Track& track, int lane, const Project* project) {
     auto m = motion_param(track, lane, project);
     if (!m.info) return "lane";
     if (is_master_lane(lane_param(lane)) && lane_param(lane) < motion_return_base) return std::string("MASTER ") + m.info->label; // roadmap P4
+    if (lane_param(lane) == motion_cc) return "CC " + std::to_string(lane_pad(lane)); // issue 66
     if (!is_pad_lane(lane_param(lane))) return m.info->label;
     char label[4];
     pad_label(lane_pad(lane), label);
@@ -201,6 +204,7 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
     if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.sampled() ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
+    if (unsigned(param) == motion_cc) return {}; // issue 66: recorded from MIDI in, no card of its own
     if (unsigned(param) == motion_pad_mute) // issue 32: the pad's mute, as Mute + pad sets it
         return track.sampled() ? Binding {Kind::PadMute, int32_t(lane_pad(lane) % sampler_pads), 0, 1, int(track.pad_muted(lane_pad(lane)))} : Binding {};
     if (is_strip_lane(unsigned(param))) return strip_card(t, strip_lane_part(unsigned(param)), track.strip); // the mixer
@@ -487,11 +491,11 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
     case PageId::CloudPage: // the pad's cloud: where, grain size, grains a second; row 2 scan, spread and Cloud on or off
         if (row2) return {cloud_card(pad, 4), cloud_card(pad, 5), cloud_card(pad, 0)};
         return {cloud_card(pad, 1), cloud_card(pad, 2), cloud_card(pad, 3)};
-    case PageId::LayersPage: { // roadmap P3: K1 the layer in hand, K2 / K3 its velocities (Velocity alone)
+    case PageId::LayersPage: { // roadmap P3: K1 the layer in hand, K2 / K3 its velocities (Velocity), or its CC's values (CC, issue 66)
         unsigned n = ui.pad_layer % pad_layers;
         const PadLayer l = pad.layer(n);
         Binding pick {Kind::LayerPick, 0, 0, int(pad_layers) - 1, int(n)};
-        if (!l.used() || pad.layer_play != LayerPlay::Velocity) return {pick, Binding {}, Binding {}};
+        if (!l.used() || (pad.layer_play != LayerPlay::Velocity && pad.layer_play != LayerPlay::Cc)) return {pick, Binding {}, Binding {}};
         return {pick, Binding {Kind::LayerLow, int32_t(n), 1, 127, l.low}, Binding {Kind::LayerHigh, int32_t(n), 1, 127, l.high}};
     }
     case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
@@ -541,10 +545,10 @@ std::array<Binding, 3> pad_page_shift(const Project& project, const Track& track
         if (!pad.used()) return {};
         return {Binding {}, ui.sampler_row ? Binding {} : Binding {Kind::PadLink, 0, 0, 16, pad.link},
                 Binding {Kind::PadLoopXfade, 0, 0, int(max_loop_xfade), pad.loop_xfade}};
-    case PageId::LayersPage: { // Shift + K1 how a hit picks; Shift + K2 / K3 the layer's tune and level (layer 1's are the pad's)
+    case PageId::LayersPage: { // Shift + K1 how a hit picks (past RANDOM HOLD: CC 1-127, issue 66); Shift + K2 / K3 the layer's tune and level (layer 1's are the pad's)
         if (!pad.used()) return {};
         unsigned n = ui.pad_layer % pad_layers;
-        Binding play {Kind::LayerPlayMode, 0, 0, int(LayerPlay::Count) - 1, int(pad.layer_play)};
+        Binding play {Kind::LayerPlayMode, 0, 0, layer_play_choices - 1, layer_play_choice(pad)};
         if (!n || !pad.layers[n - 1].used()) return {play, Binding {}, Binding {}};
         const auto& l = pad.layers[n - 1];
         return {play, Binding {Kind::LayerPitch, int32_t(n), -24, 24, l.pitch}, Binding {Kind::LayerGain, int32_t(n), -480, 120, l.gain / 10}};

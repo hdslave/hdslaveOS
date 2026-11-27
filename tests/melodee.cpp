@@ -10453,6 +10453,33 @@ void pad_layers_p3() {
         CHECK(two != one && hit(e, 10) == two);
         e.hold_layer(2, false);
         CHECK(std::string(layer_play_name(LayerPlay::CycleHold)) == "CYCLE HOLD" && int(LayerPlay::RandomHold) == 4); // saved: appended
+        // Issue 66: CC, the layer the controller's value falls in, whatever the velocity; none heard yet, 0 (as 1).
+        PadSound hat = pad;
+        CHECK(int(LayerPlay::Cc) == 5 && std::string(layer_play_name(LayerPlay::Cc)) == "CC" && hat.layer_cc == 4);
+        set_layer_play_choice(hat, layer_play_choice(hat) + 0); // still Velocity
+        CHECK(hat.layer_play == LayerPlay::Velocity);
+        set_layer_play_choice(hat, int(LayerPlay::Cc) + 3); // CC 4
+        CHECK(hat.layer_play == LayerPlay::Cc && hat.layer_cc == 4 && layer_play_choice(hat) == int(LayerPlay::Cc) + 3);
+        CHECK(hat.low_velocity == 1 && hat.layers[0].low == 64); // ranges of their own: kept
+        e.set_pad(2, hat);
+        CHECK((hit(e, 127) == std::vector<uint16_t> {4}));     // CC 4 not heard: 0, the first layer
+        e.control(4, 80);
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5}));      // half open, however soft the hit
+        e.control(4, 120);
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5, 6}));
+        e.control(7, 0); // another controller changes nothing
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5, 6}));
+        set_layer_play_choice(hat, int(LayerPlay::Cc) + 10); // CC 11: not heard, 0
+        e.set_pad(2, hat);
+        CHECK(hat.layer_cc == 11 && (hit(e, 10) == std::vector<uint16_t> {4}));
+        PadSound even = pad; // every layer on the whole range: CC first spreads it, in order
+        even.low_velocity = 1; even.high_velocity = 127;
+        even.layers[0].low = 1; even.layers[0].high = 127; even.layers[1].low = 1; even.layers[1].high = 127;
+        set_layer_play_choice(even, int(LayerPlay::Cc) + 3);
+        CHECK(even.low_velocity == 1 && even.high_velocity == 41 && even.layers[0].low == 42 && even.layers[0].high == 84 &&
+              even.layers[1].low == 85 && even.layers[1].high == 127);
+        set_layer_play_choice(even, 0);
+        CHECK(even.layer_play == LayerPlay::Velocity && even.layer_cc == 4);
     }
     {   // A layer's offsets go over the pad's; its region and loop point are its own.
         PadSound one = pad;
@@ -10514,6 +10541,17 @@ void pad_layers_p3() {
         CHECK(shifted[0].kind == Binding::Kind::LayerPlayMode && shifted[1].kind == Binding::Kind::LayerPitch && shifted[2].kind == Binding::Kind::LayerGain);
         project.tracks[1].pads[9].layer_play = LayerPlay::Cycle;
         CHECK(!base_bindings(project, ui, none)[1].bound());
+        // Issue 66: CC's ranges on K2 / K3; Shift + K1 past the five, CC 1-127; kept in LYCC, as is the pad's CC.
+        set_layer_play_choice(project.tracks[1].pads[9], int(LayerPlay::Cc) + 7); // CC 8
+        CHECK(base_bindings(project, ui, none)[1].kind == Binding::Kind::LayerLow);
+        auto play = shift_bindings(project, ui, none)[0];
+        CHECK(play.max == layer_play_choices - 1 && play.value == int(LayerPlay::Cc) + 7);
+        auto bank = std::make_unique<PatternBank>();
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(save_project(project, *bank), *back, *back_bank).empty());
+        CHECK(back->tracks[1].pads[9].layer_play == LayerPlay::Cc && back->tracks[1].pads[9].layer_cc == 8 && back->tracks[1].pads[3].layer_cc == 4);
+        CHECK(lane_name(project.tracks[1], motion_lane(motion_cc, 4), &project) == "CC 4" && !lane_binding(project.tracks[1], 1, motion_lane(motion_cc, 4), &project).bound());
         CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadPage);
         CHECK(stage_kit_page(StageKind::Layers) == PageId::LayersPage);
     }

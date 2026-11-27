@@ -687,15 +687,22 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         if (!pad.layer(unsigned(b.value) % pad_layers).used()) c.unit = "empty";
         break;
     }
-    case Kind::LayerLow: c.label = "VEL LOW"; c.value = juce::String(b.value); break;
+    case Kind::LayerLow: { // issue 66: under CC, the controller's values (1 takes in 0)
+        const bool cc = track.pads[track.last_pad % sampler_pads].layer_play == LayerPlay::Cc;
+        c.label = cc ? "CC LOW" : "VEL LOW"; c.value = juce::String(cc && b.value == 1 ? 0 : b.value);
+        break;
+    }
     case Kind::ZonePick: c.label = "ZONE"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1); break; // round 3
     case Kind::ZoneTune: c.label = "TUNE"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
     case Kind::ZoneLevel: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;
     case Kind::PadLoopXfade: c.label = "XFADE"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); c.unit = b.value ? "ms" : ""; break;
-    case Kind::LayerHigh: c.label = "VEL HIGH"; c.value = juce::String(b.value); break;
+    case Kind::LayerHigh: c.label = track.pads[track.last_pad % sampler_pads].layer_play == LayerPlay::Cc ? "CC HIGH" : "VEL HIGH"; c.value = juce::String(b.value); break;
     case Kind::LayerPitch: c.label = "TUNE"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
     case Kind::LayerGain: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;
-    case Kind::LayerPlayMode: c.label = "PLAY"; c.value = name_case(juce::String(layer_play_name(LayerPlay(b.value)))); break;
+    case Kind::LayerPlayMode: // issue 66: past RANDOM HOLD the CCs, CC 1 to CC 127
+        c.label = "PLAY";
+        c.value = b.value >= int(LayerPlay::Cc) ? "CC " + juce::String(b.value - int(LayerPlay::Cc) + 1) : name_case(juce::String(layer_play_name(LayerPlay(b.value))));
+        break;
     case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
     case Kind::ChopAmount: {
         auto mode = ChopMode(b.id);

@@ -206,6 +206,7 @@ void Context::stems_landed() {
         now.sound.low_velocity = 1;
         now.sound.high_velocity = 127;
         now.sound.layer_play = LayerPlay::Velocity;
+        now.sound.layer_cc = layer_cc_first;
         now.sound.group = 0; // the stems play together
         now.sound.link = 0;
         if (was.sound.sample < sample_slots) project.chops.edit(size_t(was.slot)) = project.chops[was.sound.sample]; // its slices, in Chop

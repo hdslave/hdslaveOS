@@ -57,8 +57,17 @@ has no **LAYERS** page (see [Sampled instruments](#sampled-instruments)).
   plays it.
 - **SHIFT** + **K1**: how a hit picks layers: **Velocity** (every layer in
   range plays), **Cycle** (the next layer each hit), **Random**, **Cycle hold**
-  or **Random hold**. The hold choices pick like Cycle and Random, but while **NOTE REPEAT** repeats the pad, every repeat plays the
+  or **Random hold**, then **CC 1** to **CC 127**. The hold choices pick like Cycle and Random, but while **NOTE REPEAT** repeats the pad, every repeat plays the
   layer the first one picked until you let go.
+- With a **CC**, a MIDI controller picks the layer, for example a hi-hat
+  pedal on CC 4 (the first **CC** choice past the hold choices is CC 1; turn
+  on to **CC 4**). **K2** / **K3** (**CC LOW** / **CC HIGH**) set the
+  controller values that play the layer, 0 to 127. When you first choose a
+  **CC** and every layer still plays the whole range, the range is split
+  between the layers in order: with four, 0-31, 32-63, 64-95 and 96-127
+  (closed, quarter, half and open hi-hat). Until the controller moves, the
+  first layer plays. With **SEQ RECORD** on, the controller is recorded as a
+  **CC** lane on Motion and plays back with the pattern.
 - **SHIFT** + **K2** / **K3**: the layer's tune and level.
 - **SHIFT** + **B1** (**LOAD**): load a sample onto the layer. **SHIFT** +
   **B2** (**CLEAR**): remove the layer.
@@ -243,7 +252,7 @@ icon and its type at the right.
 
 | Type | Files |
 | --- | --- |
-| SFZ | `.sfz`, shown as **SFZ** |
+| SFZ | `.sfz`, shown as **SFZ**. Regions chosen by a controller (`locc`, `hicc`, for example a hi-hat on CC 4) follow it as you play. |
 | MPC keygroup program | `.xpm` (**XPM**), or `.xty` from MPC 3 (**XTY**) |
 | MPC drum program | `.xpm` or `.xty` with a pads icon: Push opens **LOAD KIT** (see [Loading banks of an MPC kit](#loading-banks-of-an-mpc-kit)) |
 | MPC expansion | `.xpn` with a down arrow: installs into `Melodee/Samples/Expansions` |
