@@ -2406,7 +2406,22 @@ int main(int argc, char** argv) {
         CHECK(host->playing() && host->position_of(0) >= stopped_at);
         midi(0xfc);
         tick();
+        // On Song, with the last Play the patterns' (as after a boot): a Song Position at bar 3, then a Continue, plays
+        // the song there, as a Start and MTC go by the page in view.
         c.open(PageId::Song);
+        {
+            MidiPacket position;
+            position.bytes[0] = 0xf2;
+            position.bytes[1] = 32; // sixteenths: bar 3's top
+            position.bytes[2] = 0;
+            position.size = 3;
+            shell->midi(port, position, ++now);
+        }
+        midi(0xfb);
+        clocked(2);
+        CHECK(host->playing() && host->song_playing() && host->song_bar() == 2);
+        midi(0xfc);
+        tick();
         // MTC: a cue while stopped, on Song, puts the cursor on the bar the master's time falls in, past the song's loop
         // (bars 3 and 4) too, where Play plays on, as MTC places a song there.
         ui.settings.midi.sync_in = MidiSync::Mtc;

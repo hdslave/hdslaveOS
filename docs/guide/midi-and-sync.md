@@ -54,7 +54,8 @@ as MIDI passes.
   header shows **EXT CLOCK**. Start plays from the top, also while
   playing, and on **Song** from the song's first bar wherever its cursor
   is. Continue plays on from the Song Position sent since the last Start
-  or Stop: on **Song** from that bar and beat of the song, elsewhere
+  or Stop: on **Song** the song from that bar and beat, whatever played
+  last, elsewhere the patterns,
   counted at the selected track's speed (see
   [Track speed](tracks.md#track-speed)), as **SHIFT** + **PLAY**
   counts it. With no Song Position sent since (a simple master, or a

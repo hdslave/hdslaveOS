@@ -2188,7 +2188,8 @@ while following.
   hears note 36 as A01; notes record under Seq Record like pads. Clock in:
   Start, Continue from Song Position, Stop, the tempo from the pulses. A
   Start plays from the top (on Song, the song's first bar, wherever its
-  cursor is), a Continue from a Song Position received since the last
+  cursor is), a Continue (the song on Song, else the patterns, by the
+  page in view as a Start goes) from a Song Position received since the last
   Start or Stop (on Song, that bar and the tick in it; else as the track
   in view reads it), or with none, from where it stopped, as Shift + Play
   (a simple master, a pause and resume), playing or not: playing,

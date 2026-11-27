@@ -2440,6 +2440,8 @@ void Context::play_continue(bool external, bool after_stop, int64_t song_ticks) 
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
+    // A MIDI Continue goes by the page in view, as a Start and MTC do: the song on Song, else the patterns.
+    if (external) played_song = ui.page == PageId::Song;
     if (played_song && external && song_ticks >= 0) { // a MIDI Continue: the song from its Song Position, bar and tick
         const uint32_t bar = std::max(project.bar_ticks(), 1u);
         Command c {Type::Play, uint8_t(count), 0, uint16_t(std::min<int64_t>(song_ticks / bar, 0xffff)), 1};
