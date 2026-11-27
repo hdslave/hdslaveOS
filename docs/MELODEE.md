@@ -102,9 +102,11 @@ one owner per piece of state.
   block's edge, MTC's trim: at most a few thousandths of a quarter) is no
   change. A plug-in with TRANSPORT off hears the song stopped throughout,
   so none of this wakes it; switching its TRANSPORT does, once. The block that
-  carries the change is run, with its transport and song position, so an
-  effect resting through a stop hears it; a plug-in that hears no change
-  sleeps on. A sleeping plug-in's load shows 0.
+  carries the change is run, with its transport and song position, and the
+  gate's quiet count starts again from it: the plug-in runs on for the
+  gate's half second (measured: 173 blocks at 44.1 kHz) before it can sleep
+  again, as after a note. So an effect resting through a stop hears it; a
+  plug-in that hears no change sleeps on. A sleeping plug-in's load shows 0.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it

@@ -728,9 +728,10 @@ private:
     // quarter note's frames; `moved` this block's start, stop or jump. A jump is a place off by more than a 64th note.
     // The song's place is not a straight line from block to block: a tick that falls on a block's edge, a swung tick
     // (up to a fifth of a tick, measured 0.0021 of a quarter at swing 60), MTC's speed trim (half a percent), and ticks
-    // held back and caught up while a MIDI clock is followed (a clock is a 24th of a quarter) all move it a little. A
-    // locate by a 32nd or more (Shift + wheel by Q, the wheel by a beat) and a song's jump by bars are told; one by a
-    // 64th, the finest Q, may not be, and barely moves the place.
+    // held back and caught up while a MIDI clock is followed (a clock is a 24th of a quarter) all move it a little. But
+    // a followed clock more than 16 ticks ahead (a sixth of a quarter: a tempo jump) is caught up at once
+    // (EngineHost::ext_release), so that is told as a jump. A locate by a 32nd or more (Shift + wheel by Q, the wheel
+    // by a beat) and a song's jump by bars are told; one by a 64th, the finest Q, may not be, and barely moves the place.
     static constexpr double jump_quarters = 1.0 / 16;
     bool clock_seen = false, playing_seen = false, moved = false;
     double song_seen = 0, quarter_seen = 1;
