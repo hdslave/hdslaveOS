@@ -200,6 +200,9 @@ class PluginHostTests(unittest.TestCase):
     def test_a_shared_plugin_asks_for_a_frozen_track_it_plays_on(self):
         self.run_rack_fixture("shared-frozen")
 
+    def test_a_plugin_no_frozen_print_holds_never_asks(self):
+        self.run_rack_fixture("frozen-elsewhere")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

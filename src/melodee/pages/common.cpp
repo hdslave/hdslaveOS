@@ -184,7 +184,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.track = channel_shade(mixer_strip(s.ui), 0);
         }
         c.fill = b.fraction();
-        c.frozen = print_covers(s.freeze, freeze_scope(s.project, s.ui, b)); // freeze plan F2c
+        c.frozen = card_frozen(s.freeze, s.project, s.ui, b); // freeze plan F2c
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
             c.state = ui::KnobCard::State::Pickup;

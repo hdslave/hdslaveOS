@@ -485,19 +485,16 @@ void Context::back_plugin_presets() {
     set_presets_folder(ui, preset_folder_up(inside));
 }
 
-// A program or a preset about to load into plug-in `entry`: "Unfreeze track N?" first when a frozen track plays it, as
-// its sound or as an effect on its chain (freeze plan F2c); true: asked, nothing to load now. Every track it plays on,
-// not only the one in hand or the first: a copy made with no entry free shares its plug-in until one is. The track in
-// hand is asked about first, then the others by number, as Stage's PRESETS asks (plugin_preset_turn).
+// An edit of plug-in `entry` (a program or preset, a parameter, its screen's input): "Unfreeze track N?" first when a
+// frozen track's print holds it, as its sound or as an effect on its chain (freeze plan F2c, plugin_scope); true:
+// asked, nothing to do now. Every track it plays on, not only the one in hand or the first: a copy made with no entry
+// free shares its plug-in until one is; and only those, so the track in hand asks only when the plug-in plays there.
+// The track in hand is asked about first, then the others by number, as Stage's PRESETS asks (plugin_preset_turn).
 bool Context::frozen_plugin_edit(unsigned entry) {
     const unsigned hand = ui.track % track_count;
     for (unsigned n = 0; n < track_count; ++n) {
         const unsigned t = n == 0 ? hand : n <= hand ? n - 1 : n;
-        const auto& tr = project.tracks[t];
-        bool effect = false;
-        for (const auto& s : tr.fx.slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;
-        if (tr.engine == EngineKind::Plugin && tr.plugin == entry && frozen_edit(UndoScope {UndoScope::Kind::Sound, uint8_t(t), 0})) return true;
-        if (effect && frozen_edit(UndoScope {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)})) return true;
+        if (const auto scope = plugin_scope(project, t, entry); !scope.none() && frozen_edit(scope)) return true;
     }
     return false;
 }

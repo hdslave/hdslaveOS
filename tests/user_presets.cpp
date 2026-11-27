@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #include "melodee/engine/print_render.h"
+#include "melodee/pages/common.h" // cards_of: frozen-elsewhere and shared-frozen check the cards' snowflakes
 #include "melodee/pages/page.h" // draw_name_sheet: name-target draws the sheet
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -783,6 +784,14 @@ int main(int argc, char** argv) {
         slot.kind = plugin_effect_kind;
         slot.params[0] = 3;
     }
+    if (mode == "frozen-elsewhere") // Test Gain on the master's chain (2) and on track 1's (3)
+        for (unsigned at : {2u, 3u}) {
+            project.plugins[at] = ref;
+            project.plugins[at].id = clap_id_hash("org.melodee.test.gain");
+            auto& slot = project.chain(at == 2 ? unsigned(master_chain) : 0u).slots[0];
+            slot.kind = plugin_effect_kind;
+            slot.params[0] = int16_t(at);
+        }
     if (mode == "freeze-race") { // a second track of the synth, its own instance
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
@@ -1634,6 +1643,60 @@ int main(int argc, char** argv) {
         shell->set_plugins(nullptr);
         return 0;
     }
+    // Track 1 in hand and frozen: a plug-in that plays no part of its print is edited without asking. Test Gain on the
+    // master's chain, by K1 on Master and by a companion screen's edit; Test Gain on track 1's own chain, by K1 on Rack
+    // while track 1 is frozen Pre FX (that print holds no chain). Their cards carry no snowflake then. Frozen Post FX,
+    // K1 on track 1's chain asks about track 1, and its card has the snowflake.
+    if (mode == "frozen-elsewhere") {
+        const unsigned master_gain = 2, own_gain = 3;
+        wait([&] { return ready(entry) && ready(master_gain) && ready(own_gain); });
+        ui.settings.knob_takeover = Takeover::Instant;
+        auto k1 = [&](int position, bool sync = false) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(SurfaceControl::K1);
+            event.input.value = uint8_t(position);
+            event.syncing = sync;
+            shell->surface(event, ++now);
+        };
+        auto k1_frozen = [&](PrintTap tap) { // K1's card as drawn with track 1 frozen at that tap: its snowflake
+            shell->snapshot(*drawn, now);
+            drawn->freeze[0].state = FreezeState::Frozen;
+            drawn->freeze[0].tap = tap;
+            return cards_of(*drawn)[0].frozen;
+        };
+        auto& frozen = c.freeze_requested[0];
+        frozen.state = FreezeState::Frozen; // Post FX
+        c.open(PageId::Master);
+        ui.fx_cursor[UiState::cursor_of(master_chain)] = 0;
+        wait([&] { return ui.plugin_panel.entry == master_gain && ui.plugin_panel.rows; });
+        CHECK(!k1_frozen(PrintTap::PostFx));
+        k1(0, true);
+        k1(127); // Gain to its top
+        CHECK(ui.ask == UiState::Ask::None);
+        wait([&] { return values(master_gain)[2] == 2; });
+        c.apply({Binding::Kind::PluginParam, plugin_binding(master_gain, plugin_index_slot), 0, plugin_param_max, 0}, 250); // a companion's edit
+        CHECK(ui.ask == UiState::Ask::None);
+        wait([&] { return values(master_gain)[2] == 0.5; });
+        frozen.tap = PrintTap::PreFx;
+        c.open(PageId::Rack);
+        ui.fx_cursor[UiState::cursor_of(0)] = 0;
+        wait([&] { return ui.plugin_panel.entry == own_gain && ui.plugin_panel.rows; });
+        CHECK(!k1_frozen(PrintTap::PreFx) && k1_frozen(PrintTap::PostFx));
+        k1(0, true);
+        k1(127);
+        CHECK(ui.ask == UiState::Ask::None);
+        wait([&] { return values(own_gain)[2] == 2; });
+        frozen.tap = PrintTap::PostFx; // its chain in the print
+        k1(0);
+        CHECK(ui.ask == UiState::Ask::Unfreeze && ui.ask_target == 0);
+        tap(SurfaceButton::TopLeft); // not now
+        for (int k = 0; k < 20; ++k) tick();
+        CHECK(ui.ask == UiState::Ask::None && values(own_gain)[2] == 2);
+        frozen = {};
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // A deep freeze lets track 1's plug-in go (PluginRack::sync with its track asleep) while the rack's thread is busy
     // opening another (60 ms), so the freeze's Sleep, which takes the plug-in's state, is still to run. Its track
     // cleared then, or woken again, before it runs: the plug-in comes back as it was edited, not as it was opened.
@@ -1854,6 +1917,12 @@ int main(int argc, char** argv) {
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
         c.open(PageId::Stage);
         wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry && std::string(ui.plugin_panel.params[1].name) == "Wave"; });
+        { // track 1's cards for the plug-in frozen track 2 plays carry its snowflake
+            shell->snapshot(*drawn, now);
+            drawn->freeze[1].state = FreezeState::Frozen;
+            const auto cards = cards_of(*drawn);
+            CHECK(cards[0].frozen && cards[1].frozen);
+        }
         auto k2 = [&](int position, bool sync = false) {
             SurfaceEvent event;
             event.input.kind = SurfaceInput::Kind::Control;

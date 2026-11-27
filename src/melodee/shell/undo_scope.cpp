@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/undo_scope.h"
+#include "melodee/plugin/plugin_panel.h"
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/features.h"
 #include "melodee/shell/stage_map.h"
@@ -116,11 +117,28 @@ UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding&
     case Kind::PadColour: return {}; // a pad's colour is not heard: no print holds it
     case Kind::PatternSteps: case Kind::PatternLength: case Kind::Division: case Kind::Swing: case Kind::TcShift: case Kind::TcSwing:
         return pattern_scope(project, ui);
-    case Kind::TrackSpeed: case Kind::StageSound: case Kind::PluginParam: case Kind::ArpMode: case Kind::ArpRate: case Kind::ArpOctaves:
+    case Kind::TrackSpeed: case Kind::StageSound: case Kind::ArpMode: case Kind::ArpRate: case Kind::ArpOctaves:
     case Kind::ArpGate: case Kind::ArpHold: case Kind::ArpOn: case Kind::ChordType: case Kind::ChordVoicing: case Kind::ChordInvert: case Kind::ChordOn:
-        return of(UndoScope::Kind::Sound, ui); // the plug-in's values, the arp and chords play into the print
+        return of(UndoScope::Kind::Sound, ui); // the arp and chords play into the print
+    case Kind::PluginParam: return {}; // the prints of the tracks it plays on, not the one in hand's (plugin_scope)
     default: return binding_scope(project, ui, b);
     }
+}
+
+UndoScope plugin_scope(const Project& project, unsigned track, unsigned entry) {
+    const unsigned t = track % track_count;
+    const auto& tr = project.tracks[t];
+    if (tr.engine == EngineKind::Plugin && tr.plugin == entry) return {UndoScope::Kind::Sound, uint8_t(t), 0};
+    for (const auto& s : tr.fx.slots)
+        if (s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry) return {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)};
+    return {};
+}
+
+bool card_frozen(const std::array<TrackFreeze, track_count>& freeze, const Project& project, const UiState& ui, const Binding& b) {
+    if (b.kind != Kind::PluginParam) return print_covers(freeze, freeze_scope(project, ui, b));
+    for (unsigned t = 0; t < track_count; ++t)
+        if (print_covers(freeze, plugin_scope(project, t, plugin_binding_entry(b.id)))) return true;
+    return false;
 }
 
 UndoScope pattern_scope(const Project& project, const UiState& ui) {

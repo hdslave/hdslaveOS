@@ -1144,6 +1144,12 @@ frozen pattern's notes, motion, length, Q or swing, the track's speed)
 asks "Unfreeze track N?" first: B3 UNFREEZE, B1 CANCEL. A turned card
 asks before it changes; any other edit is put back as it was and asks.
 Seq Record and a Sample Record take on a frozen track ask the same.
+A plug-in's values ask about the tracks the plug-in plays on, whichever
+track is in hand: an effect on a bus's or the master's chain, or on the
+chain of a track frozen Pre FX, is edited without a question, while a
+plug-in a frozen track shares with the track in hand asks
+(`plugin_scope`, `Context::frozen_plugin_edit`). The cards' snowflakes
+say the same.
 Unfrozen, edit, then freeze again: patterns whose notes, sound and chain
 did not change keep their prints, so only the edited ones are printed
 again.
