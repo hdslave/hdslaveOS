@@ -2432,6 +2432,19 @@ int main(int argc, char** argv) {
             shell->midi(port, cue, ++now);
         }
         CHECK(ui.song_cursor == 7);
+        // With a tempo lane, the cue counts the time through it, as MTC places the song: 60 BPM from bar 1 (4 s a bar),
+        // so 0:00:10:00 is bar 3, not bar 6 at the project's 120.
+        project.song.loop_start = project.song.loop_end = 0;
+        CHECK(project.song.tempo.set(0, 600, false));
+        {
+            MidiPacket cue;
+            const uint8_t bytes[] {0xf0, 0x7f, 0x7f, 0x01, 0x01, 0x20, 0x00, 0x0a, 0x00, 0xf7};
+            std::memcpy(cue.bytes.data(), bytes, sizeof(bytes));
+            cue.size = sizeof(bytes);
+            shell->midi(port, cue, ++now);
+        }
+        CHECK(ui.song_cursor == 2);
+        project.song.tempo = {};
         shell->set_plugins(nullptr);
         return 0;
     }

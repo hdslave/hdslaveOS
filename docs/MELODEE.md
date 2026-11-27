@@ -2197,7 +2197,8 @@ while following.
   song's end, with a loop, is the song gone round its loop under a longer
   timeline (a looped song vamping under a master's): folded into the
   loop, in phase; with none, the song stops. A cue while stopped puts the
-  cursor the same way. A song going round its loop that falls far behind
+  cursor the same way, the time counted through the song's tempo lane
+  when it has one, as the song is placed. A song going round its loop that falls far behind
   and is placed again keeps going round, the master's time folded into the
   loop (`EngineHost::mtc_place`).
 - **Out**: decided on the audio thread per frame and sent by the MIDI thread
