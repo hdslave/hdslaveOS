@@ -44,7 +44,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 
 #### Screen
 
-- **Screensaver** (#49): in Settings > **SCREEN**, after 1, 2, 5, 10 or 30 minutes at rest, the Melodee logo bounces around the screen. Off by default.
+- **Screensaver** (#49): in Settings > **SCREEN**, after 1, 2, 5, 10 or 30 minutes at rest, the Melodee logo bounces around the screen and the backlight dims. Off by default.
 
 ### Fixed
 
