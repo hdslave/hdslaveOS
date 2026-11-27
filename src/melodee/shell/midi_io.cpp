@@ -366,8 +366,13 @@ void MidiIo::follow_mtc(Context& c, const MtcReader::Event& e) {
     case K::Cue: { // the master located while stopped: the playhead there, as Play would start it
         if (c.host.playing()) break;
         double ticks = e.seconds * c.project.tempo_of(c.ui.lead_pattern) / 10.0 / 60.0 * ticks_per_quarter;
-        if (c.ui.page == PageId::Song) { // the bar it falls in, past the loop too: Play from there plays on (as MTC places it)
+        if (c.ui.page == PageId::Song) { // the bar it falls in, as MTC places the song (EngineHost::mtc_place): past
+            // the loop, there (Play from there plays on); past the song's end, round the loop (a looped song vamped
+            // under a longer timeline)
+            const auto& song = c.project.song;
             auto bar = unsigned(ticks / c.project.bar_ticks());
+            if (song.looping() && bar >= song.loop_end && bar >= std::max(song.length(), 1u))
+                bar = song.loop_start + (bar - song.loop_start) % (song.loop_end - song.loop_start);
             c.ui.song_cursor = uint16_t(std::min(bar, 65535u));
         } else {
             c.ui.locate = uint32_t(written_ticks(uint64_t(ticks), c.track().speed) % std::max<uint32_t>(c.pattern().length, 1));

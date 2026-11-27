@@ -2192,10 +2192,13 @@ while following.
   0:00:00:00 (hours left out) through the tempo playing, kept on the
   master's time by a pace trim of up to 0.5 %. On Song the master's time
   is the song's place, as a cursor there: before or inside the loop the
-  song goes round it, past it it plays on to its end (a cue while stopped
-  puts the cursor there too). A song going round its loop that falls far
-  behind and is placed again keeps going round, the master's time folded
-  into the loop (`EngineHost::mtc_place`).
+  song goes round it, past it it plays on to its end. A time past the
+  song's end, with a loop, is the song gone round its loop under a longer
+  timeline (a looped song vamping under a master's): folded into the
+  loop, in phase; with none, the song stops. A cue while stopped puts the
+  cursor the same way. A song going round its loop that falls far behind
+  and is placed again keeps going round, the master's time folded into the
+  loop (`EngineHost::mtc_place`).
 - **Out**: decided on the audio thread per frame and sent by the MIDI thread
   when that frame is heard (`engine/midi_out.h`): pads, patterns, the arp,
   MIDI clock, MTC (25 fps) and the CV clock, while playing.

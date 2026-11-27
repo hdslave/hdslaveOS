@@ -2344,6 +2344,18 @@ int main(int argc, char** argv) {
             shell->midi(port, cue, ++now);
         }
         CHECK(ui.song_cursor == 5);
+        // The whole song braced (bars 1-8): a cue past its end (0:00:30:06, bar 16) is the song gone round its loop
+        // under a longer timeline: the cursor on bar 8, in phase.
+        project.song.loop_start = 0;
+        project.song.loop_end = 8;
+        {
+            MidiPacket cue;
+            const uint8_t bytes[] {0xf0, 0x7f, 0x7f, 0x01, 0x01, 0x20, 0x00, 0x1e, 0x06, 0xf7};
+            std::memcpy(cue.bytes.data(), bytes, sizeof(bytes));
+            cue.size = sizeof(bytes);
+            shell->midi(port, cue, ++now);
+        }
+        CHECK(ui.song_cursor == 7);
         shell->set_plugins(nullptr);
         return 0;
     }

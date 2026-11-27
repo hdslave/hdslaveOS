@@ -62,7 +62,9 @@ as MIDI passes.
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
   On **Song**, a time past the song's loop plays on from there, as **PLAY**
-  from a cursor there does; one before or inside the loop goes round it.
+  from a cursor there does; one before or inside the loop goes round it;
+  and one past the song's end, with a loop, falls inside the loop in time
+  with the master, so a looped song can vamp under a longer timeline.
 - **MIDI out**: pads, patterns, the arpeggiator, MIDI clock (with Start,
   Continue, Stop and Song Position), MTC and the CV clock. What you play
   (pads, keys, MIDI in, the fader, knobs) goes out at once. Patterns, the
