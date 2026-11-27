@@ -22,12 +22,12 @@ void Context::preset_turn(int at) {
     ui.preset_due = std::max<uint32_t>(now + stage_preset_ms, 1);
 }
 
-// The plug-in's presets as PRESETS lists them; the wheel and Minus / Plus walk from the one under the cursor (still
+// The plug-in's presets as PRESETS lists them; the wheel walks from the one under the cursor (still
 // turning) or the one it plays (none yet: to the first, either way), and the one turned to loads once the turning
 // has stopped stage_preset_ms. Against an end of the list nothing moves, and nothing while the plug-in opens (a
 // user preset opens it again) or still looks for its presets (said): the list is not whole, so a place in it would
 // name another preset once it is. Nothing either for one that would not open, or that the page shows stopped (a
-// bridge that died). A frozen track asks only for a press that would load, or once a deep freeze let its plug-in go.
+// bridge that died). A frozen track asks only for a turn that would load, or once a deep freeze let its plug-in go.
 // False: an open plug-in that has no presets (its face).
 bool Context::plugin_preset_turn(int delta) {
     const auto& t = track();

@@ -1040,26 +1040,30 @@ int main(int argc, char** argv) {
         std::memcpy(values.data(), bytes.data() + 4, sizeof(values));
         return values;
     };
-    // A plug-in that would not open, on Stage's first page: Minus / Plus have no preset to walk to and leave the pads'
-    // keys alone too (a walk that ends in a failed open must not slip to the octave); Keys' octave still answers.
+    // A plug-in that would not open, on Stage's first page: the wheel has no preset to walk to and asks nothing;
+    // Minus / Plus are the octave, as Melodee's.
     if (brokenKeys) {
         wait([&] { return rack->status(entry) == PluginStatus::Failed; });
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
         c.open(PageId::Stage);
         const int8_t octave = tr.octave;
-        const uint8_t bank = tr.bank;
-        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus, SurfaceButton::Minus}) {
-            tap(key);
-            CHECK(tr.octave == octave && tr.bank == bank && !ui.preset_due);
-        }
+        auto wheel = [&](int detents) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(SurfaceControl::Wheel);
+            event.input.delta = detents;
+            shell->surface(event, ++now);
+        };
+        wheel(1);
+        CHECK(tr.octave == octave && !ui.preset_due);
         c.freeze_requested[0].state = FreezeState::Frozen; // nothing would load: no question either
-        tap(SurfaceButton::Plus);
-        CHECK(tr.octave == octave && !ui.preset_due && ui.ask == UiState::Ask::None);
+        wheel(1);
+        CHECK(!ui.preset_due && ui.ask == UiState::Ask::None);
         c.freeze_requested[0] = {};
-        button(SurfaceButton::Sample, true);
         tap(SurfaceButton::Plus);
-        button(SurfaceButton::Sample, false);
         CHECK(tr.octave == octave + 1 && !ui.preset_due);
+        tap(SurfaceButton::Minus);
+        CHECK(tr.octave == octave && !ui.preset_due);
         shell->set_plugins(nullptr);
         return 0;
     }
@@ -2246,7 +2250,7 @@ int main(int argc, char** argv) {
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
         c.open(PageId::Stage);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
-        tap(SurfaceButton::Plus); // Stage's PRESETS: the next preset
+        turn(1); // Stage's PRESETS: the next preset, with the wheel
         unchanged();
         tap(SurfaceButton::WheelPush); // the whole list
         CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
@@ -2689,7 +2693,7 @@ int main(int argc, char** argv) {
         CHECK(shown() == StageKind::PluginSound);
         shell->snapshot(*frame, ++now);
         CHECK(frame->presets.list.size() == 3);
-        tap(SurfaceButton::Plus); // and its keys walk the list it shows
+        turn(1); // and the wheel walks the list it shows
         CHECK(ui.preset_due && ui.presets_cursor == 0);
         shell->set_plugins(nullptr);
         return 0;
@@ -2737,9 +2741,10 @@ int main(int argc, char** argv) {
         shell->set_plugins(nullptr);
         return 0;
     }
-    // Stage's PRESETS on a plug-in track: Minus / Plus walk its presets as the wheel does and stop at the list's
-    // ends; the pads keep their keys (the octave and the Drums bank those keys move elsewhere). Its face, a
-    // plug-in with no presets, and the track's other pages: the octave, as before.
+    // Stage's PRESETS on a plug-in track: the wheel walks its presets and stops at the list's ends. Minus / Plus
+    // are Melodee's there, as on the track's other pages: the octave (the Drums layout: the bank), never a preset;
+    // the plug-in decides what its pads' keys play (a drum map). Its PANEL and EDIT: its own screen's, Sample held
+    // or not.
     if (presetKeys || faceKeys) {
         for (unsigned n = 0; n < unsigned(PageId::Count); ++n) { // every page: the shell calls its handlers unasked
             const auto& spec = page_spec(PageId(n));
@@ -2749,14 +2754,21 @@ int main(int argc, char** argv) {
         c.open(PageId::Stage);
         const int8_t octave = tr.octave;
         const uint8_t bank = tr.bank;
+        // Minus / Plus move the octave (or the bank) and back, and arm no preset.
+        auto keys_move_octave = [&] {
+            tap(SurfaceButton::Plus);
+            CHECK(tr.octave == octave + 1 && tr.bank == bank && !ui.preset_due);
+            tap(SurfaceButton::Minus);
+            CHECK(tr.octave == octave && tr.bank == bank && !ui.preset_due);
+        };
         if (faceKeys) {
             wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.status == PluginStatus::Ready; });
             CHECK(!ui.plugin_panel.programs);
-            tap(SurfaceButton::Plus);
-            CHECK(tr.octave == octave + 1 && !ui.preset_due);
+            keys_move_octave();
             shell->set_plugins(nullptr);
             return 0;
         }
+        keys_move_octave(); // still opening: the octave, as Melodee
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
         const auto list = rack->programs(entry).list;
         CHECK(list.size() == 3);
@@ -2775,37 +2787,42 @@ int main(int argc, char** argv) {
             shell->surface(event, ++now);
         };
         CHECK(rack->programs(entry).current < 0);
-        tap(SurfaceButton::Minus); // none yet: the first, whichever key
+        keys_move_octave(); // presets listed: the keys are the octave still
+        CHECK(rack->programs(entry).current < 0);
+        wheel(-1); // none yet: the first, whichever way
         CHECK(ui.preset_due && ui.presets_cursor == 0);
         ui.preset_due = 0; // let go before it landed: none still
-        tap(SurfaceButton::Plus);
+        wheel(1);
         lands(0);
-        tap(SurfaceButton::Plus);
+        wheel(1);
         lands(1);
-        button(SurfaceButton::Sample, true); // Sample held: the keys are Keys' octave, as its cards are Keys'
+        button(SurfaceButton::Sample, true); // Sample held: Keys' octave too
         tap(SurfaceButton::Plus);
         CHECK(tr.octave == octave + 1 && !ui.preset_due);
         tap(SurfaceButton::Minus);
         CHECK(tr.octave == octave && !ui.preset_due);
         button(SurfaceButton::Sample, false);
-        CHECK(ui.page == PageId::Stage && stage_page_now(ui, tr, false).kind == StageKind::PluginSound);
-        // Sample held on the plug-in's PANEL and EDIT too: Keys' octave, not the plug-in's screen or its pages; and a
-        // short hold's release leaves the page as it is (it used to take Stage home to PRESETS).
-        for (auto kind : {StageKind::PluginScreen, StageKind::PluginEdit, StageKind::Arp}) {
-            CHECK(stage_go(ui, EngineKind::Plugin, kind));
-            CHECK(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
-            const auto row = ui.plugin_row[entry];
-            button(SurfaceButton::Sample, true);
-            tap(SurfaceButton::Plus);
-            button(SurfaceButton::Sample, false);
-            CHECK(tr.octave == octave + 1 && !ui.preset_due && ui.plugin_row[entry] == row);
-            CHECK(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
-            button(SurfaceButton::Sample, true);
-            tap(SurfaceButton::Minus);
-            button(SurfaceButton::Sample, false);
-            CHECK(tr.octave == octave && stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
+        // The plug-in's PANEL and EDIT: its own screen's or its pages, Sample held or not; never the octave.
+        for (auto kind : {StageKind::PluginScreen, StageKind::PluginEdit}) {
+            for (bool held : {false, true}) {
+                CHECK(stage_go(ui, EngineKind::Plugin, kind));
+                CHECK(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
+                if (held) button(SurfaceButton::Sample, true);
+                tap(SurfaceButton::Plus);
+                tap(SurfaceButton::Minus);
+                if (held) button(SurfaceButton::Sample, false);
+                CHECK(tr.octave == octave && !ui.preset_due);
+            }
         }
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::Arp)); // the track's other pages: the octave
+        keys_move_octave();
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        tr.layout = PadLayout::Drums; // a drum machine's pads: the bank, as Melodee
+        tap(SurfaceButton::Plus);
+        CHECK(tr.octave == octave && tr.bank == bank + 1 && !ui.preset_due);
+        tap(SurfaceButton::Minus);
+        CHECK(tr.bank == bank && !ui.preset_due);
+        tr.layout = PadLayout::Scale;
         auto edit = [&] { set_control("Level", 1000); wait([&] { return state()[0] == 1; }); };
         auto kept = [&](unsigned n) { // nothing is sent to the plug-in: the preset it plays, as it was edited
             c.dirty = false;
@@ -2815,42 +2832,32 @@ int main(int argc, char** argv) {
             CHECK(state()[0] == 1 && rack->programs(entry).current == list[n].index);
         };
         edit();
-        tap(SurfaceButton::Plus); // a press taken back before it lands
-        tap(SurfaceButton::Minus);
+        wheel(1); // a turn taken back before it lands
+        wheel(-1);
         CHECK(ui.preset_due && ui.presets_cursor == 1);
         kept(1);
-        wheel(1); // the wheel and the keys walk the same list
+        wheel(1);
         lands(2);
         wheel(-1);
         lands(1);
-        for (int n = 0; n < 3; ++n) tap(SurfaceButton::Plus); // three presses from the second: the last, no further
+        for (int n = 0; n < 3; ++n) wheel(1); // three detents from the second: the last, no further
         lands(2);
         edit();
-        tap(SurfaceButton::Plus); // against the end: nothing is armed
-        CHECK(!ui.preset_due);
-        wheel(1);
+        wheel(1); // against the end: nothing is armed
         CHECK(!ui.preset_due);
         kept(2);
-        tap(SurfaceButton::Minus);
+        wheel(-1);
         lands(1);
-        tap(SurfaceButton::Minus);
+        wheel(-1);
         lands(0);
-        tap(SurfaceButton::Minus); // and against the start
+        wheel(-1); // and against the start
         CHECK(!ui.preset_due);
-        tr.layout = PadLayout::Drums; // a drum machine's pads: their bank stays too
-        tap(SurfaceButton::Plus);
-        lands(1);
-        CHECK(tr.octave == octave && tr.bank == bank);
-        tr.layout = PadLayout::Scale;
 
-        ui.plugin_panel.status = PluginStatus::Crashed; // the page shows it STOPPED (a bridge that died): nothing moves
+        ui.plugin_panel.status = PluginStatus::Crashed; // the page shows it STOPPED (a bridge that died): no preset
         CHECK(ui.plugin_panel.entry == entry);
-        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus}) {
-            tap(key);
-            CHECK(tr.octave == octave && !ui.preset_due);
-        }
         wheel(1);
         CHECK(!ui.preset_due);
+        keys_move_octave();
         wait([&] { return ui.plugin_panel.status == PluginStatus::Ready; }); // read from the rack again
 
         // Two user presets: loading one opens the plug-in again, then its presets are looked for again.
@@ -2872,38 +2879,34 @@ int main(int argc, char** argv) {
         auto to_factory = [&] { // back onto Mid, the last of the plug-in's own
             wait(whole);
             while (playing() != all[2].index) {
-                tap(SurfaceButton::Minus);
+                wheel(-1);
                 rest();
                 wait([&] { return whole() && playing() == all[ui.presets_cursor].index; });
             }
         };
         to_factory();
-        tap(SurfaceButton::Plus);
+        wheel(1);
         CHECK(ui.preset_due && ui.presets_cursor == 3);
         rest(); // My Patch: read from the card, then the plug-in opens again
         wait(opening);
-        for (auto key : {SurfaceButton::Plus, SurfaceButton::Plus, SurfaceButton::Minus}) { // not the octave's meanwhile
-            tap(key);
-            CHECK(tr.octave == octave && !ui.preset_due);
-        }
+        wheel(1); // nothing moves while it opens
+        CHECK(!ui.preset_due);
         c.freeze_requested[0].state = FreezeState::Frozen; // nothing would load while it opens: no question either
-        tap(SurfaceButton::Plus);
-        CHECK(ui.ask == UiState::Ask::None && opening() && tr.octave == octave && !ui.preset_due);
+        wheel(1);
+        CHECK(ui.ask == UiState::Ask::None && opening() && !ui.preset_due);
         c.freeze_requested[0] = {};
         wait(looking); // open again, its list not whole yet: said, and nothing moves
-        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus}) {
-            ui.notice[0] = 0;
-            tap(key);
-            CHECK(std::string(ui.notice) == "Looking for presets" && tr.octave == octave && !ui.preset_due);
-        }
+        ui.notice[0] = 0;
+        wheel(1);
+        CHECK(std::string(ui.notice) == "Looking for presets" && !ui.preset_due);
         wait(whole);
         CHECK(playing() == all[3].index && std::string(ref.preset) == "/user/My Patch");
 
-        // A press that lands while the list is looked for again is dropped: its place would name another preset.
+        // A turn that lands while the list is looked for again is dropped: its place would name another preset.
         to_factory();
-        tap(SurfaceButton::Plus);
+        wheel(1);
         rest(); // My Patch again
-        tap(SurfaceButton::Minus); // before the plug-in has it: from Mid to Low, the second of the whole list
+        wheel(-1); // before the plug-in has it: from Mid to Low, the second of the whole list
         CHECK(ui.preset_due && ui.presets_cursor == 1);
         wait(looking); // only the user presets are listed: the second is Other
         rest();
@@ -2912,24 +2915,22 @@ int main(int argc, char** argv) {
         for (int k = 0; k < 120; ++k) { tick(); again |= opening() || std::string(ref.preset) != "/user/My Patch"; }
         CHECK(!again && whole() && playing() == all[3].index);
 
-        // A frozen track asks before its preset changes, and not for a press against the list's end.
+        // A frozen track asks before its preset changes, and not for a turn against the list's end; the keys,
+        // the octave, ask nothing.
         to_factory();
-        for (int n = 0; n < 2; ++n) { tap(SurfaceButton::Plus); }
+        for (int n = 0; n < 2; ++n) wheel(1);
         CHECK(ui.preset_due && ui.presets_cursor == 4);
         rest();
         wait([&] { return whole() && playing() == all[4].index; });
         c.freeze_requested[0].state = FreezeState::Frozen;
-        tap(SurfaceButton::Plus);
+        wheel(1);
         CHECK(ui.ask == UiState::Ask::None && !ui.preset_due);
-        tap(SurfaceButton::Minus);
+        wheel(-1);
         CHECK(ui.ask == UiState::Ask::Unfreeze && !ui.preset_due);
         tap(SurfaceButton::TopLeft); // B1: not now
         CHECK(ui.ask == UiState::Ask::None);
         c.freeze_requested[0] = {};
         CHECK(tr.octave == octave && tr.bank == bank);
-        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::Arp)); // off PRESETS the keys are the octave still
-        tap(SurfaceButton::Plus);
-        CHECK(tr.octave == octave + 1 && !ui.preset_due);
         shell->set_plugins(nullptr);
         return 0;
     }

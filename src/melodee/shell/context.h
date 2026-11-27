@@ -105,7 +105,7 @@ public:
     // turning has stopped stage_preset_ms; stage_tick() loads it then. Push on an empty track: it becomes what
     // the page in view says (SYNTH, KIT, MIDI).
     void preset_turn(int at);
-    bool plugin_preset_turn(int delta); // Stage PRESETS on a PLUGIN track (wheel, Minus / Plus): the next preset, loaded as preset_turn's; false: it has none
+    bool plugin_preset_turn(int delta); // Stage PRESETS on a PLUGIN track (the wheel): the next preset, loaded as preset_turn's; false: it has none
     void stage_tick(uint32_t at); // often (ms); UINT32_MAX loads a waiting sound now
     void stage_new();
     // Sound
