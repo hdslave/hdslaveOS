@@ -864,6 +864,7 @@ void Shell::end_copy_away() {
     case UiState::Copying::Steps: here = ui_.page == PageId::StepEdit && ui_.step_pads; break;
     case UiState::Copying::Notes: here = ui_.page == PageId::Roll; break;
     case UiState::Copying::Scenes: here = ui_.page == PageId::Scenes; break;
+    case UiState::Copying::Bars: here = ui_.page == PageId::Song; break; // issue 60
     default: break;
     }
     if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();

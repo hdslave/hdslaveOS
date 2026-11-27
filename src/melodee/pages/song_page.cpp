@@ -17,11 +17,15 @@
 // Play here plays the song from the cursor. Shift + K1 sets the tempo lane at
 // the cursor's bar (roadmap P5; under 30 BPM, none there), Shift + K2 its
 // shape, a step on its bar or a ramp from the point before; with points the
-// lane is a strip over the tracks, its tempo at the cursor beside it.
+// lane is a strip over the tracks, its tempo at the cursor beside it. Issue 60 (shell/song_range.h): Pad Bank shows
+// every lane at once; Loop on empty time sets the loop range's first and last bar; with a range Shift + Erase copies
+// its bars, Push pastes them as an insert, Erase takes them out; K2 steps through the patterns that hold notes.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/new_track.h"
+#include "melodee/shell/song_range.h"
+#include "melodee/model/print.h"
 #include "melodee/model/smf.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
@@ -54,6 +58,16 @@ juce::String clock_of(const Song& song, unsigned bar, unsigned tempo_tenths, uns
     return text;
 }
 juce::String dash() { return juce::String::fromUTF8("\xe2\x80\x93"); }
+
+// All tracks (issue 60): sixteen thin lanes in the six's room, every clip in its colour, no names.
+void draw_thin_clip(Paint& p, const Clip& clip, float y, float h, unsigned view, float bw, bool selected) {
+    float cx = x0 + (float(clip.bar) - float(view)) * bw, cw = clip.bars * bw;
+    float left = std::max(cx, x0), right = std::min(cx + cw, x1);
+    if (right <= left + 1) return;
+    auto c = track_colour(clip.track);
+    p.fill(left + 0.5f, y, right - left - 1, h, c.withAlpha(clip.muted ? 0.2f : 0.85f), 1.5f);
+    if (selected) p.ring(left + 0.5f, y - 0.5f, right - left - 1, h + 1, colour::text, 1.5f);
+}
 
 void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned view, float bw, bool selected) {
     float cx = x0 + (float(clip.bar) - float(view)) * bw, cw = clip.bars * bw;
@@ -93,10 +107,10 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
     if (repeat >= 4)
         for (float rx = cx + repeat; rx < cx + cw - 1; rx += repeat) p.fill(rx, y, 0.5f, lane_h, colour::bg);
     if (sketch.audio.used()) { // the name on a backing, clear of the wave (freeze plan F3)
-        float lw = p.width("P" + juce::String(clip.pattern + 1), plain(c, type::small, Weight::Bold)) + 5;
+        float lw = p.width(juce::String(print_pattern_name(clip.pattern)), plain(c, type::small, Weight::Bold)) + 5;
         p.fill(cx + 1, y + 1, lw, lane_h - 2, selected ? c : colour::bg.interpolatedWith(c, clip.muted ? 0.12f : 0.38f), 2);
     }
-    p.text("P" + juce::String(clip.pattern + 1), cx + 3, y, 24, lane_h, plain(selected ? colour::bg : c, type::small, Weight::Bold));
+    p.text(juce::String(print_pattern_name(clip.pattern)), cx + 3, y, 24, lane_h, plain(selected ? colour::bg : c, type::small, Weight::Bold));
     if (selected) p.ring(cx + 0.5f, y, cw - 1, lane_h, colour::text, 2.5f);
     p.g.restoreState();
 }
@@ -227,6 +241,8 @@ void draw(Paint& p, const Snapshot& s) {
     if (zoom == song_zooms[0]) h.left.push_back(pill("SNAP 1 BAR"));
     // Following MIDI clock or MTC in, its chip takes the loop's room (the ruler's brace still shows the loop).
     else if (song.looping() && !s.following) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
+    if (s.ui.song_all) h.left.push_back(pill("ALL", colour::text)); // issue 60: every lane at once (PAD BANK)
+    if (s.ui.copying == UiState::Copying::Bars) h.left.push_back(pill("COPY", c)); // Push pastes the copied bars
     h.right.push_back(tag_of(s, s.ui.track));
 
     if (s.ui.song_export) {
@@ -291,6 +307,13 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(rx - 1, lane_top - 4, 1, 3, colour::sec);
         }
     }
+    if (s.ui.song_loop_in >= 0 && unsigned(s.ui.song_loop_in) >= view && unsigned(s.ui.song_loop_in) < view + zoom) { // issue 60: the start, waiting for its end
+        const float lx = x0 + (float(s.ui.song_loop_in) - float(view)) * bw;
+        const unsigned a = std::min<unsigned>(unsigned(s.ui.song_loop_in), cursor), b = std::max<unsigned>(unsigned(s.ui.song_loop_in), cursor) + 1;
+        const float from = std::max(x0, x0 + (float(a) - float(view)) * bw), to = std::min(x1, x0 + (float(b) - float(view)) * bw);
+        if (to > from) p.fill(from, lane_top - 3, to - from, 1, colour::text.withAlpha(0.5f)); // where it would loop
+        p.fill(lx, lane_top - 6, 1, 5, colour::text);
+    }
     // Roadmap P5: the tempo lane, a strip over the tracks: its line across the view (a step straight up or down on
     // its bar, a ramp sloping from the point before), a dot a point (the cursor's ringed), the tempo at the cursor.
     bool tempo_lane = !song.tempo.empty();
@@ -339,9 +362,20 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(juce::String(int(std::lround(here / 10))), zone::pad, sy, 26, sh, plain(colour::amber, type::small, Weight::SemiBold),
                juce::Justification::centred);
     }
+    // All tracks (issue 60): the sixteen lanes in the room of the six, the selected one's mark in its colour.
+    if (s.ui.song_all) {
+        const float room = shown * (lane_h + lane_gap), row_h = room / track_count, h = std::max(2.0f, row_h - 1);
+        for (unsigned t = 0; t < track_count; ++t) {
+            const float y = tracks_top + t * row_h;
+            const bool selected = t == s.ui.track;
+            p.fill(zone::pad, y, selected ? 22 : 6, h, selected ? track_colour(t) : s.project.tracks[t].used() ? track_colour(t).withAlpha(0.5f) : colour::quiet, 1);
+            for (unsigned n = 0; n < song.count; ++n)
+                if (song.clips[n].track == t) draw_thin_clip(p, song.clips[n], y, h, view, bw, selected && int(n) == selected_clip);
+        }
+    }
     // Lanes: six tracks in view (five under the tempo lane), the selected one among them.
     unsigned first = std::min<unsigned>(s.ui.track >= 2 ? s.ui.track - 2 : 0, track_count - shown);
-    for (unsigned row = 0; row < shown; ++row) {
+    for (unsigned row = 0; row < shown && !s.ui.song_all; ++row) {
         unsigned t = first + row;
         float y = tracks_top + row * (lane_h + lane_gap);
         auto tc = track_colour(t);
@@ -454,9 +488,21 @@ void wheel(Context& c, int delta) {
     c.ui.song_view = uint16_t(view_of(c.ui));
 }
 
+// Issue 60: the copied bars at the cursor, what is there moved on to make room; again for the next copy after it.
+void paste(Context& c) {
+    auto& ui = c.ui;
+    const auto& section = c.song_section;
+    if (!song_paste(c.project.song, section, ui.song_cursor)) { c.notice("Paste: the song is full"); return; }
+    ui.song_cursor = uint16_t(std::min<unsigned>(ui.song_cursor + section.bars, song_bars - 1));
+    ui.song_view = uint16_t(view_of(ui));
+    c.sync_song();
+    c.notice("Pasted " + std::to_string(section.bars) + (section.bars == 1 ? " bar" : " bars"));
+}
+
 void push(Context& c) {
     if (c.ui.jam_sheet) { c.take_jam(); return; } // JAMS: as B3
     if (c.ui.song_export) return;
+    if (c.ui.copying == UiState::Copying::Bars) { paste(c); return; } // issue 60
     int index = clip_index(c);
     if (index >= 0) open_clip(c, index, false);
     else place(c);
@@ -537,6 +583,18 @@ void song_copy(Context& c) {
 
 void song_erase(Context& c) {
     if (c.ui.jam_sheet) { c.erase_jam(); return; } // JAMS: the picked jam goes (one undo)
+    auto& song = c.project.song;
+    if (song.looping()) { // issue 60: the loop range's bars out, what comes after moved back (the lane, or every lane)
+        const unsigned from = song.loop_start, to = song.loop_end;
+        if (!song_remove_bars(song, from, to, song_lanes(c.ui.song_all, c.ui.track))) { c.notice("Erase: the song is full"); return; }
+        song.loop_start = song.loop_end = 0;
+        c.ui.song_loop_in = -1;
+        c.ui.song_cursor = uint16_t(from);
+        c.ui.song_view = uint16_t(view_of(c.ui));
+        c.sync_song();
+        c.notice("Bars " + std::to_string(from + 1) + "-" + std::to_string(to) + " out");
+        return;
+    }
     int index = clip_index(c);
     if (index < 0) return;
     c.project.song.erase(unsigned(index));
@@ -561,17 +619,49 @@ void song_repeat(Context& c) {
     c.sync_song();
 }
 
-// Loop: the brace on the clip's bars; again, or on empty time, off.
+// Loop: on a clip, the brace on its bars, again off. On empty time (issue 60): the first tap the loop's start at the
+// cursor, the next its end (the cursor's bar the last in it, either way round), a third off.
 bool song_loop(Context& c) {
     if (c.ui.jam_sheet) return true; // JAMS: the song is not in view
     auto& song = c.project.song;
+    auto& ui = c.ui;
     int index = clip_index(c);
-    if (index < 0 && !song.looping()) return false;
-    bool same = index >= 0 && song.loop_start == song.clips[size_t(index)].bar && song.loop_end == song.clips[size_t(index)].end();
-    if (index < 0 || same) song.loop_start = song.loop_end = 0;
-    else { song.loop_start = song.clips[size_t(index)].bar; song.loop_end = song.clips[size_t(index)].end(); }
-    c.sync_song();
+    if (index >= 0) {
+        bool same = song.loop_start == song.clips[size_t(index)].bar && song.loop_end == song.clips[size_t(index)].end();
+        if (same) song.loop_start = song.loop_end = 0;
+        else { song.loop_start = song.clips[size_t(index)].bar; song.loop_end = song.clips[size_t(index)].end(); }
+        ui.song_loop_in = -1;
+        c.sync_song();
+        return true;
+    }
+    if (ui.song_loop_in >= 0) { // the end
+        const unsigned a = unsigned(ui.song_loop_in), b = ui.song_cursor;
+        song.loop_start = uint16_t(std::min(a, b));
+        song.loop_end = uint16_t(std::max(a, b) + 1);
+        ui.song_loop_in = -1;
+        c.sync_song();
+        c.notice("Loop " + std::to_string(song.loop_start + 1) + "-" + std::to_string(song.loop_end));
+        return true;
+    }
+    if (song.looping()) { song.loop_start = song.loop_end = 0; c.sync_song(); c.notice("Loop off"); return true; }
+    ui.song_loop_in = int16_t(ui.song_cursor); // the start: the end at the next tap
+    c.notice("Loop from bar " + std::to_string(ui.song_cursor + 1) + ": move, then LOOP");
     return true;
+}
+
+// Shift + Erase with a loop range (issue 60): its bars kept to paste, the lane's or, in the all-tracks view, every lane's.
+bool song_copy_bars(Context& c) {
+    const auto& song = c.project.song;
+    if (!song.looping()) return false;
+    c.song_section = song_copy_range(song, song.loop_start, song.loop_end, song_lanes(c.ui.song_all, c.ui.track));
+    const unsigned bars = c.song_section.bars;
+    c.notice("Copy " + std::to_string(bars) + (bars == 1 ? " bar" : " bars") + ": Push pastes");
+    return true;
+}
+
+void song_view_all(Context& c) {
+    c.ui.song_all = !c.ui.song_all;
+    c.notice(c.ui.song_all ? "All tracks" : "Track " + std::to_string(c.ui.track % track_count + 1));
 }
 
 const PageSpec song_page {draw, pad, wheel, push, soft, nudge};

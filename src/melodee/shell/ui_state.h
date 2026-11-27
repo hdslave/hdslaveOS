@@ -281,6 +281,11 @@ struct UiState {
     uint8_t song_zoom = 2;      // index into song_zooms
     uint8_t song_pattern = 0;   // what Push places on empty time
     uint8_t song_length = 4;    // bars
+    // Issue 60 (shell/song_range.h): every lane at once (PAD BANK tap on Song), and the loop's start set by a LOOP tap
+    // on empty time waiting for the tap that sets its end (-1 none).
+    bool song_all = false;
+    int16_t song_loop_in = -1;
+    std::array<uint64_t, 2> song_used {}; // the selected track's patterns that hold notes, a bit each (K2's list, refreshed on Song)
     // Jam capture (model/jam_log.h): the bars of the run being logged and whether one is (Song's foot), the jams
     // kept; JAMS (Song's Shift + B1): open, the jam picked (its index, oldest first), its bars, the part FROM-TO
     // (bars, TO not included), and whether B2 plays it.
@@ -477,7 +482,7 @@ struct UiState {
     // Tracks), one key's notes onto another key (a synth's play pages, Roll,
     // Step Edit), or one step onto another (Steps). Armed, then the source,
     // then the target (shell/erase_copy.h).
-    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes, Scenes }; // Notes: Roll's marked notes, Push pastes; Scenes: Sequences' pads
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes, Scenes, Bars }; // Notes: Roll's marked notes, Push pastes; Scenes: Sequences' pads; Bars: Song's loop range (issue 60), Push pastes
     Copying copying = Copying::Off;
     int16_t copy_from = -1;   // the kit pad, pattern, track, key, step or sequence picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns and kit pads: the track the pattern or pad is copied from

@@ -823,6 +823,12 @@ void Context::apply(const Binding& b, int value) {
         set_region_value(b, value); // freeze plan F3 (shell/audio_jobs.cpp)
         break;
     case Kind::SongPattern:
+        if (b.kind == Kind::SongPattern) { // issue 60: K2 walks the list: its place to the pattern
+            const unsigned now = b.id >= 0 ? project.song.clips[size_t(b.id)].pattern : ui.song_pattern;
+            const auto list = song_pattern_list(ui.song_used, now);
+            value = list[size_t(std::clamp(value, 0, int(list.size()) - 1))];
+        }
+        [[fallthrough]];
     case Kind::SongLength:
         if (b.id >= 0) { // the clip under the cursor
             auto& clip = project.song.clips[size_t(b.id)];

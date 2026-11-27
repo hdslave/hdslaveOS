@@ -14,6 +14,8 @@ void song_marker(Context& c);
 void song_chop(Context& c);
 void song_erase(Context& c);
 void song_copy(Context& c); // Shift + Erase: the clip after itself, as DUPLICATE
+bool song_copy_bars(Context& c); // Shift + Erase with a loop range: its bars copied (issue 60); Push then pastes them
+void song_view_all(Context& c);  // PAD BANK tap on Song: every lane at once, or the selected track's again (issue 60)
 // Erase tapped and Shift + Erase on the page in view (shell/erase_copy.h): a chain's effect in focus out, or again
 // after itself; the project under Project's cursor deleted (tapped twice) or duplicated. False with nothing there.
 bool chain_erase(Context& c);

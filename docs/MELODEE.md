@@ -1017,7 +1017,20 @@ hold to steer, Shift + Seq to zoom in**.
   the song is, a longer clip on another track too. A clip changed while
   it plays is heard from the next bar. Each
   is one undo. Shift + Push adds a marker
-  (on a marker, names it). Play here plays the song from the cursor.
+  (on a marker, names it). Play here plays the song from the cursor (from
+  past the loop's end it plays on to the song's end and stops). Issue 60
+  (shell/song_range.h): **Pad Bank** tap shows all sixteen lanes at once in
+  the six's room (header ALL, every clip bright, no names); **Loop** on
+  empty time sets the loop's first bar, a second tap at the cursor its last
+  (either way round), a third off; with a loop range **Shift + Erase**
+  copies its bars (the lane's, or with ALL every lane's; header COPY) and
+  **Push** pastes them at the cursor as an insert (what is there on moves
+  on, a clip across the cursor cut there; again for the next copy), and
+  **Erase** takes the range's bars out and closes the gap (with ALL the
+  markers and tempo points move too); each one undo. K2 PATTERN steps
+  through the track's patterns that hold notes and the next empty one,
+  named A1-H16 as on the pads (clips too). A clip keeps a length past 128
+  bars when the project is opened again.
   **Tempo lane** (roadmap P5): Shift + K1 BAR TEMPO sets the tempo from
   the cursor's bar (with no point there the card shows the lane's tempo
   and a turn adds one; under 30 BPM, Off, takes it away), Shift + K2 SHAPE

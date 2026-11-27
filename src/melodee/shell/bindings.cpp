@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/song_range.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/levels_keys.h"
@@ -1109,8 +1110,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
         int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;
         int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;
+        const auto list = song_pattern_list(ui.song_used, unsigned(pattern_value)); // issue 60: the patterns that hold notes, and the next empty
         return {Binding {Kind::SongZoom, 0, 0, int(sizeof(song_zooms) / sizeof(song_zooms[0])) - 1, ui.song_zoom},
-                Binding {Kind::SongPattern, int16_t(clip), 0, int(pattern_count) - 1, pattern_value},
+                Binding {Kind::SongPattern, int16_t(clip), 0, int(list.size()) - 1, int(song_pattern_index(list, unsigned(pattern_value)))},
                 Binding {Kind::SongLength, int16_t(clip), 1, int(max_bars), length_value}};
     }
     case PageId::Rack:

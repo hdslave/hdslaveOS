@@ -1745,6 +1745,53 @@ void button_remap() {
         m.colour_sheet = true; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::ColourPick);
         m.ask = UiState::Ask::ClearTrack; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::Sheet);
     }
+    // Song (issue 60, shell/song_range.h): the loop range copied, pasted as an insert and taken out, on one lane or
+    // every lane with the markers and tempo points; K2's list of the patterns that hold notes and the next empty.
+    {
+        Song song;
+        song.place({0, 0, 0, 4, false});  // T1 bars 1-4
+        song.place({0, 1, 4, 4, false});  // T1 bars 5-8
+        song.place({1, 2, 2, 4, false});  // T2 bars 3-6
+        song.step_marker(4);
+        song.tempo.set(6, 1300, false);
+        auto section = song_copy_range(song, 2, 6, song_lanes(false, 0)); // T1's bars 3-6
+        CHECK(section.bars == 4 && section.clips.size() == 2 && section.clips[0].bar == 0 && section.clips[0].bars == 2 &&
+              section.clips[1].bar == 2 && section.clips[1].bars == 2 && section.clips[1].pattern == 1);
+        auto every = song_copy_range(song, 2, 6, song_all_lanes);
+        CHECK(every.clips.size() == 3 && every.lanes == song_all_lanes);
+        Song one = song;
+        CHECK(song_paste(one, section, 2)); // T1 alone: what is at bar 3 on moves 4 bars on, cut where the cursor is
+        CHECK(one.clip_at(0, 1) >= 0 && one.clips[size_t(one.clip_at(0, 1))].bars == 2);              // bars 1-2 stay
+        CHECK(one.clip_at(0, 2) >= 0 && one.clips[size_t(one.clip_at(0, 2))].pattern == 0);           // the paste's first part
+        CHECK(one.clip_at(0, 4) >= 0 && one.clips[size_t(one.clip_at(0, 4))].pattern == 1);           // its second
+        CHECK(one.clip_at(0, 6) >= 0 && one.clips[size_t(one.clip_at(0, 6))].pattern == 0 && one.length() == 12); // the tail of the first clip moved on
+        CHECK(one.clip_at(1, 2) >= 0 && one.clips[size_t(one.clip_at(1, 2))].bar == 2);               // T2 not moved
+        CHECK(one.markers[0].bar == 4 && one.tempo.points[0].bar == 6);                              // one lane: markers stay
+        Song all = song;
+        CHECK(song_paste(all, every, 2));
+        CHECK(all.clip_at(1, 6) >= 0 && all.clips[size_t(all.clip_at(1, 6))].bar == 6 && all.markers[0].bar == 8 && all.tempo.points[0].bar == 10);
+        Song out = song;
+        CHECK(song_remove_bars(out, 2, 6, song_all_lanes)); // bars 3-6 out of every lane
+        CHECK(out.length() == 4 && out.clip_at(0, 0) >= 0 && out.clips[size_t(out.clip_at(0, 0))].bars == 2);
+        CHECK(out.clip_at(0, 2) >= 0 && out.clips[size_t(out.clip_at(0, 2))].pattern == 1 && out.clips[size_t(out.clip_at(0, 2))].bars == 2);
+        CHECK(out.clip_at(1, 2) < 0 && out.marker_count == 0 && out.tempo.points[0].bar == 2);
+        Song full;
+        for (unsigned n = 0; n < song_clips; ++n) full.place({uint8_t(n % 16), 0, uint16_t(n / 16 * 2), 2, false});
+        CHECK(!song_paste(full, every, 1)); // no room: nothing done
+        std::array<uint64_t, 2> used {};
+        used[0] = (1u << 0) | (1u << 3); used[1] = uint64_t(1) << (70 - 64);
+        auto list = song_pattern_list(used, 0);
+        CHECK((list == std::vector<uint8_t> {0, 3, 70, 71}) && song_pattern_index(list, 70) == 2);
+        list = song_pattern_list(used, 20); // a clip on an empty pattern keeps it in the list
+        CHECK((list == std::vector<uint8_t> {0, 3, 20, 70, 71}) && song_pattern_index(list, 20) == 2);
+        CHECK((song_pattern_list({}, 0) == std::vector<uint8_t> {0}));
+        CHECK(print_pattern_name(17) == "B2");
+        auto long_song = std::make_unique<Project>(); // a clip longer than a pattern (an MPC song's) keeps its length
+        long_song->song.place({0, 0, 0, 200, true});
+        auto bank = std::make_unique<PatternBank>();
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(save_project(*long_song, *bank), *back, *bank).empty() && back->song.clips[0].bars == 200 && back->song.clips[0].muted);
+    }
     // Stems (shell/stems_jobs.cpp): a kit pad that holds a sample offers STEMS in the MENU on Stage and on Shift + B3
     // of its TRIM, in Basic as in Full; an empty pad and an instrument do not.
     {

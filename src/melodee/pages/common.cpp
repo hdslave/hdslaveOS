@@ -8,6 +8,8 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/pad_job.h"
 #include "melodee/pages/common.h"
+#include "melodee/shell/song_range.h"
+#include "melodee/model/print.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/undo_scope.h"
@@ -506,7 +508,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
-    case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
+    case Kind::SongPattern: { // issue 60: the place in the list, named as the pattern is elsewhere
+        const int clip = s.project.song.clip_at(s.ui.track, s.ui.song_cursor);
+        const unsigned now = clip >= 0 ? s.project.song.clips[size_t(clip)].pattern : s.ui.song_pattern;
+        const auto list = song_pattern_list(s.ui.song_used, now);
+        c.label = "PATTERN";
+        c.value = juce::String(print_pattern_name(list[size_t(std::clamp(b.value, 0, int(list.size()) - 1))]));
+        break;
+    }
     case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
     case Kind::RegionGain: { // freeze plan F3: Stage on an audio track's pattern's take
         c.label = "LEVEL";

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/pad_bank.h"
+#include "melodee/pages/pages.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
@@ -69,6 +70,7 @@ void pad_bank_button(Context& c, bool pressed) {
     if (ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes) { step_pattern_bank(c, ui.shift ? -1 : 1); return; } // the patterns' bank (Seq's layer)
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (ui.page == PageId::Mixer) { ui.mixer_bank = ui.mixer_bank ? 0 : 1; return; } // the tracks, or the submixes, buses, input and master
+    if (ui.page == PageId::Song && !ui.song_export && !ui.jam_sheet) { song_view_all(c); return; } // issue 60: every lane, or the track's
     if (ui.page == PageId::Chop) { step_slice_bank(c, ui.shift ? -1 : 1); return; } // the next sixteen slices
     if (sounds_open(ui)) { sounds_bank_step(c, ui.shift ? -1 : 1); return; } // Step Edit's sounds on the pads: their bank
     if (c.track().engine == EngineKind::Sampler || drum_pads(c.track()) || prog_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
