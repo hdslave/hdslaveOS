@@ -63,7 +63,7 @@ void Context::send(const Command& command) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Bend: case Type::Pressure:
     case Type::Control: case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
-    case Type::Click: case Type::MuteMode: break;
+    case Type::Click: case Type::MuteMode: case Type::AuditionLevel: break;
     // Nor what only tells the engine how things stand or passes a gesture on: the input's route and level (Input
     // Config is a setting), a MIDI track's audio input (sent again every second), a keygroup's found root, MIDI
     // clock and MTC in, a Note Repeat or arp key, a Pad FX pressed or let go. A project left alone is not saved
@@ -1041,6 +1041,11 @@ void Context::apply(const Binding& b, int value) {
         ui.settings.click_level = uint8_t(value);
         send_click();
         settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
+        break;
+    case Kind::PreviewLevel: // the fader on Samples: the preview sounding now glides there, the next starts there
+        ui.settings.preview_level = uint8_t(value);
+        if (previewing >= 0) send({Type::AuditionLevel, uint8_t(previewing), 0, 0, int16_t(value)});
+        settings_save_at = std::max<uint32_t>(now, 1) + 1000; // the fader moves in many steps: the file gets the last
         break;
     case Kind::ArpMode: t.arp_mode = uint8_t(value); send({Type::Arp, ui.track, 0, 1, int16_t(value)}); break;
     case Kind::ArpRate: t.arp_rate = uint8_t(value); send({Type::Arp, ui.track, 0, 2, int16_t(value)}); break;

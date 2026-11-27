@@ -4021,6 +4021,14 @@ void fader_and_takeover() {
     ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target); // step entry: no nudge (round 2)
     ui.page = PageId::Compressor; CHECK(fader_job(*project, ui).binding.kind == Kind::CompAmount);
     ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
+    // The sample browser on a kit: its preview's level, kept with the settings (100 as the file is); on a track of
+    // notes the track's own target.
+    ui.page = PageId::Samples; ui.settings.preview_level = 70;
+    job = fader_job(*project, ui);
+    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::PreviewLevel && job.binding.value == 70
+          && job.binding.min == 0 && job.binding.max == 127 && !job.centred && !job.bend);
+    ui.track = 2; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
+    ui.track = 3; ui.settings.preview_level = 100;
     ui.page = PageId::KnobFx; // no effect loaded: the track's target
     CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
     project->knob_fx.kind = uint8_t(EffectKind::Chorus); project->knob_fx.morph = 40;
@@ -6411,13 +6419,16 @@ void zero_snap() {
     CHECK(!back.stems_best);
     back.read(fresh.text());
     CHECK(back.stems_best);
-    // The sample browser's PREVIEW: off at first, on kept.
-    CHECK(!fresh.preview);
-    Settings hearing; hearing.preview = true;
+    // The sample browser's PREVIEW: off at first, on kept; its level (the fader's on Samples) 100 at first, kept,
+    // and held to 0..127.
+    CHECK(!fresh.preview && fresh.preview_level == 100);
+    Settings hearing; hearing.preview = true; hearing.preview_level = 64;
     back.read(hearing.text());
-    CHECK(back.preview);
+    CHECK(back.preview && back.preview_level == 64);
     back.read(fresh.text());
-    CHECK(!back.preview);
+    CHECK(!back.preview && back.preview_level == 100);
+    back.read("preview_level=300\n");
+    CHECK(back.preview_level == 127);
 
     // TO PADS as Simpler's Playback: POLY as before, MONO in one mute group, THRU that and on to the region's end;
     // the pick kept with the settings, POLY at first.

@@ -1457,7 +1457,9 @@ the file holds, to the bit.
   (keeping its settings), B1 back out, B2 the drive (CARD from `Melodee/Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
   only; each drive keeps its folder and row, so B2 there and back lands
-  where it was), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
+  where it was), the fader the preview's level (Settings' `preview_level`, 100 as
+  the file is; a move glides the one playing too: core `AuditionLevel`), B3
+  PREVIEW (its LED) plays each file as the cursor lands (its row
   fills in the track colour as it plays, with the seconds heard of its
   length on the right). A preview starts once its first eighth of a second
   is read, however long the file: the sample is laid out at its full length

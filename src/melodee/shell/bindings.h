@@ -140,6 +140,7 @@ struct Binding {
         // Samples' trim sheet (shell/browse_trim.h): the file under the cursor's START and END in frames (id 1: not read
         // yet, the card shows no value), Shift + K2 / K3 its zoom 0..100 (id 0 at START, 1 at END).
         BrowseStart, BrowseEnd, BrowseZoom,
+        PreviewLevel, // the browser's preview level (Settings::preview_level), the fader's job on Samples
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

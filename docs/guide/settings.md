@@ -43,7 +43,7 @@ choices made outside Settings are kept there too:
 - The metronome and its level
 - Input Config
 - Your starred sounds
-- **PREVIEW** in the sample browser, on or off
+- **PREVIEW** in the sample browser, on or off, and its level (the fader)
 - **BEST** (**B2**) on a sample's stems
 - How Chop's **TO PADS** plays the slices: **POLY**, **MONO**, **THRU** or **KIT**
 - The Chop type picked last (**K3** on Chop)

@@ -760,6 +760,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
     case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
     case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PreviewLevel: c.label = "PREVIEW"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;
     case Kind::Features: c.label = "FEATURES"; c.value = b.value ? "Full" : "Basic"; break;
     case Kind::UsageLog: c.label = "USAGE LOG"; c.value = b.value ? "On" : "Off"; break;
     case Kind::SettingRow: { // Settings: the row under the cursor, at the card's value (one that waits for K1 to rest too)

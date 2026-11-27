@@ -140,6 +140,9 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
         return job;
     }
     case PageId::Compressor: page({Kind::CompAmount, 0, 0, 100, project.compressor.amount}); return job;
+    case PageId::Samples: // a kit's or keygroup's browser: how loud its preview plays
+        if (track.sampled()) { page({Kind::PreviewLevel, 0, 0, 127, ui.settings.preview_level}); return job; }
+        break;
     case PageId::FlexBeat: page({Kind::FlexMix, 0, 0, 100, project.flex.mix}); return job;
     case PageId::KnobFx: // Knob FX C: A to B (no effect loaded: the track's target)
         if (project.knob_fx.kind) { page({Kind::KnobParam, int(knob_morph), 0, 127, project.knob_fx.morph}); return job; }

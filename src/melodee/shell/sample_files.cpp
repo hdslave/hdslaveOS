@@ -472,6 +472,7 @@ void Context::browse_tick(uint32_t ms) {
     const auto [from, to] = browse_heard(h, b.focus);
     Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
     a.pad.sample = uint16_t(b.slot); a.pad.start = from; a.pad.end = to;
+    a.pad.level = ui.settings.preview_level; // the fader's, on Samples
     send(a);
     previewing = ui.track;
 }
@@ -503,6 +504,7 @@ void Context::browser_tick() {
     if (!here || !ui.settings.preview || ui.files_cursor >= files.size() || files[ui.files_cursor].path != library->previewed()) return;
     Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
     a.pad.sample = uint16_t(preview_slot); a.pad.start = 0; a.pad.end = 0;
+    a.pad.level = ui.settings.preview_level; // the fader's, on Samples
     send(a);
     previewing = ui.track;
 }
