@@ -4,6 +4,7 @@
 #include "melodee/model/limits.h"
 #include "melodee/model/midi_config.h"
 #include "melodee/model/project.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
@@ -64,7 +65,39 @@ inline int knob_steps(uint8_t mode, unsigned value, int last) {
 // 2's complement. A control that also fits another relative mode shows the guess; the row's K1 changes it. Bank Select,
 // the channel modes and data entry are never taken.
 constexpr unsigned learn_values = 3;
-constexpr uint32_t learn_ms = 10000; // how long Push on the row waits for a control
+constexpr uint32_t learn_ms = 10000;        // how long Push on the row waits for a control
+constexpr uint32_t learn_settle_ms = 600;   // and how long a control just learned must rest before it acts
+
+// Learn's take of one control (MidiIo): the values of the one being moved, for one Push (`session`: its
+// UiState::midi_learn_until, new each time, so values left from a wait that ran out never count), and once it is
+// taken, that control quiet while it keeps moving: a knob still turning when it is learned steps nothing until it
+// rests learn_settle_ms.
+struct LearnTake {
+    std::array<uint8_t, learn_values> values {};
+    unsigned count = 0;
+    uint32_t session = 0, quiet_until = 0;
+    uint8_t channel = 0, cc = 0;
+    // One CC while Learn waits; `needed` values of one control (1..learn_values) take it. True once taken.
+    bool take(uint32_t in_session, unsigned ch, unsigned number, unsigned value, unsigned needed, uint32_t now) {
+        if (session != in_session || !count || ch != channel || number != cc) {
+            session = in_session;
+            count = 0;
+            channel = uint8_t(ch);
+            cc = uint8_t(number);
+        }
+        values[count++] = uint8_t(value);
+        if (count < std::min<unsigned>(std::max<unsigned>(needed, 1), learn_values)) return false;
+        count = 0;
+        quiet_until = std::max<uint32_t>(now + learn_settle_ms, 1);
+        return true;
+    }
+    // A CC after: true while it is the control just taken, still moving (it is dropped, and the rest starts again).
+    bool quiet(uint32_t now, unsigned ch, unsigned number) {
+        if (!quiet_until || now >= quiet_until || ch != channel || number != cc) return false;
+        quiet_until = now + learn_settle_ms;
+        return true;
+    }
+};
 inline bool learnable_cc(unsigned cc) { return cc != 0 && cc != 32 && cc != 6 && cc != 38 && !(cc >= 96 && cc <= 101) && cc < 120; }
 inline uint8_t guess_knob(const std::array<uint8_t, learn_values>& v) {
     bool rising = true;

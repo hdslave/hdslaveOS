@@ -160,6 +160,8 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         return; // not for anything here
     ins.fetch_add(1, std::memory_order_relaxed);
     c.ui.midi_in_at = c.now;
+    if (channel_message && m.isController() && learn.quiet(c.now, unsigned(m.getChannel()), unsigned(m.getControllerNumber())))
+        return; // the control just learned, still moving: nothing until it rests
     if (knob) { remote_knob(c, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())); return; }
     if (remote.kind != RemoteJob::Kind::None) { do_remote(c, remote); return; }
     // Roadmap P4 (docs/MIDI_TRACKS.md M3): a channel message for a MIDI track goes out again on its own port and channel
@@ -328,18 +330,15 @@ void MidiIo::remote_knob(Context& c, unsigned channel, unsigned cc, unsigned val
     auto& m = c.ui.settings.midi;
     if (c.midi_learning()) {
         const unsigned row = c.ui.midi_learn_row;
+        if (!learn.take(c.ui.midi_learn_until, channel, cc, value, row == PresetCcRow ? learn_values : 1, c.now)) return;
         if (row == PresetCcRow) {
-            if (!learn_count || learn_channel != channel || learn_number != cc) { learn_count = 0; learn_channel = uint8_t(channel); learn_number = uint8_t(cc); }
-            learn_got[learn_count++] = uint8_t(value);
-            if (learn_count < learn_values) return;
             m.preset_cc = uint8_t(cc);
-            m.preset_knob = guess_knob(learn_got);
+            m.preset_knob = guess_knob(learn.values);
             preset_last = -1;
         } else if (row == TrackCcRow) m.track_cc = uint8_t(cc);
         else if (row == PatternCcRow) m.pattern_cc = uint8_t(cc);
         else m.scene_cc = uint8_t(cc);
         m.remote_channel = uint8_t(channel);
-        learn_count = 0;
         c.ui.midi_learn_until = 0;
         c.learned_midi(row);
         return;

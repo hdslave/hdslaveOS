@@ -4380,6 +4380,19 @@ void midi_and_sync() {
         CHECK(guess_knob({40, 41, 43}) == knob_absolute && guess_knob({65, 65, 65}) == knob_binary_offset);
         CHECK(guess_knob({1, 1, 2}) == knob_twos_complement && guess_knob({127, 127, 127}) == knob_binary_offset);
         CHECK(!learnable_cc(0) && !learnable_cc(32) && !learnable_cc(6) && !learnable_cc(99) && !learnable_cc(123) && learnable_cc(74) && learnable_cc(1));
+        // A wait that ran out leaves nothing behind (MPC, 2026-11-27: two values of a first Push and one of a second took
+        // the knob, and the next two stepped a plug-in's presets); the control just taken is quiet while it moves on.
+        {
+            LearnTake take;
+            CHECK(!take.take(100, 1, 3, 65, learn_values, 0) && !take.take(100, 1, 3, 65, learn_values, 10));   // the first Push's two
+            CHECK(!take.take(200, 1, 3, 65, learn_values, 20000) && !take.take(200, 1, 3, 65, learn_values, 20010)); // a new Push: from 0
+            CHECK(take.take(200, 1, 3, 65, learn_values, 20020) && take.channel == 1 && take.cc == 3 && take.values[2] == 65);
+            CHECK(take.quiet(20100, 1, 3) && take.quiet(20650, 1, 3));  // still turning: dropped, its rest starts again
+            CHECK(!take.quiet(20700, 1, 4) && !take.quiet(20700, 2, 3)); // another control, another channel
+            CHECK(!take.quiet(21300, 1, 3));                              // rested: it steps
+            CHECK(!take.take(300, 1, 5, 1, learn_values, 30000) && !take.take(300, 1, 6, 1, learn_values, 30010)); // another control: over
+            CHECK(take.take(300, 9, 102, 0, 1, 40000) && take.channel == 9 && take.cc == 102); // a track row: the first CC takes it
+        }
         // Program changes in quick succession: one waiting per plug-in, the last asked; another plug-in's, a load and
         // a replaced plug-in's (another generation) left as they are.
         {

@@ -212,8 +212,10 @@ one, on any page.
 
 1. Open **MIDI** (**SHIFT** + **Pad 8**). Turn the encoder to **Remote preset CC**.
 2. Press **Push**. The row shows **Learning**.
-3. Turn the knob slowly to the right. The screen shows the CC, the channel and
-   how the knob sends. **Remote channel** is set to the knob's channel.
+3. Turn the knob slowly to the right, then let go. The screen shows the CC,
+   the channel and how the knob sends. **Remote channel** is set to the
+   knob's channel. Turns that go on after that do nothing until the knob has
+   rested for a moment.
 4. Select a plug-in track and turn the knob. The screen shows each preset's
    name. The preset loads when the knob stops.
 
