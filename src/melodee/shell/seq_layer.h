@@ -34,6 +34,9 @@ bool seq_pad(Context& c, unsigned pad, bool down);
 bool seq_button(Context& c, SurfaceButton button);
 // The wheel while Seq is held: the tempo. False when not held.
 bool seq_wheel(Context& c, int delta);
+// Minus / Plus with Seq held (and on Time Correct): the selected track's previous / next pattern, launched as a pad
+// launches it; at the first or last, a notice.
+void seq_step_pattern(Context& c, int way);
 // A pad while a pattern copy (Shift + Erase with Seq held) waits: the pattern to copy, then where.
 bool pattern_copy_pad(Context& c, unsigned pad);
 

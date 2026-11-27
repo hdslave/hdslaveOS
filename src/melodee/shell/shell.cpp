@@ -69,6 +69,7 @@ void let_go(Context& c, Button b) {
     case Button::Loop: ui.loop_held = ui.loop_grip = ui.loop_shift_held = false; break;
     case Button::SixteenLevels: ui.levels_held = ui.levels_used = false; break;
     case Button::NoteRepeat: repeat_button(c, false); break; // held, the repeat ends with it
+    case Button::TopMiddle: ui.tc_groove_held = false; break; // Time Correct's GROOVE: the pads play again
     default: break;
     }
 }
@@ -316,6 +317,7 @@ void Shell::button(Button b, bool pressed) {
 
 void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
+    if (b == Button::TopMiddle && !pressed) ui.tc_groove_held = false; // Time Correct's B2 GROOVE let go, wherever it went
     if (b == Button::Shift) {
         ui.shift = pressed;
         if (pressed) ui.shift_used = false;
@@ -687,6 +689,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         return;
     }
     if (int initial = 0; ui_.erase && pad_reset_value(b, initial)) { // a kit pad's own value: back to a new pad's
+        context_.apply(b, initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
+    if (int initial = 0; ui_.erase && feel_reset_value(b, initial)) { // Time Correct's cards: back to as written
         context_.apply(b, initial);
         pot.engaged = false; pot.bound = 0;
         return;

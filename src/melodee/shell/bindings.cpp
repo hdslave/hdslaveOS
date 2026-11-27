@@ -315,10 +315,22 @@ bool pad_reset_value(const Binding& b, int& value) {
     return false;
 }
 
+bool feel_reset_value(const Binding& b, int& value) {
+    static const Feel plain {};
+    switch (b.kind) {
+    case Kind::FeelStrength: value = plain.strength; return true;
+    case Kind::FeelSwing: value = plain.swing; return true;
+    case Kind::FeelHumanize: value = plain.humanize; return true;
+    case Kind::FeelVelocity: value = plain.humanize_velocity; return true;
+    case Kind::GrooveAmount: value = plain.groove_amount; return true;
+    default: return false;
+    }
+}
+
 bool erase_resets(const Binding& b) {
     int value = 0;
     return b.kind == Kind::Param || b.kind == Kind::KnobParam || b.kind == Kind::PluginParam || b.kind == Kind::Lock
-        || pad_reset_value(b, value);
+        || pad_reset_value(b, value) || feel_reset_value(b, value);
 }
 
 namespace {
@@ -872,7 +884,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Stage: return stage_bindings(project, ui, pattern, true);
     case PageId::Pads: case PageId::Tempo: return project_key(project); // Shift + K1 / K2: the project's key, no synth track needed
-    case PageId::TimeCorrect: { // Shift: humanize, its velocity, the groove's amount (a pad picks the groove)
+    case PageId::TimeCorrect: { // Shift: humanize, its velocity, the groove's amount (B2 GROOVE held + a pad picks the groove)
         auto feel = feel_cards(pattern, 0), more = feel_cards(pattern, 1);
         return {feel[2], more[0], more[2]};
     }

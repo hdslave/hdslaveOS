@@ -116,7 +116,7 @@
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/progression_tree.h"
 #include "melodee/shell/track_colours.h"
-#include "melodee/shell/groove_pick.h"
+#include "melodee/shell/time_correct.h"
 #include "melodee/shell/pad_context.h"
 #include "melodee/shell/pad_light.h"
 #include "melodee/shell/menu.h"
@@ -2491,6 +2491,9 @@ void timing() {
         auto tc_shift = page_bindings(project, ui, five, true); // Shift: humanize, its velocity, the groove's amount
         CHECK(tc_shift[0].kind == Binding::Kind::FeelHumanize && tc_shift[0].value == 20 && tc_shift[1].kind == Binding::Kind::FeelVelocity
               && tc_shift[2].kind == Binding::Kind::GrooveAmount);
+        int start = -1; // Erase + pot on a feel card: back to a new pattern's
+        CHECK(feel_reset_value(tc[2], start) && start == 50 && feel_reset_value(tc[1], start) && start == 0);
+        CHECK(feel_reset_value(tc_shift[2], start) && start == 100 && erase_resets(tc_shift[0]) && !feel_reset_value(tc[0], start));
         CHECK(shift_pad_job(1).kind == ShiftPadJob::Kind::Action && shift_pad_job(13).kind == ShiftPadJob::Kind::Open);
     }
 }
@@ -8663,6 +8666,20 @@ void pad_lights() {
     ui.page = PageId::TimeCorrect; light(plays); auto played = looks;
     ui.page = PageId::Stage; light(plays);
     for (unsigned k = 0; k < 16; ++k) CHECK(played[k].hue == looks[k].hue && rung(played[k].level) == rung(looks[k].level));
+    {   // B2 GROOVE held: the patterns of the bank shown, the groove's Full, the one in hand White, with notes Dim.
+        auto& patterns = bank->at[1];
+        const unsigned here = project->tracks[1].pattern % pattern_count;
+        Event e; e.tick = 0; e.length = 120; e.key = 36;
+        patterns[18].events.push_back(e); patterns[20].events.push_back(e); // B3, B5
+        patterns[here].feel.groove_from = groove_source(1, 18);
+        ui.page = PageId::TimeCorrect; ui.tc_groove_held = true; ui.tc_groove_track = 1; ui.tc_groove_bank = 1; light(plays);
+        CHECK(is(2, Hue::Track, 4) && is(4, Hue::Track, 2) && is(0, Hue::None, 0));
+        ui.tc_groove_bank = uint8_t(here / pattern_pads); light(plays);
+        CHECK(is(here % pattern_pads, Hue::White, 3));
+        ui.tc_groove_held = false; light(plays); // let go: the track's pads again
+        for (unsigned k = 0; k < 16; ++k) CHECK(played[k].hue == looks[k].hue && rung(played[k].level) == rung(looks[k].level));
+        patterns[here].feel.groove_from = 0; patterns[18].events.clear(); patterns[20].events.clear();
+    }
 
     // Chop: the slices, the one in hand Full; Manual armed, pad 1 flashes red.
     ui.page = PageId::Chop; ui.slices.count = 5; ui.chop_slice = 2; light({});
@@ -8958,16 +8975,16 @@ void erase_copy_everywhere() {
     light(keys); CHECK(is(0, Hue::Track, 2) && is(2, Hue::None, 0)); // the keys that can be copied
     ui.copy_from = int16_t(k0);
     light(keys); CHECK(is(0, Hue::White, 4) && is(2, Hue::Track, 1)); // the source white, where it can land Faint
-    {   // Time Correct's groove on the encoder (shell/groove_pick.h): none, then the track's patterns with notes, the one
-        // in hand left out; stops at the ends; another track's groove kept in the list.
-        std::array<uint64_t, 2> used {};
-        used[0] = (1u << 0) | (1u << 2) | (1u << 5); used[1] = uint64_t(1) << (70 - 64);
-        auto list = groove_choices(used, 3, 0, 0);
-        CHECK(list.size() == 4 && list[0] == 0 && list[1] == groove_source(3, 2) && list[2] == groove_source(3, 5) && list[3] == groove_source(3, 70));
-        CHECK(groove_step(used, 3, 0, 0, 1) == groove_source(3, 2) && groove_step(used, 3, 0, groove_source(3, 2), 2) == groove_source(3, 70));
-        CHECK(groove_step(used, 3, 0, groove_source(3, 70), 5) == groove_source(3, 70) && groove_step(used, 3, 0, groove_source(3, 2), -4) == 0);
-        const uint16_t other_track = groove_source(1, 4);
-        CHECK(groove_choices(used, 3, 0, other_track)[1] == other_track && groove_step(used, 3, 0, other_track, -1) == 0);
+    {   // Time Correct's B2 GROOVE (shell/time_correct.h): the bank it shows, what a pad does, Minus / Plus's track.
+        CHECK(groove_view(0, 3, 37).track == 3 && groove_view(0, 3, 37).bank == 2); // no groove: the bank of the one in hand
+        CHECK(groove_view(groove_source(5, 70), 3, 0).track == 5 && groove_view(groove_source(5, 70), 3, 0).bank == 4);
+        CHECK(groove_pick(0, 3, 0, 3, 2, true) == GroovePick::Take && groove_pick(groove_source(3, 2), 3, 0, 3, 2, true) == GroovePick::Clear);
+        CHECK(groove_pick(0, 3, 0, 3, 0, true) == GroovePick::Here && groove_pick(0, 3, 0, 3, 5, false) == GroovePick::Empty);
+        CHECK(groove_pick(0, 3, 0, 4, 0, true) == GroovePick::Take); // another track's first pattern is not the one in hand
+        std::array<bool, track_count> notes {};
+        notes[1] = notes[6] = true;
+        CHECK(groove_track_step(notes, 3, 3, 1) == 6 && groove_track_step(notes, 3, 6, -1) == 3 && groove_track_step(notes, 3, 3, -1) == 1);
+        CHECK(groove_track_step(notes, 3, 6, 1) == 6 && groove_track_step(notes, 3, 1, -1) == 1); // it stops at the ends
     }
     CHECK(k2 != k0);
     ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::KeyCopy);
@@ -10201,6 +10218,19 @@ void feel_p1() {
     bass.feel.groove_amount = 50;
     played = feel_pattern(bass);
     CHECK(played.events[1].tick == 260 && played.events[1].velocity == 84);
+    {   // Time Correct's picture (shell/time_correct.h): each note where feel_pattern plays it; one pulled early off
+        // the first step drawn before the start, not round the loop at the end.
+        FeltTicks felt(bass);
+        CHECK(felt.at(bass.events[0]) == 0 && felt.at(bass.events[1]) == 260);
+        Pattern early;
+        note(early, 10, 60, 100); note(early, 250, 61, 100);
+        early.feel.groove_offsets.assign(1, int16_t(-60)); early.feel.groove_levels.assign(1, uint8_t(100));
+        CHECK(feel_pattern(early).events.back().tick > early.length / 2); // heard round the loop
+        FeltTicks pulled(early);
+        CHECK(pulled.at(early.events[0]) == -50 && pulled.at(early.events[1]) == 190);
+        Event hidden; hidden.tick = early.length + 5; hidden.key = 62;
+        CHECK(pulled.at(hidden) == hidden.tick); // past the end: not played, drawn as written
+    }
     // Heard: the audio thread plays the feel (a note written on tick 50, at strength 100 on tick 0's frame).
     {
         Pattern q;

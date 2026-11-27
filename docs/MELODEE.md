@@ -672,7 +672,7 @@ hold to steer, Shift + Seq to zoom in**.
     copy: the pattern, then where (on this or another track; the pads stay
     patterns until it ends).
   - Pad Bank the next bank of patterns (Shift: the previous); the pads,
-    the sheet, Patterns and Time Correct's groove row show it. It
+    the sheet and Patterns show it. It
     follows the selected track's pattern again whenever that changes. Hold
     a pad, step the bank, tap a pad: a copy across banks.
   - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
@@ -963,21 +963,30 @@ hold to steer, Shift + Seq to zoom in**.
   the cards (`feel_cards`).
 - **Time Correct** (Shift + Pad 14): heard live, no commit until APPLY. The selected
   pattern plays as close to its Q as K2 STRENGTH says, the second of each
-  pair late by K3 SWING, as they turn; turning down takes it back (the
-  notes stay as written: the pattern's feel). K1 Q; Shift + K1 HUMANIZE,
-  Shift + K2 its velocity, Shift + K3 the groove's amount; the encoder takes the
-  groove from a pattern of the track that holds notes, any bank, none first
-  (shell/groove_pick.h; the row shows that pattern's bank); the pads play
-  the track's sounds, lit as anywhere. B3 QUANTIZE, lit
-  while the feel is heard, takes it off to compare by ear and puts it
-  back; B2 ALL lays this feel on the track's other patterns (each one
-  undo); B1 APPLY (issue 55, shown while a feel is heard) writes the feel
-  into the notes (model/pattern.h `apply_feel`: each note moved to where it
-  plays and its velocity as heard, notes hidden past the end as written,
-  the feel back to plain; one undo), so Roll and Step Edit show the notes
-  on the grid; Shift + Pad 14 again closes it. Two beats drawn over the grid of Q: each note where it is
-  written (a ring) and where it plays (a dot), the swung steps where they
-  land; under it the track's patterns, the groove's lit.
+  pair late by K3 SWING (dim at STRENGTH 0, where it does nothing), as they
+  turn; turning down takes it back (the notes stay as written: the
+  pattern's feel). K1 Q; Shift + K1 HUMANIZE, Shift + K2 its velocity,
+  Shift + K3 the groove's amount; Erase + pot a feel card back to plain
+  (`feel_reset_value`). B2 GROOVE held (shell/time_correct.h): the pads
+  and the screen are one track's patterns, a bank at a time (the groove's
+  own, else the pattern in hand's; Pad Bank steps the bank, the bank
+  lights show it; Minus / Plus the next track with notes); a pad takes the
+  groove from that pattern, the same pad again none; the pattern in hand
+  and an empty one only say so. Its release (shell/shell.cpp) gives the
+  pads back. Otherwise the pads play the track's sounds, lit as anywhere,
+  and Minus / Plus step the pattern in hand as with Seq held
+  (`seq_step_pattern`). B3 QUANTIZE, lit while the feel is heard, takes it
+  off to compare by ear and puts it back; Shift + B2 ALL lays this feel on
+  the track's other patterns (each one undo); B1 APPLY (issue 55, shown
+  while a feel is heard) writes the feel into the notes (model/pattern.h
+  `apply_feel`: each note moved to where it plays and its velocity as
+  heard, notes hidden past the end as written, the feel back to plain; one
+  undo), so Roll and Step Edit show the notes on the grid; Shift + Pad 14
+  again closes it. Two beats drawn over the grid of Q: each note where it
+  is written (a ring) and where it plays (a dot: `FeltTicks`, each note
+  through `feel_pattern`, so the groove and humanize move it too), the
+  swung steps where they land; under it GROOVE and the groove's pattern
+  (A3; T2 A3 from another track).
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
   each one undo; the length stays for the speeds. Settings' Double Seq row
   picks what the new half holds: Copy notes (the MPC's way, motion too) or

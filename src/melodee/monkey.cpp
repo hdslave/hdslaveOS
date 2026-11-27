@@ -163,7 +163,7 @@ private:
             }
         const std::pair<bool, B> layers[] {{ui.shift, B::Shift}, {ui.erase, B::Erase}, {ui.pad_bank, B::PadBank}, {ui.seq_held, B::Seq},
                                            {ui.mute, B::Mute}, {ui.sample_held, B::Sample}, {ui.loop_held, B::Loop}, {ui.repeat_held, B::NoteRepeat},
-                                           {ui.levels_held, B::SixteenLevels}};
+                                           {ui.levels_held, B::SixteenLevels}, {ui.tc_groove_held, B::TopMiddle}};
         for (const auto& [on, b] : layers)
             if (on && !held[size_t(b)]) fail(std::string(surface_buttons[size_t(b)].name) + " still held after it was let go");
     }

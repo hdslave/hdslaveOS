@@ -13,6 +13,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 - **ERASE on Song with a loop range** takes the range's bars out (see Song below). Turn the loop off to delete one clip.
 - **Song's patterns are named A1 to H16**, as on the pads, and **K2** steps through the track's patterns that hold notes and the next empty one.
 - **A plug-in with its own screen opens on PANEL**, the first page under **B1**.
+- **Time Correct's B2 is GROOVE.** Hold **B2** and press a pad to take the groove from that pattern (**PAD BANK** for the next bank, **−** / **+** for another track's patterns). **ALL** moved to **SHIFT** + **B2**. The pads play the track's sounds.
 
 ### New
 
@@ -50,7 +51,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 - **A project from another card** (#72): a project, bank or settings file copied to a new card finds its samples and plug-ins at the same place on the new card.
 - **MIDI clock tempo**: the tempo shown and played no longer flickers between two values while following MIDI clock. Changing the tempo while the clock leads shows **Tempo locked to MIDI sync**.
 - **MIDI Learn**: a knob learned after a wait that ran out is no longer taken early, and a control just learned does nothing until it rests.
-- **Time Correct's pads** play the track's sounds, so you hear the timing as you turn **STRENGTH** and **SWING**; their lights follow your hits. The encoder takes the groove from any of the track's patterns with notes, in any bank (all the way back: no groove). Before, a pad picked the groove from bank A only, and the pad lights showed one pad that did not change.
+- **Time Correct** draws each note where it plays, with the groove and humanize too. **SWING** shows dim at 0 % strength, where it does nothing, and **ERASE** + a knob sets a value back to its default. **−** / **+** step the pattern. Before, the groove row read 1–16 in every bank and **PAD BANK** did nothing on the page.
 - **Song**: played from a bar after the loop range, the song plays on to its end and stops. A Song clip longer than 128 bars keeps its length when the project opens again.
 
 ## 0.9.1 (2026-11-27)

@@ -187,6 +187,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         }
         c.fill = b.fraction();
         c.frozen = print_covers(s.freeze, freeze_scope(s.project, s.ui, b)); // freeze plan F2c
+        c.quiet = s.ui.page == PageId::TimeCorrect && b.kind == Binding::Kind::FeelSwing && !s.pattern.feel.strength; // swing needs STRENGTH
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
             c.state = ui::KnobCard::State::Pickup;

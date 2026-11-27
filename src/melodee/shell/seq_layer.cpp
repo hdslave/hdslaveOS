@@ -71,6 +71,13 @@ void step_edit(Context& c) {
 }
 } // namespace
 
+void seq_step_pattern(Context& c, int way) {
+    int from = int(c.track().pattern % pattern_count);
+    int to = std::clamp(from + (way > 0 ? 1 : -1), 0, int(pattern_count) - 1);
+    if (to == from) { c.notice(way > 0 ? "P" + std::to_string(pattern_count) + " is the last" : std::string("P1 is the first")); return; }
+    launch_one(c, unsigned(to));
+}
+
 void seq_press(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) {
@@ -150,14 +157,10 @@ bool seq_button(Context& c, SurfaceButton button) {
         c.open(editors[button == B::TopLeft ? 0 : button == B::TopMiddle ? 1 : 2]);
         return true;
     }
-    case B::Minus: case B::Plus: {
+    case B::Minus: case B::Plus:
         if (ui.shift) return false; // undo / redo, as printed
-        int from = int(c.track().pattern % pattern_count), way = button == B::Plus ? 1 : -1;
-        int to = std::clamp(from + way, 0, int(pattern_count) - 1);
-        if (to == from) { c.notice(way > 0 ? "P" + std::to_string(pattern_count) + " is the last" : std::string("P1 is the first")); return true; }
-        launch_one(c, unsigned(to));
+        seq_step_pattern(c, button == B::Plus ? 1 : -1);
         return true;
-    }
     case B::Stop: { // sequence links: the selected track off in the sequence in hand; again, back on its pattern
         if (ui.shift) return false; // as printed
         unsigned t = ui.track % track_count;

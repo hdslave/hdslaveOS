@@ -162,6 +162,10 @@ struct UiState {
     // velocity, the groove's amount) and which pattern it was (track * 16 + pattern; -1 none), to put back.
     std::array<uint8_t, 4> tc_stash {};
     int16_t tc_stash_at = -1;
+    // Time Correct's B2 GROOVE held (shell/time_correct.h): the pads and the screen are track tc_groove_track's
+    // patterns in bank tc_groove_bank (Pad Bank steps it, Minus / Plus the track); a pad takes the groove from one.
+    bool tc_groove_held = false;
+    uint8_t tc_groove_track = 0, tc_groove_bank = 0;
     void tc_toggle(unsigned key) { if (key < 192) tc_keys[key / 64] ^= uint64_t(1) << (key % 64); }
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
     // Stage (pages/stage_page.cpp, shell/stage_map.h): each track's button (B1-B3) and the page of its cycle.

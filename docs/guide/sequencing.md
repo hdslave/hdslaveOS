@@ -542,20 +542,36 @@ without moving the notes, until you apply it.
 
 ![Time Correct](../images/screens/timecorrect.png)
 
-- **K1** grid, **K2** strength, **K3** swing.
+- **K1** grid, **K2** strength, **K3** swing. Swing needs some strength:
+  at 0 % strength the swing card is dim.
 - **SHIFT** + **K1** humanize, **SHIFT** + **K2** velocity humanize,
   **SHIFT** + **K3** groove amount.
-- Turn the encoder to take the groove from another pattern of the track
-  (its patterns with notes, in any bank). Turn it all the way back for no
-  groove. The screen shows **GROOVE** with the pattern's name and its bank.
+- **ERASE** + a knob sets that value back to its default.
 - The pads play the track's sounds, so you hear the timing as you turn.
+- **−** / **+** go to the previous or next pattern of the track.
 - **B3** (**QUANTIZE**) turns it off and on, to compare.
-- **B2** (**ALL**) applies the same settings to the track's other patterns.
+- **SHIFT** + **B2** (**ALL**) applies the same settings to the track's
+  other patterns.
 - **B1** (**APPLY**) moves the notes to where Time Correct plays them, with
   the velocities you hear, and sets Time Correct back to off. The pattern
   sounds the same, and Roll and Step Edit show the notes on the grid. Undo
   takes it back. **APPLY** shows while Time Correct changes the pattern.
 - Press **SHIFT** + **Pad 14** again to close it.
+
+### Take the groove from another pattern
+
+1. Hold **B2** (**GROOVE**). The pads and the screen show the track's
+   patterns: the groove's pattern lit, the pattern you are correcting
+   white, patterns with notes dim.
+2. Press a pad. Its pattern's timing and accents play on your notes at
+   once. Press the same pad again for no groove.
+3. Press **PAD BANK** for the next bank of patterns, **−** / **+** for
+   another track's patterns.
+4. Let go of **B2**. The pads play the track's sounds again, and the
+   screen shows **GROOVE** with the pattern's name.
+
+A pattern written on the grid (step entry, or recorded with Rec Quantize
+on) gives a groove of accents only: its notes have no timing to take.
 
 ## Half and double
 

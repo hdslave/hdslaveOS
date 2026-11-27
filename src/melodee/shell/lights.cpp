@@ -575,12 +575,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                    && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
         lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : pad_light::track(ui.track, level).rgb);
     }
-    // Bank lights A-H: with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
+    // Bank lights A-H: Time Correct's B2 GROOVE held, the bank of patterns it shows; with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
     // pads' (A-D), or the Prog pads' (A-C); on Chop, the slices on the pads (A 1-16, B 17-32 ...): while Manual's take
     // plays, the bank of the red pad's slice (model/slice_banks.h).
     const unsigned chop_view = chop_bank_slice(project, ui, now); // shell/zoom_view.h
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
-        lights.bank(bank, ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes ? bank == ui.pattern_bank % pattern_banks
+        lights.bank(bank, ui.page == PageId::TimeCorrect && ui.tc_groove_held && !ui.seq_held ? bank == ui.tc_groove_bank % pattern_banks // B2 GROOVE held
+                                      : ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes ? bank == ui.pattern_bank % pattern_banks
                                       : ui.page == PageId::Chop ? bank == slice_bank(chop_view)
                                       : (track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks) || (drum_pads(track) && bank == drum_bank(track))
                                         || (prog_pads(track) && bank == prog_bank(track)));

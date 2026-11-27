@@ -582,6 +582,16 @@ Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std:
     Look base = track(selected_index(s), at.here[unsigned(key) % 192] ? full : rows[unsigned(key) % 192] ? dim : faint);
     return playing(s, snd, base, pad);
 }
+// Time Correct with B2 GROOVE held (shell/time_correct.h): the patterns of the track and bank it shows, as its
+// screen: the groove's source Full, the pattern in hand White (no groove of its own), those with notes Dim (a
+// groove to take), empty ones dark.
+Look time_correct_look(const PadScene& s, unsigned pad) {
+    const unsigned t = selected_index(s), view = s.ui.tc_groove_track % track_count;
+    const unsigned n = (s.ui.tc_groove_bank % pattern_banks) * pattern_pads + pad % pattern_pads;
+    if (const uint16_t from = shown(s).feel.groove_from; from && from == groove_source(view, n)) return track(t, full);
+    if (view == t && n == selected(s).pattern % pattern_count) return white(mid);
+    return s.patterns.at[view][n].empty() ? Look {} : track(view, dim);
+}
 // Motion on a kit: the pads with recorded motion in this pattern.
 std::array<bool, 192> pads_moving(const PadScene& s) {
     std::array<bool, 192> out {};
@@ -905,6 +915,9 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::KnobFx: look = knob_fx_look(s, pad); break;
             case PageId::Punch: look = punch_look(s, pad); break;
             case PageId::FlexBeat: look = flex_look(s, pad); break;
+            case PageId::TimeCorrect: // B2 GROOVE held: the patterns it shows; else the track's own pads, as below
+                if (ui.tc_groove_held) { look = time_correct_look(s, pad); break; }
+                [[fallthrough]];
             default: // the track's own pads (freeze plan F2d: dark on a deep-frozen track, they play nothing)
                 if (s.freeze && (*s.freeze)[selected_index(s) % track_count].state == FreezeState::Deep) break;
                 look = sends_lit(s) ? sends_look(s, snd, pad) : play_look(s, snd, pad);

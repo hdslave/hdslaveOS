@@ -556,6 +556,18 @@ void loose_hand(Pattern& p) {
     for (unsigned n = 0; n < 8; ++n) { Event e; e.tick = played[n]; e.key = uint8_t(48 + n % 3 * 4); p.add(e); }
 }
 
+// Time Correct: track 1's pattern in hand played by hand, felt 70 % toward Q, swung 62 %, with the groove of A3 (another
+// take by hand).
+void time_correct_scene(Shell& shell, const Snapshot& s) {
+    auto& at = shell.patterns().at[0];
+    const unsigned here = s.project.tracks[0].pattern % pattern_count, from = here == 2 ? 3 : 2;
+    loose_hand(at[here]);
+    loose_hand(at[from]);
+    auto& feel = at[here].feel;
+    feel.strength = 70; feel.swing = 62; feel.groove_from = groove_source(0, from);
+    groove_of(at[from], feel);
+}
+
 // midi-track A: what a MIDI track sent over the last four seconds, a bass line and a chord, two notes on their way now.
 void sent_notes(Snapshot& s, unsigned track) {
     const struct { int ago, held; uint8_t key, velocity; } line[] {
@@ -1676,12 +1688,16 @@ const Preview previews[] {
     {"recarmed", [](Shell&, Snapshot& s) { // Seq Record pressed while stopped: Play starts the take
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.rec_armed = true; s.ui.locate = 5 * ticks_per_quarter + 120;
      }},
-    {"timecorrect", [](Shell& shell, Snapshot& s) { // Shift + Pad 14 (time-correct C): 70 % toward Q, swung 62 %, as it plays
+    {"timecorrect", [](Shell& shell, Snapshot& s) { // Shift + Pad 14 (time-correct C): 70 % toward Q, swung 62 %, A3's groove, as it plays
          s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
-         loose_hand(shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count]);
-         auto& feel = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count].feel;
-         feel.strength = 70; feel.swing = 62; feel.groove_from = 1 + 2;
+         time_correct_scene(shell, s);
          s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"timecorrectgroove", [](Shell& shell, Snapshot& s) { // B2 GROOVE held: track 1's patterns of bank A, A3's lit, A1 in hand ringed
+         s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
+         time_correct_scene(shell, s);
+         s.ui.tc_groove_held = true; s.ui.tc_groove_track = 0; s.ui.tc_groove_bank = 0;
+         for (unsigned n : {0u, 2u, 4u, 8u}) s.sketches[0][n].notes = true;
      }},
     {"timecorrectoff", [](Shell& shell, Snapshot& s) { // QUANTIZE off: the notes as written, nothing slid
          s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
