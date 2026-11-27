@@ -229,7 +229,9 @@ class PluginHostTests(unittest.TestCase):
         self.run_rack_fixture("midi-start")
 
     def test_steady_time_counts_the_frames_a_plugin_slept(self):
-        self.run_rack_fixture("steady-sleep")
+        for mode in ("steady-sleep", "freeze-steady"):
+            with self.subTest(mode=mode):
+                self.run_rack_fixture(mode)
 
     def test_a_looping_song_tells_plugins_its_loop(self):
         self.run_rack_fixture("song-loop")

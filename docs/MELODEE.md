@@ -114,8 +114,11 @@ one owner per piece of state.
   (at its own rate), so on waking it can tell how long it slept: a call's
   `steady_time` is the last call's plus the last call's frames plus those
   slept since (calls differ in size: an instrument is played in parts of
-  a block, split where a note falls). One in a bypassed slot, which the
-  engine does not run at all, counts none.
+  a block, split where a note falls). It counts the blocks the engine
+  does not run it for as well: its slot bypassed, or its track frozen with
+  the print playing in its place (`PluginRunner::pass`). An entry two
+  tracks share is run, slept or passed once for each a block, so its
+  `steady_time` counts each block twice, as it does while it runs.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it

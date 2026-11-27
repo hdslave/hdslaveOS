@@ -516,6 +516,18 @@ public:
         if (!l || !r) return;
         for (unsigned f = 0; f < n; ++f) { left[f] += sane(l[f]); right[f] += sane(r[f]); }
     }
+    // A block it is not run for though it plays a part in it (EngineHost: its track's print in its place, its slot
+    // bypassed), as a block it sleeps through: its steady_time counts the frames.
+    void pass(unsigned frames) override { key_frames = 0; pass_time(std::min(frames, EngineHost::block)); }
+    // A CLAP plug-in's steady_time counts frames it was not run for, at its own rate (one bridged a whole frame at a
+    // time).
+    void pass_time(unsigned frames) {
+        if (!clap) return;
+        slept_frames += double(frames) * plugin_rate / sample_rate;
+        const auto whole = int64_t(slept_frames);
+        slept_frames -= double(whole);
+        clap->slept(whole);
+    }
     void render(float* left, float* right, unsigned frames) override {
         key_frames = 0;
         frames = std::min(frames, EngineHost::block);
@@ -531,12 +543,7 @@ public:
         asleep.store(sleeping, std::memory_order_relaxed);
         if (sleeping) {
             if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
-            if (clap) { // its steady_time counts these frames, at its own rate (one bridged a whole frame at a time)
-                slept_frames += double(frames) * plugin_rate / sample_rate;
-                const auto whole = int64_t(slept_frames);
-                slept_frames -= double(whole);
-                clap->slept(whole);
-            }
+            pass_time(frames);
             if (watched.load(std::memory_order_relaxed)) {
                 static const std::array<float, EngineHost::block> quiet {};
                 measure(quiet.data(), quiet.data(), frames, true);

@@ -298,6 +298,7 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     const bool short_bar = change_tempo || empty_handoff || other_lead || active_clock || unload_grace;
     const bool deep = short_bar || mode == "deep-freeze-live" || mode == "deep-freeze-replace";
     const bool prior_freeze = mode == "deep-freeze-replace" || mode == "deep-freeze-tempo-replace";
+    const bool steady_freeze = mode == "freeze-steady"; // the live plug-in's steady_time while its print plays
     if (memory) {
         struct rlimit limit {};
         CHECK(getrlimit(RLIMIT_MEMLOCK, &limit) == 0 && limit.rlim_max >= 8 * 1024 * 1024);
@@ -314,7 +315,7 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
     printer->set_pager(&host->streams());
     auto shell = std::make_unique<Shell>(*host);
     shell->set_printer(printer.get());
-    if (deep) shell->set_plugins(rack.get());
+    if (deep || steady_freeze) shell->set_plugins(rack.get());
     auto& c = shell->context();
     c.project_path = (fs::path(card) / (mode + ".mldp")).string();
     c.now = 1000;
@@ -441,6 +442,40 @@ static void freeze_transitions(const std::string& card, const std::string& plugi
         CHECK(host->printing_tracks() & 1);
         CHECK(sounded);
         CHECK(host->print_waits() == 0 && host->print_underruns() == 0);
+    } else if (steady_freeze) {
+        // Track 1 frozen and stopped: once its engine has been quiet a second it sleeps, its print in its place, and its
+        // plug-in is not run. Time passes for the plug-in all the same: when a hand wakes the engine, its steady_time
+        // has counted at least the blocks it was not run for (frozen_transitions' fixture keeps it, MELODEE_TEST_CLOCK).
+        for (unsigned i = 0; i < 1500 && (i < 30 || rack->status(0) != PluginStatus::Ready); ++i) {
+            c.plugins_tick(++c.now);
+            render();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        CHECK(rack->status(0) == PluginStatus::Ready);
+        struct Clock { int calls; double steady, frames; };
+        auto clock = [&] {
+            auto bytes = rack->state(0);
+            CHECK(bytes.size() == 4 + 15 * sizeof(double));
+            std::array<double, 15> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Clock {int(v[5]), v[6], v[7]};
+        };
+        prepare(1);
+        deliver();
+        selected(1);
+        auto step = [&] { c.plugins_tick(++c.now); render(); };
+        for (unsigned i = 0; i < 4 * rate / block && !(host->sleeping_tracks() & 1); ++i) step();
+        CHECK(host->sleeping_tracks() & 1);
+        const auto before = clock();
+        constexpr unsigned quiet_blocks = 1000;
+        for (unsigned i = 0; i < quiet_blocks; ++i) step();
+        CHECK(clock().calls == before.calls && (host->sleeping_tracks() & 1));
+        c.key(72, 110, true); // a hand wakes its engine
+        for (unsigned i = 0; i < 8 && clock().calls == before.calls; ++i) step();
+        const auto woken = clock();
+        CHECK(woken.calls > before.calls);
+        CHECK(woken.steady - before.steady - before.frames >= double(quiet_blocks) * block);
+        c.key(72, 0, false);
     } else if (deep) {
         // An ordinary pack that covers only pattern 2 leaves pattern 1 playing live. Its
         // frozen bit must never count as acknowledgment of the requested deep freeze.
@@ -671,7 +706,9 @@ int main(int argc, char** argv) {
         return 0;
     }
     CHECK(argc == 4);
-    if (mode == "freeze-replace" || mode == "freeze-queue" || mode == "freeze-recording" || mode.rfind("deep-freeze-", 0) == 0) {
+    if (mode == "freeze-steady") { setenv("MELODEE_TEST_TRANSPORT", "1", 1); setenv("MELODEE_TEST_CLOCK", "1", 1); }
+    if (mode == "freeze-replace" || mode == "freeze-queue" || mode == "freeze-recording" || mode == "freeze-steady"
+        || mode.rfind("deep-freeze-", 0) == 0) {
         freeze_transitions(card, plugin, mode);
         return 0;
     }
@@ -1919,6 +1956,18 @@ int main(int argc, char** argv) {
         const auto woken = clock();
         CHECK(woken.calls == asleep.calls + 1);
         CHECK(woken.steady == first.steady + double(blocks * EngineHost::block));
+        // Its slot bypassed for 200 blocks: not run, and its steady_time counts them too.
+        set_control_of(gain, "Gain", 700);
+        tick();
+        const auto run = clock();
+        c.toggle_bypass(master_chain, 0);
+        for (int k = 0; k < 200; ++k) tick();
+        CHECK(clock().calls == run.calls);
+        c.toggle_bypass(master_chain, 0);
+        set_control_of(gain, "Gain", 800);
+        tick();
+        const auto back = clock();
+        CHECK(back.calls == run.calls + 1 && back.steady == run.steady + run.frames + 200.0 * EngineHost::block);
         // Track 1's Test Sine played while its pattern plays, in parts of a block where a note's frame falls: each call's
         // steady_time is the one before's plus the frames of that one before, whatever their sizes.
         struct Parts { double steady, frames, prior_steady, prior_frames, gaps, fewest; };
