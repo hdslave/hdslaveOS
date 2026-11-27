@@ -531,10 +531,14 @@ void Context::companion_requests() {
 
 // An input on a plug-in's own screen: handed to it. False when the page in view is not one (the page's own job then).
 // The place says the page shows the plug-in's own screen (it offers one, open, and Settings let it): the input goes to
-// it, though the screen may not have drawn for this page yet (just after Pad Bank + pad), so none is lost.
+// it, though the screen may not have drawn for this page yet (just after Pad Bank + pad), so none is lost. A plug-in
+// a frozen track plays (its sound, an effect on its chain; any track it plays on, frozen_plugin_edit) asks "Unfreeze
+// track N?" first, as a turn of its parameters does: what its screen does with an input may change the sound the
+// prints were made from (and Stage of a frozen track draws the print, not the screen). Asked: true, nothing handed on.
 bool Context::plugin_screen_input(ScreenKey key, int value) {
     const auto at = plugin_screen_place(project, ui);
     if (at.entry < 0 || !plugins) return false;
+    if (frozen_plugin_edit(unsigned(at.entry))) return true;
     plugins->screen_input(unsigned(at.entry), {key, int32_t(value), ui.shift});
     return true;
 }
@@ -546,6 +550,7 @@ bool Context::plugin_screen_key(ScreenKey key) {
     if (at.entry < 0 || at.area != 0 || !plugins) return false;
     const uint8_t bit = key == ScreenKey::Mute ? screen_key_mute : key == ScreenKey::Erase ? screen_key_erase : 0;
     if (!bit || !(plugins->screen_keys(unsigned(at.entry)) & bit)) return false;
+    if (frozen_plugin_edit(unsigned(at.entry))) return true; // as plugin_screen_input()
     plugins->screen_input(unsigned(at.entry), {key, 1, ui.shift});
     return true;
 }

@@ -10,6 +10,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/print_engine.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/screen_view.h" // plugin_screen_place: shared-frozen checks the frozen track's PANEL shows its screen
 #include "melodee/shell/track_copy.h"
 #include "runtime/controller.h"
 #include <chrono>
@@ -1814,8 +1815,9 @@ int main(int argc, char** argv) {
     }
     // Track 1 copied onto track 2 with every entry in use: the copy shares track 1's plug-in. Track 2 frozen, a program
     // or preset loaded into that plug-in asks "Unfreeze track 2?" first, from track 1 too: a companion screen's pick,
-    // Push on PRESETS and − / + on Stage's PRESETS; so does a turn of one of its parameters (K2 on PANEL). Not now (B1)
-    // leaves it as it was; unfrozen, the turn and the pick go through.
+    // Push on PRESETS and − / + on Stage's PRESETS; so does a turn of one of its parameters (K2 on PANEL), and the
+    // wheel, Push and − on its own screen, from track 1 and from frozen track 2. Not now (B1) leaves it as it was;
+    // unfrozen, the screen, the turn and the pick go through.
     if (mode == "shared-frozen") {
         wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
         c.open(PageId::Master);
@@ -1863,7 +1865,27 @@ int main(int argc, char** argv) {
         k2(127); // Wave to its top
         unchanged();
         CHECK(values(entry)[1] == 0);
+        const auto as_was = values(entry); // Level 0.5, Wave 0
+        auto screen_asks = [&] { // the fixture's screen: the wheel moves Level, Push Wave, − its bank
+            turn(3);
+            unchanged();
+            tap(SurfaceButton::WheelPush);
+            unchanged();
+            tap(SurfaceButton::Minus);
+            unchanged();
+            CHECK(values(entry) == as_was);
+        };
+        screen_asks();
+        c.select_track(1); // the frozen track itself, on its PANEL: Stage draws its print, the screen is not shown
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
+        wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
+        CHECK(plugin_screen_place(project, ui).entry == int(entry));
+        screen_asks();
+        c.select_track(0);
+        wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
         c.freeze_requested[1] = {};
+        turn(3); // unfrozen: the screen's own
+        wait([&] { return values(entry)[0] > as_was[0]; });
         k2(126);
         k2(127);
         wait([&] { return values(entry)[1] == 2; });
