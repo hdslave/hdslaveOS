@@ -248,7 +248,7 @@ grammar (`shell/pad_light.h`):
 | Step Edit, STEPS mode | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end Faint while a step there would make it longer (else dark), the playhead white (red while recording); on a kit the last pad's lane |
 | Step Edit, PLAY mode | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
-| Time Correct | Whose notes move Full, with notes Dim |
+| Time Correct | The track's patterns of the bank in view, as a pad takes the groove from one: the groove's source Full, the pattern in hand White Mid, with notes Dim |
 | Motion on a kit | The last pad Full, pads with recorded motion Mid |
 | Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: the slices so far (the newest Full) and the next slice's pad flashing red, in its bank; + Erase the slices that would go Faint red |
 | Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
