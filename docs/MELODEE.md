@@ -2859,7 +2859,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   test run, the screen tool) unpacks them beside it instead (`<stage>-support`,
   made absolute, as is the stage: the 32-bit bridge is found there through
   `juce::File`; with no absolute path to be had, the working folder gone,
-  both go where the app's do), since each unpack removes and rewrites the folder: runs
+  both go to a folder of the process's own, `melodee-plugins-PID` in the
+  temp folder, never the app's shared ones), since each unpack removes and rewrites the folder: runs
   side by side sharing one died (SIGBUS) or could not open their
   plug-ins. The screen tool's own stage (`/tmp/melodee-plugin-screen-PID`)
   and its support folder (about 11 MB) are removed when it is done.

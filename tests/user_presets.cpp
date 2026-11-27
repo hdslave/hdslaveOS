@@ -2365,10 +2365,14 @@ int main(int argc, char** argv) {
         return 0;
     }
     // The same with the working folder gone, so no absolute path can be had for it: the stage and the support fall back
-    // to where the app puts them (/run, or the temp folder), never a relative path.
+    // to folders of this process's own (its pid in the name), never a relative path, nor the app's shared ones, whose
+    // support another process would remove and rewrite under it.
     if (mode == "stage-error") {
         wait([&] { return ready(entry); });
-        CHECK(fs::path(plugin_stage_folder()).is_absolute() && fs::path(plugin_support_folder()).is_absolute());
+        const std::string stage = plugin_stage_folder(), support = plugin_support_folder(), pid = "-" + std::to_string(::getpid());
+        CHECK(fs::path(stage).is_absolute() && fs::path(support).is_absolute());
+        CHECK(stage.find(pid) != std::string::npos && support.find(pid) != std::string::npos);
+        CHECK(stage.find("/melodee-plugins/") == std::string::npos && support.find("/melodee-plugins/") == std::string::npos);
         shell->set_plugins(nullptr);
         return 0;
     }

@@ -95,11 +95,17 @@ std::string tidy(std::string text) {
 }
 
 // Where plug-ins are copied to run from: RAM (/run on the MPC; the card is noexec).
+// A process given a stage of its own (MELODEE_PLUGIN_STAGE) keeps to it, made absolute; with none to be had (the
+// working folder gone), a folder of its own still (its pid in the name), never the app's shared one, whose copies'
+// names would clash and whose support beside it the other would remove and rewrite (plugin/plugin_support.cpp).
 fs::path stage_root() {
-    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) { // absolute, or where the app's goes
+    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) {
         std::error_code e;
         auto made = fs::absolute(own, e);
         if (!e && made.is_absolute()) return made;
+        auto temp = fs::temp_directory_path(e);
+        if (e || !temp.is_absolute()) temp = "/tmp";
+        return temp / ("melodee-plugins-" + std::to_string(::getpid())) / "stage";
     }
     std::error_code error;
     if (fs::is_directory("/run", error) && access("/run", W_OK) == 0) return "/run/melodee-plugins/stage";

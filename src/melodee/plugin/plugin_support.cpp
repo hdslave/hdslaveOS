@@ -66,9 +66,12 @@ bool unpack(const unsigned char* at, const unsigned char* end, const fs::path& i
 // test runs side by side with SIGBUS, or left their plug-ins unable to open).
 fs::path support_root() {
     if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) { // absolute (the bridge's juce::File
-        std::error_code e;                                                        // needs it), or where the app's goes
-        auto made = fs::absolute(fs::path(std::string(own) + "-support"), e);
-        if (!e && made.is_absolute()) return made;
+        std::error_code e;                                                        // needs it), or with none to be had a
+        auto made = fs::absolute(fs::path(std::string(own) + "-support"), e);     // folder of this process's own, beside
+        if (!e && made.is_absolute()) return made;                                // its stage (plugin_rack.cpp)
+        auto temp = fs::temp_directory_path(e);
+        if (e || !temp.is_absolute()) temp = "/tmp";
+        return temp / ("melodee-plugins-" + std::to_string(::getpid())) / "support";
     }
     std::error_code error;
     if (fs::is_directory("/run", error) && access("/run", W_OK) == 0) return "/run/melodee-plugins/support";
