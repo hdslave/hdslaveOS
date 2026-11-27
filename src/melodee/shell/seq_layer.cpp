@@ -44,7 +44,7 @@ void launch_one(Context& c, unsigned pattern) {
              (first ? " · SEQ " + std::to_string(c.project.scene % pattern_count + 1) + " kept" : ""));
 }
 
-// Shift + pad: that sequence on every used track (shell/sequences.h), its tempo with it.
+// Shift + pad (Seq + pad with Settings > SEQ > Seq + pad on Sequences): that sequence on every used track (shell/sequences.h), its tempo with it.
 void launch_column(Context& c, unsigned pattern) { c.launch_scene(pattern); }
 
 // Seq Record held with Seq: the next empty pattern, armed (recording at once while playing).
@@ -119,8 +119,8 @@ bool seq_pad(Context& c, unsigned pad, bool down) {
         else ask(c, UiState::Ask::ClearPattern, int(pad));
         return true;
     }
-    if (ui.shift) { // the sequence: every track; with Seq held, Shift + pads after the first chain the sequences
-        ui.shift_used = true;
+    if (ui.shift) ui.shift_used = true;
+    if (pad_launches_sequence(ui)) { // the sequence: every track; with Seq held, pads after the first chain the sequences
         if (ui.seq_held && ui.chain_building && c.chain_lead == int(t)) { c.chain_sequence(pad, false); return true; }
         launch_column(c, pad);
         if (ui.seq_held) { c.chain_sequence(pad, true); ui.chain_building = true; }

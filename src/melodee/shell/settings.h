@@ -39,7 +39,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow, ScreensaverRow, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow, ScreensaverRow, SeqPads, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -97,6 +97,9 @@ struct Settings {
     // Mute (issue 27): Audio, a muted track or kit pad is silent at once, as on the MPC; Notes, it starts no new notes
     // and what it plays rings on (a MIDI track's notes end on their own), as on Elektron machines.
     bool note_mutes = false;
+    // Seq + pad (issue 50): Patterns, Seq held's pads launch the selected track's patterns and Shift + pad a sequence;
+    // Sequences, the other way round, for live play (shell/sequences.h). Patterns' own pads stay patterns.
+    bool seq_pads_sequences = false;
     // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
@@ -169,7 +172,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing", "Screensaver"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing", "Screensaver", "Seq + pad"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -212,6 +215,7 @@ struct Settings {
         case Autosave: return autosave ? "On" : "Off";
         case NotePreview: return note_preview ? "On" : "Off";
         case MuteKind: return note_mutes ? "Notes" : "Audio";
+        case SeqPads: return seq_pads_sequences ? "Sequences" : "Patterns";
         case PluginSkins: return plugin_skins ? "On" : "Off";
         case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
@@ -260,6 +264,7 @@ struct Settings {
         case Autosave: autosave = !autosave; break;
         case NotePreview: note_preview = !note_preview; break;
         case MuteKind: note_mutes = !note_mutes; break;
+        case SeqPads: seq_pads_sequences = !seq_pads_sequences; break;
         case PluginSkins: plugin_skins = !plugin_skins; break;
         case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
@@ -329,6 +334,7 @@ struct Settings {
         case Autosave: return autosave;
         case NotePreview: return note_preview;
         case MuteKind: return note_mutes;
+        case SeqPads: return seq_pads_sequences;
         case PluginSkins: return plugin_skins;
         case RepeatVelocity: return repeat_pressure;
         case SeqFollow: return seq_follow % 3u;
@@ -374,6 +380,7 @@ struct Settings {
         case Autosave: autosave = n; break;
         case NotePreview: note_preview = n; break;
         case MuteKind: note_mutes = n; break;
+        case SeqPads: seq_pads_sequences = n; break;
         case PluginSkins: plugin_skins = n; break;
         case RepeatVelocity: repeat_pressure = n; break;
         case SeqFollow: seq_follow = uint8_t(n); break;
@@ -426,7 +433,7 @@ struct Settings {
             << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
             << "\nzero_snap=" << int(zero_snap) << "\nslice_play=" << int(slice_play) << "\nslice_pattern=" << int(slice_pattern) << "\nchop_mode=" << int(chop_mode) << "\nstems_best=" << int(stems_best) << "\npreview=" << int(preview) << "\npreview_level=" << int(preview_level) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
-            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow) << "\nnote_preview=" << int(note_preview) << "\nnote_mutes=" << int(note_mutes) << "\nplugin_skins=" << int(plugin_skins)
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow) << "\nnote_preview=" << int(note_preview) << "\nnote_mutes=" << int(note_mutes) << "\nseq_pads=" << int(seq_pads_sequences) << "\nplugin_skins=" << int(plugin_skins)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nmonitor_before_mic=" << int(input.before_mic) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
             << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
@@ -477,6 +484,7 @@ struct Settings {
             else if (key == "seq_follow") seq_follow = uint8_t(std::clamp(value, 0, 2));
             else if (key == "note_preview") note_preview = value != 0;
             else if (key == "note_mutes") note_mutes = value != 0;
+            else if (key == "seq_pads") seq_pads_sequences = value != 0;
             else if (key == "plugin_skins") plugin_skins = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "palette") palette = uint8_t(std::clamp(value, 0, int(ui::palettes.size()) - 1));

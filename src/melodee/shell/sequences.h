@@ -13,14 +13,19 @@
 // held makes the pads the selected track's patterns on any page, as the Patterns page's pads are (B1 again): a pad
 // launches that track only, and is kept. The track list on Patterns marks a track off its kept pattern (a follow
 // action, a chain, Song). Shift + pad, Seq held or on Patterns, launches the sequence; Shift + pads tapped in order
-// while Seq is held chain the sequences: the selected track's chain leads (shell/chain_jobs.cpp). Pure, for the
+// while Seq is held chain the sequences: the selected track's chain leads (shell/chain_jobs.cpp). Settings > SEQ >
+// Seq + pad turns Seq held's two round (pad_launches_sequence). Pure, for the
 // shell, the screen and the tests.
 namespace melodee {
 
-// Whether Seq held's pads launch sequences now: with Shift held, as Shift + pad launches the sequence. Not while
-// patterns freeze (Seq + Sample Record) or a pattern copy waits for its pads.
+// Whether a pad launches a sequence rather than the selected track's pattern: Shift + pad, or with Settings > SEQ >
+// Seq + pad on Sequences (issue 50) Seq + pad, and Shift then gives the patterns. The setting only turns Seq held's
+// pads round: on Patterns without Seq, Shift + pad stays the sequence.
+inline bool pad_launches_sequence(const UiState& ui) { return ui.shift != (ui.seq_held && ui.settings.seq_pads_sequences); }
+// Whether Seq held's pads launch sequences now (pad_launches_sequence). Not while patterns freeze (Seq + Sample
+// Record) or a pattern copy waits for its pads.
 inline bool sequences_on_pads(const UiState& ui) {
-    return ui.seq_held && ui.shift && !ui.seq_print && ui.copying != UiState::Copying::Patterns;
+    return ui.seq_held && pad_launches_sequence(ui) && !ui.seq_print && ui.copying != UiState::Copying::Patterns;
 }
 // The same for the lights and the pads chip: with Erase held the pads clear the selected track's patterns.
 inline bool sequences_lit(const UiState& ui) { return sequences_on_pads(ui) && !ui.erase; }

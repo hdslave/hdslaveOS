@@ -133,6 +133,10 @@ on Patterns:
   **SHIFT** + **ERASE** copies a pattern: press the pattern, then where it
   goes.
 - **−** / **+** launch the previous / next pattern.
+- To launch sequences with **SEQ** + pad and patterns with **SEQ** +
+  **SHIFT** + pad, set **Seq + pad** to **Sequences** in
+  [Settings](settings.md) > **SEQ**. A pattern copy is then **SEQ** +
+  **SHIFT** + held pad + pad.
 - **STOP** turns the selected track off in the sequence in hand, from the
   next bar. Press it again to turn the track back on.
 - **K1**–**K3** set the length, grid and swing of the selected track's

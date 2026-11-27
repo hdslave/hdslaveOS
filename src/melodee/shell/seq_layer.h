@@ -11,7 +11,8 @@
 //                    starts as long as the one playing; pads tapped after the first in one hold chain the patterns
 //   Shift + pad      launches that sequence: its pattern on every used track (shell/sequences.h); Shift + pads
 //                    tapped after the first in one hold chain the sequences. With Shift held the pads and the
-//                    sheet show the sequences.
+//                    sheet show the sequences. Settings > SEQ > Seq + pad: Sequences turns the two round (issue 50):
+//                    pad a sequence, Shift + pad a pattern (shell/sequences.h pad_launches_sequence).
 //   pad held + pad   copies the selected track's first pattern onto the second
 //   Erase + pad      clears that pattern of the selected track, asked first
 //   Minus / Plus     the previous / next pattern

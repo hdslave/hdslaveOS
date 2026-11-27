@@ -1415,6 +1415,28 @@ void button_remap() {
         q.copying = UiState::Copying::Patterns; CHECK(!sequences_on_pads(q)); q.copying = UiState::Copying::Off;
         q.page = PageId::Patterns; CHECK(sequences_on_pads(q)); q.page = PageId::Stage;
         q.seq_held = false; CHECK(!sequences_on_pads(q)); q.shift = false; // Shift alone: its printed jobs
+        // Settings > SEQ > Seq + pad on Sequences (issue 50): Seq held's pads the sequences, Shift + pad the patterns;
+        // Patterns' own pads (Seq not held) stay as they are.
+        q.settings.seq_pads_sequences = true;
+        CHECK(!pad_launches_sequence(q) && !sequences_on_pads(q));
+        q.shift = true; CHECK(pad_launches_sequence(q) && !sequences_on_pads(q)); q.shift = false; // Patterns' Shift + pad
+        q.seq_held = true; CHECK(pad_launches_sequence(q) && sequences_on_pads(q) && sequences_lit(q));
+        q.shift = true; CHECK(!pad_launches_sequence(q) && !sequences_on_pads(q) && !sequences_lit(q));
+        q.shift = false; q.seq_print = true; CHECK(!sequences_on_pads(q)); q.seq_print = false;
+        q.erase = true; CHECK(sequences_on_pads(q) && !sequences_lit(q)); q.erase = false;
+        q.seq_held = false; q.settings.seq_pads_sequences = false;
+        {
+            Settings fresh;
+            CHECK(!fresh.seq_pads_sequences && fresh.value_text(Settings::SeqPads) == "Patterns" &&
+                  std::string(Settings::row_name(Settings::SeqPads)) == "Seq + pad");
+            Settings swapped = fresh;
+            swapped.step(Settings::SeqPads, 1);
+            CHECK(swapped.seq_pads_sequences && swapped.value_text(Settings::SeqPads) == "Sequences");
+            Settings back; back.read(swapped.text());
+            CHECK(back.seq_pads_sequences);
+            Settings old; old.read("note_mutes=1\n"); // a file from before the row: Patterns
+            CHECK(!old.seq_pads_sequences);
+        }
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
         Track used = project->tracks[0]; // a track with a sound

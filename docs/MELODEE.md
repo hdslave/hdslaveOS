@@ -864,6 +864,13 @@ hold to steer, Shift + Seq to zoom in**.
   play on, a MIDI track's Note Offs go when due (no All Notes Off). AUDIO
   tracks and frozen tracks play audio: muted, they are silent either way.
   Back to Audio, what muted tracks and pads still play goes.
+- **Seq + pad** (Settings > SEQ, issue 50; `Settings::seq_pads_sequences`,
+  shell/sequences.h `pad_launches_sequence`): Patterns (first), Seq held's
+  pads launch the selected track's patterns and Shift + pad a sequence;
+  Sequences turns the two round for live play: Seq + pad a sequence (a
+  chain of them in one hold), Seq + Shift + pad a pattern, and a pattern
+  copy is Seq + Shift + held pad + pad. The pads, the sheet and the pads
+  chip follow. The Patterns page's pads without Seq are as they are.
 - **Note preview** (Settings > SEQ, On by first; `Settings::note_preview`,
   shell/note_preview.h): a note written or moved on Step Edit or Roll
   without a pad or key playing it is heard once on the track, as long as the
