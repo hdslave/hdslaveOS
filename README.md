@@ -1,7 +1,7 @@
 <h1 align="center">hdslaveOS</h1>
 
 <p align="center"><strong>A performance-tuned 16-track groovebox OS for the Akai MPC Sample</strong><br>
-hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.8.3.</p>
+hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.9.1.</p>
 
 <p align="center">
   <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Mixer, Step Edit, and Deep Freeze screens" width="760">
@@ -15,7 +15,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 - **Performance & power controls**: Removes idle and redundant work across the engine and UI. Settings include **CPU speed** (Full by default), **Display refresh** (a 20, 30 or 60 fps cap for built-in display updates), **Dim after**, and **Pad brightness**. See [optimization.md](optimization.md) for the full breakdown.
 - **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black with dark violet contours on selected list rows, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
 - **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
-- **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time; kit pads assigned any of the 16 colours light more vividly; and a custom **hdslave intro** boot film replaces the default splash.
+- **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time, and a custom **hdslave intro** boot film replaces the default splash.
 
 ### Mixer
 
@@ -186,6 +186,11 @@ the unsigned ZIP by hand. [Latest hdslaveOS release](https://github.com/hdslave/
 4. Start the MPC with the card inserted. On firmware 1.4, choose **Yes**
    at the autorun prompt. In SampleBoot, select the new hdslaveOS entry.
 
+From hdslaveOS 0.9.1 on, the sequencer counts 960 ticks a quarter note, as
+Melodee 0.9 does. Projects from earlier versions load with their timing
+kept, but a project saved in 0.9.1 plays ten times too slow in hdslaveOS
+0.8.3 and earlier. Back up `Melodee/Projects` before you update.
+
 On firmware 1.4, Screen Mirror is not available and hdslaveOS runs at
 44.1 kHz only: the firmware no longer lets apps load their own kernel
 drivers, and its audio driver takes 44.1 kHz alone.
@@ -251,10 +256,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.8.3-hdslave.1 ./build.sh
+MELODEE_VERSION=v0.9.1-hdslave.1 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.8.3-hdslave.1
+python3 tools/package_unsigned.py v0.9.1-hdslave.1
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.
