@@ -487,9 +487,12 @@ void Context::back_plugin_presets() {
 
 // A program or a preset about to load into plug-in `entry`: "Unfreeze track N?" first when a frozen track plays it, as
 // its sound or as an effect on its chain (freeze plan F2c); true: asked, nothing to load now. Every track it plays on,
-// not only the one in hand or the first: a copy made with no entry free shares its plug-in until one is.
+// not only the one in hand or the first: a copy made with no entry free shares its plug-in until one is. The track in
+// hand is asked about first, then the others by number, as Stage's PRESETS asks (plugin_preset_turn).
 bool Context::frozen_plugin_edit(unsigned entry) {
-    for (unsigned t = 0; t < track_count; ++t) {
+    const unsigned hand = ui.track % track_count;
+    for (unsigned n = 0; n < track_count; ++n) {
+        const unsigned t = n == 0 ? hand : n <= hand ? n - 1 : n;
         const auto& tr = project.tracks[t];
         bool effect = false;
         for (const auto& s : tr.fx.slots) effect |= s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry;

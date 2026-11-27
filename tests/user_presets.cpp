@@ -1816,8 +1816,9 @@ int main(int argc, char** argv) {
     // Track 1 copied onto track 2 with every entry in use: the copy shares track 1's plug-in. Track 2 frozen, a program
     // or preset loaded into that plug-in asks "Unfreeze track 2?" first, from track 1 too: a companion screen's pick,
     // Push on PRESETS and − / + on Stage's PRESETS; so does a turn of one of its parameters (K2 on PANEL), and the
-    // wheel, Push and − on its own screen, from track 1 and from frozen track 2. Not now (B1) leaves it as it was;
-    // unfrozen, the screen, the turn and the pick go through.
+    // wheel, Push and − on its own screen, from track 1 and from frozen track 2. Both frozen, the question names the
+    // track in hand first, for the screen as for K2. Not now (B1) leaves it as it was; unfrozen, the screen, the turn
+    // and the pick go through.
     if (mode == "shared-frozen") {
         wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
         c.open(PageId::Master);
@@ -1879,6 +1880,17 @@ int main(int argc, char** argv) {
         c.select_track(1); // the frozen track itself, on its PANEL: Stage draws its print, the screen is not shown
         CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
         wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
+        // Track 1 frozen too: the wheel on its screen and K2 each ask about track 2, the track in hand, first.
+        c.freeze_requested[0].state = FreezeState::Frozen;
+        turn(3);
+        CHECK(ui.ask == UiState::Ask::Unfreeze && ui.ask_target == 1);
+        unchanged();
+        k2(0, true);
+        k2(127);
+        CHECK(ui.ask == UiState::Ask::Unfreeze && ui.ask_target == 1);
+        unchanged();
+        CHECK(values(entry) == as_was);
+        c.freeze_requested[0] = {};
         CHECK(plugin_screen_place(project, ui).entry == int(entry));
         screen_asks();
         c.select_track(0);

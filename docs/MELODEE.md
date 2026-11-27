@@ -2664,8 +2664,10 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   companion screen picks (`Context::pick_plugin_program`). Any frozen
   track the plug-in plays on asks, not only the one in hand: a copy made
   with no entry free shares its track's plug-in until one is
-  (`Context::frozen_plugin_edit`). A turn of one of its parameters (K1-K3,
-  Erase + a knob, a companion screen's edit) asks the same way, and so does
+  (`Context::frozen_plugin_edit`). With several frozen, the question
+  names the track in hand first, then the others by number. A turn of
+  one of its parameters (K1-K3, Erase + a knob, a companion screen's
+  edit) asks the same way, and so does
   input on its own screen (the wheel, Push, − / +, and Mute or Erase where
   its page takes them): the host cannot tell which of those change the
   sound, and Stage of a frozen track draws the print, not the screen. Picking

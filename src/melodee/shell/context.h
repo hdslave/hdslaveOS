@@ -381,7 +381,7 @@ public:
     uint32_t name_preset_generation = 0;
     void name_plugin_preset(unsigned entry);
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
-    bool frozen_plugin_edit(unsigned entry);  // a program or preset into it: "Unfreeze track N?" for any frozen track it plays on
+    bool frozen_plugin_edit(unsigned entry);  // an edit of it: "Unfreeze track N?" for any frozen track it plays on, the one in hand first
     void presets_follow();                    // PRESETS open for a track's list that it no longer lists: it follows, or closes
     int8_t presets_track = -1;                // whose list PRESETS shows: a track's (its instrument's, or an effect's on its chain); -1 no track's
     bool presets_instrument = false;          // the track's instrument's
