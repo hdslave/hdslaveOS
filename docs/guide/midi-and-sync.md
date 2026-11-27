@@ -29,6 +29,8 @@ as MIDI passes.
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
 | Remote sequence CC | Launches a sequence. Value 0 is the first sequence. Default CC 104. |
+| Remote play CC | Off or a CC: a press plays, and stops while playing. See [Example 7](#example-7-start-and-stop-with-a-foot-pedal). |
+| Remote record CC | Off or a CC: a press does what **SEQ RECORD** does |
 | Remote preset CC | Off or a CC: a knob that steps the selected track's presets. See [Example 6](#example-6-step-presets-with-a-knob). |
 | Remote preset knob | How that knob sends: Absolute, Binary offset, 2's complement, Signed bit or Signed bit 2 |
 | CV/sync out | On or off: clock pulses on the sync output. **CV/sync base** (1–8) and **CV/sync division** (1–24) set how many a quarter note. |
@@ -239,6 +241,26 @@ the controller sends:
 Use an endless encoder in a relative mode: it keeps stepping in both
 directions. **Push** again on the row stops learning. Learning also stops
 after 10 seconds, or when you leave **MIDI**.
+
+### Example 7: start and stop with a foot pedal
+
+Learn a foot pedal (a footswitch on a keyboard or MIDI controller that sends
+a CC) as **Remote play CC**. Each press then starts playback, and the next
+press stops it, while your hands stay on the keys.
+
+1. Open **MIDI** (**SHIFT** + **Pad 8**). Turn the encoder to **Remote play CC**.
+2. Press **Push**. The row shows **Learning**.
+3. Press the pedal. The screen shows the CC and the channel. **Remote
+   channel** is set to the pedal's channel.
+4. Press the pedal to play. Press it again to stop.
+
+Learn a second pedal or button as **Remote record CC** the same way. A press
+arms recording, records, or stops recording, as **SEQ RECORD** does.
+
+A press is a value of 64 or more. The pedal's release (a value below 64) does
+nothing. A pedal set to latch sends 127 on one press and 0 on the next, so it
+acts on every other press: set it to momentary. Remote CCs do not reach the
+tracks, so use a pedal other than the sustain pedal, or another channel.
 
 ### Send program changes
 

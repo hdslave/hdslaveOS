@@ -107,14 +107,15 @@ void Context::midi_learn(unsigned row) {
     if (midi_learning() && ui.midi_learn_row == row) { ui.midi_learn_until = 0; notice("Learn off"); return; }
     ui.midi_learn_row = uint8_t(row);
     ui.midi_learn_until = std::max<uint32_t>(now + learn_ms, 1);
-    notice(row == PresetCcRow ? "Turn a knob to the right" : "Move a control");
+    notice(row == PresetCcRow ? "Turn a knob to the right" : row == PlayCcRow || row == RecordCcRow ? "Press a pedal or button" : "Move a control");
 }
 
 bool Context::midi_learning() const { return ui.midi_learn_until && now < ui.midi_learn_until && ui.page == PageId::MidiConfig; }
 
 void Context::learned_midi(unsigned row) {
     const auto& m = ui.settings.midi;
-    const unsigned cc = row == TrackCcRow ? m.track_cc : row == PatternCcRow ? m.pattern_cc : row == SceneCcRow ? m.scene_cc : m.preset_cc;
+    const unsigned cc = row == TrackCcRow ? m.track_cc : row == PatternCcRow ? m.pattern_cc : row == SceneCcRow ? m.scene_cc
+                      : row == PlayCcRow ? m.play_cc : row == RecordCcRow ? m.record_cc : m.preset_cc;
     std::string said = std::string(midi_row_name(row)) + " " + std::to_string(cc) + ", ch " + std::to_string(m.remote_channel);
     if (row == PresetCcRow) said += ", " + std::string(knob_mode_name(m.preset_knob));
     notice(said);
@@ -343,6 +344,8 @@ void MidiIo::remote_knob(Context& c, unsigned channel, unsigned cc, unsigned val
             preset_last = -1;
         } else if (row == TrackCcRow) m.track_cc = uint8_t(cc);
         else if (row == PatternCcRow) m.pattern_cc = uint8_t(cc);
+        else if (row == PlayCcRow) m.play_cc = uint8_t(cc);
+        else if (row == RecordCcRow) m.record_cc = uint8_t(cc);
         else m.scene_cc = uint8_t(cc);
         m.remote_channel = uint8_t(channel);
         c.ui.midi_learn_until = 0;
@@ -354,7 +357,8 @@ void MidiIo::remote_knob(Context& c, unsigned channel, unsigned cc, unsigned val
     if (steps) c.remote_preset(steps);
 }
 
-// Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene.
+// Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene, or
+// presses Play (Stop while playing) or Seq Record (issue 7: a foot pedal, the hands on the keys).
 void MidiIo::do_remote(Context& c, const RemoteJob& job) {
     using K = RemoteJob::Kind;
     switch (job.kind) {
@@ -370,6 +374,11 @@ void MidiIo::do_remote(Context& c, const RemoteJob& job) {
         c.launch_scene(job.index);
         c.notice("Sequence " + print_pattern_name(job.index));
         break;
+    case K::Play:
+        if (c.host.playing()) c.stop();
+        else c.play();
+        break;
+    case K::Record: c.seq_record(); break; // as the button: arm, record now, or stop recording
     default: break;
     }
 }

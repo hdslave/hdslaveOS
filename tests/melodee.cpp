@@ -4499,6 +4499,13 @@ void midi_and_sync() {
         CHECK(remote_cc(remote, 16, remote.track_cc, 16).kind == RemoteJob::Kind::Ignored); // past T16: taken, nothing done
         CHECK(remote_cc(remote, 15, remote.track_cc, 3).kind == RemoteJob::Kind::None);
         CHECK(remote_cc(remote, 16, 7, 3).kind == RemoteJob::Kind::None);
+        // The transport's (issue 7): Off until learned; a press (64 up) plays or records, its let go is taken.
+        CHECK(remote.play_cc == 0 && remote.record_cc == 0);
+        remote.play_cc = 64; remote.record_cc = 65;
+        CHECK(remote_cc(remote, 16, 64, 127).kind == RemoteJob::Kind::Play && remote_cc(remote, 16, 64, 64).kind == RemoteJob::Kind::Play);
+        CHECK(remote_cc(remote, 16, 64, 0).kind == RemoteJob::Kind::Ignored && remote_cc(remote, 16, 64, 63).kind == RemoteJob::Kind::Ignored);
+        CHECK(remote_cc(remote, 16, 65, 127).kind == RemoteJob::Kind::Record && remote_cc(remote, 16, 65, 0).kind == RemoteJob::Kind::Ignored);
+        CHECK(remote_cc(remote, 15, 64, 127).kind == RemoteJob::Kind::None); // another channel: the tracks' sustain pedal
         remote.track_cc = 0;
         CHECK(remote_cc(remote, 16, 0, 3).kind == RemoteJob::Kind::None); // a CC row Off
         std::ostringstream text;
