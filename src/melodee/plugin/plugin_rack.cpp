@@ -516,9 +516,14 @@ public:
         if (!l || !r) return;
         for (unsigned f = 0; f < n; ++f) { left[f] += sane(l[f]); right[f] += sane(r[f]); }
     }
-    // A block it is not run for though it plays a part in it (EngineHost: its track's print in its place, its slot
-    // bypassed), as a block it sleeps through: its steady_time counts the frames.
-    void pass(unsigned frames) override { key_frames = 0; pass_time(std::min(frames, EngineHost::block)); }
+    // Each block's end (EngineHost): a block it was not run in at all (its track empty or frozen with the print in its
+    // place, its slot bypassed, its chain not played, used nowhere now) is time passed, as a block it sleeps through:
+    // its steady_time counts the frames. One it was run in, once or more, counted them already.
+    void pass(unsigned frames) override {
+        if (effect_clock_now->block == ran_block) return;
+        key_frames = 0;
+        pass_time(std::min(frames, EngineHost::block));
+    }
     // A CLAP plug-in's steady_time counts frames it was not run for, at its own rate (one bridged a whole frame at a
     // time).
     void pass_time(unsigned frames) {
@@ -532,6 +537,7 @@ public:
         key_frames = 0;
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
+        if (!warming) ran_block = effect_clock_now->block; // run in this block: pass() then leaves it be
         follow_clock(frames);
         // Take a changed CLAP tail before sleep. Ring prints also read changes raised within processBlock.
         if (clap && clap->takeTailChange(declared_tail)) idle.set_tail(plugin_rate, declared_tail);
@@ -758,6 +764,7 @@ private:
     bool clock_seen = false, playing_seen = false, moved = false;
     uint32_t turns_seen = 0;
     double slept_frames = 0;   // frames at its rate slept through and not yet told its steady_time (under one)
+    uint64_t ran_block = UINT64_MAX; // the host's block it was last run in (EffectClock::block)
     double song_seen = 0, quarter_seen = 1;
     double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top
     double per_frame = 0;      // and how far a frame at the plug-in's rate moves it

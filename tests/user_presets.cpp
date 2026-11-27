@@ -881,6 +881,13 @@ int main(int argc, char** argv) {
                 ++n;
             }
     }
+    if (slept) { // and Test Gain on track 3's chain, the track left empty: the engine plays neither
+        project.plugins[3] = ref;
+        project.plugins[3].id = clap_id_hash("org.melodee.test.gain");
+        auto& slot = project.chain(2).slots[0];
+        slot.kind = plugin_effect_kind;
+        slot.params[0] = 3;
+    }
     if (slept) { // track 1's pattern a note every sixteenth: a note's frame splits the block its instrument is played in
         Step step;
         step.notes[0] = {69, 100};
@@ -1979,6 +1986,25 @@ int main(int argc, char** argv) {
         tick();
         const auto back = clock();
         CHECK(back.calls == run.calls + 1 && back.steady == run.steady + run.frames + 200.0 * EngineHost::block);
+        // Test Gain on empty track 3's chain: the engine plays no chain of a track with no sound, so it is not run. Once
+        // the track is a kit its chain plays, and its steady_time has counted every block it was not run for.
+        auto clock_of = [&](unsigned at) {
+            auto bytes = rack->state(at);
+            CHECK(bytes.size() == 4 + 15 * sizeof(double));
+            std::array<double, 15> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Clock {int(v[5]), v[6], v[7]};
+        };
+        wait([&] { return ready(3); });
+        const auto unplayed = clock_of(3);
+        constexpr unsigned unplayed_blocks = 300;
+        for (unsigned k = 0; k < unplayed_blocks; ++k) tick();
+        CHECK(clock_of(3).calls == unplayed.calls);
+        c.load_sound(2, EngineKind::Sampler, 0);
+        for (int k = 0; k < 8 && clock_of(3).calls == unplayed.calls; ++k) tick();
+        const auto chained = clock_of(3);
+        CHECK(chained.calls > unplayed.calls);
+        CHECK(chained.steady - unplayed.steady - unplayed.frames >= double(unplayed_blocks) * EngineHost::block);
         // Track 1's Test Sine played while its pattern plays, in parts of a block where a note's frame falls: each call's
         // steady_time is the one before's plus the frames of that one before, whatever their sizes.
         struct Parts { double steady, frames, prior_steady, prior_frames, gaps, fewest; };
