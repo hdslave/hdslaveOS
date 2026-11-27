@@ -15,7 +15,13 @@ namespace fs = std::filesystem;
 
 std::string card_of(const Context& c) { return c.library ? c.library->card() : std::string(); }
 
-void list(Context& c) { c.prog_paths = list_progressions(card_of(c)); }
+void list(Context& c) {
+    const auto card = card_of(c);
+    c.prog_paths = list_progressions(card);
+    c.prog_places.clear();
+    c.prog_places.reserve(c.prog_paths.size());
+    for (const auto& path : c.prog_paths) c.prog_places.push_back(prog_place(card, path));
+}
 
 // Where the track's progression is in the list (by file name; Melodee's own folder comes first), and its neighbours.
 void show(Context& c) {
@@ -90,6 +96,45 @@ unsigned prog_files(Context& c) {
 }
 
 std::string prog_file_name(const Context& c, unsigned at) { return at < c.prog_paths.size() ? progression_stem(c.prog_paths[at]) : std::string(); }
+
+void prog_view_open(Context& c, const std::string& folder, const std::string& select) {
+    auto& ui = c.ui;
+    c.prog_folder = folder;
+    c.prog_view = prog_folder_rows(c.prog_places, folder);
+    ui.prog_view_count = uint16_t(std::min<size_t>(c.prog_view.size(), 65535));
+    ui.prog_view_own = -1;
+    int picked = -1;
+    for (size_t n = 0; n < c.prog_view.size() && n < 65535; ++n) {
+        const auto& row = c.prog_view[n];
+        if (row.file >= 0 && row.file == ui.prog_at) ui.prog_view_own = int16_t(n);
+        if (picked < 0 && row.file < 0 && !select.empty() && row.name == select) picked = int(n);
+    }
+    ui.prog_cursor = uint16_t(picked >= 0 ? picked : std::max<int>(ui.prog_view_own, 0));
+    std::snprintf(ui.prog_folder_name, sizeof(ui.prog_folder_name), "%s", prog_folder_name(folder).c_str());
+}
+
+bool prog_files_open(Context& c) {
+    if (!prog_files(c)) return false;
+    const int at = c.ui.prog_at;
+    prog_view_open(c, at >= 0 && size_t(at) < c.prog_places.size() ? prog_place_folder(c.prog_places[size_t(at)]) : std::string());
+    return true;
+}
+
+bool prog_view_enter(Context& c) {
+    const unsigned at = c.ui.prog_cursor;
+    if (at >= c.prog_view.size()) return false;
+    const auto row = c.prog_view[at];
+    if (row.file < 0) { prog_view_open(c, c.prog_folder.empty() ? row.name : c.prog_folder + "/" + row.name); return true; }
+    if (prog_pick(c, unsigned(row.file))) c.notice(std::string(c.track().prog.file).substr(0, 28));
+    return false;
+}
+
+bool prog_view_up(Context& c) {
+    if (c.prog_folder.empty()) return false;
+    const std::string from = prog_folder_name(c.prog_folder);
+    prog_view_open(c, prog_folder_up(c.prog_folder), from);
+    return true;
+}
 
 bool prog_pick(Context& c, unsigned at) {
     if (at >= c.prog_paths.size() || !load(c, at)) return false;

@@ -315,7 +315,8 @@ with no chord is dark.
 | **−** / **+** | Octave |
 | **PAD BANK** | Banks A–C |
 
-Melodee looks for progressions in these folders on the SD card:
+Melodee looks for progressions in these folders on the SD card, and in their
+subfolders up to four deep (for example a folder for each genre):
 
 - `Melodee/Progressions` (your own progressions)
 - `Progressions`

@@ -677,10 +677,15 @@ the type:
 
 - **SCALE** and **CHORDS** choose that type and turn 16 Levels on, in one
   press.
-- **FILE** lists the progression files on the card. Turn the encoder to a
-  file and push it, or press **B3** (**PICK**). **B1** (**BACK**) leaves the
-  progression as it was. The file the track plays has a check. You can let
-  go of **16 LEVELS** while the list is open.
+- **FILE** lists the progression files on the card, one folder at a time:
+  its folders first, then its files. It opens on the folder of the file the
+  track plays. Turn the encoder to a folder and push it, or press **B3**
+  (**OPEN**), to see what is in it. **B1** (**BACK**) goes up one folder;
+  at the top it closes the list and leaves the progression as it was. Turn
+  the encoder to a file and push it, or press **B3** (**PICK**). The file
+  the track plays has a check. Your own progressions and their folders are
+  at the top, with **Progressions** (the card's `Progressions` folder) and
+  **Expansions**. You can let go of **16 LEVELS** while the list is open.
 - **SET** makes a chord of your own. Tap the pad the chord goes on. Then
   **K1** (**ROOT**), **K2** (**CHORD**: m7, maj9, 7sus4 and so on) and **K3**
   (**INVERSION**) set it; tap the pad to hear it. **B3** (**DONE**) saves the

@@ -19,6 +19,12 @@ bool prog_store_pad(Context& c, unsigned pad); // a pad while storing: the chord
 void prog_ready(Context& c);              // the track's progression, or the card's first when it has none
 unsigned prog_files(Context& c);          // the card listed again: how many, UiState::prog_at the track's own
 std::string prog_file_name(const Context& c, unsigned at); // a file's name as the list shows it
+// FILE's folders (issue 65, shell/progression_tree.h), over the list prog_files() made:
+bool prog_files_open(Context& c);        // listed again, open on the folder of the track's own file (false: none on the card)
+void prog_view_open(Context& c, const std::string& folder, const std::string& select = {}); // that folder's rows; the cursor
+                                         // on the folder row `select`, else the track's own file, else the first
+bool prog_view_enter(Context& c);        // Push or B3 on the row in hand: a folder opens (true), a file goes on the track
+bool prog_view_up(Context& c);           // B1 BACK: the folder above (false at the top: the sheet closes)
 bool prog_pick(Context& c, unsigned at);  // that file onto the track
 void prog_save(Context& c, unsigned pad, unsigned index); // the track's progression to Melodee/Progressions (a new one: Mine 1 ...), saying the pad's chord
 

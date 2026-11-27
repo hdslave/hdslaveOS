@@ -17,6 +17,7 @@
 #include "melodee/shell/history.h"
 #include "melodee/shell/note_preview.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/progression_tree.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
 #include "melodee/shell/usage_log.h"
@@ -531,6 +532,9 @@ public:
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     std::vector<std::string> prog_paths; // the card's .progression files, as the Prog layout's wheel walks them (listed when first wanted)
+    std::vector<std::string> prog_places; // and each one's place in 16 Levels FILE's folders (shell/progression_tree.h)
+    std::string prog_folder;              // FILE's folder in view ("" the top) and its rows
+    std::vector<ProgRow> prog_view;
     // Projects on the card
     ProjectStore* store = nullptr;
     UsageLog usage;           // Settings' doors K2 (shell/usage_log.h): off until turned on

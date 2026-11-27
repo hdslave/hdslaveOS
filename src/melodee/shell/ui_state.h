@@ -587,6 +587,14 @@ struct UiState {
     std::array<std::array<char, 40>, 6> prog_rows {};
     uint8_t prog_rows_count = 0;
     uint16_t prog_rows_first = 0, prog_cursor = 0;
+    // FILE's folders (issue 65, shell/progression_tree.h): the rows of the folder in view (prog_view_count), the rows
+    // in view that are folders (a bit each), the row of the track's own file (-1: not in this folder), whether the row
+    // in hand is a folder (B3 OPEN, else PICK), and the folder's name ("" the top).
+    uint16_t prog_view_count = 0;
+    uint8_t prog_rows_folders = 0;
+    int16_t prog_view_own = -1;
+    bool prog_cursor_folder = false;
+    char prog_folder_name[40] {};
     uint8_t chord_index = 0, chord_root = 0, chord_type = 0, chord_invert = 0;
     ProgChord chord_before;
     // A word over the header for a moment: what an undo, redo, delete or copy did.

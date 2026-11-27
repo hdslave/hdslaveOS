@@ -423,8 +423,13 @@ beat; the meters show the mix.
   (Pad Bank, bank lights). Pads show the chord's short name (C#m9; a slash
   bass on a second line), the file's Root chord in the track's colour, a pad
   with no chord dark. The encoder walks the card's progressions
-  (Melodee/Progressions, Progressions, Melodee/Samples/Expansions, Samples/Expansions) and shows the
-  name large for 1.5 s; K1 KEY moves every chord (−6..+5 semitones, names
+  (Melodee/Progressions, Progressions, Melodee/Samples/Expansions, Samples/Expansions, each with its
+  subfolders four deep, issue 65) and shows the
+  name large for 1.5 s; 16 Levels FILE shows them a folder at a time
+  (shell/progression_tree.h): the folder's folders first, then its files;
+  B3 OPEN or Push opens a folder, B1 BACK goes up one (at the top it
+  closes), B3 PICK or Push puts a file on the track; Melodee/Progressions'
+  own files and folders sit at the top, beside Progressions and Expansions; K1 KEY moves every chord (−6..+5 semitones, names
   follow), K2 VOICING File / Close / Open / Spread, −/+ the octave (OCT 2
   plays the file's notes). A chord holds up to eight notes
   (`notes_per_step`). Storing: on Scale, Chromatic or Chords with pads held,

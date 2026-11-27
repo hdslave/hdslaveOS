@@ -114,6 +114,7 @@
 #include "melodee/shell/features.h"
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/levels_keys.h"
+#include "melodee/shell/progression_tree.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/stems.h"
 #include "melodee/shell/stems_room.h"
@@ -1604,6 +1605,29 @@ void button_remap() {
         UiState full; CHECK(full_features(full)); full.lesson = 1; CHECK(!full_features(full) && new_pick_count(full) == 5);
         // GO's pad 16 is LEARN.
         CHECK(std::string(menu_places()[15].name) == "LEARN" && menu_tile_shown(full, 15));
+    }
+    // 16 Levels FILE's folders (issue 65, shell/progression_tree.h): each file's place, a folder's rows (its folders
+    // by name first, then its files in the list's order), and the way up.
+    {
+        const std::string card = "/media/card";
+        const std::vector<std::string> paths {card + "/Melodee/Progressions/Mine 1.progression", card + "/Melodee/Progressions/jazz/ii-V-I.progression",
+                                              card + "/Melodee/Progressions/Hip Hop/Boom.progression", card + "/Melodee/Progressions/Hip Hop/Dusty/Lo.progression",
+                                              card + "/Progressions/Top.progression", card + "/Melodee/Samples/Expansions/Organs/Progressions/Gospel.progression",
+                                              card + "/Samples/Expansions/Old/Blue.progression"};
+        std::vector<std::string> places;
+        for (const auto& p : paths) places.push_back(prog_place(card, p));
+        CHECK(places[0] == "Mine 1.progression" && places[1] == "jazz/ii-V-I.progression" && places[3] == "Hip Hop/Dusty/Lo.progression");
+        CHECK(places[4] == "Progressions/Top.progression" && places[5] == "Expansions/Organs/Progressions/Gospel.progression" && places[6] == "Expansions/Old/Blue.progression");
+        auto top = prog_folder_rows(places, "");
+        CHECK(top.size() == 5 && top[0].name == "Expansions" && top[0].file < 0 && top[1].name == "Hip Hop" && top[2].name == "jazz" &&
+              top[3].name == "Progressions" && top[4].name == "Mine 1" && top[4].file == 0);
+        auto hip = prog_folder_rows(places, "Hip Hop");
+        CHECK(hip.size() == 2 && hip[0].name == "Dusty" && hip[0].file < 0 && hip[1].name == "Boom" && hip[1].file == 2);
+        CHECK(prog_folder_rows(places, "Hip Hop/Dusty").size() == 1 && prog_folder_rows(places, "Hip Hop/Dusty")[0].file == 3);
+        CHECK(prog_folder_rows(places, "Expansions").size() == 2 && prog_folder_rows(places, "Hip").empty()); // a name's start is not a folder
+        CHECK(prog_place_folder(places[3]) == "Hip Hop/Dusty" && prog_place_folder(places[0]).empty());
+        CHECK(prog_folder_up("Hip Hop/Dusty") == "Hip Hop" && prog_folder_up("Hip Hop").empty() && prog_folder_name("Expansions/Organs") == "Organs");
+        CHECK(prog_place(card, "/elsewhere/Loose.progression") == "Loose.progression");
     }
     // 16 Levels held's keys (shell/levels_keys.h): SCALE and CHORDS by the type; on Chords FILE and SET; SET's chords.
     {
