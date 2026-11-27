@@ -129,8 +129,8 @@ UndoScope plugin_scope(const Project& project, unsigned track, unsigned entry) {
     const unsigned t = track % track_count;
     const auto& tr = project.tracks[t];
     if (tr.engine == EngineKind::Plugin && tr.plugin == entry) return {UndoScope::Kind::Sound, uint8_t(t), 0};
-    for (const auto& s : tr.fx.slots)
-        if (s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry) return {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)};
+    for (const auto& s : tr.fx.slots) // a bypassed slot passes the sound through, in a print as live: none of it is the plug-in's
+        if (s.kind == plugin_effect_kind && !s.bypass && unsigned(s.params[0]) == entry) return {UndoScope::Kind::Chain, uint8_t(t), uint16_t(t)};
     return {};
 }
 

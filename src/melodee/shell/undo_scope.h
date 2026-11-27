@@ -56,7 +56,8 @@ bool print_covers(const std::array<TrackFreeze, track_count>& freeze, const Undo
 // are part of the prints of the tracks the plug-in plays on (plugin_scope), whichever track is in hand.
 UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding& binding);
 // What of track `track` plug-in `entry` plays in: its sound (the track's instrument), or its chain (an effect on it,
-// which a Post FX print holds and a Pre FX one does not). None: no part of that track's print.
+// which a Post FX print holds and a Pre FX one does not; not a bypassed slot, which plays nothing into a print). None:
+// no part of that track's print.
 UndoScope plugin_scope(const Project& project, unsigned track, unsigned entry);
 // Whether a frozen track's print holds a card's value (its snowflake): for a plug-in's parameter, any track the
 // plug-in plays on (plugin_scope), as Context::frozen_plugin_edit asks; else freeze_scope().

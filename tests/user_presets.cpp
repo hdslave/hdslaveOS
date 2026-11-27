@@ -1647,7 +1647,7 @@ int main(int argc, char** argv) {
     // Track 1 in hand and frozen: a plug-in that plays no part of its print is edited without asking. Test Gain on the
     // master's chain, by K1 on Master and by a companion screen's edit; Test Gain on track 1's own chain, by K1 on Rack
     // while track 1 is frozen Pre FX (that print holds no chain). Their cards carry no snowflake then. Frozen Post FX,
-    // K1 on track 1's chain asks about track 1, and its card has the snowflake.
+    // K1 on track 1's chain asks about track 1, and its card has the snowflake; with its slot bypassed, it does not.
     if (mode == "frozen-elsewhere") {
         const unsigned master_gain = 2, own_gain = 3;
         wait([&] { return ready(entry) && ready(master_gain) && ready(own_gain); });
@@ -1695,6 +1695,15 @@ int main(int argc, char** argv) {
         for (int k = 0; k < 20; ++k) tick();
         CHECK(ui.ask == UiState::Ask::None && values(own_gain)[2] == 2);
         frozen = {};
+        c.toggle_bypass(0, 0); // its slot bypassed: it passes the sound through, and plays no part of a print
+        CHECK(project.chain(0).slots[0].bypass);
+        frozen.state = FreezeState::Frozen; // Post FX
+        CHECK(!k1_frozen(PrintTap::PostFx));
+        k1(0);
+        CHECK(ui.ask == UiState::Ask::None && ui.plugin_panel.params[0].value == 0);
+        frozen = {};
+        c.toggle_bypass(0, 0); // on again: the plug-in, run once more, has the value it was given
+        wait([&] { return values(own_gain)[2] == 0; });
         shell->set_plugins(nullptr);
         return 0;
     }

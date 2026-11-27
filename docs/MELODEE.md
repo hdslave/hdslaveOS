@@ -1145,11 +1145,15 @@ asks "Unfreeze track N?" first: B3 UNFREEZE, B1 CANCEL. A turned card
 asks before it changes; any other edit is put back as it was and asks.
 Seq Record and a Sample Record take on a frozen track ask the same.
 A plug-in's values ask about the tracks the plug-in plays on, whichever
-track is in hand: an effect on a bus's or the master's chain, or on the
-chain of a track frozen Pre FX, is edited without a question, while a
+track is in hand: an effect on a bus's or the master's chain, on the
+chain of a track frozen Pre FX, or in a bypassed slot (it passes the
+sound through, in a print as live) is edited without a question, while a
 plug-in a frozen track shares with the track in hand asks
 (`plugin_scope`, `Context::frozen_plugin_edit`). The cards' snowflakes
-say the same.
+say the same. A bypassed slot's plug-in is not run, so what it is given
+reaches it once the slot is on again, which asks first. Its state still
+counts in the print's hash: once that state has changed, a print made
+again is rendered anew (to the same sound) rather than kept.
 Unfrozen, edit, then freeze again: patterns whose notes, sound and chain
 did not change keep their prints, so only the edited ones are printed
 again.
