@@ -331,7 +331,8 @@ beat; the meters show the mix.
   edited), the **wheel** fine-edits the card touched last (ringed), **Push**
   moves to the next card (PRESETS: the whole list), Shift +
   Push is Back, −/+ the octave (a kit's bank; a plug-in's PRESETS: its
-  presets; EDIT: the rows; Sample held: the octave on every page).
+  presets; EDIT: the rows; Sample held: the octave on every page, or in
+  the Drums layout the bank).
   - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
     below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
     playing large with the plug-in and its format under it and the ones
