@@ -5212,6 +5212,39 @@ void device_rates() {
         c.read("screen_mirror=1\n"); CHECK(c.file_sharing);
         b.reset_factory(); CHECK(b.file_sharing);
     }
+    // Screensaver (shell/screensaver.h): Off until picked, kept and read back; it waits the minutes after the last
+    // control and never while busy; the logo stays on the screen and counts its bounces.
+    {
+        Settings a;
+        CHECK(a.screensaver == 0 && a.value_text(Settings::ScreensaverRow) == "Off" && std::string(Settings::row_name(Settings::ScreensaverRow)) == "Screensaver");
+        a.step(Settings::ScreensaverRow, 1);
+        CHECK(a.value_text(Settings::ScreensaverRow) == "1 min" && a.text().find("\nscreensaver=1\n") != std::string::npos);
+        for (int n = 0; n < 9; ++n) a.step(Settings::ScreensaverRow, 1);
+        CHECK(a.value_text(Settings::ScreensaverRow) == "30 min");
+        Settings b;
+        b.read(a.text()); CHECK(b.screensaver == 5);
+        b.read("screensaver=99\n"); CHECK(b.screensaver == 5);
+        b.reset_factory(); CHECK(b.screensaver == 0);
+        CHECK(!screensaver::due(0, 1u << 31, 0, false));
+        CHECK(!screensaver::due(1, 59999, 0, false) && screensaver::due(1, 60000, 0, false) && !screensaver::due(1, 60000, 0, true));
+        CHECK(!screensaver::due(1, 0xffffff00u + 59999u, 0xffffff00u, false) && screensaver::due(1, 0xffffff00u + 60000u, 0xffffff00u, false)); // past the clock's wrap
+        auto p = screensaver::place(0, 135, 23, 320, 240, 400, 30);
+        CHECK(p.x == 400 % 185 && p.y == 30 && p.bounces == 0);
+        p = screensaver::place(5442, 135, 23, 320, 240, 0, 0); // just past the right edge: back by 28 milli-px
+        CHECK(p.x == 184 && p.y == 141 && p.bounces == 1);
+        p = screensaver::place(10882, 135, 23, 320, 240, 0, 0);
+        CHECK(p.x == 0 && p.y == 151 && p.bounces == 2); // back at the left, and off the bottom once
+        unsigned bounces = 0;
+        bool inside = true, rising = true;
+        for (uint32_t ms = 0; ms < 600000; ms += 17) {
+            auto at = screensaver::place(ms, 135, 23, 320, 240, 77, 190);
+            inside = inside && at.x >= 0 && at.x <= 185 && at.y >= 0 && at.y <= 217;
+            rising = rising && at.bounces >= bounces;
+            bounces = at.bounces;
+        }
+        CHECK(inside && rising && bounces > 150);
+        CHECK(screensaver::place(1000, 320, 240, 320, 240, 5, 5).x == 0);
+    }
     // LIGHTS: Pad fade 100 ms and Tap Tempo light on until changed; kept and read back; the fade stops at the list's ends.
     {
         Settings a;

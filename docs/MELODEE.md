@@ -2242,7 +2242,11 @@ while following.
   (On, Off: its flash on the beat while playing).
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
-  where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
+  Screensaver (Off, 1, 2, 5, 10, 30 min; Off by default: the boot logo at two
+  thirds, bouncing off the edges in a new track colour each time, once the
+  controls and MIDI notes have rested that long while nothing plays, records
+  or renders; any control ends it and still acts, `shell/screensaver.h`,
+  `ui/screensaver.cpp`), where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
   (Off, On), Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960: the
   screen times 1, 2, 3 with black at the sides, 4; 1280 x 960 by default)
   and Frame rate (30, 60 fps; 30 by default): the screen as a USB webcam over

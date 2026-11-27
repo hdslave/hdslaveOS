@@ -12,6 +12,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/boot.h"
+#include "melodee/ui/screensaver.h"
 #include "melodee/web/web_app.h"
 #include "drivers/platform.h"
 #include "drivers/sd_update.h"
@@ -88,6 +89,8 @@ private:
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now
+    melodee::ui::Screensaver saver;           // screen thread: Settings' Screensaver (shell/screensaver.h)
+    std::atomic<uint32_t> touched {0};        // now_ms() of the last control, remote press or MIDI note: the saver waits
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
     // queues, the MIDI thread acts it out as if by hand.

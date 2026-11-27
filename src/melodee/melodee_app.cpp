@@ -156,10 +156,14 @@ void MelodeeApp::surface(const SurfaceEvent& event) {
     bool pressed = (event.input.kind == SurfaceInput::Kind::Button && event.input.pressed) ||
                    (event.pad >= 0 && (event.midi.status & 0xf0) == 0x90 && event.midi.value > 0);
     if (pressed && !event.syncing) boot_skip.store(true, std::memory_order_relaxed);
+    if (!event.syncing) touched.store(now_ms(), std::memory_order_relaxed); // any control: the screensaver goes, or waits
     shell.surface(event, now_ms());
 }
 
-void MelodeeApp::midi(const MidiPortInfo& port, const MidiPacket& packet) { shell.midi(port, packet, now_ms()); }
+void MelodeeApp::midi(const MidiPortInfo& port, const MidiPacket& packet) {
+    if (packet.size && packet.bytes[0] < 0xF8) touched.store(now_ms(), std::memory_order_relaxed); // notes, not the clock
+    shell.midi(port, packet, now_ms());
+}
 void MelodeeApp::midi_lost() { shell.midi_lost(); }
 void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
     RemoteMidi injected;
@@ -190,6 +194,7 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     }
     Remote remote;
     while (presses.pop(remote)) {
+        touched.store(now_ms(), std::memory_order_relaxed); // a remote press, as a hand's
         if (remote.kind == 1) { // the wheel
             SurfaceEvent event;
             event.input.kind = SurfaceInput::Kind::Control; event.input.index = uint8_t(SurfaceControl::Wheel); event.input.delta = remote.delta;
@@ -468,6 +473,18 @@ void MelodeeApp::draw(juce::Graphics& g) {
     if (boot_skip.exchange(false, std::memory_order_relaxed)) boot.skip(now);
     if (boot.covers(now)) { boot.draw(g, now); return; } // the app starts drawing as the animation fades out
     shell.snapshot(*frame, now);
+    { // Settings' Screensaver (shell/screensaver.h): not while the sequencer plays, a take waits or records, or a render runs
+        using Take = TakeRecorder::State;
+        const Take take = Take(frame->take.state);
+        const Bounce::State render = Bounce::State(frame->render_state);
+        const bool busy = frame->playing || take == Take::Armed || take == Take::Recording || take == Take::Cued ||
+                          render == Bounce::State::Cued || render == Bounce::State::Running || render == Bounce::State::Tail;
+        if (saver.shows(frame->ui.settings.screensaver, now, touched.load(std::memory_order_relaxed), busy)) {
+            ui::use_palette(frame->ui.settings.palette);
+            saver.draw(g, now);
+            return;
+        }
+    }
     frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
     frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
     frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);

@@ -9,6 +9,7 @@
 #include "melodee/model/midi_config.h"
 #include "melodee/ui/faces.h"
 #include "melodee/ui/palettes.h"
+#include "melodee/shell/screensaver.h"
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -38,7 +39,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow, ScreensaverRow, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -129,6 +130,9 @@ struct Settings {
     // File sharing: the card as a network drive (SMB) for the computer on USB-C, at smb://melodee.local, while it is
     // the MPC's (base drivers/file_share.h). On unless turned off; off closes the computer's connection.
     bool file_sharing = true;
+    // Screensaver (shell/screensaver.h): the minutes the controls rest before the logo bounces over the screen, one
+    // of screensaver::minutes; 0 Off.
+    uint8_t screensaver = 0;
     uint8_t mirror_size = 3;  // 1280 x 960: the sharpest (1280 x 720 is stretched soft in a Retina window)
     uint8_t mirror_fps = 30;  // 30 or 60
     ScreenMirrorMode mirror_mode() const {
@@ -164,7 +168,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing", "Screensaver"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -215,6 +219,10 @@ struct Settings {
         case UsbDirect: return usb_direct ? "Direct" : "Tracks";
         case UsbOut: return usb_submixes ? "Submixes" : "Tracks";
         case FileSharingRow: return file_sharing ? "On" : "Off";
+        case ScreensaverRow: {
+            unsigned wait = screensaver::minutes[screensaver % screensaver::minutes.size()];
+            return wait ? std::to_string(wait) + " min" : std::string("Off");
+        }
         case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
         default: return std::to_string(screen) + " %";
         }
@@ -259,6 +267,7 @@ struct Settings {
         case UsbDirect: usb_direct = !usb_direct; break;
         case UsbOut: usb_submixes = !usb_submixes; break;
         case FileSharingRow: file_sharing = !file_sharing; break;
+        case ScreensaverRow: screensaver = uint8_t(step_in(screensaver % screensaver::minutes.size(), unsigned(screensaver::minutes.size()), way)); break;
         case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
         default: break;
         }
@@ -274,6 +283,7 @@ struct Settings {
         case KnobTakeover: case KnobFxTakeover: case FaderTakeover: return unsigned(Takeover::Count);
         case CaptureBars: return unsigned(capture_lengths.size());
         case Screen: return 9;
+        case ScreensaverRow: return unsigned(screensaver::minutes.size());
         case SampleRate: return unsigned(rates.size());
         case AudioBuffer: return unsigned(buffers.size());
         case RecallGrabRow: return unsigned(RecallGrab::Count);
@@ -326,6 +336,7 @@ struct Settings {
         case UsbDirect: return usb_direct;
         case UsbOut: return usb_submixes;
         case FileSharingRow: return file_sharing;
+        case ScreensaverRow: return screensaver % screensaver::minutes.size();
         case DirectLevel: return direct_level % direct_levels.size();
         default: return 0;
         }
@@ -370,6 +381,7 @@ struct Settings {
         case UsbDirect: usb_direct = n; break;
         case UsbOut: usb_submixes = n; break;
         case FileSharingRow: file_sharing = n; break;
+        case ScreensaverRow: screensaver = uint8_t(n); break;
         case DirectLevel: direct_level = uint8_t(n); break;
         default: break;
         }
@@ -422,7 +434,7 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\nusb_out=" << int(usb_submixes) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nfile_sharing=" << int(file_sharing)
+            << "\nfile_sharing=" << int(file_sharing) << "\nscreensaver=" << int(screensaver)
             << "\nscale_keys=" << int(scale_keys) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
@@ -506,6 +518,7 @@ struct Settings {
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "file_sharing") file_sharing = value != 0;
+            else if (key == "screensaver") screensaver = uint8_t(std::clamp(value, 0, int(screensaver::minutes.size()) - 1));
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
             else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
             else if (key == "scale_keys") scale_keys = value != 0;

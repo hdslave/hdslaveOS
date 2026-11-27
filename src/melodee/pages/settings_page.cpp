@@ -7,7 +7,7 @@
 //   new half, how many bars Capture keeps and how it puts them on the grid),
 //   KNOBS (how the knobs,
 //   Knob FX and the fader take over a value: Pickup, Scaled, Instant),
-//   SCREEN (palette, brightness, where the place bar sits, and Screen Mirror:
+//   SCREEN (palette, brightness, the screensaver, where the place bar sits, and Screen Mirror:
 //   the screen as a USB webcam for a computer, on or off, its size and rate;
 //   under the rows, while it is on, how it goes: ready, live, paused while
 //   the card is shared), AUDIO (the
@@ -55,7 +55,7 @@ const std::array<Door, 8> doors {{
     {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::NotePreview, Settings::MuteKind, Settings::DoubleSeq,
                             Settings::CaptureBars, Settings::CaptureQuantize, Settings::Autosave)},
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
-    {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::PlaceBarRow, Settings::PluginSkins, Settings::Mirror,
+    {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::ScreensaverRow, Settings::PlaceBarRow, Settings::PluginSkins, Settings::Mirror,
                                   Settings::MirrorSize, Settings::MirrorRate)},
     {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbOut, Settings::UsbDirect, Settings::DirectLevel,
                                   Settings::FileSharingRow)},
