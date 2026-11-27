@@ -8,6 +8,7 @@
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
@@ -3076,6 +3077,7 @@ const Preview previews[] {
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {
+    show_track_colours(s.project); // issue 69: the colour each track shows
     ui::use_palette(s.ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : s.ui.settings.font); // LCD sets its own
     ui::Paint p(g);
@@ -3571,7 +3573,7 @@ static int project_export(bool live, const char* path, const char* folder, const
     auto began = std::chrono::steady_clock::now();
     if (live) {
         LiveExport report;
-        const LiveColours colours = ui::track_live_colours;
+        const LiveColours colours = live_track_colours(*project);
         error = export_live_set(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir, &colours);
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
         if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }

@@ -7,6 +7,7 @@
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
 #include "melodee/shell/card_paths.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/live_export.h"
@@ -138,7 +139,7 @@ void ProjectStore::start_export(Request& r) {
             note(said + why);
         } else if (live) {
             LiveExport report;
-            const LiveColours colours = ui::track_live_colours; // each track in its colour on the MPC
+            const LiveColours colours = live_track_colours(*project); // each track in its colour on the MPC (issue 69: picked or its place's)
             why = export_live_set(*project, *bank, folder.string(), name, report, prints.get(), prints_folder(from), audio_folder(from), &colours);
             if (!why.empty()) note(said + why);
             else {

@@ -212,7 +212,16 @@ grammar (`shell/pad_light.h`):
   they reach the LEDs with each channel squared, as a level is, and the
   brightest raised to full (`pad_light::led()`), so a pad lights as vivid
   as the screen draws it (Coral drives FF3A21, not a pale FF7A5C). An MPC
-  kit's colours go to the LEDs as they came.
+  kit's colours go to the LEDs as they came. A track's colour is its
+  place's (track n the nth of the sixteen) until one is picked for it
+  (issue 69: `Track::colour`, 1-16, saved in TCOL; the mixer's MENU
+  TRACK COLOUR, shell/track_colours.h: the pads light the sixteen, a pad or
+  the wheel picks, B1 BACK, B2 DEFAULT, B3 DONE or Push keeps it, one undo
+  step). `ui::track_slot()` maps a track to its colour for the screen
+  (`track_colour`, `knob_shade`), the LEDs (`pad_light::track`) and the Live
+  Set export; a sequence's colour and the MENU's groups are the sixteen
+  themselves (`slot_colour`, `pad_light::colour_slot`). Moved, copied or
+  cleared, a track keeps its colour.
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2
   a colour falls apart; Faint is the lowest rung at which all sixteen track

@@ -140,7 +140,8 @@ void clear_track(Context& c, unsigned t) {
     Edit edit = c.begin_edit(what.c_str(), t, -1, false);
     edit.track_before = std::make_unique<TrackState>(track_state(c, t));
     auto next = std::make_unique<TrackState>();
-    next->track.mix = c.project.tracks[t].mix; // the strip stays
+    next->track.mix = c.project.tracks[t].mix; // the strip stays, and its colour (issue 69)
+    next->track.colour = c.project.tracks[t].colour;
     for (auto& p : next->patterns) p.length = c.project.bar_ticks();
     restore_track(c, t, *next);
     edit.track_after = std::move(next);

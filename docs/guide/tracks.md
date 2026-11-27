@@ -29,6 +29,25 @@ it is held, on any page.
 
 ![Moving a track](../images/screens/movetrack.png)
 
+## Track colour
+
+Each track has a colour: track 1 coral, track 2 amber and so on. You can
+give a track another colour, for example a watery blue for a pad sound.
+
+1. Select the track.
+2. On the mixer, hold the encoder to open the Menu. Push **TRACK COLOUR**.
+3. The pads light in the 16 colours. Press a pad, or turn the encoder, to
+   pick a colour. The track shows it at once: on the screen, on the pads
+   and on the fader light.
+4. Press **B3** (**DONE**) or push the encoder to keep it. **B1** (**BACK**)
+   keeps the colour the track had. **B2** (**DEFAULT**) gives the track the
+   colour of its place again.
+
+A track keeps its colour when you move or copy it, and when you clear it.
+Its patterns, Song clips and kit pads set to the track's colour take it too.
+Undo puts the colour back. The project keeps it; older Melodee versions open
+the project with each track in the colour of its place.
+
 ## Track speed
 
 A track can play its patterns slower or faster: ×1/64, ×1/32, ×1/16, ×1/8,

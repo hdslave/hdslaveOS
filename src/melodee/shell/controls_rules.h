@@ -33,7 +33,7 @@ struct ControlsRow {
 inline bool controls_overlay(const UiState& ui) {
     return ui.shift || ui.ask != UiState::Ask::None || ui.menu || ui.exit_open || ui.sheet_open || ui.map_open || ui.picker_open
         || ui.scene_capture || ui.sample_held || ui.seq_held || ui.move_open || ui.settings_look || ui.loop_sheet || ui.loop_held
-        || ui.levels_held || ui.levels_sheet || ui.pad_bank || ui.erase || ui.repeat_held || ui.copying != UiState::Copying::Off
+        || ui.levels_held || ui.levels_sheet || ui.colour_sheet || ui.pad_bank || ui.erase || ui.repeat_held || ui.copying != UiState::Copying::Off
         || ui.name.open() || ui.loading || ui.lesson;
 }
 

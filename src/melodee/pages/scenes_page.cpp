@@ -82,7 +82,7 @@ void draw(Paint& p, const Snapshot& s) {
         }
         float x = gx + column * (cw + gap), y = gy + row * (ch + gap);
         const auto& sc = s.project.scenes[n];
-        const juce::Colour ink = sc.colour ? track_colour(sc.colour - 1u) : colour::text; // its colour (issue 19), else white
+        const juce::Colour ink = sc.colour ? slot_colour(sc.colour - 1u) : colour::text; // its colour (issue 19), else white
         bool playing = kept && n == hand && !waiting; // only the sequence in hand lights
         bool silence = kept && !with;                 // it keeps only empty patterns or off
         juce::Colour text = kept ? colour::sec : colour::dim;
@@ -107,7 +107,7 @@ void draw(Paint& p, const Snapshot& s) {
     juce::String title = "SEQ " + juce::String(hand + 1) + (scene.name[0] ? " " + juce::String(scene.name) : juce::String());
     p.text(title, x, y, w, 18, p.fit(title, plain(colour::text, type::list, Weight::SemiBold), w, type::floor));
     if (s.ui.shift) { // Shift + wheel: its colour, in place of its tempo
-        if (scene.colour) p.fill(x, y + 22, 12, 12, track_colour(scene.colour - 1u), 3);
+        if (scene.colour) p.fill(x, y + 22, 12, 12, slot_colour(scene.colour - 1u), 3);
         else p.ring(x, y + 22, 12, 12, colour::dim, 3, 1.2f);
         p.text(scene.colour ? juce::String(ui::track_colour_names[size_t(scene.colour - 1) % 16]) : juce::String("No colour"), x + 17, y + 19, w - 17, 16,
                plain(scene.colour ? colour::text : colour::dim, type::body, Weight::Medium));

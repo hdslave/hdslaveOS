@@ -59,7 +59,8 @@ constexpr uint32_t pad_led(uint32_t colour) {
     for (const auto& shades : ui::track_shades) if (shades[0] == colour) return led(colour);
     return colour;
 }
-inline Look track(unsigned t, float level) { return of(led(ui::track_shades[t % 16][0]), Hue::Track, level); }
+inline Look colour_slot(unsigned slot, float level) { return of(led(ui::track_shades[slot % 16][0]), Hue::Track, level); } // the nth of the sixteen
+inline Look track(unsigned t, float level) { return colour_slot(ui::track_slot(t), level); } // the one track t shows (issue 69)
 inline Look loop(unsigned l, float level) { return of(led(ui::loop_shades[l % 4][0]), Hue::Loop, level); }
 inline Look sub(unsigned n, float level) { return of(led(ui::sub_shades[n % 8][0]), Hue::Sub, level); }
 inline Look white(float level) { return of(0xFFFFFF, Hue::White, level); }

@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#pragma once
+#include "melodee/model/project.h"
+#include "melodee/ui/shades.h"
+#include "surface/controls.h"
+#include <array>
+
+// Track colour (issue 69). A track shows its place's colour (track n the nth of the sixteen, ui/shades.h) until one
+// is picked for it (Track::colour, model/project.h). The mixer's MENU (encoder held) TRACK COLOUR opens the sheet
+// over the page, for the selected track:
+//   pads       the sixteen colours as the pads sit (pad 1 Coral ... pad 16 Grey); a pad picks one
+//   wheel      the next or previous colour
+//   B1 BACK    the colour it had, and the sheet closes
+//   B2 DEFAULT its place's colour again (it then follows the track's place, as before a colour was picked)
+//   B3 DONE    keeps it (one undo step); Push the same
+// A colour picked shows at once wherever the track's colour does (the screen, pads, fader light, a plug-in's
+// companion screen, the Live Set export). MIDI thread, but show_track_colours() any thread that owns the project.
+namespace melodee {
+
+class Context;
+
+// The sixteen tracks' colours into ui::track_slot_table(), as the project has them now.
+inline void show_track_colours(const Project& project) {
+    for (unsigned t = 0; t < track_count; ++t) ui::set_track_slot(t, track_colour_slot(project.tracks[t], t));
+}
+
+// The Live Set export's colours (shell/live_export.h): each track's, picked or its place's, as Live's nearest.
+inline std::array<uint8_t, track_count> live_track_colours(const Project& project) {
+    std::array<uint8_t, track_count> out {};
+    for (unsigned t = 0; t < track_count; ++t) out[t] = ui::track_live_colours[track_colour_slot(project.tracks[t], t)];
+    return out;
+}
+
+// Which of the sixteen comes `way` steps after `slot` (round).
+inline unsigned colour_slot_step(unsigned slot, int way) { return unsigned((int(slot % 16) + (way % 16) + 16) % 16); }
+
+void track_colour_open(Context& c);                          // the MENU's TRACK COLOUR
+bool track_colour_button(Context& c, SurfaceButton button);  // while it is open: true when the button was its
+void track_colour_wheel(Context& c, int delta);
+void track_colour_pad(Context& c, unsigned pad);
+
+} // namespace melodee

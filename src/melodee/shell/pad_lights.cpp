@@ -380,7 +380,7 @@ Look mixer_look(const PadScene& s, unsigned pad, bool muting) {
 Look scenes_look(const PadScene& s, unsigned pad) {
     unsigned n = s.ui.pad_pattern(pad), with = 0, waiting = 0; // the bank in view's
     const unsigned hue = s.project.scenes[n].colour;
-    auto lit = [hue](float level) { return hue ? track(hue - 1, level) : white(level); };
+    auto lit = [hue](float level) { return hue ? colour_slot(hue - 1, level) : white(level); };
     const bool rolling = s.host.playing(), hand = n == s.project.scene % pattern_count;
     bool kept = false;
     for (unsigned t = 0; t < track_count; ++t) {
@@ -828,7 +828,7 @@ Look sheet_look(const PadScene& s, unsigned pad) {
         if (ui.lesson) return pad == 15 ? (blink(s.now, flash_ms) ? white(full) : white(faint)) : Look {}; // a lesson: LEAVE only
         static const unsigned group_track[4] {0, 2, 4, 1}; // sound, sequence, mix, project: as the screen colours them
         if (!menu_tile_shown(ui, pad)) return {}; // a place Basic leaves out
-        return track(group_track[menu_places()[pad % 16].group % 4], pad == ui.menu_tile % 16u ? full : mid);
+        return colour_slot(group_track[menu_places()[pad % 16].group % 4], pad == ui.menu_tile % 16u ? full : mid);
     }
     bool about = false; // the pad the question is about
     switch (ui.ask) {
@@ -861,6 +861,9 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         }
         switch (pad_context(ui, t, s.facts, pad)) {
         case PadContext::Sheet: look = sheet_look(s, pad); break;
+        case PadContext::ColourPick: // TRACK COLOUR: the sixteen as the pads sit, the track's bright
+            look = colour_slot(pad, pad == track_colour_slot(s.project.tracks[ui.colour_track % track_count], ui.colour_track) ? full : dim);
+            break;
         case PadContext::Tracks: look = tracks_look(s, pad); break;
         case PadContext::Name: look = name_look(s, pad); break;
         case PadContext::LoopHeld:

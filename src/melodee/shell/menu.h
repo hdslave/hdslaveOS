@@ -95,7 +95,7 @@ inline unsigned menu_tile_turn(const UiState& ui, unsigned tile, int delta) {
 enum class MenuJob : uint8_t {
     None, SequenceCapture, SequenceName, SequenceFollowAll, SequenceLaunch, SequenceClear,
     PatternDouble, PatternHalf, PatternClear, TrackMove, TrackCopy, TrackClear, Looper, Freeze, ModAdd, Chords, ChordFile, Stems,
-    TrackName,
+    TrackName, TrackColour,
 };
 struct MenuItem {
     MenuJob job = MenuJob::None;
@@ -103,7 +103,7 @@ struct MenuItem {
     const char* key = ""; // its shortcut, shown under the name
     bool danger = false;
 };
-constexpr unsigned menu_here_max = 9;
+constexpr unsigned menu_here_max = 10;
 // The page's name on the MENU's header, "" for a page with nothing to list.
 inline const char* menu_page_name(PageId page) {
     switch (page) {
@@ -163,6 +163,7 @@ inline unsigned menu_here(const Project& project, const UiState& ui, std::array<
         add(J::TrackMove, "MOVE TRACK", "PAD BANK + B2");
         add(J::TrackCopy, "COPY TRACK", "PAD BANK + B3");
         if (track.used()) add(J::TrackName, "NAME TRACK", "MIXER, SHIFT + PUSH");
+        if (track.used()) add(J::TrackColour, "TRACK COLOUR", ""); // issue 69: only here (shell/track_colours.h)
         if (looper_shown(ui)) add(J::Looper, "LOOPER", "LOOP + 16 LEVELS");
         freeze();
         add(J::TrackClear, "CLEAR TRACK", "PAD BANK + ERASE + PAD", true);

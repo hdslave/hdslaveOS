@@ -12,6 +12,7 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/stage_map.h"
@@ -92,6 +93,7 @@ void run(Context& c, MenuJob job) {
     case J::PatternHalf: c.half_length(); break;
     case J::PatternClear: ask(c, UiState::Ask::ClearPattern, int(column)); break; // asked first, as Seq + Erase + pad
     case J::TrackName: c.name_track(ui.track); break;
+    case J::TrackColour: track_colour_open(c); break;
     case J::TrackMove: start_track_pick(ui, true); break;  // then the track, then where
     case J::TrackCopy: start_track_pick(ui, false); break;
     case J::TrackClear: { // asked first, as Pad Bank + Erase + pad

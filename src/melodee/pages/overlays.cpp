@@ -78,7 +78,8 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq && !sound) draw_fader_header(p, s);
     // 16 Levels' FILE or SET (shell/levels_keys.h), or, while it is held with Chords on, what each pad plays.
     if (!sheet && !tracks && !seq && !sound && s.ui.ask == UiState::Ask::None && !s.ui.menu) {
-        if (s.ui.levels_sheet) draw_levels_sheet(p, s);
+        if (s.ui.colour_sheet) draw_colour_sheet(p, s);
+        else if (s.ui.levels_sheet) draw_levels_sheet(p, s);
         else if (levels_held_cards(s.project, s.ui) && levels_chords_on(s.track()) && (s.ui.levels_used || s.now - s.ui.levels_down >= levels_hold_ms))
             draw_levels_chords(p, s);
     }

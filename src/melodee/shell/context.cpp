@@ -1840,6 +1840,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
     if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
     if (const auto& m = after ? e.name_after : e.name_before) { auto& tr = project.tracks[e.track % track_count]; tr.set_name(m->text); tr.named = m->named; }
+    if (e.colour_before >= 0) project.tracks[e.track % track_count].colour = uint8_t(after ? e.colour_after : e.colour_before); // issue 69
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
     if (e.pattern_was >= 0 && e.pattern >= 0) // the pattern it played before, or the one the edit made it play, kept

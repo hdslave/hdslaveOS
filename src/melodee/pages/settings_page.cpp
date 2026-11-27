@@ -162,7 +162,7 @@ void rows_draw(Paint& p, const Snapshot& s) {
         float vw = p.width(value, style), vx = x + w - 9 - vw;
         p.text(value, vx, y, vw + 1, list_row_h, style);
         if (row == Settings::Palette) // the palette's first track colours
-            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, track_colour(t), 2);
+            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, slot_colour(t), 2);
     }
     if (count > shown) { // more rows than the screen: a bar in the right margin, an arrow where more waits
         float top = zone::picture_y + 1, height = shown * (list_row_h + list_row_gap) - list_row_gap;
@@ -226,7 +226,7 @@ void look_draw(Paint& p, const Snapshot& s) {
             m.items[n] = card_item(Icon::None, faces[n].name, faces[n].em > 0 ? "PIXEL" : "", n == m.current);
     }
     m.detail = juce::String(m.current + 1) + " / " + juce::String(m.count);
-    m.accent = track_colour(0);
+    m.accent = slot_colour(0);
     card_sheet(p, m);
 }
 

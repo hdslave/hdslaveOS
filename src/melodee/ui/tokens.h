@@ -38,16 +38,19 @@ namespace detail { inline const bool night_first = (use_palette(0), true); }
 inline const PaletteSpec& palette() { return palettes[palette_in_use % palettes.size()]; }
 
 // Track colours 1-16 with their knob shades, and the Looper's L1-L4, as the palette in use has them (the pads
-// keep ui/shades.h's own).
-inline juce::Colour track_colour(unsigned track) { return hex(palette().tracks[track % 16][0]); }
-inline juce::Colour knob_shade(unsigned track, unsigned knob) { return hex(palette().tracks[track % 16][knob % 3]); }
+// keep ui/shades.h's own). slot_colour: the nth of the sixteen itself (a sequence's colour, a palette's swatch);
+// track_colour: the one track n shows (issue 69: its place's, or the one picked for it, ui/shades.h track_slot).
+inline juce::Colour slot_colour(unsigned slot) { return hex(palette().tracks[slot % 16][0]); }
+inline juce::Colour slot_shade(unsigned slot, unsigned knob) { return hex(palette().tracks[slot % 16][knob % 3]); }
+inline juce::Colour track_colour(unsigned track) { return slot_colour(track_slot(track)); }
+inline juce::Colour knob_shade(unsigned track, unsigned knob) { return slot_shade(track_slot(track), knob); }
 inline juce::Colour loop_colour(unsigned loop) { return hex(palette().loops[loop % 4][0]); }
 inline juce::Colour loop_shade(unsigned loop, unsigned knob) { return hex(palette().loops[loop % 4][knob % 3]); }
 inline juce::Colour sub_colour(unsigned sub) { return hex(palette().subs[sub % 8][0]); } // the mixer's submixes S1-S8
 inline juce::Colour sub_shade(unsigned sub, unsigned knob) { return hex(palette().subs[sub % 8][knob % 3]); }
 // A colour of the pads' own (ui/shades.h, a kit pad's COLOUR) as this palette shows it: the track colour it is, else as it is.
 inline juce::Colour screen_colour(uint32_t rgb) {
-    for (unsigned t = 0; t < 16; ++t) if (track_shades[t][0] == rgb) return track_colour(t);
+    for (unsigned t = 0; t < 16; ++t) if (track_shades[t][0] == rgb) return slot_colour(t);
     return hex(rgb);
 }
 

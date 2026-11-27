@@ -115,6 +115,9 @@
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/progression_tree.h"
+#include "melodee/shell/track_colours.h"
+#include "melodee/shell/pad_context.h"
+#include "melodee/shell/pad_light.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/stems.h"
 #include "melodee/shell/stems_room.h"
@@ -1702,6 +1705,45 @@ void button_remap() {
         CHECK(count >= 4 && items[0].job == MenuJob::TrackMove && items[count - 1].job == MenuJob::TrackClear);
         m.page = PageId::Tempo;
         CHECK(menu_here(*project, m, items) == 0 && std::string(menu_page_name(PageId::Tempo)).empty());
+    }
+    // Track colour (issue 69, shell/track_colours.h): its place's until one is picked; kept in TCOL (none written while
+    // every track is in its place's); the screen, the pads and the Live Set export follow; the MENU offers it on the mixer.
+    {
+        auto coloured = std::make_unique<Project>();
+        coloured->tracks[3].engine = EngineKind::Sampler;
+        CHECK(track_colour_slot(coloured->tracks[3], 3) == 3 && track_colour_slot(coloured->tracks[9], 9) == 9);
+        auto bank = std::make_unique<PatternBank>();
+        auto bytes = save_project(*coloured, *bank);
+        auto has_tcol = [](const std::vector<uint8_t>& b) {
+            for (size_t n = 0; n + 4 <= b.size(); ++n) if (std::memcmp(&b[n], "TCOL", 4) == 0) return true;
+            return false;
+        };
+        CHECK(!has_tcol(bytes));
+        coloured->tracks[3].colour = 5; // Sky
+        CHECK(track_colour_slot(coloured->tracks[3], 3) == 4);
+        bytes = save_project(*coloured, *bank);
+        CHECK(has_tcol(bytes));
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty() && back->tracks[3].colour == 5 && back->tracks[4].colour == 0);
+        show_track_colours(*back);
+        CHECK(ui::track_slot(3) == 4 && ui::track_slot(4) == 4 && ui::track_slot(0) == 0); // two tracks in Sky now
+        CHECK(pad_light::track(3, 1.0f).colour == pad_light::colour_slot(4, 1.0f).colour && pad_light::track(0, 1.0f).colour != pad_light::colour_slot(4, 1.0f).colour);
+        auto live = live_track_colours(*back);
+        CHECK(live[3] == ui::track_live_colours[4] && live[0] == ui::track_live_colours[0]);
+        CHECK(colour_slot_step(15, 1) == 0 && colour_slot_step(0, -1) == 15 && colour_slot_step(4, 3) == 7);
+        show_track_colours(Project {}); // back as the other tests expect
+        CHECK(ui::track_slot(3) == 3);
+        std::array<MenuItem, menu_here_max> items {};
+        UiState m; m.track = 3; m.page = PageId::Mixer;
+        unsigned count = menu_here(*coloured, m, items);
+        bool offered = false;
+        for (unsigned n = 0; n < count; ++n) offered |= items[n].job == MenuJob::TrackColour;
+        CHECK(offered);
+        m.track = 7; count = menu_here(*coloured, m, items); // an empty track: nothing to colour
+        for (unsigned n = 0; n < count; ++n) CHECK(items[n].job != MenuJob::TrackColour);
+        m.colour_sheet = true; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::ColourPick);
+        m.ask = UiState::Ask::ClearTrack; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::Sheet);
     }
     // Stems (shell/stems_jobs.cpp): a kit pad that holds a sample offers STEMS in the MENU on Stage and on Shift + B3
     // of its TRIM, in Basic as in Full; an empty pad and an instrument do not.

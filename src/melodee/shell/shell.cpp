@@ -43,6 +43,7 @@
 #include "melodee/shell/progression_jobs.h"
 #include "melodee/shell/seq_layer.h"
 #include "melodee/shell/shift_pads.h"
+#include "melodee/shell/track_colours.h"
 #include "surface/controls.h"
 #include <algorithm>
 #include <cmath>
@@ -344,6 +345,8 @@ void Shell::press(Button b, bool pressed) {
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     // 16 Levels' FILE or SET open (shell/levels_keys.h): B1 back, B3 or Push picks or is done; the other buttons wait.
     if (pressed && ui.levels_sheet && !ui.exit_open && !ui.name.open() && levels_sheet_button(context_, b)) return;
+    // TRACK COLOUR open (shell/track_colours.h): B1 back, B2 default, B3 or Push done; the other buttons wait.
+    if (pressed && ui.colour_sheet && !ui.exit_open && !ui.name.open() && track_colour_button(context_, b)) return;
     if (new_track_lock(context_, b, pressed)) return; // an empty track in hand: made or left first (shell/new_track.h)
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) { if (b == Button::TapTempo) tap.down = false; let_go(context_, b); return; }
@@ -703,6 +706,7 @@ void Shell::wheel(int delta) {
     }
     if (ui_.menu) { menu_wheel(context_, delta); return; } // the MENU: the wheel walks its cards or tiles
     if (ui_.history) { history_wheel(context_, delta); return; } // the undo list: its rows
+    if (ui_.colour_sheet) { track_colour_wheel(context_, delta); return; } // TRACK COLOUR: the next colour
     if (ui_.levels_sheet) { levels_sheet_wheel(context_, delta); return; } // 16 Levels' FILE: its rows (SET: nothing)
     if (levels_held_cards(*project_, ui_) && LevelsKind(context_.track().levels_kind % unsigned(LevelsKind::Count)) == LevelsKind::Chords) {
         ui_.levels_used = true; // 16 Levels held, of type Chords: the encoder picks the progression from the card, as on Keys' Prog layout
@@ -768,7 +772,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down && ui_.erase) ui_.erase_used = true; // Erase + pad: its release deletes nothing
     if (!down) { // a release goes where its press went
         pad_let_go[pad % 16] = context_.now + 1; // its light fades from here
-        if (ui_.name.open()) return;
+        if (ui_.name.open() || ui_.colour_sheet) return;
         if (loop_held_pad(context_, pad, false)) return;
         if (seq_pad(context_, pad, false)) return;
         if (context_.record_keys() || context_.record_key_held(pad)) { context_.record_key(pad, velocity, false); return; }
@@ -781,6 +785,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     unsigned kit = context_.track().bank % sampler_banks * 16 + pad % 16;
     switch (pad_context(ui_, context_.track(), pad_facts(), pad)) {
     case PadContext::Sheet: return; // a sheet or a question over the page
+    case PadContext::ColourPick: track_colour_pad(context_, pad); return; // TRACK COLOUR: the pad's colour
     case PadContext::Tracks: track_pad(context_, pad); end_copy_away(); return; // Pad Bank + pad: that track (or a track copy's)
     case PadContext::Name: ui_.name.pad(pad, context_.now); return; // the pads type
     case PadContext::LoopHeld: loop_held_pad(context_, pad, true); return; // Loop held: the loop grid on any page

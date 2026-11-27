@@ -93,8 +93,8 @@ void Screensaver::draw(juce::Graphics& g, uint32_t now) {
     // palette has nothing else.
     unsigned vivid[16], count = 0;
     for (unsigned k = 0; k < 16; ++k)
-        if (track_colour(k * 5).getSaturation() >= 0.3f) vivid[count++] = k * 5;
-    tint(track_colour(count ? vivid[at.bounces % count] : at.bounces * 5), colour::bg, palette().light);
+        if (slot_colour(k * 5).getSaturation() >= 0.3f) vivid[count++] = k * 5;
+    tint(slot_colour(count ? vivid[at.bounces % count] : at.bounces * 5), colour::bg, palette().light);
     g.drawImageAt(tinted, at.x, at.y);
 }
 

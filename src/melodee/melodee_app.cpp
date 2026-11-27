@@ -9,6 +9,7 @@
 #include "surface/pads.h"
 #include "drivers/power_button.h"
 #include "drivers/sd_update.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/update.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
@@ -508,6 +509,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
         m.plugins = machine.plugins.load(std::memory_order_relaxed);
         m.plugins_load = machine.plugins_load.load(std::memory_order_relaxed);
     }
+    show_track_colours(frame->project); // issue 69: the colour each track shows, as this frame's project has them
     ui::use_palette(frame->ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : frame->ui.settings.font); // LCD sets its own
     ui::Paint p(g);
