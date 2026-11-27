@@ -952,7 +952,7 @@ hold to steer, Shift + Seq to zoom in**.
   thread plays the pattern with its feel laid on (`feel_pattern`); Step Edit,
   Roll and the file keep the notes as written. Time Correct's page holds
   the cards (`feel_cards`).
-- **Time Correct** (Shift + Pad 14): heard live, no commit. The selected
+- **Time Correct** (Shift + Pad 14): heard live, no commit until APPLY. The selected
   pattern plays as close to its Q as K2 STRENGTH says, the second of each
   pair late by K3 SWING, as they turn; turning down takes it back (the
   notes stay as written: the pattern's feel). K1 Q; Shift + K1 HUMANIZE,
@@ -960,7 +960,11 @@ hold to steer, Shift + Seq to zoom in**.
   groove from that pattern of the track (again: none). B3 QUANTIZE, lit
   while the feel is heard, takes it off to compare by ear and puts it
   back; B2 ALL lays this feel on the track's other patterns (each one
-  undo); Shift + Pad 14 again closes it. Two beats drawn over the grid of Q: each note where it is
+  undo); B1 APPLY (issue 55, shown while a feel is heard) writes the feel
+  into the notes (model/pattern.h `apply_feel`: each note moved to where it
+  plays and its velocity as heard, notes hidden past the end as written,
+  the feel back to plain; one undo), so Roll and Step Edit show the notes
+  on the grid; Shift + Pad 14 again closes it. Two beats drawn over the grid of Q: each note where it is
   written (a ring) and where it plays (a dot), the swung steps where they
   land; under it the track's patterns, the groove's lit.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):

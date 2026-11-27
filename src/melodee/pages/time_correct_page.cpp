@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // TIME CORRECT (Shift + Pad 14, as printed; round 2, time-correct C
-// "strength, heard live"): no commit. The selected track's pattern plays as
+// "strength, heard live"): no commit until APPLY. The selected track's pattern plays as
 // close to its Q as STRENGTH says (K2), the second of each pair late by SWING
 // (K3), as they turn: the right amount is found by ear and taken back by
 // turning down (the pattern's feel, model/pattern.h: the notes stay as
@@ -10,7 +10,9 @@
 // amount; a pad takes the groove from that pattern of the track (again:
 // none). B3 QUANTIZE, lit while the feel is heard, takes it off to compare by
 // ear and puts it back; B2 ALL lays this feel on the track's other patterns;
-// B1 BACK. Picture: two beats of the pattern over the grid of Q (beats
+// B1 APPLY (issue 55), while a feel is heard, writes it into the notes
+// (model/pattern.h apply_feel: they move to where they play, the feel back
+// to plain, one undo step), so Roll shows them on the grid. Picture: two beats of the pattern over the grid of Q (beats
 // taller, the swung steps in a shade where they land), each note where it is
 // written (a ring) and where it plays (a dot), joined; under it the track's
 // patterns, the groove's lit.
@@ -32,7 +34,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill("TIME CORRECT"));
     h.left.push_back(pill("P" + juce::String(s.track().pattern + 1), c));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"", "ALL", "QUANTIZE"}, -1, c}; // Shift + Pad 14 again closes (T-a)
+    SoftKeys keys {{heard ? "APPLY" : "", "ALL", "QUANTIZE"}, -1, c}; // Shift + Pad 14 again closes (T-a)
     keys.toggles = 4;
     keys.lit = heard ? 4 : 0;
     frame(p, s, keys, h);
@@ -90,8 +92,15 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 void soft(Context& c, int key) {
     using K = Binding::Kind;
     auto& ui = c.ui;
-    if (key == 0) return;
     int here = int(ui.track % track_count) * int(pattern_count) + c.track().pattern;
+    if (key == 0) { // APPLY (issue 55): the feel written into the notes, one undo step
+        if (c.pattern().feel.plain()) return;
+        const unsigned t = ui.track % track_count, n = c.track().pattern % pattern_count;
+        c.edit_pattern(t, n, "Apply feel", [&] { apply_feel(c.patterns.at[t][n]); c.sync_pattern(t, n); });
+        if (ui.tc_stash_at == here) ui.tc_stash_at = -1; // nothing to put back
+        c.notice("Feel in the notes");
+        return;
+    }
     if (key == 2) { // QUANTIZE: the feel off to compare by ear, and back
         const auto& f = c.pattern().feel;
         if (!f.plain()) {

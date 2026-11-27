@@ -537,7 +537,7 @@ tracks.
 ## Time Correct
 
 Press **SHIFT** + **Pad 14**. Time Correct changes how the pattern plays
-without moving the notes.
+without moving the notes, until you apply it.
 
 ![Time Correct](../images/screens/timecorrect.png)
 
@@ -548,6 +548,10 @@ without moving the notes.
   it again to take the groove off.
 - **B3** (**QUANTIZE**) turns it off and on, to compare.
 - **B2** (**ALL**) applies the same settings to the track's other patterns.
+- **B1** (**APPLY**) moves the notes to where Time Correct plays them, with
+  the velocities you hear, and sets Time Correct back to off. The pattern
+  sounds the same, and Roll and Step Edit show the notes on the grid. Undo
+  takes it back. **APPLY** shows while Time Correct changes the pattern.
 - Press **SHIFT** + **Pad 14** again to close it.
 
 ## Half and double

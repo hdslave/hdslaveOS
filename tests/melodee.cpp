@@ -10088,6 +10088,19 @@ void feel_p1() {
     p.feel.strength = 100; p.feel.swing = 75; // every second sixteenth half a sixteenth late
     played = feel_pattern(p);
     CHECK(played.events[1].tick == 360 && played.events[2].tick == 480);
+    // Time Correct's APPLY (issue 55): the notes where they play, the feel plain, so it sounds the same; a note
+    // hidden past the end stays as written.
+    {
+        Pattern a = p;
+        Event hidden; hidden.tick = a.length + 100; hidden.key = 70; hidden.velocity = 90; hidden.length = 60;
+        a.events.push_back(hidden);
+        apply_feel(a);
+        CHECK(a.feel.plain() && a.feel == Feel {});
+        CHECK(a.events.size() == 4 && a.events[0].tick == 0 && a.events[1].tick == 360 && a.events[2].tick == 480 && a.events[3].tick == hidden.tick);
+        CHECK(feel_pattern(a) == a); // plain now: played as written, where the feel put them
+        Pattern plain_one; note(plain_one, 50, 60, 100);
+        apply_feel(plain_one); CHECK(plain_one.events[0].tick == 50); // no feel: nothing moves
+    }
     // Humanize: each note a little early or late (at most a quarter of a step) and softer or harder (at most 20),
     // the same each time it is laid, until its amount changes.
     Pattern h;
