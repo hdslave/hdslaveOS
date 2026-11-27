@@ -42,7 +42,7 @@ inline std::string midi_row_value(const Settings& s, const Track& track, unsigne
     case SyncInRow: return midi_sync_name(m.sync_in);
     case SyncOutRow: return midi_sync_name(m.sync_out);
     case ThruRow: return m.thru ? "On" : "Off";
-    case ProgramChangeRow: return m.program_change ? "Sequence" : "Off";
+    case ProgramChangeRow: return program_change_name(m.program_change);
     case RemoteChannelRow: return midi_channel_text(m.remote_channel, "Off");
     case TrackCcRow: return midi_channel_text(m.track_cc, "Off");
     case PatternCcRow: return midi_channel_text(m.pattern_cc, "Off");
@@ -76,7 +76,7 @@ inline void midi_row_step(Settings& s, Track& track, unsigned row, int way) {
     case SyncInRow: m.sync_in = MidiSync(round(int(m.sync_in), int(MidiSync::Count))); break;
     case SyncOutRow: m.sync_out = MidiSync(round(int(m.sync_out), int(MidiSync::Count))); break;
     case ThruRow: m.thru = !m.thru; break;
-    case ProgramChangeRow: m.program_change = !m.program_change; break;
+    case ProgramChangeRow: m.program_change = uint8_t(round(m.program_change, program_choices)); break;
     case RemoteChannelRow: m.remote_channel = uint8_t(stop(m.remote_channel, 0, 16)); break;
     case TrackCcRow: m.track_cc = uint8_t(stop(m.track_cc, 0, 127)); break;
     case PatternCcRow: m.pattern_cc = uint8_t(stop(m.pattern_cc, 0, 127)); break;
@@ -101,6 +101,7 @@ inline unsigned midi_row_choices(unsigned row) {
     case TrackInRow: return unsigned(TrackMidiIn::Count);
     case PadOutRow: return unsigned(PadMidiOut::Count);
     case SyncInRow: case SyncOutRow: return unsigned(MidiSync::Count);
+    case ProgramChangeRow: return program_choices;
     case TrackCcRow: case PatternCcRow: case SceneCcRow: return 128;
     case CvBaseRow: return 8;
     case CvDivisionRow: return 24;
@@ -155,7 +156,7 @@ inline void midi_row_set(Settings& s, unsigned row, unsigned n) {
     case SyncInRow: m.sync_in = MidiSync(n); break;
     case SyncOutRow: m.sync_out = MidiSync(n); break;
     case ThruRow: m.thru = n; break;
-    case ProgramChangeRow: m.program_change = n; break;
+    case ProgramChangeRow: m.program_change = uint8_t(n); break;
     case RemoteChannelRow: m.remote_channel = uint8_t(n); break;
     case TrackCcRow: m.track_cc = uint8_t(n); break;
     case PatternCcRow: m.pattern_cc = uint8_t(n); break;

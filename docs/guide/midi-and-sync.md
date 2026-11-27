@@ -22,7 +22,7 @@ as MIDI passes.
 | Pad MIDI out | Never, Always or Empty (only pads and tracks with no sound of their own send notes) |
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
-| Receive program change | Off or Sequence: a program change launches that sequence, as a pad on Sequences does |
+| Receive program change | Off, Sequence or Plug-in. Sequence: a program change launches that sequence, as a pad on Sequences does. Plug-in: it loads that preset into the plug-in of the track it plays. See [Example 5](#example-5-change-plug-in-presets-from-a-controller). |
 | Remote channel | Off or 1–16: the channel of the Remote CCs |
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
@@ -42,8 +42,8 @@ as MIDI passes.
     CC as it comes. MIDI tracks send CCs out on their own port and channel.
   - Each track can take its own controller. Select the track (**PAD BANK**
     + pad), set **Track channel**, then **Track MIDI in**. The selected
-    track, sync, Thru and program change listen on **MIDI port**; a track's own channel
-    uses its Track MIDI in. Seq Record records every track that a channel
+    track, sync, Thru and program changes for sequences listen on **MIDI
+    port**; a track's own channel uses its Track MIDI in. Seq Record records every track that a channel
     plays, at once.
   - Remote CCs are heard from any port and are not passed on to the tracks.
     A value past the last track, pattern or sequence does nothing.
@@ -146,7 +146,8 @@ kit (pads, channel 10). A second keyboard plays a bass track.
 **Track MIDI in** tells the MIDI In jack apart from a computer on USB-C: a
 track set to **External** does not hear notes on its channel from the
 computer, and a track set to **USB** does not hear the jack. The selected
-track, sync, Thru and program change listen on **MIDI port** only.
+track, sync, Thru and program changes for sequences listen on **MIDI port**
+only.
 
 ### Example 4: change tracks, patterns and sequences from the MiniLab 3
 
@@ -171,6 +172,30 @@ screen. Option names can differ between versions of MIDI Control Center.
 Use a channel for Remote that no track plays on. Remote CCs do not reach the
 tracks. With **Receive program change** on, a pad set to send Program Change
 launches that sequence.
+
+### Example 5: change plug-in presets from a controller
+
+Set **Receive program change** to **Plug-in**. A program change then loads a
+preset into the plug-in of the track it plays, as a note on the same channel
+would: the track with that **Track channel**, else the selected track. This
+works for VST3, VST2, CLAP, LV2 and MPC plug-ins, also for plug-ins that
+ignore MIDI program changes.
+
+| Message | Loads |
+| --- | --- |
+| Program 1 (sent as 0) | The first preset |
+| Program 2–128 | The presets after it, in the order the encoder steps through them on **PRESETS** |
+| Bank Select CC 32 = 1, then program 1 | Preset 129 |
+| Bank Select CC 0 = 1, CC 32 = 0, then program 1 | Preset 16385 |
+
+1. Select the plug-in track.
+2. On the controller, send program 5. The screen shows **Program change** and
+   the name of the fifth preset.
+3. Press **SHIFT** + **B2** (**PRESETS**) to see the preset in the list.
+
+The bank stays set on that channel until the next Bank Select. A program past
+the last preset shows **No preset** and changes nothing. The plug-in of a
+frozen track keeps its preset.
 
 ---
 

@@ -492,7 +492,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto& m = ui_.settings.midi;
             midi_bits.store(uint32_t(m.port) | uint32_t(m.in_channel) << 1 | uint32_t(m.out_channel) << 6 | uint32_t(m.pad_in) << 11
                             | uint32_t(m.pad_out) << 12 | uint32_t(m.sync_in) << 14 | uint32_t(m.sync_out) << 16 | uint32_t(m.thru) << 18
-                            | uint32_t(m.program_change) << 19 | uint32_t(m.cv_out) << 20 | uint32_t(m.cv_ppqn() & 255) << 21,
+                            | uint32_t(m.program_change & 3) << 19 | uint32_t(m.cv_out) << 21 | uint32_t(m.cv_ppqn() & 255) << 22,
                             std::memory_order_relaxed);
             track_channel.store(t.midi_channel, std::memory_order_relaxed);
             midi_row.store(ui_.midi_cursor, std::memory_order_relaxed);

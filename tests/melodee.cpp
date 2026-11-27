@@ -87,6 +87,7 @@
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
+#include "melodee/shell/program_in.h"
 #include "melodee/shell/scale_keys.h"
 #include "melodee/engine/midi_out.h"
 #include "melodee/engine/midi_engine.h"
@@ -4213,14 +4214,17 @@ void midi_and_sync() {
         CHECK(set.midi.port == MidiPort::External && set.midi.in_channel == 0 && set.midi.out_channel == 1 && set.midi.pad_in &&
               set.midi.pad_out == PadMidiOut::Never && set.midi.sync_in == MidiSync::Off && !set.midi.cv_out && set.midi.cv_ppqn() == 2);
         set.midi.port = MidiPort::Usb; set.midi.in_channel = 10; set.midi.out_channel = 16; set.midi.pad_out = PadMidiOut::Empty;
-        set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = true;
+        set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = program_plugin;
         set.midi.cv_out = true; set.midi.cv_base = 4; set.midi.cv_division = 24; set.midi.pad_in = false;
         Settings back; back.read(set.text());
         CHECK(back.midi == set.midi && back.midi.cv_ppqn() == 96);
         Settings older; older.read("pad_response=2\nscreen=80\n");
         CHECK(older.midi == MidiConfig {} && older.pad_response == 2);
-        Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\n");
+        Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\nprogram_change=9\n");
         CHECK(bad.midi.cv_base == 8 && bad.midi.cv_division == 1 && bad.midi.out_channel == 1 && bad.midi.in_channel == 16);
+        CHECK(bad.midi.program_change == program_plugin);
+        Settings on; on.read("program_change=1\n"); // an older file's On: Sequence, as before
+        CHECK(on.midi.program_change == program_sequence);
         set.toggle_favourite(0, 3); set.screen = 50;
         set.reset_factory();
         CHECK(set.midi == MidiConfig {} && set.screen == 100 && set.favourite(0, 3));
@@ -4244,6 +4248,15 @@ void midi_and_sync() {
         midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
         midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
         CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset factory settings");
+        // Receive program change: Off, Sequence, Plug-in, round; K1's list the same three.
+        CHECK(midi_row_choices(ProgramChangeRow) == 3);
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(midi_row_value(set, track, ProgramChangeRow) == "Sequence");
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(midi_row_value(set, track, ProgramChangeRow) == "Plug-in");
+        CHECK(midi_row_choice(set, track, ProgramChangeRow) == 2);
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_off);
+        midi_row_step(set, track, ProgramChangeRow, -1); CHECK(set.midi.program_change == program_plugin);
+        midi_row_set(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_sequence);
+        midi_row_set(set, track, ProgramChangeRow, 0);
         // Scale on white keys: off at first, a toggle, kept in the settings file, off again after Reset.
         CHECK(std::string(midi_row_name(ScaleKeysRow)) == "Scale on white keys" && midi_row_choices(ScaleKeysRow) == 2);
         CHECK(!set.scale_keys && midi_row_value(set, track, ScaleKeysRow) == "Off" && midi_row_choice(set, track, ScaleKeysRow) == 0);
@@ -4316,6 +4329,27 @@ void midi_and_sync() {
         CHECK(note_tracks(config, own, 0, 2, 3, false) == 0);       // nobody listens, not MIDI Config's port
         CHECK(note_tracks(config, own, 0, 2, 3, true) == (1u << 2)); // MIDI Config's port: the selected track
         CHECK(note_tracks(config, own, heard, 2, 1, false) == 0);
+        // Receive program change, Plug-in: the place in the preset list, past 128 with the Bank Select CCs before it.
+        ProgramBanks banks;
+        CHECK(banks.place(1, 0) == 0 && banks.place(1, 127) == 127);
+        banks.control(1, 32, 1); CHECK(banks.place(1, 0) == 128 && banks.place(1, 4) == 132);
+        banks.control(1, 0, 1); CHECK(banks.place(1, 0) == (128 + 1) * 128);
+        banks.control(1, 7, 99); banks.control(17, 0, 5); banks.control(0, 32, 5);
+        CHECK(banks.place(1, 0) == (128 + 1) * 128 && banks.place(2, 5) == 5); // another channel: its own bank
+        banks.control(1, 0, 0); banks.control(1, 32, 0); CHECK(banks.place(1, 9) == 9);
+        // The plug-ins it reaches: each PLUGIN track's once, never a frozen track's, an empty entry's or a kit's.
+        {
+            auto p = std::make_unique<Project>();
+            std::snprintf(p->plugins[3].path, plugin_path_length, "/media/card/Plugins/Synth.vst3");
+            std::snprintf(p->plugins[5].path, plugin_path_length, "/media/card/Plugins/Bass.clap");
+            for (unsigned t : {0u, 1u, 2u, 4u}) p->tracks[t].engine = EngineKind::Plugin;
+            p->tracks[0].plugin = 3; p->tracks[1].plugin = 3; p->tracks[2].plugin = 5; p->tracks[4].plugin = 7;
+            p->tracks[3].engine = EngineKind::Sampler; p->tracks[3].plugin = 5;
+            CHECK(program_entries(*p, 0xffff, 0) == ((1u << 3) | (1u << 5)));
+            CHECK(program_entries(*p, 1u << 1, 0) == (1u << 3));        // track 2 alone: the entry it shares with track 1
+            CHECK(program_entries(*p, 0xffff, 1u << 2) == (1u << 3));   // track 3 frozen
+            CHECK(program_entries(*p, (1u << 3) | (1u << 4), 0) == 0);   // a kit, a PLUGIN track with no plug-in
+        }
         // Remote: CCs on its channel select a track, launch a pattern or a scene; the rest go on to the tracks.
         MidiConfig remote;
         CHECK(remote_cc(remote, 1, remote.track_cc, 3).kind == RemoteJob::Kind::None); // Off

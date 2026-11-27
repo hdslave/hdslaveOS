@@ -376,6 +376,9 @@ public:
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
     void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)
+    // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
+    // track) to the preset at `place` in its list; the header says which.
+    void midi_program(uint16_t tracks, unsigned place);
     void companion_requests(); // what companion screens asked for, made here (plugin/companion_screen.h)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from

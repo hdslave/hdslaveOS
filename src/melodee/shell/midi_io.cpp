@@ -216,8 +216,14 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
 
     // Channel messages.
     int channel = m.getChannel();
+    if (m.isController()) banks.control(unsigned(channel), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue()));
     if (m.isProgramChange()) {
-        if (!config_port || !config.program_change || (config.in_channel && config.in_channel != channel)) return;
+        if (config.program_change == program_plugin) { // the plug-ins of the tracks a note on its channel would play
+            c.midi_program(note_tracks(config, own, heard, c.ui.track, unsigned(channel), config_port),
+                           banks.place(unsigned(channel), unsigned(m.getProgramChangeNumber())));
+            return;
+        }
+        if (!config_port || config.program_change != program_sequence || (config.in_channel && config.in_channel != channel)) return;
         int pattern = m.getProgramChangeNumber();
         if (pattern >= int(pattern_count)) return;
         c.launch_scene(unsigned(pattern), true); // sequence n, as a pad on Sequences

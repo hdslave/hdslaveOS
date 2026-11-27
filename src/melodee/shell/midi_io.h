@@ -4,6 +4,7 @@
 #include "melodee/engine/midi_out.h"
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
+#include "melodee/shell/program_in.h"
 #include "runtime/app.h"
 #include <array>
 #include <atomic>
@@ -18,7 +19,8 @@
 // tracks their channel names, Song Position, Start, Continue and Stop run the
 // transport and the clock's pulses lead the sequencer while Sync In is MIDI
 // Clock (each with the kernel's receive stamp, so the tempo comes out steady);
-// Program Change launches patterns; Thru sends it all on as it came.
+// Program Change launches sequences or loads plug-in presets (shell/program_in.h);
+// Thru sends it all on as it came.
 // While Sync In is MTC (phase 9b), time code starts, places and stops the
 // song or the patterns (shell/mtc_in.h reads it; the engine host keeps the
 // sequencer on its time).
@@ -69,6 +71,7 @@ private:
     std::array<MidiPacket, 32> thru {};  // Thru: what came in, sent on in the next pump
     unsigned thru_count = 0;
     ClockFollower follower;
+    ProgramBanks banks;                  // the Bank Select CCs heard, for Receive program change: Plug-in
     unsigned tempo_sent = 0;
     uint32_t song_position = 0; // ticks, from Song Position: where Continue carries on
     bool configured = false, cv_blocked = false, cv_taken = false;

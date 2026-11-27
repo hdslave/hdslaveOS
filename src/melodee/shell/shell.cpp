@@ -1236,8 +1236,8 @@ std::string Shell::midi_config_summary() const {
          + " melodee_midi_out_ch=" + std::to_string((m >> 6) & 31) + " melodee_pad_in=" + std::to_string((m >> 11) & 1)
          + " melodee_pad_out=" + std::to_string((m >> 12) & 3) + " melodee_sync_in=" + std::to_string((m >> 14) & 3)
          + " melodee_sync_out=" + std::to_string((m >> 16) & 3) + " melodee_thru=" + std::to_string((m >> 18) & 1)
-         + " melodee_program_change=" + std::to_string((m >> 19) & 1) + " melodee_cv_out=" + std::to_string((m >> 20) & 1)
-         + " melodee_cv_ppqn=" + std::to_string((m >> 21) & 255) + " melodee_track_ch=" + std::to_string(track_channel.load(std::memory_order_relaxed))
+         + " melodee_program_change=" + std::to_string((m >> 19) & 3) + " melodee_cv_out=" + std::to_string((m >> 21) & 1)
+         + " melodee_cv_ppqn=" + std::to_string((m >> 22) & 255) + " melodee_track_ch=" + std::to_string(track_channel.load(std::memory_order_relaxed))
          + " melodee_midi_row=" + std::to_string(midi_row.load(std::memory_order_relaxed));
 }
 

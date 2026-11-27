@@ -22,6 +22,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/program_in.h"
 #include "melodee/shell/screen_view.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
@@ -227,6 +228,14 @@ void set_presets_folder(UiState& ui, const std::string& folder) {
     ui.presets_folder.fill(0);
     folder.copy(ui.presets_folder.data(), ui.presets_folder.size() - 1);
 }
+// A preset into a plug-in, however it was picked: its name kept with the project (shown again when it is opened) and
+// the project changed (the plug-in's state, saved with it, now holds it).
+void take_program(Context& c, unsigned entry, const PluginProgram& p) {
+    c.plugins->select_program(entry, p.index);
+    if (entry < max_plugins)
+        std::snprintf(c.project.plugins[entry].preset, sizeof(c.project.plugins[0].preset), "%s", program_key(p).c_str());
+    c.dirty = true;
+}
 } // namespace
 
 // PRESETS opens where the preset picked last is: its folder, its row (plugin/preset_rows.h).
@@ -258,11 +267,7 @@ void Context::choose_plugin_program(int index) {
     if (!plugins) return;
     auto programs = plugins->programs(ui.presets_entry);
     if (index < 0 || size_t(index) >= programs.list.size()) return;
-    const auto& picked = programs.list[size_t(index)];
-    plugins->select_program(ui.presets_entry, picked.index);
-    if (ui.presets_entry < max_plugins) // its name kept with the project, shown again when it is opened
-        std::snprintf(project.plugins[ui.presets_entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(picked).c_str());
-    dirty = true; // the plug-in's state, saved with the project, now holds it
+    take_program(*this, ui.presets_entry, programs.list[size_t(index)]);
 }
 
 void Context::push_plugin_preset() {
@@ -296,11 +301,29 @@ void Context::pick_plugin_program(unsigned entry, int program) {
     const auto programs = plugins->programs(entry);
     for (const auto& p : programs.list) {
         if (p.index != program) continue;
-        plugins->select_program(entry, p.index);
-        std::snprintf(project.plugins[entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(p).c_str());
-        dirty = true;
+        take_program(*this, entry, p);
         return;
     }
+}
+
+void Context::midi_program(uint16_t tracks, unsigned place) {
+    if (!plugins) return;
+    uint32_t still = 0; // frozen tracks
+    for (unsigned t = 0; t < track_count; ++t) if (frozen(t)) still |= 1u << t;
+    const uint32_t entries = program_entries(project, tracks, still);
+    std::string said;
+    for (unsigned e = 0; e < max_plugins; ++e) {
+        if (!((entries >> e) & 1)) continue;
+        const auto programs = plugins->programs(e);
+        if (place < programs.list.size()) {
+            take_program(*this, e, programs.list[place]);
+            said = "Program change: " + programs.list[place].name;
+        } else if (said.empty()) {
+            said = programs.list.empty() ? (programs.finding ? "Looking for presets" : "No presets in this plug-in")
+                                         : "No preset " + std::to_string(place + 1);
+        }
+    }
+    if (!said.empty()) notice(said);
 }
 
 // Companion screens (plugin/companion_screen.h) ask; the shell makes the change as a pot turn on the plug-in's card
