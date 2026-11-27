@@ -1883,7 +1883,8 @@ int main(int argc, char** argv) {
     // wheel, Push and − on its own screen, from track 1 and from frozen track 2 while its print is being made. Both
     // frozen, the question names the track in hand first, for the screen as for K2. Not now (B1) leaves it as it was;
     // unfrozen, the screen, the turn and the pick go through. Once track 2's print is made, its own PANEL shows the
-    // print, not the screen: input there is the page's, and asks nothing.
+    // print, not the screen: input there is the page's, and asks nothing. Back on track 1's, Erase its page takes
+    // asks too.
     if (mode == "shared-frozen") {
         wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
         c.open(PageId::Master);
@@ -1996,7 +1997,20 @@ int main(int argc, char** argv) {
         for (int k = 0; k < 20; ++k) tick();
         CHECK(values(entry) == printed && (rack->screen_keys(entry) & screen_key_mute));
         c.prints.freeze[1] = {};
+        // Back on track 1's PANEL, its screen in view and its page taking Erase: track 2 frozen, an Erase tap asks
+        // first and hands nothing on (the fixture's Erase sets Level to 0).
         c.select_track(0);
+        wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry; });
+        CHECK(rack->screen_keys(entry) & screen_key_erase);
+        c.freeze_requested[1].state = FreezeState::Frozen;
+        const auto erased = values(entry);
+        CHECK(erased[0] > 0);
+        tap(SurfaceButton::Erase);
+        CHECK(ui.ask == UiState::Ask::Unfreeze && ui.ask_target == 1);
+        unchanged();
+        for (int k = 0; k < 40; ++k) tick();
+        CHECK(values(entry) == erased && (rack->screen_keys(entry) & screen_key_erase));
+        c.freeze_requested[1] = {};
         c.pick_plugin_program(entry, list[1].index);
         wait([&] { return rack->programs(entry).current == list[1].index; });
         shell->set_plugins(nullptr);
