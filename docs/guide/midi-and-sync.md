@@ -51,7 +51,8 @@ as MIDI passes.
     writes at the caret and moves on when every key is let go. With a step
     held on Step Edit's pads, the keys played go into that step.
 - **MIDI clock in**: Start, Continue, Stop, Song Position and tempo. The
-  header shows **EXT CLOCK**. Continue plays on from the Song Position,
+  header shows **EXT CLOCK**. A Start while playing plays from the top
+  again. Continue plays on from the Song Position,
   counted at the selected track's speed (see
   [Track speed](tracks.md#track-speed)), as **SHIFT** + **PLAY**
   counts it.

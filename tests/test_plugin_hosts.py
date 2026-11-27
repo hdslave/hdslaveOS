@@ -203,6 +203,9 @@ class PluginHostTests(unittest.TestCase):
     def test_a_plugin_no_frozen_print_holds_never_asks(self):
         self.run_rack_fixture("frozen-elsewhere")
 
+    def test_midi_start_while_playing_plays_from_the_top(self):
+        self.run_rack_fixture("midi-start")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

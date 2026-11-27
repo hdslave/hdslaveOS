@@ -186,10 +186,13 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     if (m.isMidiStart() || m.isMidiContinue()) {
         if (!clock_in) return;
         bool from_start = m.isMidiStart();
-        if (c.host.playing()) c.stop();
+        // Playing: stopped first. The Stop reaches the engine with the next block, so the song still reads as playing
+        // here; Play goes in after it all the same (a Start from the top, a Continue from the song position).
+        const bool again = c.host.playing();
+        if (again) c.stop();
         ext_running.store(true, std::memory_order_relaxed);
-        if (from_start) { c.ui.locate = 0; c.play(true); }
-        else { c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); c.play_continue(true); }
+        if (from_start) { c.ui.locate = 0; c.play(true, again); }
+        else { c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); c.play_continue(true, again); }
         return;
     }
     if (m.isMidiStop()) {

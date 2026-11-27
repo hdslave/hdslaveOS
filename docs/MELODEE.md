@@ -2160,7 +2160,9 @@ while following.
 - **In**: notes and pressure, CC 1 as the mod wheel, the pitch wheel (a
   plug-in track's PITCH BEND at full resolution, a MIDI track's BEND), All Notes Off; a kit
   hears note 36 as A01; notes record under Seq Record like pads. Clock in:
-  Start, Continue from Song Position, Stop, the tempo from the pulses. MTC
+  Start, Continue from Song Position, Stop, the tempo from the pulses (a
+  Start while playing plays from the top again, a Continue from the Song
+  Position: `MidiIo::receive` stops first and plays after that Stop). MTC
   in (24, 25, 29.97 df, 30 fps): follows after two whole codes agree, from
   0:00:00:00 (hours left out) through the tempo playing, kept on the
   master's time by a pace trim of up to 0.5 %.

@@ -2413,8 +2413,8 @@ void Context::send_click() {
 
 // Play: from the start (on Song, the arrangement from the cursor). Seq Record
 // armed, the take begins, after a bar's count when Count-In is on.
-void Context::play(bool external) {
-    if (host.playing()) return;
+void Context::play(bool external, bool after_stop) {
+    if (host.playing() && !after_stop) return;
     if (ui.jam_sheet && ui.page == PageId::Song && !external) { audition_jam(); return; } // JAMS: the picked jam
     played_song = ui.page == PageId::Song;
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
@@ -2435,8 +2435,8 @@ void Context::fill(bool on) {
 }
 
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
-void Context::play_continue(bool external) {
-    if (host.playing()) return;
+void Context::play_continue(bool external, bool after_stop) {
+    if (host.playing() && !after_stop) return;
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;

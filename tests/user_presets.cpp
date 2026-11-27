@@ -2025,6 +2025,39 @@ int main(int argc, char** argv) {
         shell->set_plugins(nullptr);
         return 0;
     }
+    // MIDI Start on MIDI Config's port, Sync In on Clock, while the song plays: it plays again from the top, as a Start
+    // does. The Stop it makes first reaches the engine only with the next block, so the song still reads as playing
+    // when Play is asked for; Play must go in after that Stop all the same.
+    if (mode == "midi-start") {
+        ui.settings.midi.sync_in = MidiSync::Clock;
+        ui.settings.midi.port = MidiPort::External;
+        MidiPortInfo port;
+        port.driver = "SerialMIDI"; // the 1/8" jacks
+        port.input = true;
+        auto midi = [&](uint8_t byte) {
+            MidiPacket packet;
+            packet.bytes[0] = byte;
+            packet.size = 1;
+            packet.timestamp_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+            shell->midi(port, packet, ++now);
+        };
+        auto clocked = [&](int blocks) { for (int k = 0; k < blocks; ++k) { midi(0xf8); tick(); } }; // a pulse a block
+        midi(0xfa); // Start
+        clocked(2);
+        wait([&] { midi(0xf8); return host->playing() && host->position_of(0) > 0; });
+        clocked(40);
+        const int before = host->position_of(0);
+        CHECK(host->playing() && before > 0);
+        midi(0xfa); // Start again, while playing
+        clocked(2);
+        CHECK(host->playing() && host->position_of(0) < before);
+        midi(0xfc); // Stop
+        tick();
+        CHECK(!host->playing());
+        shell->set_plugins(nullptr);
+        return 0;
+    }
     // Plug-in entries and undo: an entry an undo still names is never given to a new plug-in, even once all 32 have
     // been set; a track copy undone and done again keeps the one entry it had (none taken each time); and when every
     // entry is named, the oldest undo step goes so a new plug-in still has one.

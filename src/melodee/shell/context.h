@@ -870,8 +870,10 @@ public:
     // played, or no pattern empty: a notice, and nothing changes.
     void capture();
     // Transport
-    void play(bool external = false);          // external: MIDI clock in's Start (no count-in; the clock leads)
-    void play_continue(bool external = false); // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position
+    // external: MIDI clock in's Start (no count-in; the clock leads). after_stop: a stop() just sent, which the engine
+    // has not taken yet (the song still reads as playing): Play goes in after it, not dropped as a Play while playing.
+    void play(bool external = false, bool after_stop = false);
+    void play_continue(bool external = false, bool after_stop = false); // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position
     void fill(bool on);                        // Play held while playing (roadmap P1): FILL trig conditions play while it is down
     void stop();
     void tap_tempo();
