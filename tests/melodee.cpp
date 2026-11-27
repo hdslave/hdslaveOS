@@ -5522,6 +5522,10 @@ void device_rates() {
         CHECK(!screensaver::due(1, 0xffffff00u + 59999u, 0xffffff00u, false) && screensaver::due(1, 0xffffff00u + 60000u, 0xffffff00u, false)); // past the clock's wrap
         // A pad hit stamped on the MIDI thread after the frame read its clock: just touched, not four billion ms ago.
         CHECK(!screensaver::due(1, 500000, 500001, false) && !screensaver::due(5, 500000, 500040, false));
+        // The backlight while it shows: the MPC's six steps down to the second, never up, back when it ends.
+        CHECK(screensaver::backlight(6, 6, true) == 2 && screensaver::backlight(3, 6, true) == 2);
+        CHECK(screensaver::backlight(2, 6, true) == 2 && screensaver::backlight(1, 6, true) == 1);
+        CHECK(screensaver::backlight(6, 6, false) == 6 && screensaver::backlight(-1, 6, true) == -1 && screensaver::backlight(1, 1, true) == 1);
         auto p = screensaver::place(0, 135, 23, 320, 240, 400, 30);
         CHECK(p.x == 400 % 185 && p.y == 30 && p.bounces == 0);
         p = screensaver::place(5442, 135, 23, 320, 240, 0, 0); // just past the right edge: back by 28 milli-px

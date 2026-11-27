@@ -87,7 +87,8 @@ hard to use. `tools/usage_report.py` in the source lists what they hold.
 ## Screensaver
 
 With **Screensaver** set, the Melodee logo bounces around the screen once
-the controls have rested that long. It changes colour at each edge. It does
+the controls have rested that long. It changes colour at each edge, and the
+screen dims to the second lowest brightness step. It does
 not start while the sequencer plays, a sample take is armed or recording,
 or a render runs. Any button, knob, pad or MIDI note brings the page back,
 and does its job as well. Off by default.

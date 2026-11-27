@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
 // Settings > SCREEN's Screensaver: once the controls have rested for the minutes picked while the sequencer is stopped
 // and nothing records or renders, the Melodee logo drifts over the screen and bounces off its edges, a new colour at
-// each bounce, as DVD players did. Any control brings the page back and still does its job. The logo is drawn by
-// ui/screensaver.cpp; where it is and when it shows is worked out here, without JUCE, so the host tests can check it.
+// each bounce, as DVD players did, and the backlight dims. Any control brings the page back and still does its job.
+// The logo is drawn by ui/screensaver.cpp; where it is and when it shows is worked out here, without JUCE, so the host
+// tests can check it.
 namespace melodee::screensaver {
 
 constexpr std::array<uint8_t, 6> minutes {{0, 1, 2, 5, 10, 30}}; // Settings' choices, 0 Off
@@ -20,6 +22,14 @@ constexpr int64_t speed_x = 34, speed_y = 26;                     // px a second
 inline bool due(uint8_t choice, uint32_t now, uint32_t touched, bool busy) {
     uint32_t wait = minutes[choice % minutes.size()], rested = now - touched;
     return wait && !busy && rested >= wait * 60000u && rested < 0x80000000u;
+}
+
+// While it shows, the backlight goes down to its second step (of the MPC's six, 1 the lowest), unless it is lower
+// already; `level` is the step it is at otherwise, -1 when not known.
+constexpr long dim_step = 2;
+inline long backlight(long level, long maximum, bool shows) {
+    const long dim = std::min(dim_step, maximum);
+    return shows && level > dim ? dim : level;
 }
 
 struct Place { int x = 0, y = 0; unsigned bounces = 0; };

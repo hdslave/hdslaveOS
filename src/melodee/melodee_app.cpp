@@ -480,7 +480,9 @@ void MelodeeApp::draw(juce::Graphics& g) {
         const Bounce::State render = Bounce::State(frame->render_state);
         const bool busy = frame->playing || take == Take::Armed || take == Take::Recording || take == Take::Cued ||
                           render == Bounce::State::Cued || render == Bounce::State::Running || render == Bounce::State::Tail;
-        if (saver.shows(frame->ui.settings.screensaver, now, touched.load(std::memory_order_relaxed), busy)) {
+        const bool shows = saver.shows(frame->ui.settings.screensaver, now, touched.load(std::memory_order_relaxed), busy);
+        saver_shows.store(shows, std::memory_order_relaxed); // the service thread dims the backlight
+        if (shows) {
             ui::use_palette(frame->ui.settings.palette);
             saver.draw(g, now);
             return;
@@ -578,12 +580,20 @@ void MelodeeApp::service(Hardware& hardware) {
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();
     if (!hardware.power.pressed()) { power_presses = presses; power_known = true; }
-    // Settings' Screen row: the backlight, as a share of its range.
-    unsigned screen = shell.screen();
-    if (screen && screen != screen_applied) {
+    // Settings' Screen row: the backlight, as a share of its range (0: as the MPC had it). While the screensaver
+    // shows, its second step, if that is lower (shell/screensaver.h).
+    const unsigned screen = shell.screen();
+    const bool dim = saver_shows.load(std::memory_order_relaxed);
+    if ((screen && screen != screen_applied) || dim != screen_dimmed) {
         auto backlight = hardware.platform.backlight();
-        if (backlight.maximum > 0) hardware.platform.brightness(unsigned(std::max(1L, backlight.maximum * long(screen) / 100)));
+        if (backlight.maximum > 0) {
+            if (dim && !screen_dimmed) screen_lit = backlight.brightness; // what it comes back to when Settings leave it
+            long level = screen ? std::max(1L, backlight.maximum * long(screen) / 100) : screen_lit;
+            level = melodee::screensaver::backlight(level, backlight.maximum, dim);
+            if (level >= 0 && level != backlight.brightness) hardware.platform.brightness(unsigned(level));
+        }
         screen_applied = screen;
+        screen_dimmed = dim;
     }
 }
 
