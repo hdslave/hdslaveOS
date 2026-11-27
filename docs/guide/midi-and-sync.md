@@ -197,6 +197,10 @@ The bank stays set on that channel until the next Bank Select. A program past
 the last preset shows **No preset** and changes nothing. The plug-in of a
 frozen track keeps its preset.
 
+Program changes that come quickly, from a held **PROG +** button or a knob
+that sends one a step, do not queue up. The preset loading finishes, then the
+last one sent loads. A single program change loads at once.
+
 ---
 
 Previous: [Mixer and effects](mixer-and-effects.md) · [Contents](../GUIDE.md) · Next: [Projects and files](projects-and-files.md)

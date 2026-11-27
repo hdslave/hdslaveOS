@@ -12,6 +12,7 @@
 #include "melodee/plugin/page_library.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/plugin/plugin_pages.h"
+#include "melodee/plugin/program_jobs.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
@@ -1123,6 +1124,7 @@ PluginPrograms PluginRack::programs(unsigned entry) const {
 void PluginRack::select_program(unsigned entry, int program) {
     if (entry >= max_plugins) return;
     Job job {Job::Kind::Program, entry, 0, {}, 0, program};
+    bool waiting = false;
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
@@ -1131,8 +1133,9 @@ void PluginRack::select_program(unsigned entry, int program) {
         e.live->switching = true;
         for (const auto& p : e.live->programs) if (p.index == program) { e.preset = program_key(p); break; }
         job.generation = e.generation;
+        waiting = replace_waiting_program(jobs, job); // plugin/program_jobs.h: the last asked, once
     }
-    push(std::move(job));
+    if (!waiting) push(std::move(job));
     changed();
 }
 
@@ -1166,7 +1169,8 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
     {
         std::lock_guard<std::mutex> held(lock);
         auto& e = entries[entry];
-        if (e.generation == generation && e.live && e.live->instance.get() == instance) e.live->switching = false;
+        if (e.generation == generation && e.live && e.live->instance.get() == instance) // done, unless a later one waits
+            e.live->switching = std::any_of(jobs.begin(), jobs.end(), [&](const Job& j) { return j.kind == Job::Kind::Program && j.entry == entry; });
     }
     changed();
 }

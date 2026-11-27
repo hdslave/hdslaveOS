@@ -9,6 +9,7 @@
 #include "melodee/model/jam_log.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
+#include <deque>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -88,6 +89,7 @@
 #include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/shell/program_in.h"
+#include "melodee/plugin/program_jobs.h"
 #include "melodee/shell/scale_keys.h"
 #include "melodee/engine/midi_out.h"
 #include "melodee/engine/midi_engine.h"
@@ -4349,6 +4351,22 @@ void midi_and_sync() {
             CHECK(program_entries(*p, 1u << 1, 0) == (1u << 3));        // track 2 alone: the entry it shares with track 1
             CHECK(program_entries(*p, 0xffff, 1u << 2) == (1u << 3));   // track 3 frozen
             CHECK(program_entries(*p, (1u << 3) | (1u << 4), 0) == 0);   // a kit, a PLUGIN track with no plug-in
+        }
+        // Program changes in quick succession: one waiting per plug-in, the last asked; another plug-in's, a load and
+        // a replaced plug-in's (another generation) left as they are.
+        {
+            struct Job { enum class Kind { Load, Program } kind; unsigned entry; uint32_t generation; int32_t id; };
+            std::deque<Job> waiting;
+            auto ask = [&](Job j) { if (!replace_waiting_program(waiting, j)) waiting.push_back(j); };
+            ask({Job::Kind::Load, 2, 1, 0});
+            for (int32_t n = 0; n < 30; ++n) ask({Job::Kind::Program, 2, 1, n});
+            ask({Job::Kind::Program, 4, 1, 7});
+            ask({Job::Kind::Program, 2, 2, 9});
+            CHECK(waiting.size() == 4 && waiting[1].kind == Job::Kind::Program && waiting[1].entry == 2 && waiting[1].id == 29);
+            CHECK(waiting[0].kind == Job::Kind::Load && waiting[2].entry == 4 && waiting[2].id == 7 && waiting[3].id == 9);
+            waiting.pop_front(); waiting.pop_front();       // the rack took them: the next ask queues again
+            ask({Job::Kind::Program, 2, 1, 3});
+            CHECK(waiting.size() == 3 && waiting.back().id == 3);
         }
         // Remote: CCs on its channel select a track, launch a pattern or a scene; the rest go on to the tracks.
         MidiConfig remote;
