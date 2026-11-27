@@ -664,6 +664,14 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         t.bar_number = (int32_t) std::floor (time.barStart / barLength + 0.5);
         t.tsig_num = (uint16_t) time.numerator;
         t.tsig_denom = (uint16_t) time.denominator;
+        if (time.looping) // the song's loop (on Song, braced): its ends on both timelines, the seconds at this tempo
+        {
+            t.flags |= CLAP_TRANSPORT_IS_LOOP_ACTIVE;
+            t.loop_start_beats = (clap_beattime) std::llround (time.loopStart * (double) CLAP_BEATTIME_FACTOR);
+            t.loop_end_beats = (clap_beattime) std::llround (time.loopEnd * (double) CLAP_BEATTIME_FACTOR);
+            t.loop_start_seconds = (clap_sectime) std::llround (time.loopStart * 60.0 / time.bpm * (double) CLAP_SECTIME_FACTOR);
+            t.loop_end_seconds = (clap_sectime) std::llround (time.loopEnd * 60.0 / time.bpm * (double) CLAP_SECTIME_FACTOR);
+        }
     }
     const bool edits = anyPending.exchange (false, std::memory_order_acq_rel);
     if (edits)

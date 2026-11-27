@@ -2723,13 +2723,20 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   head (`PluginHandle` in `plugin/plugin_rack.cpp`): playing once any
   count-in is over, the place in quarter notes from the song's top (as
   Song Position counts it), the tempo and the time signature, from the
-  engine host's clock at the block's start (`EffectClock`). VST3 and LV2
+  engine host's clock at the block's start (`EffectClock`). On Song with
+  its loop braced, while the song plays (not the mixdown, which plays it
+  once), the play head says it loops, from the brace's first bar to its
+  end, in the same quarter notes; patterns play on with the place counting
+  up (each pattern loops on its own, the place never goes back), so no
+  loop is told there. VST3 and LV2
   read it through JUCE; the VST2 host, the armv7 bridge and the CLAP host
   pass it on as `VstTimeInfo` and the CLAP transport event
-  (`plugin/host_time.h`). TRANSPORT, Shift + B3 on a PLUGIN track's Stage B1 pages and a card
+  (`plugin/host_time.h`; the CLAP one with `CLAP_TRANSPORT_IS_LOOP_ACTIVE`
+  and the loop's ends in beats and seconds, the VST2 ones without the
+  loop). TRANSPORT, Shift + B3 on a PLUGIN track's Stage B1 pages and a card
   after Bypass on a plug-in effect's sheet, turns Play off for that entry
   (`PluginRef::transport`, kept in PLUG): it is always told the song is
-  stopped, still with the tempo and the place, so a plug-in with its own
+  stopped, still with the tempo and the place (and no loop), so a plug-in with its own
   sequencer (LXRXXL BAZZLINE) plays only the notes it is sent.
 - **Plugin Data.** Plug-ins keep presets and settings under their home
   folder, and the MPC's is read only: before a plug-in opens, `$HOME` is

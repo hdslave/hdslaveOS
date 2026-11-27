@@ -231,6 +231,9 @@ class PluginHostTests(unittest.TestCase):
     def test_steady_time_counts_the_frames_a_plugin_slept(self):
         self.run_rack_fixture("steady-sleep")
 
+    def test_a_looping_song_tells_plugins_its_loop(self):
+        self.run_rack_fixture("song-loop")
+
     def test_plugin_entries_an_undo_names_are_kept_for_it(self):
         self.run_rack_fixture("undo-entries")
 

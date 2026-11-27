@@ -18,6 +18,8 @@ struct HostTime {
     double ppq = 0, barStart = 0, bpm = 120, seconds = 0; // ppq and barStart: quarter notes from the song's top
     int64_t samples = 0;                                   // the same place, in the plug-in's frames
     int numerator = 4, denominator = 4;
+    bool looping = false;                                  // the song's place goes round a loop (melodee-hdslave)
+    double loopStart = 0, loopEnd = 0;                     // its ends, in quarter notes from the song's top
 };
 
 inline HostTime hostTime (juce::AudioPlayHead* head)
@@ -38,6 +40,12 @@ inline HostTime hostTime (juce::AudioPlayHead* head)
     {
         t.numerator = v->numerator;
         t.denominator = v->denominator;
+    }
+    if (const auto v = position->getLoopPoints(); position->getIsLooping() && v && v->ppqEnd > v->ppqStart)
+    {
+        t.looping = true;
+        t.loopStart = v->ppqStart;
+        t.loopEnd = v->ppqEnd;
     }
     return t;
 }

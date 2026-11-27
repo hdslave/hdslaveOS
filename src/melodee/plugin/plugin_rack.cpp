@@ -703,7 +703,7 @@ private:
         } else {
             moved = false; // the rest of a block heard in parts: its first part was run
         }
-        if (!transport.load(std::memory_order_relaxed)) now.playing = false; // TRANSPORT off: the place, never Play
+        if (!transport.load(std::memory_order_relaxed)) now.playing = now.looping = false; // TRANSPORT off: the place, never Play
         double quarter = std::max(now.quarter, 1.0);
         quarters = now.playing ? now.song + into_block / quarter : now.song;
         per_frame = now.playing ? sample_rate / plugin_rate / quarter : 0.0; // quarter notes a frame at its rate
@@ -717,7 +717,8 @@ private:
         Head::PositionInfo p;
         p.setIsPlaying(now.playing);
         p.setIsRecording(false);
-        p.setIsLooping(false);
+        p.setIsLooping(now.looping); // the song's loop, on Song with its loop braced (EffectClock::looping)
+        if (now.looping) p.setLoopPoints(Head::LoopPoints {now.loop_from, now.loop_to});
         p.setBpm(bpm);
         p.setTimeSignature(Head::TimeSignature {int(now.sig_beats), int(now.sig_unit)});
         p.setPpqPosition(quarters);

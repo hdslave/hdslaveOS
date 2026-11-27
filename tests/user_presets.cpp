@@ -702,9 +702,9 @@ int main(int argc, char** argv) {
     }
     if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
-    const bool slept = mode == "steady-sleep";
-    if (mode == "transport-wake" || mode == "load-wake" || steady || deaf || slept) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
-    if (slept) setenv("MELODEE_TEST_CLOCK", "1", 1); // and its steady_time and loop
+    const bool slept = mode == "steady-sleep", looped = mode == "song-loop";
+    if (mode == "transport-wake" || mode == "load-wake" || steady || deaf || slept || looped) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
+    if (slept || looped) setenv("MELODEE_TEST_CLOCK", "1", 1); // and its steady_time and loop
     if (mode == "undo-steps") { // one instrument a file, and another beside the fixture
         setenv("MELODEE_TEST_ONE_PLUGIN", "1", 1);
         fs::copy_file(plugin, fs::path(plugin).parent_path() / "C.clap");
@@ -838,6 +838,13 @@ int main(int argc, char** argv) {
                 slot.params[0] = int16_t(e);
                 ++n;
             }
+    }
+    if (looped) { // a song of four bars of track 1's pattern, its loop braced round bars 2 and 3
+        Clip clip;
+        clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 4;
+        CHECK(project.song.place(clip));
+        project.song.loop_start = 1;
+        project.song.loop_end = 3;
     }
     if (mono || dynamicRing) {
         Step step;
@@ -1910,6 +1917,34 @@ int main(int argc, char** argv) {
         const auto woken = clock();
         CHECK(woken.calls == asleep.calls + 1);
         CHECK(woken.steady == first.steady + double(blocks * EngineHost::block));
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // The loop a plug-in is told (CLAP_TRANSPORT_IS_LOOP_ACTIVE, loop_start_beats, loop_end_beats): the song's on Song
+    // with its loop braced, in quarter notes from the song's top as its place is told (bars 2 and 3 of 4/4: 4 to 12).
+    // Patterns play on with the place counting up (each loops on its own, the place never does): no loop told.
+    if (looped) {
+        struct Told { int playing; double loop, from, to; };
+        auto told = [&] {
+            auto bytes = rack->state(entry);
+            CHECK(bytes.size() == 4 + 11 * sizeof(double));
+            std::array<double, 11> v;
+            std::memcpy(v.data(), bytes.data() + 4, sizeof(v));
+            return Told {int(v[3]), v[8], v[9], v[10]};
+        };
+        wait([&] { return ready(entry); });
+        CHECK(host->send({Command::Type::Play, 0, 0, 0, 1})); // the song, from its first bar
+        wait([&] { return told().playing == 1; });
+        for (int k = 0; k < 4; ++k) tick();
+        auto song = told();
+        CHECK(song.playing == 1 && song.loop == 1 && song.from == 4 && song.to == 12);
+        CHECK(host->send({Command::Type::Stop}));
+        wait([&] { return told().playing == 0; });
+        CHECK(host->send({Command::Type::Play})); // the patterns
+        wait([&] { return told().playing == 1; });
+        for (int k = 0; k < 4; ++k) tick();
+        auto patterns = told();
+        CHECK(patterns.playing == 1 && patterns.loop == 0);
         shell->set_plugins(nullptr);
         return 0;
     }
