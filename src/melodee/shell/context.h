@@ -210,6 +210,9 @@ public:
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
+    // Issue 40: with Rec quantize on (Shift + Pad 10) and the transport running, a mute or solo of the track waits for
+    // the next step of its pattern's Q: that step in ticks as the track plays it; 0 at once.
+    uint32_t mute_grid(unsigned track) const;
     // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
     void set_channel_mute(unsigned strip, bool on);
     void set_channel_solo(unsigned strip, bool on);
@@ -226,7 +229,7 @@ public:
     // Motion: a pot move while recording and playing (`lane` as in
     // bindings.h: a parameter, or a kit pad's value on one pad); Erase + pot
     // on Motion, once B3 says so (one undo).
-    void record_motion(int lane, int value);
+    void record_motion(int lane, int value, uint32_t snap = 0); // snap: on the next multiple of that many ticks (issue 40)
     void record_pad_motion(PadParam which, int value);
     void clear_lane(int lane);
     // Roadmap P1: Motion is each pattern's own. A pot turned with a step (Steps) or a note (Roll, a pad held on it)

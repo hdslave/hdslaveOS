@@ -878,12 +878,15 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
                 unsigned kit = kit_of(t, pad);
                 if (!t.pads[kit].used()) break;
                 look = muted_now(s, kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : kit_hue(s, kit, mid), snd.level[pad]);
+                // Issue 40: a mute waiting for its step of Q (Rec quantize) blinks until it is heard
+                if ((s.host.pad_mutes_waiting(selected_index(s), kit / 64) >> (kit % 64) & 1) && !blink(s.now, blink_ms)) look = kit_hue(s, kit, faint);
                 break;
             }
             if (const auto& tr = s.project.tracks[pad]; tr.used()) {
                 float m = meter(s, pad);
                 look = tr.mix.mute ? red(dim) : tr.mix.solo ? white(between(mid, full, m))
                      : any_solo(s.project) ? track(pad, faint) : track(pad, between(mid, full, m));
+                if ((s.host.mutes_waiting() >> pad & 1) && !blink(s.now, blink_ms)) look = track(pad, faint); // issue 40, as a pad's
             }
             break;
         case PadContext::SamplePick: look = play_look(s, snd, pad); break; // the pad hit becomes the last pad

@@ -1366,14 +1366,24 @@ void Context::pressure(unsigned pad, uint8_t value) {
     for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k & 0xff), int16_t(value)});
 }
 
+uint32_t Context::mute_grid(unsigned t) const {
+    t %= track_count;
+    if (!ui.settings.rec_quantize || !host.playing()) return 0;
+    const auto& p = patterns.at[t][host.pattern_of(t) % pattern_count];
+    return uint32_t(std::max<uint64_t>(played_ticks(p.q(), project.tracks[t].speed), 1));
+}
 void Context::set_mute(unsigned t, bool on) {
     project.tracks[t % track_count].mix.mute = on;
-    send({Type::Mute, uint8_t(t), 0, 0, int16_t(on)});
+    Command c {Type::Mute, uint8_t(t), 0, 0, int16_t(on)};
+    c.position = mute_grid(t); // issue 40: on the next step of Q while Rec quantize is on
+    send(c);
     keep_mute(t, on); // kept in the sequence in hand (model/scene_links.h)
 }
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
-    send({Type::Solo, uint8_t(t), 0, 0, int16_t(on)});
+    Command c {Type::Solo, uint8_t(t), 0, 0, int16_t(on)};
+    c.position = mute_grid(t);
+    send(c);
 }
 
 void Context::set_channel_mute(unsigned n, bool on) {
@@ -1439,13 +1449,15 @@ void Context::sync_pattern(unsigned t, unsigned p) {
 }
 
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
-void Context::record_motion(int lane, int value) {
+void Context::record_motion(int lane, int value, uint32_t snap) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
     if (frozen(ui.track)) return; // freeze plan F2b
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
-    m.tick = uint32_t(std::max(host.position_of(ui.track), 0)) % std::max<uint32_t>(p.length, 1);
+    uint32_t at = uint32_t(std::max(host.position_of(ui.track), 0));
+    if (snap) at = (at / snap + 1) * snap; // where it is heard (issue 40: a quantized mute)
+    m.tick = at % std::max<uint32_t>(p.length, 1);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
     // A point a 96th of a quarter at most on a lane, as recording kept them before the clock went to 960: a move
     // inside that replaces the one before, so a pot turned fast fills the pattern's Motion no faster than it did.

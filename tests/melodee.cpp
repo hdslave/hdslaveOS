@@ -12754,6 +12754,43 @@ void sequence_links() {
         play(10);
         host->send({Command::Type::Play});
         CHECK(play(bar) >= 2); // the bar's two (the next bar's first may fall in the last block)
+        // Issue 40: a mute with a grid (Rec quantize's Q) waits for its next step while playing, the note on that
+        // step left out; pressed back before it, nothing waits; Stop sets what waits.
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar / 4) == 1); // the first note, at tick 0
+        Command mute {Command::Type::Mute, 0, 0, 0, 1};
+        mute.position = 2 * ticks_per_quarter; // half a bar
+        host->send(mute);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        CHECK(play(bar / 4 - 20) == 0 && host->mutes_waiting() == 1); // still before the half: waiting, nothing to play
+        CHECK(play(bar / 2) == 0 && host->mutes_waiting() == 0);      // on the half: muted before its note
+        Command back {Command::Type::Mute, 0, 0, 0, 0};
+        back.position = 4 * ticks_per_quarter; // the bar
+        host->send(back);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        back.value = 1; host->send(back); // pressed back: as it is, nothing waits
+        play(1);
+        CHECK(host->mutes_waiting() == 0);
+        back.value = 0; host->send(back);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        host->send({Command::Type::Stop}); // set on Stop
+        play(10);
+        CHECK(host->mutes_waiting() == 0);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 2);
+        // A kit pad's mute waits the same way, a bit a pad.
+        Command pad {Command::Type::PadMute, 0, 0, 3, 1};
+        pad.position = ticks_per_quarter;
+        host->send(pad);
+        play(1);
+        CHECK(host->pad_mutes_waiting(0, 0) == 8u && host->mutes_waiting() == 0);
+        play(bar / 4 + 10);
+        CHECK(host->pad_mutes_waiting(0, 0) == 0);
     }
     {   // Issue 59: a MIDI track plays from the first bar after Play, Locate or MTC, however far on it stopped, with a
         // negative DELAY (read ahead) or none.

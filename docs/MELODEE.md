@@ -871,6 +871,16 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
+- **Quantized mutes** (issue 40): with Rec quantize on and the transport
+  running, a track's mute or solo and a kit pad's mute (mute mode, Shift +
+  Mute's unmute all, the mixer) wait for the next step of the track's
+  pattern Q: `Context::mute_grid()` puts that step's ticks (as the track
+  plays them) in the command's position, and the engine sets it on that
+  tick before its notes (`EngineHost::mutes_due`); pressed back first,
+  nothing waits; Stop sets what waits; the model and the pads say the new
+  state at once, the pad blinks until heard (`mutes_waiting()`,
+  `pad_mutes_waiting()`). With Seq Record on, a pad's mute point is written
+  on that step. Rec quantize off: at once.
 - **Mute** (Settings > SEQ, issue 27; `Settings::note_mutes`, Command
   MuteMode): Audio (first) silences a muted track or kit pad at once;
   Notes stops its new notes (pattern, pads, MIDI in, arp, Note Repeat, MIDI

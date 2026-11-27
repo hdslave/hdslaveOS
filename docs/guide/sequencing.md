@@ -178,7 +178,8 @@ pads record too (see [Recording slices](kits-and-sampling.md#recording-slices)).
   recording).
 - **SHIFT** + **Pad 10**: **Rec Quantize** on or off, as on the stock MPC.
   Notes land on the pattern's Q (**K2** on Patterns). The Patterns header
-  shows a magnet with **ON** or **OFF**.
+  shows a magnet with **ON** or **OFF**. While it is on, mutes and solos
+  wait for the next step of Q too (see [Mute and solo](basics.md#mute-and-solo)).
 - Hold **PLAY** while playing: Fill. Notes with a FILL condition play.
 - **ERASE** + **SEQ RECORD** on a kit: erase all notes of the selected pad
   (asks first).

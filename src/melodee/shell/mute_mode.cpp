@@ -59,8 +59,11 @@ void set_pad_mute(Context& c, unsigned t, unsigned kit, bool on) {
     auto& track = c.project.tracks[t];
     if (track.pad_muted(kit) == on && pad_muted_now(c, t, kit) == on) return;
     track.set_pad_muted(kit, on);
-    c.send({Command::Type::PadMute, uint8_t(t), 0, uint16_t(kit), int16_t(on)});
-    if (t == c.ui.track % track_count) c.record_motion(motion_lane(motion_pad_mute, kit), on);
+    Command cmd {Command::Type::PadMute, uint8_t(t), 0, uint16_t(kit), int16_t(on)};
+    cmd.position = c.mute_grid(t); // issue 40: on the next step of Q while Rec quantize is on
+    c.send(cmd);
+    if (t == c.ui.track % track_count) // on the lane where it is heard: the next step of Q (written ticks)
+        c.record_motion(motion_lane(motion_pad_mute, kit), on, cmd.position ? c.patterns.at[t][c.host.pattern_of(t) % pattern_count].q() : 0);
 }
 
 void mute_pad(Context& c, unsigned pad, bool kit_pads) {
@@ -114,7 +117,9 @@ void unmute_all(Context& c) {
             if (t == c.ui.track % track_count) // Seq Record keeps the unmutes on the selected kit's lanes
                 for (unsigned pad = 0; pad < sampler_pads; ++pad) if (pad_muted_now(c, t, pad)) c.record_motion(motion_lane(motion_pad_mute, pad), 0);
             track.pad_mutes = {};
-            c.send({Command::Type::PadMute, uint8_t(t), 0, 0xffff, 0});
+            Command all {Command::Type::PadMute, uint8_t(t), 0, 0xffff, 0};
+            all.position = c.mute_grid(t); // issue 40, as one pad's
+            c.send(all);
         }
     }
     for (unsigned sub = 0; sub < sub_count; ++sub) { // the mixer's submixes and buses

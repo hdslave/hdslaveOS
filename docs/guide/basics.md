@@ -232,6 +232,12 @@ it is held.
 
 Muted pads light red. Soloed pads light white.
 
+While a pattern plays with **Rec Quantize** on (**SHIFT** + **Pad 10**), a
+mute or solo waits for the next step of the pattern's **Q**, so breaks land
+on time. Its pad blinks until then. Press the pad again before that to call
+it off. With **Rec Quantize** off, a mute is heard at once. Stopping sets
+any mute still waiting.
+
 A track mute is kept in the sequence in hand. Launching a sequence sets each
 track's mute as the sequence keeps it, at the next bar. See
 [Sequences](sequencing.md#sequences). Solo and kit pad mutes are not kept.
