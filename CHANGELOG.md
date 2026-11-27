@@ -50,7 +50,7 @@ Back up `Melodee/Projects` before you update. In 0.9.1 and earlier, a track colo
 - **A project from another card** (#72): a project, bank or settings file copied to a new card finds its samples and plug-ins at the same place on the new card.
 - **MIDI clock tempo**: the tempo shown and played no longer flickers between two values while following MIDI clock. Changing the tempo while the clock leads shows **Tempo locked to MIDI sync**.
 - **MIDI Learn**: a knob learned after a wait that ran out is no longer taken early, and a control just learned does nothing until it rests.
-- **Time Correct's pad lights** show the track's patterns, as a pad picks the groove: the groove's pattern bright, patterns with notes dim, empty ones dark. Before, they showed one pad and did not change.
+- **Time Correct's pads** play the track's sounds, so you hear the timing as you turn **STRENGTH** and **SWING**; their lights follow your hits. The encoder takes the groove from any of the track's patterns with notes, in any bank (all the way back: no groove). Before, a pad picked the groove from bank A only, and the pad lights showed one pad that did not change.
 - **Song**: played from a bar after the loop range, the song plays on to its end and stops. A Song clip longer than 128 bars keeps its length when the project opens again.
 
 ## 0.9.1 (2026-11-27)

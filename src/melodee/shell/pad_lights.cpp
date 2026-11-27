@@ -582,14 +582,6 @@ Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std:
     Look base = track(selected_index(s), at.here[unsigned(key) % 192] ? full : rows[unsigned(key) % 192] ? dim : faint);
     return playing(s, snd, base, pad);
 }
-// Time Correct (pages/time_correct_page.cpp): a pad takes the groove from that pattern of the track (the pattern bank
-// in view), so the pads light as what a press does: the groove's source Full, the patterns with notes Dim (a groove to
-// take), empty ones dark.
-Look time_correct_look(const PadScene& s, unsigned pad) {
-    const unsigned t = selected_index(s), n = s.ui.pad_pattern(pad);
-    if (shown(s).feel.groove_from == groove_source(t, n)) return track(t, full);
-    return s.patterns.at[t][n].empty() ? Look {} : track(t, dim);
-}
 // Motion on a kit: the pads with recorded motion in this pattern.
 std::array<bool, 192> pads_moving(const PadScene& s) {
     std::array<bool, 192> out {};
@@ -905,7 +897,6 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5
             case PageId::StepEdit: look = sounds_open(s.ui) ? sounds_look(s, pad) : s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, snd, pad); break; // the sounds, the bar's steps, or the keys
             case PageId::Roll: look = roll_look(s, snd, roll, keys, pad); break;
-            case PageId::TimeCorrect: look = time_correct_look(s, pad); break;
             case PageId::Motion: look = motion_look(s, snd, moving, pad); break;
             case PageId::Chop: look = chop_look(s, slices, pad); break;
             case PageId::Record: look = record_look(s, pad); break;

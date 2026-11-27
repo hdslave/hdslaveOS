@@ -248,7 +248,6 @@ grammar (`shell/pad_light.h`):
 | Step Edit, STEPS mode | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end Faint while a step there would make it longer (else dark), the playhead white (red while recording); on a kit the last pad's lane |
 | Step Edit, PLAY mode | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
-| Time Correct | The track's patterns of the bank in view, as a pad takes the groove from one: the groove's source Full, with notes Dim |
 | Motion on a kit | The last pad Full, pads with recorded motion Mid |
 | Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: the slices so far (the newest Full) and the next slice's pad flashing red, in its bank; + Erase the slices that would go Faint red |
 | Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
@@ -966,8 +965,10 @@ hold to steer, Shift + Seq to zoom in**.
   pattern plays as close to its Q as K2 STRENGTH says, the second of each
   pair late by K3 SWING, as they turn; turning down takes it back (the
   notes stay as written: the pattern's feel). K1 Q; Shift + K1 HUMANIZE,
-  Shift + K2 its velocity, Shift + K3 the groove's amount; a pad takes the
-  groove from that pattern of the track (again: none). B3 QUANTIZE, lit
+  Shift + K2 its velocity, Shift + K3 the groove's amount; the encoder takes the
+  groove from a pattern of the track that holds notes, any bank, none first
+  (shell/groove_pick.h; the row shows that pattern's bank); the pads play
+  the track's sounds, lit as anywhere. B3 QUANTIZE, lit
   while the feel is heard, takes it off to compare by ear and puts it
   back; B2 ALL lays this feel on the track's other patterns (each one
   undo); B1 APPLY (issue 55, shown while a feel is heard) writes the feel

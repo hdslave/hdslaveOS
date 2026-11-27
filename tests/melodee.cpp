@@ -116,6 +116,7 @@
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/progression_tree.h"
 #include "melodee/shell/track_colours.h"
+#include "melodee/shell/groove_pick.h"
 #include "melodee/shell/pad_context.h"
 #include "melodee/shell/pad_light.h"
 #include "melodee/shell/menu.h"
@@ -8654,9 +8655,10 @@ void pad_lights() {
     // Roll: the note in focus white, notes elsewhere Dim, none Faint.
     ui.page = PageId::Roll; ui.roll_key = 37; light({});
     CHECK(is(1, Hue::White, 4) && is(0, Hue::Track, 2) && is(5, Hue::Track, 1));
-    // Time Correct: the track's patterns, as a pad takes the groove from one (no white: nothing marks the one in hand).
-    ui.page = PageId::TimeCorrect; light({});
-    CHECK(looks[project->tracks[ui.track].pattern % pattern_pads].hue != Hue::White);
+    // Time Correct: the pads play the track, lit as its pads are anywhere (the groove is on the encoder).
+    ui.page = PageId::TimeCorrect; light(plays); auto played = looks;
+    ui.page = PageId::Stage; light(plays);
+    for (unsigned k = 0; k < 16; ++k) CHECK(played[k].hue == looks[k].hue && rung(played[k].level) == rung(looks[k].level));
 
     // Chop: the slices, the one in hand Full; Manual armed, pad 1 flashes red.
     ui.page = PageId::Chop; ui.slices.count = 5; ui.chop_slice = 2; light({});
@@ -8952,19 +8954,16 @@ void erase_copy_everywhere() {
     light(keys); CHECK(is(0, Hue::Track, 2) && is(2, Hue::None, 0)); // the keys that can be copied
     ui.copy_from = int16_t(k0);
     light(keys); CHECK(is(0, Hue::White, 4) && is(2, Hue::Track, 1)); // the source white, where it can land Faint
-    {   // Time Correct: the pads are the track's patterns as a press takes the groove from one: the source Full, the
-        // patterns with notes Dim, empty ones dark; the pattern in hand as any other.
-        UiState tc = ui; tc.copying = UiState::Copying::Off; tc.copy_from = -1; tc.page = PageId::TimeCorrect; tc.pattern_bank = 0;
-        const unsigned here = project->tracks[0].pattern % pattern_count, other = (here + 2) % pattern_pads, empty = (here + 5) % pattern_pads;
-        Event n2; n2.key = 60; bank->at[0][other].add(n2);
-        auto tc_light = [&] { PadScene scene {tc, *project, *bank, host, taps, PadFacts {}, 1000, nullptr, 0}; pad_looks(scene, looks); };
-        tc_light();
-        CHECK(looks[here].hue != Hue::White && is(other, Hue::Track, 2) && is(empty, Hue::None, 0));
-        bank->at[0][here].feel.groove_from = groove_source(0, other);
-        tc_light();
-        CHECK(is(other, Hue::Track, 4) && looks[here].hue != Hue::White);
-        bank->at[0][here].feel.groove_from = 0;
-        bank->at[0][other] = Pattern {};
+    {   // Time Correct's groove on the encoder (shell/groove_pick.h): none, then the track's patterns with notes, the one
+        // in hand left out; stops at the ends; another track's groove kept in the list.
+        std::array<uint64_t, 2> used {};
+        used[0] = (1u << 0) | (1u << 2) | (1u << 5); used[1] = uint64_t(1) << (70 - 64);
+        auto list = groove_choices(used, 3, 0, 0);
+        CHECK(list.size() == 4 && list[0] == 0 && list[1] == groove_source(3, 2) && list[2] == groove_source(3, 5) && list[3] == groove_source(3, 70));
+        CHECK(groove_step(used, 3, 0, 0, 1) == groove_source(3, 2) && groove_step(used, 3, 0, groove_source(3, 2), 2) == groove_source(3, 70));
+        CHECK(groove_step(used, 3, 0, groove_source(3, 70), 5) == groove_source(3, 70) && groove_step(used, 3, 0, groove_source(3, 2), -4) == 0);
+        const uint16_t other_track = groove_source(1, 4);
+        CHECK(groove_choices(used, 3, 0, other_track)[1] == other_track && groove_step(used, 3, 0, other_track, -1) == 0);
     }
     CHECK(k2 != k0);
     ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::KeyCopy);

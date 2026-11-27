@@ -545,8 +545,10 @@ without moving the notes, until you apply it.
 - **K1** grid, **K2** strength, **K3** swing.
 - **SHIFT** + **K1** humanize, **SHIFT** + **K2** velocity humanize,
   **SHIFT** + **K3** groove amount.
-- Press a pad to take the groove from another pattern of the track. Press
-  it again to take the groove off.
+- Turn the encoder to take the groove from another pattern of the track
+  (its patterns with notes, in any bank). Turn it all the way back for no
+  groove. The screen shows **GROOVE** with the pattern's name and its bank.
+- The pads play the track's sounds, so you hear the timing as you turn.
 - **B3** (**QUANTIZE**) turns it off and on, to compare.
 - **B2** (**ALL**) applies the same settings to the track's other patterns.
 - **B1** (**APPLY**) moves the notes to where Time Correct plays them, with
