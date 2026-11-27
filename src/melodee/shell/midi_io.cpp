@@ -180,6 +180,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     if (m.isSongPositionPointer()) {
         if (!clock_in) return;
         song_position = uint32_t(m.getSongPositionPointerMidiBeat()) * sixteenth_ticks; // a MIDI beat is a sixteenth
+        position_told = true;
         if (!c.host.playing()) c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); // the transport's: as the track in view reads it
         return;
     }
@@ -191,12 +192,22 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         const bool again = c.host.playing();
         if (again) c.stop();
         ext_running.store(true, std::memory_order_relaxed);
-        if (from_start) { c.ui.locate = 0; c.play(true, again); }
-        else { c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); c.play_continue(true, again, song_position); }
+        if (from_start) { // the top: a Song Position told before it is spent
+            song_position = 0;
+            position_told = false;
+            c.ui.locate = 0;
+            c.play(true, again);
+        } else if (position_told) { // from the Song Position told since the last Start or Stop
+            c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed));
+            c.play_continue(true, again, song_position);
+        } else { // none told (a simple master, a pause): on from where it stopped, as Shift + Play
+            c.play_continue(true, again);
+        }
         return;
     }
     if (m.isMidiStop()) {
         if (!clock_in) return;
+        position_told = false; // a Continue now resumes where it stops, unless a Song Position comes first
         ext_running.store(false, std::memory_order_relaxed);
         c.send({Type::ExtSync, 0, 0, 4});
         if (c.host.playing()) c.stop();

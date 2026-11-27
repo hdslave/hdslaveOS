@@ -2331,6 +2331,33 @@ int main(int argc, char** argv) {
         midi(0xfc);
         tick();
         CHECK(!host->playing());
+        // A Start, four bars of clocks, a Stop, then a Continue with no Song Position (a simple master, a pause): the
+        // song goes on from the bar it stopped in, not from an old Song Position or the top.
+        midi(0xfa);
+        for (int k = 0; k < 20000 && host->song_bar() < 4; ++k) clocked(1);
+        CHECK(host->playing() && host->song_bar() >= 4);
+        midi(0xfc);
+        tick();
+        CHECK(!host->playing());
+        midi(0xfb);
+        clocked(2);
+        CHECK(host->playing() && host->song_playing() && host->song_bar() >= 4);
+        midi(0xfc);
+        tick();
+        // The patterns likewise: a Continue with none told since the Stop goes on from where they stopped.
+        c.open(PageId::Edit);
+        midi(0xfa);
+        clocked(200);
+        const int stopped_at = host->position_of(0);
+        CHECK(host->playing() && !host->song_playing() && stopped_at > int(ticks_per_quarter / 10));
+        midi(0xfc);
+        tick();
+        midi(0xfb);
+        clocked(2);
+        CHECK(host->playing() && host->position_of(0) >= stopped_at);
+        midi(0xfc);
+        tick();
+        c.open(PageId::Song);
         // MTC: a cue while stopped, on Song, puts the cursor on the bar the master's time falls in, past the song's loop
         // (bars 3 and 4) too, where Play plays on, as MTC places a song there.
         ui.settings.midi.sync_in = MidiSync::Mtc;

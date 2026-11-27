@@ -53,11 +53,12 @@ as MIDI passes.
 - **MIDI clock in**: Start, Continue, Stop, Song Position and tempo. The
   header shows **EXT CLOCK**. Start plays from the top, also while
   playing, and on **Song** from the song's first bar wherever its cursor
-  is. Continue plays on from the Song Position, on **Song** from that
-  bar and beat of the song, elsewhere
+  is. Continue plays on from the Song Position sent since the last Start
+  or Stop: on **Song** from that bar and beat of the song, elsewhere
   counted at the selected track's speed (see
   [Track speed](tracks.md#track-speed)), as **SHIFT** + **PLAY**
-  counts it.
+  counts it. With no Song Position sent since (a simple master, or a
+  pause and resume), Continue plays on from where it stopped.
 - **MTC in** (24, 25, 29.97 drop-frame and 30 fps): Melodee follows the
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.

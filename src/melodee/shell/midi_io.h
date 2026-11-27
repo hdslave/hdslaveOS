@@ -71,6 +71,7 @@ private:
     ClockFollower follower;
     unsigned tempo_sent = 0;
     uint32_t song_position = 0; // ticks, from Song Position: where Continue carries on
+    bool position_told = false; // a Song Position came since the last Start or Stop (else Continue resumes where it stopped)
     bool configured = false, cv_blocked = false, cv_taken = false;
     unsigned panics_done = 0; // Context::midi_panics answered
     MidiConfig config_sent;

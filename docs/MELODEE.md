@@ -2184,10 +2184,11 @@ while following.
   hears note 36 as A01; notes record under Seq Record like pads. Clock in:
   Start, Continue from Song Position, Stop, the tempo from the pulses. A
   Start plays from the top (on Song, the song's first bar, wherever its
-  cursor is), a Continue from the Song Position last received (on Song,
-  that bar and the tick in it; else as the track in view reads it),
-  playing or not: playing, `MidiIo::receive` stops first and plays after
-  that Stop. MTC
+  cursor is), a Continue from a Song Position received since the last
+  Start or Stop (on Song, that bar and the tick in it; else as the track
+  in view reads it), or with none, from where it stopped, as Shift + Play
+  (a simple master, a pause and resume), playing or not: playing,
+  `MidiIo::receive` stops first and plays after that Stop. MTC
   in (24, 25, 29.97 df, 30 fps): follows after two whole codes agree, from
   0:00:00:00 (hours left out) through the tempo playing, kept on the
   master's time by a pace trim of up to 0.5 %. On Song the master's time
