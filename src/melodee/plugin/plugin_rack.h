@@ -262,6 +262,7 @@ private:
     bool screen_stop = false, screen_poked = false;
     ScreenView screen_now;
     std::atomic<uint64_t> screen_revision {0}; // inputs and page changes the controls must have caught up with
+    std::array<uint64_t, max_plugins> screen_given {}; // inputs handed to each entry's screen so far
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
     std::mutex screen_calls;

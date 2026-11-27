@@ -1386,7 +1386,8 @@ int main(int argc, char** argv) {
         pick_track(0);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
         // K1 straight after a track change (as MIDI Remote picks one: no button between) turns the new track's plug-in,
-        // the parameter its screen names on K1 (Level), not the old track's.
+        // the parameter its screen names on K1 (Level), not the old track's: the very first turn, though the rack's
+        // screen thread has yet to ask that screen its three for the page now in view.
         ui.settings.knob_takeover = Takeover::Instant;
         auto k1 = [&](int position, bool sync = false) {
             SurfaceEvent event;
@@ -1398,14 +1399,8 @@ int main(int argc, char** argv) {
         };
         const auto level = values(entry)[0];
         c.select_track(1);
-        k1(0, true); // no tick between: the shell's panel follows the pot, not the twentieth of a second
-        // The rack's screen thread asks the screen its three again for the page now in view (a moment, no tick).
-        for (int k = 0; k < 400 && ui.plugin_panel.params[0].value < plugin_param_max - 10; ++k) {
-            k1(127 - (k & 1));
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-        CHECK(ui.plugin_panel.entry == 1 && ui.plugin_panel.screen && std::string(ui.plugin_panel.params[0].name) == "Level"
-              && ui.plugin_panel.params[0].value >= plugin_param_max - 10);
+        k1(127); // one turn, no tick or wait between: the shell's panel follows the pot, and the rack takes it at once
+        CHECK(ui.plugin_panel.entry == 1 && ui.plugin_panel.screen && std::string(ui.plugin_panel.params[0].name) == "Level");
         wait([&] { return values(1)[0] > 0.99; });
         CHECK(values(entry)[0] == level);
         c.select_track(0);

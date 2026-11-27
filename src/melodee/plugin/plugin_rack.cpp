@@ -636,6 +636,10 @@ public:
     bool screen_drawn = false;
     std::array<int, 3> screen_controls {-1, -1, -1};
     uint64_t controls_revision = 0;
+    // The view (its area) and the inputs it had been given when it last named its three with no input pending: until
+    // an input reaches it, it names the same three for that area again (set_screen_param()).
+    int controls_area = -1;
+    uint64_t controls_given = 0;
     bool qlinks = false;
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
@@ -1166,11 +1170,24 @@ bool PluginRack::set_screen_param(const PluginPanel& panel, unsigned k, int valu
     if (!panel.screen || k >= panel.targets.size()) return false;
     const auto& target = panel.targets[k];
     if (target.entry >= max_plugins || target.index < 0) return false;
+    uint64_t revision = 0, given = 0;
+    int area = -1;
+    {
+        std::lock_guard<std::mutex> seen(screen_lock);
+        revision = screen_revision.load();
+        if (screen_now.entry == target.entry) area = screen_now.area;
+        given = screen_given[target.entry];
+    }
     std::lock_guard<std::mutex> held(lock);
     const auto& e = entries[target.entry];
     auto* h = e.live;
+    // The three it named are current; or its page has just come into view again (Pad Bank + pad, another page), and
+    // the screen thread has yet to ask it its three: those it named last for that area hold, as no input has reached
+    // it since, so a pot turned at once is not lost.
+    const bool current = h && h->controls_revision == revision;
+    const bool kept = h && area >= 0 && h->controls_area == area && h->controls_given == given;
     if (!h || e.status != PluginStatus::Ready || !h->has_screen || h->generation != target.generation
-        || h->screen_controls[k] != target.index || h->controls_revision != screen_revision.load()) return false;
+        || h->screen_controls[k] != target.index || !(current || kept)) return false;
     const auto& params = h->instance->getParameters();
     if (target.index >= params.size()) return false;
     auto* param = params[target.index];
@@ -2073,6 +2090,7 @@ void PluginRack::screen_input(unsigned entry, const ScreenInput& input) {
         if (entry != screen_now.entry || screen_inputs.size() >= 64) return; // not the page in view; a flood: dropped
         screen_inputs.emplace_back(entry, input);
         ++screen_revision;
+        ++screen_given[entry];
     }
     screen_wake.notify_one();
 }
@@ -2111,7 +2129,7 @@ void PluginRack::screen_run() {
     };
     for (;;) {
         ScreenView view;
-        uint64_t revision;
+        uint64_t revision, given = 0;
         {
             std::unique_lock<std::mutex> held(screen_lock);
             screen_wake.wait_for(held, wait, [&] { return screen_stop || screen_poked || !screen_inputs.empty(); });
@@ -2120,6 +2138,7 @@ void PluginRack::screen_run() {
             screen_poked = false;
             view = screen_now;
             revision = screen_revision.load();
+            if (view.entry < max_plugins) given = screen_given[view.entry];
             for (auto& in : screen_inputs) inputs.push_back(in);
             screen_inputs.clear();
         }
@@ -2230,7 +2249,11 @@ void PluginRack::screen_run() {
                 ask_controls = false;
                 std::lock_guard<std::mutex> held(lock);
                 h->screen_controls = controls;
-                if (inputs.empty()) h->controls_revision = revision;
+                if (inputs.empty()) {
+                    h->controls_revision = revision;
+                    h->controls_area = int(view.area);
+                    h->controls_given = given;
+                }
             }
         }
     }
