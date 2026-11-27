@@ -5228,6 +5228,8 @@ void device_rates() {
         CHECK(!screensaver::due(0, 1u << 31, 0, false));
         CHECK(!screensaver::due(1, 59999, 0, false) && screensaver::due(1, 60000, 0, false) && !screensaver::due(1, 60000, 0, true));
         CHECK(!screensaver::due(1, 0xffffff00u + 59999u, 0xffffff00u, false) && screensaver::due(1, 0xffffff00u + 60000u, 0xffffff00u, false)); // past the clock's wrap
+        // A pad hit stamped on the MIDI thread after the frame read its clock: just touched, not four billion ms ago.
+        CHECK(!screensaver::due(1, 500000, 500001, false) && !screensaver::due(5, 500000, 500040, false));
         auto p = screensaver::place(0, 135, 23, 320, 240, 400, 30);
         CHECK(p.x == 400 % 185 && p.y == 30 && p.bounces == 0);
         p = screensaver::place(5442, 135, 23, 320, 240, 0, 0); // just past the right edge: back by 28 milli-px

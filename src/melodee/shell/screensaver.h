@@ -14,10 +14,12 @@ constexpr std::array<uint8_t, 6> minutes {{0, 1, 2, 5, 10, 30}}; // Settings' ch
 constexpr int64_t speed_x = 34, speed_y = 26;                     // px a second, so milli-px a millisecond
 
 // Whether it shows: a choice of minutes (not Off) since the last control or MIDI note, and nothing busy (the
-// sequencer playing, a sample take armed or recording, a render running).
+// sequencer playing, a sample take armed or recording, a render running). `touched` is stamped on the control and
+// MIDI threads, so it can be a little after the frame's `now`: that wraps to a huge wait, and counts as no wait at
+// all (as does anything past 24 days).
 inline bool due(uint8_t choice, uint32_t now, uint32_t touched, bool busy) {
-    uint32_t wait = minutes[choice % minutes.size()];
-    return wait && !busy && now - touched >= wait * 60000u;
+    uint32_t wait = minutes[choice % minutes.size()], rested = now - touched;
+    return wait && !busy && rested >= wait * 60000u && rested < 0x80000000u;
 }
 
 struct Place { int x = 0, y = 0; unsigned bounces = 0; };
