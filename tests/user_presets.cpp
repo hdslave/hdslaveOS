@@ -1370,7 +1370,33 @@ int main(int argc, char** argv) {
         CHECK(values(1)[0] == 0.5);
         turn(10);
         wait([&] { return values(1)[0] == 0.6; });
+        wait([&] { return ui.plugin_panel.entry == 1 && ui.plugin_panel.screen; }); // drawn, so its panel names its three
         pick_track(0);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
+        // K1 straight after a track change (as MIDI Remote picks one: no button between) turns the new track's plug-in,
+        // the parameter its screen names on K1 (Level), not the old track's.
+        ui.settings.knob_takeover = Takeover::Instant;
+        auto k1 = [&](int position, bool sync = false) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(SurfaceControl::K1);
+            event.input.value = uint8_t(position);
+            event.syncing = sync;
+            shell->surface(event, ++now);
+        };
+        const auto level = values(entry)[0];
+        c.select_track(1);
+        k1(0, true); // no tick between: the shell's panel follows the pot, not the twentieth of a second
+        // The rack's screen thread asks the screen its three again for the page now in view (a moment, no tick).
+        for (int k = 0; k < 400 && ui.plugin_panel.params[0].value < plugin_param_max - 10; ++k) {
+            k1(127 - (k & 1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        CHECK(ui.plugin_panel.entry == 1 && ui.plugin_panel.screen && std::string(ui.plugin_panel.params[0].name) == "Level"
+              && ui.plugin_panel.params[0].value >= plugin_param_max - 10);
+        wait([&] { return values(1)[0] > 0.99; });
+        CHECK(values(entry)[0] == level);
+        c.select_track(0);
         wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
         const int first = rack->programs(entry).current, second = rack->programs(1).current;
         auto none_armed = [&](SurfaceButton key, int detents) {

@@ -2634,11 +2634,14 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   Stage shows PANEL only while the plug-in's panel says it draws a page.
   The shell reads that panel twenty times a second, and at once when the
   page or the track in hand shows another plug-in: at its next tick, or
-  before a button or wheel turn acts, whichever comes first
+  before a button, wheel turn or K1–K3 turn acts, whichever comes first
   (`Context::follow_plugin_focus`), the rack told the page in view then
-  too. So − / + and the wheel on a track's PANEL never act on its
-  PRESETS just after Pad Bank + pad, MIDI Remote or another page, and the
-  first of them reaches the plug-in's screen, drawn yet or not. Stage of a
+  too, and the panel read once more when that shows the plug-in's own
+  screen. So − / + and the wheel on a track's PANEL never act on its
+  PRESETS just after Pad Bank + pad, MIDI Remote or another page, the
+  first of them reaches the plug-in's screen, drawn yet or not, and a
+  pot turned then turns the new track's plug-in (the three its screen
+  names, once it has drawn), not nothing. Stage of a
   frozen track draws its print instead (freeze plan F2c): while it does,
   that track's plug-in screen is not in view there. The rack is not told
   it is, so it does not draw, and the wheel, Push, − / +, Mute and Erase

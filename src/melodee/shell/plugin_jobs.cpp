@@ -647,15 +647,18 @@ void Context::tell_screen_view() {
     plugins->screen_view(view);
 }
 
-// Before a button or the wheel acts (the shell): the panel read again only when the plug-in in view is another than
-// the panel's (Pad Bank + pad, MIDI Remote, another page), with the rack told the page in view at once. Read on every
-// press, a bridged plug-in's card texts would each cost a round trip under the lock its audio block takes.
+// Before a button, the wheel or K1-K3 acts (the shell): the panel read again only when the plug-in in view is another
+// than the panel's (Pad Bank + pad, MIDI Remote, another page), with the rack told the page in view at once. Read on
+// every press, a bridged plug-in's card texts would each cost a round trip under the lock its audio block takes. Its
+// own screen in view now, the panel is read once more, the rack told: K1-K3 are then the three that screen names
+// (PluginPanel::screen) from the first turn, not the rows Melodee's pages give it.
 void Context::follow_plugin_focus() {
     if (!plugins) return;
     const int focus = plugin_in_focus();
     if (focus == (ui.plugin_panel.entry < max_plugins ? int(ui.plugin_panel.entry) : -1)) return;
     refresh_plugin_panel();
     tell_screen_view();
+    if (plugin_screen_place(project, ui, prints.freeze).entry >= 0 && !ui.plugin_panel.screen) refresh_plugin_panel();
 }
 
 // The panel of the plug-in the page in view shows, read now: from plugins_tick (often), and by follow_plugin_focus

@@ -229,7 +229,10 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     }
     // SD card access: the card is on a computer; only the main volume still turns (as the MPC, other modes wait).
     if (card_owns_controls(ui_) && SurfaceControl(input.index) != SurfaceControl::MainVolume) return;
-    if (SurfaceControl(input.index) == SurfaceControl::Wheel) context_.follow_plugin_focus(); // as for the buttons
+    switch (SurfaceControl(input.index)) { // as for the buttons: a turn just after Pad Bank + pad acts on the new track's plug-in
+    case SurfaceControl::Wheel: case SurfaceControl::K1: case SurfaceControl::K2: case SurfaceControl::K3: context_.follow_plugin_focus(); break;
+    default: break;
+    }
     if (ui_.lesson) { // a lesson: the step's knob or the encoder; the other knobs and the fader keep their positions
         switch (SurfaceControl(input.index)) {
         case SurfaceControl::K1: case SurfaceControl::K2: case SurfaceControl::K3: {
