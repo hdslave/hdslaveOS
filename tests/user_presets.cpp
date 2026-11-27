@@ -953,8 +953,12 @@ int main(int argc, char** argv) {
         const uint8_t bank = tr.bank;
         for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus, SurfaceButton::Minus}) {
             tap(key);
-            CHECK(tr.octave == octave && tr.bank == bank && !ui.preset_due && ui.ask == UiState::Ask::None);
+            CHECK(tr.octave == octave && tr.bank == bank && !ui.preset_due);
         }
+        c.freeze_requested[0].state = FreezeState::Frozen; // nothing would load: no question either
+        tap(SurfaceButton::Plus);
+        CHECK(tr.octave == octave && !ui.preset_due && ui.ask == UiState::Ask::None);
+        c.freeze_requested[0] = {};
         button(SurfaceButton::Sample, true);
         tap(SurfaceButton::Plus);
         button(SurfaceButton::Sample, false);
@@ -2087,6 +2091,23 @@ int main(int argc, char** argv) {
         CHECK(tr.octave == octave && !ui.preset_due);
         button(SurfaceButton::Sample, false);
         CHECK(ui.page == PageId::Stage && stage_page_now(ui, tr, false).kind == StageKind::PluginSound);
+        // Sample held on the plug-in's PANEL and EDIT too: Keys' octave, not the plug-in's screen or its pages; and a
+        // short hold's release leaves the page as it is (it used to take Stage home to PRESETS).
+        for (auto kind : {StageKind::PluginScreen, StageKind::PluginEdit, StageKind::Arp}) {
+            CHECK(stage_go(ui, EngineKind::Plugin, kind));
+            CHECK(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
+            const auto row = ui.plugin_row[entry];
+            button(SurfaceButton::Sample, true);
+            tap(SurfaceButton::Plus);
+            button(SurfaceButton::Sample, false);
+            CHECK(tr.octave == octave + 1 && !ui.preset_due && ui.plugin_row[entry] == row);
+            CHECK(stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
+            button(SurfaceButton::Sample, true);
+            tap(SurfaceButton::Minus);
+            button(SurfaceButton::Sample, false);
+            CHECK(tr.octave == octave && stage_page_now(ui, tr, stage_skip(project, ui, tr)).kind == kind);
+        }
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
         auto edit = [&] { set_control("Level", 1000); wait([&] { return state()[0] == 1; }); };
         auto kept = [&](unsigned n) { // nothing is sent to the plug-in: the preset it plays, as it was edited
             c.dirty = false;
@@ -2124,6 +2145,16 @@ int main(int argc, char** argv) {
         CHECK(tr.octave == octave && tr.bank == bank);
         tr.layout = PadLayout::Scale;
 
+        ui.plugin_panel.status = PluginStatus::Crashed; // the page shows it STOPPED (a bridge that died): nothing moves
+        CHECK(ui.plugin_panel.entry == entry);
+        for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus}) {
+            tap(key);
+            CHECK(tr.octave == octave && !ui.preset_due);
+        }
+        wheel(1);
+        CHECK(!ui.preset_due);
+        wait([&] { return ui.plugin_panel.status == PluginStatus::Ready; }); // read from the rack again
+
         // Two user presets: loading one opens the plug-in again, then its presets are looked for again.
         auto save = [&](const char* name, size_t count) {
             chord();
@@ -2157,11 +2188,9 @@ int main(int argc, char** argv) {
             tap(key);
             CHECK(tr.octave == octave && !ui.preset_due);
         }
-        c.freeze_requested[0].state = FreezeState::Frozen; // a frozen track asks, opening (or let go by a deep freeze)
+        c.freeze_requested[0].state = FreezeState::Frozen; // nothing would load while it opens: no question either
         tap(SurfaceButton::Plus);
-        CHECK(ui.ask == UiState::Ask::Unfreeze);
-        tap(SurfaceButton::TopLeft);
-        CHECK(ui.ask == UiState::Ask::None && opening());
+        CHECK(ui.ask == UiState::Ask::None && opening() && tr.octave == octave && !ui.preset_due);
         c.freeze_requested[0] = {};
         wait(looking); // open again, its list not whole yet: said, and nothing moves
         for (auto key : {SurfaceButton::Plus, SurfaceButton::Minus}) {

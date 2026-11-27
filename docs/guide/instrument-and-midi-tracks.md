@@ -20,10 +20,10 @@ Hold **SHIFT** on a **B1** page for the plug-in's own keys:
 
 **PRESETS**: the plug-in's presets. The name of the one playing is large,
 with the ones before and after it in the corners. Turn the encoder or press
-**−** / **+** to load the next one; it loads when you stop. At either end of
-the list, or when you come back to the preset that is playing, nothing
-loads, so the preset stays as you edited it. Push the encoder for the whole
-list. A plug-in with no presets shows **PLUG-IN** instead: its name, its
+**−** / **+** to load the previous or next one; it loads when you stop. At
+either end of the list, or when you come back to the preset that is
+playing, nothing loads, so the preset stays as you edited it. Push the
+encoder for the whole list. A plug-in with no presets shows **PLUG-IN** instead: its name, its
 format and how much of each audio block it uses.
 
 - While the plug-in is opening, the encoder and **−** / **+** do nothing.
@@ -31,11 +31,13 @@ format and how much of each audio block it uses.
   While it looks for its presets, the screen says **Looking for presets**.
 - On a frozen track, Melodee asks to unfreeze before the preset changes.
 - With presets listed, **−** / **+** do not move the pads' octave here. For
-  the octave, hold **SAMPLE** ([Keys](#keys)) and press them, or use the
-  track's **B2** and **B3** pages. In the Drums layout those move the bank,
-  and so does a tap on **PAD BANK** on any Stage page.
+  the octave, hold **SAMPLE** ([Keys](#keys)) and press them, on any Stage
+  page, or use the track's **B2** and **B3** pages. In the Drums layout
+  those move the bank, and so does a tap on **PAD BANK**. While the light
+  show is on, **SAMPLE** and **−** / **+** pick its style instead.
 - On **PLUG-IN** (no presets), **−** / **+** move the octave or the bank.
-  When the plug-in would not open, they do nothing here.
+  When the plug-in would not open, or shows **STOPPED**, they do nothing
+  here.
 
 **K1**–**K3** are the same three knobs on every plug-in, applied to what it
 plays:
@@ -55,7 +57,9 @@ knob sets one back to off.
 [A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)).
 
 **EDIT**: all of the plug-in's parameters. Turn the encoder or press
-**−** / **+** to move through them. Picking a plug-in opens this page.
+**−** / **+** to move through them. Picking a plug-in opens this page. On
+**PANEL** and **EDIT**, hold **SAMPLE** and press **−** / **+** for the
+octave.
 
 The track's level, pan and sends are on the [mixer](mixer-and-effects.md#the-mixer).
 

@@ -26,18 +26,20 @@ void Context::preset_turn(int at) {
 // turning) or the one it plays (none yet: to the first, either way), and the one turned to loads once the turning
 // has stopped stage_preset_ms. Against an end of the list nothing moves, and nothing while the plug-in opens (a
 // user preset opens it again) or still looks for its presets (said): the list is not whole, so a place in it would
-// name another preset once it is. Nothing either for one that would not open. False: an open plug-in that has no
-// presets (its face).
+// name another preset once it is. Nothing either for one that would not open, or that the page shows stopped (a
+// bridge that died). A frozen track asks only for a press that would load, or once a deep freeze let its plug-in go.
+// False: an open plug-in that has no presets (its face).
 bool Context::plugin_preset_turn(int delta) {
     const auto& t = track();
     if (!plugins || t.engine != EngineKind::Plugin || t.plugin >= max_plugins) return false;
     const UndoScope sound {UndoScope::Kind::Sound, uint8_t(ui.track % track_count), 0};
     const auto status = plugins->status(t.plugin);
-    if (status == PluginStatus::None || status == PluginStatus::Loading) { // opening, or let go by a deep freeze
-        frozen_edit(sound); // which asks, as any change of a frozen track's sound (freeze plan F2c)
+    if (status == PluginStatus::None) { // let go by a deep freeze: thawed first, as any change of its sound (F2c)
+        frozen_edit(sound);
         return true;
     }
-    if (status != PluginStatus::Ready) return true; // would not open, or stopped: no preset to walk to, nor the octave
+    if (status != PluginStatus::Ready) return true; // opening, or would not open: no preset to walk to, nor the octave
+    if (ui.plugin_panel.entry == t.plugin && ui.plugin_panel.status == PluginStatus::Crashed) return true; // STOPPED
     auto programs = plugins->programs(t.plugin);
     if (programs.finding) { notice("Looking for presets"); return true; }
     if (programs.list.empty()) return false;
