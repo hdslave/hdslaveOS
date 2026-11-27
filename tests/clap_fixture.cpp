@@ -52,6 +52,7 @@ struct Plugin {
     const clap_host_thread_check* threads = nullptr;
     bool instrument = false;
     double rate = 44100, level = 0.5, wave = 0, gain = 1;
+    double mode = 0; // MELODEE_TEST_SCREEN_MODE: Sine's Mode (id 11), which swaps the two its screen names on K1 and K2
     std::map<int, double> phases; // key: phase of its sine
     std::atomic<uint32_t> tailFrames {0};
     int outLevel = -1;            // a Level to report as an output event, 0..127, -1 none
@@ -87,18 +88,20 @@ const clap_plugin_descriptor gainDescriptor {CLAP_VERSION_INIT, "org.melodee.tes
 // Parameters: Sine's Level (id 7, module "Voice/Amp") and Wave (id 9, stepped 0-2, no module); Gain's Gain (id 3,
 // 0-2, module "Out"). Sine has one remote-controls page, Main: Wave, Level, the rest of its eight unused; its
 // on_main_thread says its pages changed.
-uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? 2 : 1; }
+bool screenMode() { return std::getenv("MELODEE_TEST_SCREEN_MODE") != nullptr; }
+uint32_t paramCount(const clap_plugin* p) { of(p).main(); return of(p).instrument ? (screenMode() ? 3 : 2) : 1; }
 bool paramInfo(const clap_plugin* p, uint32_t i, clap_param_info* info) {
     of(p).main();
     *info = {};
     if (of(p).instrument && i == 0) { info->id = 7; std::strcpy(info->name, "Level"); std::strcpy(info->module, "Voice/Amp/"); info->max_value = 1; info->default_value = 0.5; }
     else if (of(p).instrument && i == 1) { info->id = 9; std::strcpy(info->name, "Wave"); info->max_value = 2; info->flags = CLAP_PARAM_IS_STEPPED; }
+    else if (of(p).instrument && i == 2 && screenMode()) { info->id = 11; std::strcpy(info->name, "Mode"); info->max_value = 1; info->flags = CLAP_PARAM_IS_STEPPED; }
     else if (!of(p).instrument && i == 0) { info->id = 3; std::strcpy(info->name, "Gain"); std::strcpy(info->module, "Out"); info->max_value = 2; info->default_value = 1; }
     else return false;
     info->flags |= CLAP_PARAM_IS_AUTOMATABLE;
     return true;
 }
-double* field(Plugin& s, clap_id id) { return id == 7 ? &s.level : id == 9 ? &s.wave : id == 3 ? &s.gain : nullptr; }
+double* field(Plugin& s, clap_id id) { return id == 7 ? &s.level : id == 9 ? &s.wave : id == 3 ? &s.gain : id == 11 && screenMode() ? &s.mode : nullptr; }
 bool paramValue(const clap_plugin* p, clap_id id, double* v) {
     of(p).main();
     auto* f = field(of(p), id);
@@ -432,6 +435,7 @@ void screenControls(const void* p, uint32_t ids[3]) {
     ids[1] = s.instrument ? 9 : MELODEE_SCREEN_NO_CONTROL;
     ids[2] = MELODEE_SCREEN_NO_CONTROL;
     if (s.secondBank) ids[1] = 7;
+    if (s.instrument && s.mode >= 0.5) std::swap(ids[0], ids[1]); // Mode up: Wave on K1, Level on K2
 }
 const melodee_screen_t screen {screenDraw, screenInput, screenControls};
 

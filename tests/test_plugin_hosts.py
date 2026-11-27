@@ -155,6 +155,9 @@ class PluginHostTests(unittest.TestCase):
     def test_minus_plus_and_the_wheel_on_panel_never_load_a_preset(self):
         self.run_rack_fixture("panel-lag")
 
+    def test_a_pot_turned_as_a_page_returns_turns_what_its_screen_names_now(self):
+        self.run_rack_fixture("screen-mode")
+
     def test_presets_list_follows_a_copied_tracks_own_plugin(self):
         self.run_rack_fixture("copy-presets")
 

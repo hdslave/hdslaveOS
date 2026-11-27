@@ -739,6 +739,7 @@ int main(int argc, char** argv) {
         std::ofstream(folder / "Bank.tsp") << "Low\t0.25\nMid\t0.5\nHigh\t0.75\nLoud\t1.5\tgain\n"; // and one of Test Gain's
     }
     if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
+    if (mode == "screen-mode") setenv("MELODEE_TEST_SCREEN_MODE", "1", 1); // its screen's K1 and K2 follow its Mode
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
     if (mode == "relative-stage") { // a stage named relative to where it runs (its card's folder)
         fs::current_path(fs::path(card).parent_path());
@@ -859,7 +860,7 @@ int main(int argc, char** argv) {
     if (mode == "undo-entries") // every other plug-in entry set once (another project's), none in use
         for (unsigned k = 1; k < max_plugins; ++k) std::snprintf(project.plugins[k].path, sizeof(project.plugins[k].path), "/nowhere/X%u.clap", k);
     const bool late = mode == "copy-presets-late"; // copy-presets with every other entry in use: effects that will not open
-    if (mode == "presets-track" || mode == "copy-presets" || late || mode == "panel-lag") { // two tracks of the same synth, each its own instance, and a kit
+    if (mode == "presets-track" || mode == "copy-presets" || late || mode == "panel-lag" || mode == "screen-mode") { // two tracks of the same synth, each its own instance, and a kit
         project.plugins[1] = ref;
         load_sound(project.tracks[1], EngineKind::Plugin, 0);
         project.tracks[1].plugin = 1;
@@ -1486,6 +1487,38 @@ int main(int argc, char** argv) {
         c.stage_tick(UINT32_MAX);
         for (int k = 0; k < 20; ++k) tick();
         CHECK(rack->programs(entry).current == first && rack->programs(1).current == second);
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // The three a screen names follow its state: Test Sine's K1 is Level, or Wave with its Mode up. Track 2's Mode put
+    // up while track 1's page is in view (track 2's screen not asked its three meanwhile), then track 2 picked as MIDI
+    // Remote picks it and K1 turned at once: the turn waits for the screen thread to ask the screen its three, and
+    // goes to Wave, the one it names now; Level, the one it named before, stays as it was.
+    if (mode == "screen-mode") {
+        wait([&] { return ready(1); });
+        const auto panel = stage_find(EngineKind::Plugin, StageKind::PluginScreen);
+        CHECK(panel.found);
+        for (unsigned t : {0u, 1u}) { ui.stage_group[t] = uint8_t(panel.at.group); ui.stage_sub[t] = uint8_t(panel.at.sub); }
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
+        c.select_track(1);
+        wait([&] { return ui.plugin_panel.entry == 1 && ui.plugin_panel.screen; }); // drawn, so its panel names its three
+        CHECK(std::string(ui.plugin_panel.params[0].name) == "Level");
+        c.select_track(0);
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.screen; });
+        rack->set_param_index(1, rack->live_generation(1), 2, plugin_param_max); // Mode up, out of view
+        for (int k = 0; k < 20; ++k) tick();
+        const auto before = values(1);
+        ui.settings.knob_takeover = Takeover::Instant;
+        SurfaceEvent turn_k1;
+        turn_k1.input.kind = SurfaceInput::Kind::Control;
+        turn_k1.input.index = uint8_t(SurfaceControl::K1);
+        turn_k1.input.value = 127;
+        c.select_track(1);
+        shell->surface(turn_k1, ++now); // at once: no tick between
+        wait([&] { return values(1)[1] == 2; }); // Wave to its top
+        CHECK(values(1)[0] == before[0]);
+        wait([&] { return std::string(ui.plugin_panel.params[0].name) == "Wave"; }); // and the card says so, read again
         shell->set_plugins(nullptr);
         return 0;
     }

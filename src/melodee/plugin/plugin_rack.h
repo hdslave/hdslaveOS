@@ -263,6 +263,12 @@ private:
     ScreenView screen_now;
     std::atomic<uint64_t> screen_revision {0}; // inputs and page changes the controls must have caught up with
     std::array<uint64_t, max_plugins> screen_given {}; // inputs handed to each entry's screen so far
+    // A pot turned on a screen's page just come into view again, before the screen thread asked the screen its three:
+    // the entry and generation, where it was turned to (0..plugin_param_max), the card's value it was turned from, and
+    // whether as a relative turn. Under `lock`; given by give_held_pots().
+    struct HeldPot { int entry = -1; uint32_t generation = 0; int value = 0, card = 0; bool relative = false; };
+    std::array<HeldPot, 3> held_pots {};
+    void give_held_pots(PluginHandle& h, unsigned entry, const std::array<int, 3>& controls);
     std::deque<std::pair<unsigned, ScreenInput>> screen_inputs;
     ScreenPicturePtr screen_latest;
     std::mutex screen_calls;

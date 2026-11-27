@@ -48,6 +48,7 @@ struct PluginPanel {
     bool has_screen = false;
     bool screen = false;
     uint8_t screen_keys = 0;       // the printed buttons that screen's page takes (screen_key_mute, screen_key_erase)
+    uint64_t screen_given = 0;     // inputs its screen had been handed when this was read (PluginRack::set_screen_param)
     char name[32] {};
     char format[8] {};             // VST3, VST2, ARMV7
     char error[64] {};             // why it failed

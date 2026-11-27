@@ -2675,10 +2675,14 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   PRESETS just after Pad Bank + pad, MIDI Remote or another page, the
   first of them reaches the plug-in's screen, drawn yet or not, and a
   pot turned then turns the new track's plug-in (the three its screen
-  names, once it has drawn), not nothing: from the first turn, as the
-  three a screen named last for that page hold until an input reaches it
-  (`PluginRack::set_screen_param`), though the rack's screen thread has
-  yet to ask it again. Stage of a
+  names, once it has drawn), not nothing: from the first turn. The three a
+  screen names may follow its state (a preset, Motion, an undo, the
+  transport), so a turn made before the rack's screen thread has asked it
+  its three for that page is held, and given to the parameter it names on
+  that pot once asked, within the next blocks: none is lost or sent to the
+  one it named before (`PluginRack::set_screen_param`, `give_held_pots`).
+  With no input since the panel was read, a turn goes to what the screen
+  names now; after one (Minus: another bank), only to an unmoved pot. Stage of a
   frozen track draws its print instead (freeze plan F2c): while it does,
   that track's plug-in screen is not in view there. The rack is not told
   it is, so it does not draw, and the wheel, Push, − / +, Mute and Erase
