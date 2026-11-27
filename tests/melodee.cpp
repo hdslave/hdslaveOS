@@ -4218,7 +4218,7 @@ void midi_and_sync() {
         set.midi.port = MidiPort::Usb; set.midi.in_channel = 10; set.midi.out_channel = 16; set.midi.pad_out = PadMidiOut::Empty;
         set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = program_plugin;
         set.midi.cv_out = true; set.midi.cv_base = 4; set.midi.cv_division = 24; set.midi.pad_in = false;
-        set.midi.preset_cc = 74; set.midi.preset_knob = knob_signed_bit_2;
+        set.midi.preset_cc = 74; set.midi.preset_knob = knob_signed_bit_2; set.midi.send_program = true;
         Settings back; back.read(set.text());
         CHECK(back.midi == set.midi && back.midi.cv_ppqn() == 96);
         Settings older; older.read("pad_response=2\nscreen=80\n");
@@ -4229,6 +4229,7 @@ void midi_and_sync() {
         Settings knob; knob.read("remote_preset_cc=200\nremote_preset_knob=9\n");
         CHECK(knob.midi.preset_cc == 127 && knob.midi.preset_knob == knob_signed_bit_2);
         CHECK(MidiConfig {}.preset_cc == 0 && MidiConfig {}.preset_knob == knob_binary_offset); // Off; Saadet's and the MiniLab 3's Relative1
+        CHECK(!MidiConfig {}.send_program && back.midi.send_program);
         Settings on; on.read("program_change=1\n"); // an older file's On: Sequence, as before
         CHECK(on.midi.program_change == program_sequence);
         set.toggle_favourite(0, 3); set.screen = 50;
@@ -4263,6 +4264,11 @@ void midi_and_sync() {
         midi_row_step(set, track, ProgramChangeRow, -1); CHECK(set.midi.program_change == program_plugin);
         midi_row_set(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_sequence);
         midi_row_set(set, track, ProgramChangeRow, 0);
+        // Send program change: On / Off, after Receive program change.
+        CHECK(std::string(midi_row_name(SendProgramRow)) == "Send program change" && SendProgramRow == ProgramChangeRow + 1);
+        CHECK(midi_row_value(set, track, SendProgramRow) == "Off" && midi_row_choices(SendProgramRow) == 2);
+        midi_row_step(set, track, SendProgramRow, 1); CHECK(set.midi.send_program && midi_row_value(set, track, SendProgramRow) == "On");
+        midi_row_set(set, track, SendProgramRow, 0); CHECK(!set.midi.send_program && midi_row_choice(set, track, SendProgramRow) == 0);
         // The preset knob's rows, after Remote sequence CC; Push learns the four CC rows, not the knob's mode.
         CHECK(std::string(midi_row_name(PresetCcRow)) == "Remote preset CC" && midi_row_value(set, track, PresetCcRow) == "Off");
         CHECK(midi_row_choices(PresetCcRow) == 128 && midi_row_choices(PresetKnobRow) == 5);
@@ -4367,6 +4373,22 @@ void midi_and_sync() {
             CHECK(program_entries(*p, 1u << 1, 0) == (1u << 3));        // track 2 alone: the entry it shares with track 1
             CHECK(program_entries(*p, 0xffff, 1u << 2) == (1u << 3));   // track 3 frozen
             CHECK(program_entries(*p, (1u << 3) | (1u << 4), 0) == 0);   // a kit, a PLUGIN track with no plug-in
+        }
+        // Send program change: each PLUGIN track playing the plug-in, on its own channel else MIDI Config's Out, each
+        // channel once; Bank Select MSB and LSB, then the program, counted as Receive program change counts them.
+        {
+            auto p = std::make_unique<Project>();
+            MidiConfig out; out.out_channel = 5;
+            for (unsigned t : {0u, 1u, 2u, 3u}) { p->tracks[t].engine = EngineKind::Plugin; p->tracks[t].plugin = 3; }
+            p->tracks[1].midi_channel = 9; p->tracks[2].midi_channel = 9; p->tracks[3].plugin = 4;
+            p->tracks[4].engine = EngineKind::Sampler; p->tracks[4].plugin = 3; p->tracks[4].midi_channel = 12;
+            CHECK(program_channels(*p, out, 3) == ((1u << 4) | (1u << 8))); // tracks 1 (Out 5), 2 and 3 (9, once)
+            CHECK(program_channels(*p, out, 4) == (1u << 4) && program_channels(*p, out, 7) == 0);
+            CHECK((program_bytes(1, 5) == std::array<uint8_t, 8> {0xb0, 0, 0, 0xb0, 32, 0, 0xc0, 5}));
+            CHECK((program_bytes(16, 129) == std::array<uint8_t, 8> {0xbf, 0, 0, 0xbf, 32, 1, 0xcf, 1}));
+            CHECK((program_bytes(2, (128 + 1) * 128 + 9) == std::array<uint8_t, 8> {0xb1, 0, 1, 0xb1, 32, 1, 0xc1, 9}));
+            ProgramBanks back; // what Receive program change makes of it: the same place
+            back.control(2, 0, 1); back.control(2, 32, 1); CHECK(back.place(2, 9) == (128 + 1) * 128 + 9);
         }
         // The preset knob: steps a message, + next, - previous, in each of the five ways knobs send.
         CHECK(knob_steps(knob_binary_offset, 65, -1) == 1 && knob_steps(knob_binary_offset, 63, -1) == -1 && knob_steps(knob_binary_offset, 68, -1) == 4);

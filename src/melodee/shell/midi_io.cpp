@@ -26,6 +26,12 @@ std::string last_text(unsigned bytes) {
     std::snprintf(text, sizeof(text), "%06x", bytes);
     return text;
 }
+MidiPacket packet_bytes(const uint8_t* bytes, unsigned size) {
+    MidiPacket p;
+    p.size = std::min<unsigned>(size, unsigned(p.bytes.size()));
+    std::copy(bytes, bytes + p.size, p.bytes.begin());
+    return p;
+}
 MidiPacket packet_of(const juce::MidiMessage& m) {
     MidiPacket p;
     p.size = unsigned(std::min<int>(m.getRawDataSize(), int(p.bytes.size())));
@@ -621,6 +627,13 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     }
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
+    for (const auto& p : c.programs_out) { // Send program change (shell/program_in.h): Bank Select MSB, LSB, the program
+        const auto b = program_bytes(p.channel, p.place);
+        send_all(c, out, packet_bytes(b.data(), 3));
+        send_all(c, out, packet_bytes(b.data() + 3, 3));
+        send_all(c, out, packet_bytes(b.data() + 6, 2));
+    }
+    c.programs_out.clear();
     if (panics_done != c.midi_panics) { panics_done = c.midi_panics; panic(c, out); }
     { // the outputs there now, for Edit's DEVICE picture (a handful of ports: cheap every pass); USB devices by name (M4)
         uint32_t bits = 0, devices = 0;

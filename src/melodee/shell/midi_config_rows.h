@@ -8,7 +8,7 @@
 
 // MIDI Config's rows (Shift + Pad 8, parity phase 9) in the MPC's order, with
 // Melodee's track channel and its input after Out channel, Scale on white keys after Pad MIDI in, the Remote rows after
-// Receive program change (the preset CC and how its knob sends after them; Push on a Remote CC row learns it) and the
+// Receive and Send program change (the preset CC and how its knob sends after them; Push on a Remote CC row learns it) and the
 // three takeover rows the
 // MPC keeps here (they are Settings' rows too), then Melodee's MIDI Panic
 // (docs/MIDI_TRACKS.md) and Reset Factory Settings.
@@ -16,14 +16,14 @@ namespace melodee {
 
 enum MidiRow : uint8_t {
     MidiPortRow, InChannelRow, OutChannelRow, TrackChannelRow, TrackInRow, PadInRow, ScaleKeysRow, PadOutRow, SyncInRow, SyncOutRow, ThruRow,
-    ProgramChangeRow, RemoteChannelRow, TrackCcRow, PatternCcRow, SceneCcRow, PresetCcRow, PresetKnobRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, PanicRow, ResetRow,
+    ProgramChangeRow, SendProgramRow, RemoteChannelRow, TrackCcRow, PatternCcRow, SceneCcRow, PresetCcRow, PresetKnobRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, PanicRow, ResetRow,
     MidiRows
 };
 
 inline const char* midi_row_name(unsigned row) {
     static const char* const names[] {"MIDI port", "MIDI in channel", "MIDI out channel", "Track channel", "Track MIDI in",
                                       "Pad MIDI in", "Scale on white keys", "Pad MIDI out", "MIDI sync in", "MIDI sync out", "MIDI thru",
-                                      "Receive program change", "Remote channel", "Remote track CC", "Remote pattern CC",
+                                      "Receive program change", "Send program change", "Remote channel", "Remote track CC", "Remote pattern CC",
                                       "Remote sequence CC", "Remote preset CC", "Remote preset knob", "CV/sync out", "CV/sync base", "CV/sync division", "Parameter takeover",
                                       "Knob FX takeover", "Fader takeover", "MIDI panic", "Reset factory settings"};
     return names[row % MidiRows];
@@ -44,6 +44,7 @@ inline std::string midi_row_value(const Settings& s, const Track& track, unsigne
     case SyncOutRow: return midi_sync_name(m.sync_out);
     case ThruRow: return m.thru ? "On" : "Off";
     case ProgramChangeRow: return program_change_name(m.program_change);
+    case SendProgramRow: return m.send_program ? "On" : "Off";
     case RemoteChannelRow: return midi_channel_text(m.remote_channel, "Off");
     case TrackCcRow: return midi_channel_text(m.track_cc, "Off");
     case PatternCcRow: return midi_channel_text(m.pattern_cc, "Off");
@@ -80,6 +81,7 @@ inline void midi_row_step(Settings& s, Track& track, unsigned row, int way) {
     case SyncOutRow: m.sync_out = MidiSync(round(int(m.sync_out), int(MidiSync::Count))); break;
     case ThruRow: m.thru = !m.thru; break;
     case ProgramChangeRow: m.program_change = uint8_t(round(m.program_change, program_choices)); break;
+    case SendProgramRow: m.send_program = !m.send_program; break;
     case RemoteChannelRow: m.remote_channel = uint8_t(stop(m.remote_channel, 0, 16)); break;
     case TrackCcRow: m.track_cc = uint8_t(stop(m.track_cc, 0, 127)); break;
     case PatternCcRow: m.pattern_cc = uint8_t(stop(m.pattern_cc, 0, 127)); break;
@@ -136,6 +138,7 @@ inline unsigned midi_row_choice(const Settings& s, const Track& track, unsigned 
     case SyncOutRow: return unsigned(m.sync_out);
     case ThruRow: return m.thru;
     case ProgramChangeRow: return m.program_change;
+    case SendProgramRow: return m.send_program;
     case RemoteChannelRow: return m.remote_channel;
     case TrackCcRow: return m.track_cc;
     case PatternCcRow: return m.pattern_cc;
@@ -169,6 +172,7 @@ inline void midi_row_set(Settings& s, unsigned row, unsigned n) {
     case SyncOutRow: m.sync_out = MidiSync(n); break;
     case ThruRow: m.thru = n; break;
     case ProgramChangeRow: m.program_change = uint8_t(n); break;
+    case SendProgramRow: m.send_program = n; break;
     case RemoteChannelRow: m.remote_channel = uint8_t(n); break;
     case TrackCcRow: m.track_cc = uint8_t(n); break;
     case PatternCcRow: m.pattern_cc = uint8_t(n); break;

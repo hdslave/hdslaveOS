@@ -228,13 +228,15 @@ void set_presets_folder(UiState& ui, const std::string& folder) {
     ui.presets_folder.fill(0);
     folder.copy(ui.presets_folder.data(), ui.presets_folder.size() - 1);
 }
-// A preset into a plug-in, however it was picked: its name kept with the project (shown again when it is opened) and
-// the project changed (the plug-in's state, saved with it, now holds it).
-void take_program(Context& c, unsigned entry, const PluginProgram& p) {
+// A preset into a plug-in, however it was picked: its name kept with the project (shown again when it is opened), the
+// project changed (the plug-in's state, saved with it, now holds it) and, with Send program change, out on MIDI as
+// `place` in the list, unless it came in by MIDI (`send` false: never sent back).
+void take_program(Context& c, unsigned entry, const PluginProgram& p, unsigned place, bool send) {
     c.plugins->select_program(entry, p.index);
     if (entry < max_plugins)
         std::snprintf(c.project.plugins[entry].preset, sizeof(c.project.plugins[0].preset), "%s", program_key(p).c_str());
     c.dirty = true;
+    if (send) c.send_program(entry, place);
 }
 } // namespace
 
@@ -267,7 +269,7 @@ void Context::choose_plugin_program(int index) {
     if (!plugins) return;
     auto programs = plugins->programs(ui.presets_entry);
     if (index < 0 || size_t(index) >= programs.list.size()) return;
-    take_program(*this, ui.presets_entry, programs.list[size_t(index)]);
+    take_program(*this, ui.presets_entry, programs.list[size_t(index)], unsigned(index), true);
 }
 
 void Context::push_plugin_preset() {
@@ -299,11 +301,18 @@ void Context::back_plugin_presets() {
 void Context::pick_plugin_program(unsigned entry, int program) {
     if (!plugins || entry >= max_plugins) return;
     const auto programs = plugins->programs(entry);
-    for (const auto& p : programs.list) {
-        if (p.index != program) continue;
-        take_program(*this, entry, p);
+    for (size_t n = 0; n < programs.list.size(); ++n) {
+        if (programs.list[n].index != program) continue;
+        take_program(*this, entry, programs.list[n], unsigned(n), true);
         return;
     }
+}
+
+void Context::send_program(unsigned entry, unsigned place) {
+    if (!ui.settings.midi.send_program || entry >= max_plugins || programs_out.size() >= 64) return;
+    const uint16_t channels = program_channels(project, ui.settings.midi, entry);
+    for (unsigned ch = 1; ch <= 16; ++ch)
+        if ((channels >> (ch - 1)) & 1) programs_out.push_back({uint8_t(ch), place});
 }
 
 void Context::midi_program(uint16_t tracks, unsigned place) {
@@ -316,7 +325,7 @@ void Context::midi_program(uint16_t tracks, unsigned place) {
         if (!((entries >> e) & 1)) continue;
         const auto programs = plugins->programs(e);
         if (place < programs.list.size()) {
-            take_program(*this, e, programs.list[place]);
+            take_program(*this, e, programs.list[place], place, false); // in by MIDI: not sent back
             said = "Program change: " + programs.list[place].name;
         } else if (said.empty()) {
             said = programs.list.empty() ? (programs.finding ? "Looking for presets" : "No presets in this plug-in")

@@ -379,6 +379,11 @@ public:
     // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
     // track) to the preset at `place` in its list; the header says which.
     void midi_program(uint16_t tracks, unsigned place);
+    // Send program change (shell/program_in.h): a preset picked here for plug-in `entry`, at `place` in its list, queued
+    // for each channel it goes out on; MidiIo's next pump sends them (Bank Select, then the Program Change).
+    struct ProgramOut { uint8_t channel = 1; unsigned place = 0; };
+    std::vector<ProgramOut> programs_out;
+    void send_program(unsigned entry, unsigned place);
     // Remote preset CC (MIDI Config): the selected track's presets `steps` on (- back), whatever page is open: a
     // PLUGIN track's as PRESETS' wheel turns them (loaded once the knob rests), a MIDI track's PROGRAM (sent at once).
     void remote_preset(int steps);

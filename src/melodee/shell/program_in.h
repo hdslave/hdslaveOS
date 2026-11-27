@@ -45,6 +45,30 @@ inline uint32_t program_entries(const Project& p, uint16_t tracks, uint32_t froz
     return entries;
 }
 
+// Send program change (MidiConfig::send_program): a PLUGIN track's preset picked here (PRESETS, the preset knob, a
+// companion) goes out from MIDI Config's port as Receive program change counts it, so another Melodee, a controller
+// with a screen or a layered instrument follows: Bank Select MSB (CC 0) and LSB (CC 32), then the Program Change, on
+// the channel of each PLUGIN track playing that plug-in (its own, else MIDI Config's Out). One that came in by MIDI
+// is not sent back. The channels, a bit a channel (bit 0 channel 1), each once:
+inline uint16_t program_channels(const Project& p, const MidiConfig& config, unsigned entry) {
+    uint16_t channels = 0;
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& tr = p.tracks[t];
+        if (tr.engine != EngineKind::Plugin || tr.plugin != entry) continue;
+        const unsigned ch = tr.midi_channel ? tr.midi_channel : config.out_channel;
+        if (ch >= 1 && ch <= 16) channels = uint16_t(channels | 1u << (ch - 1));
+    }
+    return channels;
+}
+// And the bytes for one channel (1..16): B0 00 msb, B0 20 lsb, C0 program; place past the last bank: the last.
+inline std::array<uint8_t, 8> program_bytes(unsigned channel, unsigned place) {
+    const uint8_t status = uint8_t((channel - 1) & 15);
+    place = std::min(place, 128u * 128u * 128u - 1u);
+    const unsigned bank = place / 128;
+    return {uint8_t(0xb0 | status), 0, uint8_t(bank / 128), uint8_t(0xb0 | status), 32, uint8_t(bank % 128),
+            uint8_t(0xc0 | status), uint8_t(place % 128)};
+}
+
 // Remote preset CC (MIDI Config): presets a step a turn, + the next, - the previous, from one CC value in `mode`
 // (knob_mode_name()). Absolute: one step towards where the knob went since `last` (-1: no value yet, nothing), so a
 // knob at its end stops; the relative modes as many steps as the knob says.

@@ -24,6 +24,7 @@ as MIDI passes.
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
 | Receive program change | Off, Sequence or Plug-in. Sequence: a program change launches that sequence, as a pad on Sequences does. Plug-in: it loads that preset into the plug-in of the track it plays. See [Example 5](#example-5-change-plug-in-presets-from-a-controller). |
+| Send program change | On or off. On: when you pick a preset on a plug-in track, it goes out as a program change. See [Send program changes](#send-program-changes). |
 | Remote channel | Off or 1–16: the channel of the Remote CCs |
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
@@ -238,6 +239,24 @@ the controller sends:
 Use an endless encoder in a relative mode: it keeps stepping in both
 directions. **Push** again on the row stops learning. Learning also stops
 after 10 seconds, or when you leave **MIDI**.
+
+### Send program changes
+
+Set **Send program change** to **On**. When you pick a preset on a plug-in
+track, Melodee sends it from **MIDI port** on the track's channel: its
+**Track channel**, else **MIDI out channel**. A controller with a screen or a
+second instrument on that channel can then follow it.
+
+| Sent | Value |
+| --- | --- |
+| Bank Select MSB (CC 0) | The bank ÷ 128 |
+| Bank Select LSB (CC 32) | The bank's remainder ÷ 128 |
+| Program change | The preset's place in the bank, 1–128 |
+
+The numbers are the same as for **Receive program change**: preset 1 is
+bank 0, program 1, and preset 129 is bank 1 (CC 32 = 1), program 1. Turning
+the encoder on **PRESETS** or the preset knob sends only the preset you stop
+on. A program change that came in by MIDI is not sent back.
 
 ---
 
