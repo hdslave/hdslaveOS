@@ -26,7 +26,7 @@ a page file and a skin: [Plug-in page files](PLUGIN_PAGES.md).
 
 | Where | What the plug-in draws |
 |-------|------------------------|
-| Stage, B1 **PANEL** (between PRESETS and EDIT) on a PLUGIN track | its page: everything under B1-B3, 320 × 218 |
+| Stage, B1 **PANEL** (B1's first page, before PRESETS and EDIT) on a PLUGIN track | its page: everything under B1-B3, 320 × 218 |
 | An effect in a track, bus or master chain | its strip: everything under the chain's slots, 320 × 144 |
 | Push on that effect | its page |
 

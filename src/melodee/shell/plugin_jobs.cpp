@@ -158,7 +158,7 @@ void Context::choose_plugin(const PluginFile& file) {
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return char(std::toupper(ch)); });
         tr.name_from(name.c_str());
         if (made) {
-            if (!made->plugin) stage_go(ui, 0, 0); // a new track: B1, its PRESETS (or its face), as a new kit's TRIM
+            if (!made->plugin) stage_go(ui, 0, 0); // a new track: B1's first page (PANEL, else PRESETS or its face), as a new kit's TRIM
             made->track_after = std::make_unique<TrackState>(track_state(*this, t));
         }
     } else {
@@ -177,7 +177,10 @@ void Context::choose_plugin(const PluginFile& file) {
     dirty = true;
     plugins->sync(project, plugins_asleep());
     notice("Loading " + file.name);
-    if (instrument && ui.plugin_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit); // its parameters
+    if (instrument && ui.plugin_back == PageId::Stage) { // its parameters, and its own screen once it says it draws one
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        ui.plugin_screen_due = uint8_t(entry);
+    }
     open(ui.plugin_back);
     if (!instrument) picker_done(); // from the mixer's plus: back there
 }
@@ -386,17 +389,20 @@ void Context::plugins_tick(uint32_t at) {
         plugins->screen_view(view);
     }
     companion_requests();
-    if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
+    // The cards' texts twenty times a second; at once for another plug-in in focus, so a track whose plug-in draws its
+    // own screen opens on PANEL, not on PRESETS for a moment (shell/features.h, plugin_screen_staged()).
+    const int entry = plugin_in_focus();
+    if (at - plugin_panel_at < 50 && (entry < 0 || unsigned(entry) == ui.plugin_panel.entry)) return;
     plugin_panel_at = at;
     { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)
         const auto& t = track();
         if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
         else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
     }
-    int entry = plugin_in_focus();
-    if (entry < 0) { ui.plugin_panel = PluginPanel {}; return; }
+    if (entry < 0) { ui.plugin_panel = PluginPanel {}; ui.plugin_screen_due = no_plugin; return; }
     plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], ui.plugin_panel);
     ui.plugin_row[size_t(entry)] = ui.plugin_panel.row; // clamped to its rows
+    plugin_screen_first(project, ui); // a plug-in just picked: its own screen once it is open (shell/screen_view.h)
 }
 
 } // namespace melodee

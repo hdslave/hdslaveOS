@@ -295,7 +295,8 @@ beat; the meters show the mix.
   moves to the next card (PRESETS: the whole list), Shift +
   Push is Back, −/+ the octave (a kit's bank; EDIT: the rows).
   - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
-    below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
+    below, "Synths"): B1 **PRESETS → EDIT** (**PANEL → PRESETS → EDIT** for a plug-in that draws its own screen:
+    its page first, docs/PLUGIN_SCREENS.md), B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
     playing large with the plug-in and its format under it and the ones
     before and after small in the corners, the header n / count; the wheel
     walks them, the one turned to loading 250 ms after the last turn
@@ -308,8 +309,8 @@ beat; the meters show the mix.
     is turned back. They are saved with the track and record as motion; Erase
     + pot sets one back to off. A plug-in with no presets: B1 says
     **PLUG-IN**, its face (name, format, the share of each block it takes).
-    EDIT: its own values as a list (the wheel and −/+ the rows); on these
-    three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. (MIX and
+    EDIT: its own values as a list (the wheel and −/+ the rows); picking a plug-in opens EDIT, then PANEL once it is
+    open when it draws its own screen. On these three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. (MIX and
     SENDS are passed over since the mixer, docs/MIXER_PLAN.md step 6: the track's
     level, pan and sends are the mixer's.) ARP: mode (Up,
     Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift + K1

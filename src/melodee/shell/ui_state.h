@@ -313,6 +313,9 @@ struct UiState {
     PageId plugin_from = PageId::Stage;          // the page it opened over: an instrument's B1 (CANCEL) at the top
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
+    // A plug-in just picked onto the track from Stage: EDIT while it opens, then its own screen (PANEL) once it says
+    // it draws one (Context::plugins_tick); no_plugin when none is awaited.
+    uint8_t plugin_screen_due = no_plugin;
     // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it).
     bool fx_panel = false;
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)

@@ -5674,7 +5674,7 @@ void stage() {
             }
         }
     }
-    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginSound);
+    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginScreen && stage_groups(EngineKind::Plugin).groups[0].pages[1].kind == StageKind::PluginSound);
     CHECK(stage_groups(EngineKind::Plugin).groups[2].pages[0].kind == StageKind::Mix && stage_groups(EngineKind::Sampler).groups[2].pages[0].kind == StageKind::PadMix);
     CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
@@ -5697,12 +5697,36 @@ void stage() {
     CHECK(key() == "PRESETS");
     stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
     stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
-    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PRESETS -> PANEL -> EDIT; Plug-in screens off, no PANEL.
-        ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
-        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
-        CHECK(plugin_screen_place(*project, ui).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui).area == 0);
+    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PANEL first, then PRESETS, EDIT; Plug-in screens
+      // off, no PANEL.
+        const uint8_t own = project->tracks[0].plugin;
+        ui.plugin_panel.entry = own; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        CHECK(key() == "PRESETS"); // the page the track was on is kept
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
         CHECK(plugin_screen_place(*project, ui).entry < 0); // EDIT: Melodee's pages
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
+        CHECK(plugin_screen_place(*project, ui).entry == int(own) && plugin_screen_place(*project, ui).area == 0);
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        stage_press(ui, project->tracks[0], 1, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "ARP");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL"); // B1 from elsewhere: its first page
+        ui.stage_group[0] = ui.stage_sub[0] = 0; CHECK(key() == "PANEL");                                                 // and a track's first look
+        // Picked from Stage (Context::choose_plugin): EDIT while it opens, then PANEL once it says it draws its own screen.
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        ui.plugin_screen_due = own; ui.plugin_panel.status = PluginStatus::Loading; ui.plugin_panel.has_screen = false;
+        plugin_screen_first(*project, ui); CHECK(key() == "EDIT" && ui.plugin_screen_due == own);
+        ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        plugin_screen_first(*project, ui); CHECK(key() == "PANEL" && ui.plugin_screen_due == no_plugin);
+        // One without a screen of its own stays on EDIT; a page chosen while it opened is kept; another track: not awaited.
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        ui.plugin_screen_due = own; ui.plugin_panel.has_screen = false;
+        plugin_screen_first(*project, ui); CHECK(key() == "EDIT" && ui.plugin_screen_due == no_plugin);
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginSound);
+        ui.plugin_screen_due = own; ui.plugin_panel.has_screen = true;
+        plugin_screen_first(*project, ui); CHECK(key() == "PRESETS" && ui.plugin_screen_due == no_plugin);
+        ui.plugin_screen_due = own; ui.track = 1;
+        plugin_screen_first(*project, ui); CHECK(ui.plugin_screen_due == no_plugin);
+        ui.track = 0;
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
         ui.settings.plugin_skins = false;
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");

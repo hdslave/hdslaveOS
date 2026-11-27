@@ -3,7 +3,9 @@
 // Which plug-in's own screen (plugin/plugin_screen.h, docs/PLUGIN_SCREENS_PLAN.md) the page in view shows, and as
 // what: its page under B1-B3 (Stage's PANEL on its PLUGIN track; an effect slot's full page, Push on it), or an
 // effect's strip under its chain's slots. Settings > SCREEN > Plug-in
-// screens off: none. Pure, for the shell (what the rack is told) and the pages (what is drawn), so both agree.
+// screens off: none. Pure, for the shell (what the rack is told) and the pages (what is drawn), so both agree. PANEL
+// is a PLUGIN track's first page on B1 (core engine_info.cpp), and a plug-in picked from Stage moves to it once it is
+// open (plugin_screen_first()).
 #pragma once
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/features.h"
@@ -34,6 +36,24 @@ inline ScreenPlace plugin_screen_place(const Project& project, const UiState& ui
             return {int(panel.entry), uint8_t(ui.fx_panel ? 0 : 1)};
     }
     return {};
+}
+
+// A plug-in just picked onto the track from Stage (Context::choose_plugin sets ui.plugin_screen_due) opens on EDIT;
+// once it is open, one that draws its own screen moves to PANEL, its first page, unless another page was chosen
+// meanwhile. Awaited no longer once it is open or failed, or once the track or page changed. After each panel refresh.
+inline void plugin_screen_first(const Project& project, UiState& ui) {
+    const unsigned due = ui.plugin_screen_due;
+    if (due == no_plugin) return;
+    const auto& t = project.tracks[ui.track % track_count];
+    if (ui.page != PageId::Stage || t.engine != EngineKind::Plugin || t.plugin != due) {
+        ui.plugin_screen_due = no_plugin;
+        return;
+    }
+    const auto& panel = ui.plugin_panel;
+    if (panel.entry != due || panel.status == PluginStatus::Loading) return;
+    ui.plugin_screen_due = no_plugin;
+    if (plugin_screen_staged(ui, t) && stage_page_now(ui, t, stage_skip(project, ui, t)).kind == StageKind::PluginEdit)
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen);
 }
 
 } // namespace melodee

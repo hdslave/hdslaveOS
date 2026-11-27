@@ -6,7 +6,7 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Audio tra
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **PRESETS** (or **PLUG-IN**), **PANEL** (a plug-in that draws its own screen), **EDIT** |
+| **B1** | **PANEL** (a plug-in that draws its own screen), **PRESETS** (or **PLUG-IN**), **EDIT** |
 | **B2** | **ARP**, **CHORD** |
 | **B3** | **FX** |
 
@@ -39,10 +39,12 @@ knob sets one back to off.
 ![PRESETS](../images/screens/stagepluginpresets.png)
 
 **PANEL**: the plug-in's own page, when it draws one (see
-[A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)).
+[A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)). It is the
+first page under **B1**; a plug-in without one starts on **PRESETS**.
 
 **EDIT**: all of the plug-in's parameters. Turn the encoder or press
-**−** / **+** to move through them. Picking a plug-in opens this page.
+**−** / **+** to move through them. Picking a plug-in opens this page, or
+**PANEL** once the plug-in is open when it draws its own screen.
 
 The track's level, pan and sends are on the [mixer](mixer-and-effects.md#the-mixer).
 

@@ -101,9 +101,10 @@ On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
 **SPACE** on every plug-in (see
 [Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
 
-**EDIT**: once you pick a plug-in, Stage opens on **EDIT**, the third page
+**EDIT**: once you pick a plug-in, Stage opens on **EDIT**, the last page
 under **B1**. A plug-in that draws its own screen shows it on **PANEL**, the
-page before (see [A plug-in's own screen](#a-plug-ins-own-screen)).
+first page under **B1**, and Stage moves there as soon as the plug-in is open
+(see [A plug-in's own screen](#a-plug-ins-own-screen)).
 
 ![EDIT: a plug-in's parameters](../images/screens/pluginedit.png)
 
@@ -206,8 +207,10 @@ Some plug-ins draw their own page on the MPC Sample. Melodee keeps **B1**–**B3
 and draws nothing over the plug-in's knobs: the plug-in shows where a pot sits
 until it reaches its value. **K1**–**K3** turn the three parameters it names.
 
-- **On a plug-in track**: on Stage, **B1** goes **PRESETS**, **PANEL** (its
-  page), **EDIT** (Melodee's pages of its parameters). On its page the
+- **On a plug-in track**: on Stage, **B1** goes **PANEL** (its page),
+  **PRESETS**, **EDIT** (Melodee's pages of its parameters). **PANEL** comes
+  first: the track opens on the plug-in's own page, presets and all, when
+  you pick the plug-in and when you come back to the track. On its page the
   encoder, its push and **−** / **+** are the plug-in's. A page with a list of
   its own (an effect chain inside the plug-in) can take **MUTE** and
   **ERASE** taps too: **MUTE** switches the lit item off or on, **ERASE**
