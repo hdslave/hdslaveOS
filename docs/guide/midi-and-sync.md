@@ -61,6 +61,8 @@ as MIDI passes.
 - **MTC in** (24, 25, 29.97 drop-frame and 30 fps): Melodee follows the
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
+  On **Song**, a time past the song's loop plays on from there, as **PLAY**
+  from a cursor there does; one before or inside the loop goes round it.
 - **MIDI out**: pads, patterns, the arpeggiator, MIDI clock (with Start,
   Continue, Stop and Song Position), MTC and the CV clock. What you play
   (pads, keys, MIDI in, the fader, knobs) goes out at once. Patterns, the

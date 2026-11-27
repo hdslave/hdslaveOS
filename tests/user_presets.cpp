@@ -2305,6 +2305,19 @@ int main(int argc, char** argv) {
         midi(0xfc);
         tick();
         CHECK(!host->playing());
+        // MTC: a cue while stopped, on Song, puts the cursor on the bar the master's time falls in, past the song's loop
+        // (bars 3 and 4) too, where Play plays on, as MTC places a song there.
+        ui.settings.midi.sync_in = MidiSync::Mtc;
+        project.song.loop_start = 2;
+        project.song.loop_end = 4;
+        {
+            MidiPacket cue; // a full frame, 0:00:10:00 at 25 fps: bar 6 at 120 BPM
+            const uint8_t bytes[] {0xf0, 0x7f, 0x7f, 0x01, 0x01, 0x20, 0x00, 0x0a, 0x00, 0xf7};
+            std::memcpy(cue.bytes.data(), bytes, sizeof(bytes));
+            cue.size = sizeof(bytes);
+            shell->midi(port, cue, ++now);
+        }
+        CHECK(ui.song_cursor == 5);
         shell->set_plugins(nullptr);
         return 0;
     }
