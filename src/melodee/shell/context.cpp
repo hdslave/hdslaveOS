@@ -2440,15 +2440,20 @@ void Context::play_continue(bool external, bool after_stop, int64_t song_ticks) 
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
-    // A MIDI Continue goes by the page in view, as a Start and MTC do: the song on Song, else the patterns.
+    // A MIDI Continue goes by the page in view, as a Start and MTC do: the song on Song, else the patterns. Without a
+    // Song Position (`song_ticks` < 0) it goes on from where the transport stopped, the tick in the bar too, so a
+    // clock master's count holds: on Song that bar and tick; the patterns from the song's tick, each track at its own
+    // place (not the track in view's place in its pattern).
     if (external) played_song = ui.page == PageId::Song;
-    if (played_song && external && song_ticks >= 0) { // a MIDI Continue: the song from its Song Position, bar and tick
-        const uint32_t bar = std::max(project.bar_ticks(), 1u);
-        Command c {Type::Play, uint8_t(count), 0, uint16_t(std::min<int64_t>(song_ticks / bar, 0xffff)), 1};
-        c.position = uint32_t(song_ticks % bar);
+    const uint32_t bar = std::max(project.bar_ticks(), 1u);
+    if (played_song && external) {
+        int64_t at = song_ticks >= 0 ? song_ticks : int64_t(host.song_bar()) * bar + host.ticks() % bar;
+        Command c {Type::Play, uint8_t(count), 0, uint16_t(std::min<int64_t>(at / bar, 0xffff)), 1};
+        c.position = uint32_t(at % bar);
         send(c);
     }
     else if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
+    else if (external && song_ticks < 0) { Command c {Type::Play, uint8_t(count)}; c.position = host.ticks(); send(c); }
     else { Command c {Type::Play, uint8_t(count)}; c.position = uint32_t(played_ticks(ui.locate, track().speed)); send(c); } // as the track plays it
     if (external) send({Type::ExtSync, 0, 0, 3});
 }

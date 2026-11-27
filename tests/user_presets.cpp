@@ -2380,30 +2380,35 @@ int main(int argc, char** argv) {
         midi(0xfc);
         tick();
         CHECK(!host->playing());
-        // A Start, four bars of clocks, a Stop, then a Continue with no Song Position (a simple master, a pause): the
-        // song goes on from the bar it stopped in, not from an old Song Position or the top.
+        // A Start, clocks to bar 4 and two beats, a Stop, then a Continue with no Song Position (a simple master, a
+        // pause): the song goes on from where it stopped, its bar and the tick in it, not from an old Song Position, the
+        // top, or that bar's top (half a bar out under the master's clock).
         midi(0xfa);
-        for (int k = 0; k < 20000 && host->song_bar() < 4; ++k) clocked(1);
-        CHECK(host->playing() && host->song_bar() >= 4);
+        for (int k = 0; k < 20000 && !(host->song_bar() == 3 && host->ticks() % bar >= 2 * ticks_per_quarter); ++k) clocked(1);
+        CHECK(host->playing() && host->song_bar() == 3 && host->ticks() % bar >= 2 * ticks_per_quarter);
         midi(0xfc);
         tick();
         CHECK(!host->playing());
         midi(0xfb);
         clocked(2);
-        CHECK(host->playing() && host->song_playing() && host->song_bar() >= 4);
+        CHECK(host->playing() && host->song_playing() && host->song_bar() == 3 && host->ticks() % bar >= 2 * ticks_per_quarter);
         midi(0xfc);
         tick();
-        // The patterns likewise: a Continue with none told since the Stop goes on from where they stopped.
+        // The patterns likewise: a Continue with none told since the Stop goes on from where they stopped, each track
+        // at its own place: the song's tick, past track 1's one-bar pattern coming round (not that track's place in it).
         c.open(PageId::Edit);
         midi(0xfa);
-        clocked(200);
+        clocked(2);
+        CHECK(host->playing() && !host->song_playing() && host->ticks() < ticks_per_quarter);
+        for (int k = 0; k < 20000 && host->ticks() < bar + ticks_per_quarter; ++k) clocked(1);
         const int stopped_at = host->position_of(0);
-        CHECK(host->playing() && !host->song_playing() && stopped_at > int(ticks_per_quarter / 10));
+        const uint32_t stopped_ticks = host->ticks();
+        CHECK(host->playing() && !host->song_playing() && stopped_ticks >= bar + ticks_per_quarter && stopped_at > 0);
         midi(0xfc);
         tick();
         midi(0xfb);
         clocked(2);
-        CHECK(host->playing() && host->position_of(0) >= stopped_at);
+        CHECK(host->playing() && host->ticks() >= stopped_ticks && host->position_of(0) >= stopped_at);
         midi(0xfc);
         tick();
         // On Song, with the last Play the patterns' (as after a boot): a Song Position at bar 3, then a Continue, plays

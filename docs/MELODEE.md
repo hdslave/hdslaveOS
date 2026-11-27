@@ -2191,8 +2191,10 @@ while following.
   cursor is), a Continue (the song on Song, else the patterns, by the
   page in view as a Start goes) from a Song Position received since the last
   Start or Stop (on Song, that bar and the tick in it; else as the track
-  in view reads it), or with none, from where it stopped, as Shift + Play
-  (a simple master, a pause and resume), playing or not: playing,
+  in view reads it), or with none (a simple master, a pause and resume)
+  from where the transport stopped, the tick in the bar too, so a clock
+  master's count holds (on Song that bar and tick; the patterns from the
+  song's tick, each track at its own place), playing or not: playing,
   `MidiIo::receive` stops first and plays after that Stop. MTC
   in (24, 25, 29.97 df, 30 fps): follows after two whole codes agree, from
   0:00:00:00 (hours left out) through the tempo playing, kept on the

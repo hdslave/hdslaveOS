@@ -59,7 +59,8 @@ as MIDI passes.
   counted at the selected track's speed (see
   [Track speed](tracks.md#track-speed)), as **SHIFT** + **PLAY**
   counts it. With no Song Position sent since (a simple master, or a
-  pause and resume), Continue plays on from where it stopped.
+  pause and resume), Continue plays on from exactly where it stopped,
+  inside the bar too, so it stays in time with the master's clock.
 - **MTC in** (24, 25, 29.97 drop-frame and 30 fps): Melodee follows the
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
