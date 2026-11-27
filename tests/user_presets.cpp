@@ -1814,7 +1814,8 @@ int main(int argc, char** argv) {
     }
     // Track 1 copied onto track 2 with every entry in use: the copy shares track 1's plug-in. Track 2 frozen, a program
     // or preset loaded into that plug-in asks "Unfreeze track 2?" first, from track 1 too: a companion screen's pick,
-    // Push on PRESETS and − / + on Stage's PRESETS. Not now (B1) leaves it as it was; unfrozen, the pick loads.
+    // Push on PRESETS and − / + on Stage's PRESETS; so does a turn of one of its parameters (K2 on PANEL). Not now (B1)
+    // leaves it as it was; unfrozen, the turn and the pick go through.
     if (mode == "shared-frozen") {
         wait([&] { return ready(entry) && ready(1) && rack->programs(entry).list.size() == 3; });
         c.open(PageId::Master);
@@ -1846,7 +1847,26 @@ int main(int argc, char** argv) {
         turn(1 - int(ui.presets_cursor));
         tap(SurfaceButton::WheelPush);
         unchanged();
+        ui.settings.knob_takeover = Takeover::Instant;
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginScreen));
+        c.open(PageId::Stage);
+        wait([&] { return ui.plugin_panel.screen && ui.plugin_panel.entry == entry && std::string(ui.plugin_panel.params[1].name) == "Wave"; });
+        auto k2 = [&](int position, bool sync = false) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control;
+            event.input.index = uint8_t(SurfaceControl::K2);
+            event.input.value = uint8_t(position);
+            event.syncing = sync;
+            shell->surface(event, ++now);
+        };
+        k2(0, true);
+        k2(127); // Wave to its top
+        unchanged();
+        CHECK(values(entry)[1] == 0);
         c.freeze_requested[1] = {};
+        k2(126);
+        k2(127);
+        wait([&] { return values(entry)[1] == 2; });
         c.pick_plugin_program(entry, list[1].index);
         wait([&] { return rack->programs(entry).current == list[1].index; });
         shell->set_plugins(nullptr);

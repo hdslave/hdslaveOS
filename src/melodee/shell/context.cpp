@@ -668,6 +668,9 @@ void Context::apply(const Binding& b, int value) {
     using Kind = Binding::Kind;
     value = std::clamp(value, b.min, b.max);
     if (frozen_edit(freeze_scope(project, ui, b))) return; // freeze plan F2c: what a frozen track's prints hold asks "Unfreeze track N?" first
+    // A plug-in's parameter: every frozen track the plug-in plays on asks, not only the one in hand (a copy made with
+    // no entry free shares its track's plug-in until one is). K1-K3, Erase + a knob and a companion screen's edits.
+    if (b.kind == Kind::PluginParam && frozen_plugin_edit(plugin_binding_entry(b.id))) return;
     touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
     learn_lane(*this, b); // roadmap P4: what ADD on the MOD page takes
     if (mod_binding(*this, b, value)) return;

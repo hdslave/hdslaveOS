@@ -2664,7 +2664,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   companion screen picks (`Context::pick_plugin_program`). Any frozen
   track the plug-in plays on asks, not only the one in hand: a copy made
   with no entry free shares its track's plug-in until one is
-  (`Context::frozen_plugin_edit`). Picking
+  (`Context::frozen_plugin_edit`). A turn of one of its parameters (K1-K3,
+  Erase + a knob, a companion screen's edit) asks the same way. Picking
   the one loaded loads it again, dropping edits since. What a preset loads
   goes into the plug-in's state, so the project keeps it. Presets in
   folders (a CLAP plug-in's) list as those folders first, each with how
