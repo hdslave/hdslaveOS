@@ -583,12 +583,11 @@ Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std:
     return playing(s, snd, base, pad);
 }
 // Time Correct (pages/time_correct_page.cpp): a pad takes the groove from that pattern of the track (the pattern bank
-// in view), so the pads light as its screen row: the groove's source Full, the pattern in hand White, the patterns
-// with notes Dim, empty ones dark.
+// in view), so the pads light as what a press does: the groove's source Full, the patterns with notes Dim (a groove to
+// take), empty ones dark.
 Look time_correct_look(const PadScene& s, unsigned pad) {
     const unsigned t = selected_index(s), n = s.ui.pad_pattern(pad);
     if (shown(s).feel.groove_from == groove_source(t, n)) return track(t, full);
-    if (n == selected(s).pattern % pattern_count) return white(mid);
     return s.patterns.at[t][n].empty() ? Look {} : track(t, dim);
 }
 // Motion on a kit: the pads with recorded motion in this pattern.
