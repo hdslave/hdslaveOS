@@ -883,6 +883,11 @@ int main(int argc, char** argv) {
         auto& pattern = shell->patterns().at[0][0];
         for (unsigned n = 0; n < 16; ++n) pattern.set_step(n, step);
     }
+    if (mode == "midi-start") { // a song of eight bars of track 1's pattern, for Song
+        Clip clip;
+        clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 8;
+        CHECK(project.song.place(clip));
+    }
     if (looped) { // a song of four bars of track 1's pattern, its loop braced round bars 2 and 3
         Clip clip;
         clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 4;
@@ -2241,6 +2246,30 @@ int main(int argc, char** argv) {
         clocked(2);
         CHECK(host->playing() && host->position_of(0) < before);
         midi(0xfc); // Stop
+        tick();
+        CHECK(!host->playing());
+        // On Song: a Start plays the song from its top, wherever its cursor is; a Song Position, then a Continue while
+        // playing, carries on from that place, bar and beat (MIDI counts sixteenths from the song's top).
+        c.open(PageId::Song);
+        ui.song_cursor = 3;
+        midi(0xfa);
+        clocked(4);
+        CHECK(host->playing() && host->song_playing() && host->song_bar() == 0 && host->ticks() < ticks_per_quarter);
+        const unsigned bar = project.bar_ticks(), sixteenths = 2 * 16 + 4; // bar 3, its second beat
+        CHECK(bar == 4 * ticks_per_quarter);
+        {
+            MidiPacket position;
+            position.bytes[0] = 0xf2;
+            position.bytes[1] = uint8_t(sixteenths & 0x7f);
+            position.bytes[2] = uint8_t(sixteenths >> 7);
+            position.size = 3;
+            shell->midi(port, position, ++now);
+        }
+        midi(0xfb); // Continue, while playing
+        clocked(2);
+        const uint32_t at = 2 * bar + ticks_per_quarter;
+        CHECK(host->playing() && host->song_playing() && host->song_bar() == 2 && host->ticks() >= at && host->ticks() < at + ticks_per_quarter / 4);
+        midi(0xfc);
         tick();
         CHECK(!host->playing());
         shell->set_plugins(nullptr);

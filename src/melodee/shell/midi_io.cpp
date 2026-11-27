@@ -192,7 +192,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (again) c.stop();
         ext_running.store(true, std::memory_order_relaxed);
         if (from_start) { c.ui.locate = 0; c.play(true, again); }
-        else { c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); c.play_continue(true, again); }
+        else { c.ui.locate = uint32_t(written_ticks(song_position, c.track().speed)); c.play_continue(true, again, song_position); }
         return;
     }
     if (m.isMidiStop()) {

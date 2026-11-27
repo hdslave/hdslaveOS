@@ -2421,7 +2421,7 @@ void Context::play(bool external, bool after_stop) {
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     // A loop armed while stopped counts in as a recording does (docs/LOOPER.md).
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
-    if (played_song) send({Type::Play, uint8_t(count), 0, ui.song_cursor, 1});
+    if (played_song) send({Type::Play, uint8_t(count), 0, external ? uint16_t(0) : ui.song_cursor, 1}); // a MIDI Start: the song's top
     else send({Type::Play, uint8_t(count)});
     if (external) send({Type::ExtSync, 0, 0, 3}); // the ticks wait for the clock's pulses
 }
@@ -2435,12 +2435,18 @@ void Context::fill(bool on) {
 }
 
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
-void Context::play_continue(bool external, bool after_stop) {
+void Context::play_continue(bool external, bool after_stop, int64_t song_ticks) {
     if (host.playing() && !after_stop) return;
     ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
-    if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
+    if (played_song && external && song_ticks >= 0) { // a MIDI Continue: the song from its Song Position, bar and tick
+        const uint32_t bar = std::max(project.bar_ticks(), 1u);
+        Command c {Type::Play, uint8_t(count), 0, uint16_t(std::min<int64_t>(song_ticks / bar, 0xffff)), 1};
+        c.position = uint32_t(song_ticks % bar);
+        send(c);
+    }
+    else if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
     else { Command c {Type::Play, uint8_t(count)}; c.position = uint32_t(played_ticks(ui.locate, track().speed)); send(c); } // as the track plays it
     if (external) send({Type::ExtSync, 0, 0, 3});
 }

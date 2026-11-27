@@ -873,7 +873,9 @@ public:
     // external: MIDI clock in's Start (no count-in; the clock leads). after_stop: a stop() just sent, which the engine
     // has not taken yet (the song still reads as playing): Play goes in after it, not dropped as a Play while playing.
     void play(bool external = false, bool after_stop = false);
-    void play_continue(bool external = false, bool after_stop = false); // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position
+    // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position (`song_ticks`, ticks from the
+    // song's top as MIDI counts them: on Song, the place in the song; else ui.locate, as the track reads it).
+    void play_continue(bool external = false, bool after_stop = false, int64_t song_ticks = -1);
     void fill(bool on);                        // Play held while playing (roadmap P1): FILL trig conditions play while it is down
     void stop();
     void tap_tempo();
