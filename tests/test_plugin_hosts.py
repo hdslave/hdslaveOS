@@ -228,6 +228,27 @@ class PluginHostTests(unittest.TestCase):
     def test_midi_start_while_playing_plays_from_the_top(self):
         self.run_rack_fixture("midi-start")
 
+    def test_a_relative_plugin_stage_unpacks_support_at_an_absolute_path(self):
+        self.run_rack_fixture("relative-stage")
+
+    def test_the_screen_tool_removes_its_stage(self):
+        """--melodee-plugin-screen with a rack (a png: step) stages the plug-in in /tmp/melodee-plugin-screen-PID and
+        unpacks the plug-in support beside it: it removes both when it is done."""
+        melodee = ROOT / "build/melodee"
+        if not melodee.is_file():
+            self.skipTest("needs build/melodee")
+        left = lambda: sorted(p.name for p in Path("/tmp").glob("melodee-plugin-screen-*"))
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "Test.clap"
+            build_clap(plugin)
+            before = left()
+            env = {k: v for k, v in os.environ.items() if k != "MELODEE_PLUGIN_STAGE"}
+            result = subprocess.run([str(melodee), "--melodee-plugin-screen", str(plugin), str(Path(temp) / "out"), "png:a"],
+                                    capture_output=True, text=True, timeout=120, env={**env, "HOME": temp})
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("MELODEE_PLUGIN_SCREEN a", result.stdout)
+            self.assertEqual(left(), before)
+
     def test_steady_time_counts_the_frames_a_plugin_slept(self):
         for mode in ("steady-sleep", "freeze-steady"):
             with self.subTest(mode=mode):

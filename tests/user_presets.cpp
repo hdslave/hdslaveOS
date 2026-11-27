@@ -5,6 +5,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/plugin/plugin_files.h" // clap_id_hash: the fixture's effect by name, for the fx modes
+#include "melodee/plugin/plugin_support.h" // plugin_support_folder: relative-stage
 #include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/features.h" // stage_skip: the page Stage shows
 #include "melodee/shell/shell.h"
@@ -739,6 +740,10 @@ int main(int argc, char** argv) {
     }
     if (mode == "shared-frozen") setenv("MELODEE_TEST_SCREEN_MUTE", "1", 1); // the fixture's page takes Mute after Push too
     const bool steady = mode == "transport-steady", deaf = mode == "transport-off";
+    if (mode == "relative-stage") { // a stage named relative to where it runs (its card's folder)
+        fs::current_path(fs::path(card).parent_path());
+        setenv("MELODEE_PLUGIN_STAGE", "relative-stage", 1);
+    }
     const bool slept = mode == "steady-sleep", looped = mode == "song-loop";
     if (mode == "transport-wake" || mode == "load-wake" || steady || deaf || slept || looped) setenv("MELODEE_TEST_TRANSPORT", "1", 1); // the fixture keeps the transport it was told
     if (slept || looped) setenv("MELODEE_TEST_CLOCK", "1", 1); // and its steady_time and loop
@@ -2215,6 +2220,16 @@ int main(int argc, char** argv) {
         c.freeze_requested[1] = {};
         c.pick_plugin_program(entry, list[1].index);
         wait([&] { return rack->programs(entry).current == list[1].index; });
+        shell->set_plugins(nullptr);
+        return 0;
+    }
+    // A plug-in stage given relative to where Melodee runs: the plug-in support is unpacked beside it all the same, at an
+    // absolute path (the 32-bit bridge is found there through juce::File, which takes no relative one).
+    if (mode == "relative-stage") {
+        wait([&] { return ready(entry); });
+        const fs::path support = plugin_support_folder();
+        CHECK(support.is_absolute() && fs::is_directory(support));
+        CHECK(support == fs::absolute("relative-stage-support"));
         shell->set_plugins(nullptr);
         return 0;
     }

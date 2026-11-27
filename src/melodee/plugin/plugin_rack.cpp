@@ -96,7 +96,7 @@ std::string tidy(std::string text) {
 
 // Where plug-ins are copied to run from: RAM (/run on the MPC; the card is noexec).
 fs::path stage_root() {
-    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE")) return own;
+    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) { std::error_code e; return fs::absolute(own, e); }
     std::error_code error;
     if (fs::is_directory("/run", error) && access("/run", W_OK) == 0) return "/run/melodee-plugins/stage";
     return fs::temp_directory_path(error) / "melodee-plugins/stage";

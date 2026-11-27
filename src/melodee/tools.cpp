@@ -3217,8 +3217,21 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
 // screen's at 0,230, under the knobs' overlays) bar=W (row 1's white) bar2=W (row 2's) asleep=0|1 (the plug-in skipped
 // its last block as idle: plugin/idle_gate.h).
 int plugin_screen_rack(const std::string& plugin, const std::string& folder, const std::vector<std::string>& steps) {
-    if (!std::getenv("MELODEE_PLUGIN_STAGE")) // its RAM copy somewhere of its own
-        setenv("MELODEE_PLUGIN_STAGE", ("/tmp/melodee-plugin-screen-" + std::to_string(::getpid())).c_str(), 1);
+    // Its RAM copy somewhere of its own, and the plug-in support unpacked beside it (plugin/plugin_support.cpp): both
+    // removed when it is done, after the rack (declared first, so gone last), as nothing else will.
+    struct OwnStage {
+        std::string path;
+        ~OwnStage() {
+            if (path.empty()) return;
+            std::error_code e;
+            std::filesystem::remove_all(path, e);
+            std::filesystem::remove_all(path + "-support", e);
+        }
+    } own;
+    if (!std::getenv("MELODEE_PLUGIN_STAGE")) {
+        own.path = "/tmp/melodee-plugin-screen-" + std::to_string(::getpid());
+        setenv("MELODEE_PLUGIN_STAGE", own.path.c_str(), 1);
+    }
     std::filesystem::create_directories(folder);
     EngineHost host;
     host.set_render_threads(0);
