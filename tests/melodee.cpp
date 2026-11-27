@@ -4473,16 +4473,18 @@ void midi_and_sync() {
         for (unsigned n = 1; n < 30; ++n) f.pulse(at + 96 * 20833333ull + 500000000ull + n * 15625000ull); // 160 BPM
         CHECK(f.tempo_tenths() >= 1599 && f.tempo_tenths() <= 1601);
     }
-    // The tempo clock in sets, held through a tenth's wobble (an SMK-37 at 120 read 119.9 now and then, and the header
-    // shook); a tenth that holds four beats is taken, a bigger change at once, a pause starts over.
+    // The tempo clock in sets, held through its wobble (an SMK-37 at 120 read 119.9 and 119.8 now and then, and the
+    // header shook); readings on one side for four beats are taken, half a BPM or more at once, a pause starts over.
     {
         TempoSteady t;
         CHECK(t.take(0) == 0 && t.take(1200) == 1200);
-        for (unsigned n = 0; n < 500; ++n) CHECK(t.take(n % 7 == 3 ? 1199 : n % 11 == 5 ? 1201 : 1200) == 1200);
-        for (unsigned n = 1; n < TempoSteady::steady_pulses; ++n) CHECK(t.take(1201) == 1200);
-        CHECK(t.take(1201) == 1201);       // a slow ramp: taken after four beats
-        CHECK(t.take(1250) == 1250);       // a real change: at once
-        CHECK(t.take(0) == 1250);          // no reading: kept
+        for (unsigned n = 0; n < 500; ++n) CHECK(t.take(n % 7 == 3 ? 1198 : n % 11 == 5 ? 1202 : n % 5 == 1 ? 1199 : 1200) == 1200);
+        for (unsigned n = 0; n < 60; ++n) CHECK(t.take(n % 2 ? 1201 : 1199) == 1200); // either side: never taken
+        CHECK(t.take(1200) == 1200);       // back on it: the count starts over
+        for (unsigned n = 1; n < TempoSteady::steady_pulses; ++n) CHECK(t.take(n % 3 ? 1202 : 1203) == 1200);
+        CHECK(t.take(1202) == 1202);       // a slow ramp: taken after four beats on one side
+        CHECK(t.take(1207) == 1207);       // half a BPM: at once
+        CHECK(t.take(0) == 1207);          // no reading: kept
         t.reset(); CHECK(t.take(900) == 900);
     }
     // The clocks out, from the tempo (not the swung ticks), to the frame.
