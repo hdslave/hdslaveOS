@@ -90,7 +90,7 @@ class PluginHostTests(unittest.TestCase):
             build_clap(plugin)
             for mode in ("save", "load", "fxsave", "fxload"):
                 subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
-                               check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+                               check=True, timeout=300, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
     def test_rack_level_behaviours(self):
         subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
@@ -105,7 +105,7 @@ class PluginHostTests(unittest.TestCase):
                                  (clap, "native-ring"), (lv2, "lv2wake")):
                 with self.subTest(mode=mode):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
-                                   check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+                                   check=True, timeout=300, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
     def test_freeze_playback_matches_wavs_or_reports_insufficient_memory(self):
         subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
@@ -118,7 +118,7 @@ class PluginHostTests(unittest.TestCase):
             for rate, count, mib in itertools.product((44100, 48000, 96000), (1, 4, 8, 12, 16), (4, 8, 64)):
                 with self.subTest(rate=rate, patterns=count, locked_mib=mib):
                     subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), "ring-freeze",
-                                    str(count), str(rate), str(mib)], check=True, timeout=90, env=env)
+                                    str(count), str(rate), str(mib)], check=True, timeout=300, env=env)
 
     def run_rack_fixture(self, mode):
         subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
@@ -128,7 +128,7 @@ class PluginHostTests(unittest.TestCase):
             plugin.parent.mkdir(parents=True)
             build_clap(plugin)
             subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
-                           check=True, timeout=90, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+                           check=True, timeout=300, env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
 
     def test_knob_takeover_on_plugin_screen_changes(self):
         for mode in ("knob-scaled", "knob-pickup", "knob-instant"):
@@ -202,6 +202,28 @@ class PluginHostTests(unittest.TestCase):
 
     def test_a_plugin_no_frozen_print_holds_never_asks(self):
         self.run_rack_fixture("frozen-elsewhere")
+
+    def test_rack_fixtures_run_side_by_side(self):
+        """Modes at once, each run with a plug-in stage of its own: none removes or rewrites the plug-in support
+        libraries another has loaded (they shared one folder, and runs side by side died or could not open plug-ins)."""
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        modes = ("shared-frozen", "frozen-elsewhere", "panel-lag", "transport-wake", "presets-frozen", "copy-presets")
+        with tempfile.TemporaryDirectory() as temp:
+            built = Path(temp) / "Test.clap"
+            build_clap(built)
+            runs = []
+            for n, mode in enumerate(modes):
+                card = Path(temp) / str(n) / "card"
+                plugin = card / "Melodee/Plugins/Test.clap"
+                plugin.parent.mkdir(parents=True)
+                shutil.copy(built, plugin)
+                runs.append((mode, subprocess.Popen([str(ROOT / "build/test-user-presets"), str(card), str(plugin), mode],
+                                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                                    env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / str(n) / "stage")})))
+            for mode, run in runs:
+                out, _ = run.communicate(timeout=300)
+                with self.subTest(mode=mode):
+                    self.assertEqual(run.returncode, 0, out.decode(errors="replace")[-2000:])
 
     def test_midi_start_while_playing_plays_from_the_top(self):
         self.run_rack_fixture("midi-start")

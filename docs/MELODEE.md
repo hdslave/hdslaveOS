@@ -2794,6 +2794,10 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   audio files with it), `libsamplerate` and FFTW (single and double
   precision), and the 32-bit bridge with Debian's armhf runtime
   go into `/run/melodee-plugins/support` the first time a plug-in loads.
+  A process given a plug-in stage of its own (`MELODEE_PLUGIN_STAGE`: a
+  test run, the screen tool) unpacks them beside it instead (`<stage>-support`),
+  since each unpack removes and rewrites the folder: runs side by side
+  sharing one died (SIGBUS) or could not open their plug-ins.
   `tools/plugin_support/SURVEY.md` says why these and no others.
 - **32-bit plug-ins** run in a bridge process: audio, MIDI and parameters
   cross in shared memory, a block at a time in the same period (about a

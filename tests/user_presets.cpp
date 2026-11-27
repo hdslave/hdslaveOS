@@ -26,6 +26,9 @@
 using namespace melodee;
 namespace fs = std::filesystem;
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (false)
+// How long a wait on the rack's threads may take (a plug-in opening, a listing): generous, since a VM busy with other
+// builds slows them many times over. A passing run never comes near it.
+constexpr auto patience = std::chrono::seconds(60);
 
 static void run_job(PrintEngine& printer, PrintJob job) {
     CHECK(printer.start(std::move(job)));
@@ -859,7 +862,7 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     };
     auto wait = [&](auto predicate) {
-        auto until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        auto until = std::chrono::steady_clock::now() + patience;
         while (!predicate() && std::chrono::steady_clock::now() < until) tick();
         CHECK(predicate());
     };
@@ -1146,7 +1149,7 @@ int main(int argc, char** argv) {
         // B1 BACK, and Push once the folder above has listed but before the shell has matched its cursor to it: the
         // row drawn under the cursor is the one picked (here the plug-in in Beta, so it asks), never another folder.
         tap(SurfaceButton::TopLeft);
-        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        const auto until = std::chrono::steady_clock::now() + patience;
         while (fs::path(rack->view().folder).filename() != "Plugins" && std::chrono::steady_clock::now() < until)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         CHECK(fs::path(rack->view().folder).filename() == "Plugins");
@@ -1257,7 +1260,7 @@ int main(int argc, char** argv) {
         const uint32_t back = c.plugin_landing;
         CHECK(back != 0);
         open_picker(); // listed afresh: a later listing than B1's
-        const auto later = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        const auto later = std::chrono::steady_clock::now() + patience;
         while (rack->view().request != back + 1 && std::chrono::steady_clock::now() < later)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         CHECK(rack->view().request == back + 1 && fs::path(rack->view().folder).filename() == "Plugins");

@@ -60,7 +60,12 @@ bool unpack(const unsigned char* at, const unsigned char* end, const fs::path& i
     return true;
 }
 
+// Where the pack is unpacked: RAM (/run on the MPC). Each unpack first removes what is there and writes it again, so a
+// process given a plug-in stage of its own (MELODEE_PLUGIN_STAGE: a test run, the screen tool beside the live app)
+// unpacks beside that stage: one process never removes or rewrites the libraries another has loaded (which killed
+// test runs side by side with SIGBUS, or left their plug-ins unable to open).
 fs::path support_root() {
+    if (const char* own = std::getenv("MELODEE_PLUGIN_STAGE"); own && *own) return fs::path(std::string(own) + "-support");
     std::error_code error;
     if (fs::is_directory("/run", error) && access("/run", W_OK) == 0) return "/run/melodee-plugins/support";
     return fs::temp_directory_path(error) / "melodee-plugins/support";
