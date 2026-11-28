@@ -80,6 +80,7 @@ Shell::Shell(EngineHost& host)
     starting_project(*project_, *patterns_);
     context_.card = &card_link;
     context_.updates = &update_link;
+    context_.moved = &moved_; // hdslaveOS: find moved files
 }
 
 void Shell::load_engine() {

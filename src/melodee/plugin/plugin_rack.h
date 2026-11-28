@@ -143,6 +143,11 @@ public:
         std::vector<uint8_t> state; // a completed read, restored on the MIDI thread like project state
     };
     bool take_preset_result(PresetResult& result);
+    // hdslaveOS: find moved files (shell/file_finder.h). A plug-in not at the path its project names, found elsewhere
+    // on the card (`to`: the project's path follows it, the plug-in opened with its saved state) or not (`to` empty:
+    // "Not on the card", and a notice). MIDI thread.
+    struct FileNote { unsigned entry = 0; std::string from, to; };
+    bool take_file_note(FileNote& note);
     PluginStatus status(unsigned entry) const;
     bool idling(unsigned entry) const; // last render skipped as silent (plugin/idle_gate.h)
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
@@ -194,6 +199,10 @@ private:
         std::string parked_path;
         int32_t parked_id = 0;
         std::vector<uint8_t> parked;
+        // hdslaveOS: find moved files: the project's path for it while `path` is where it was found instead, until
+        // the project names that (sync() takes the one for the other, so nothing loads again); and the path last said
+        // to be missing (a notice once, not at each load of it).
+        std::string moved_from, missing_said;
     };
     struct PatchWrite;
     struct Job {
@@ -238,6 +247,7 @@ private:
     std::vector<std::pair<unsigned, PluginHandle*>> unoffered; // offers the host's queue had no room for yet
     std::deque<Job> jobs;
     std::deque<PresetResult> preset_results;
+    std::deque<FileNote> file_notes; // hdslaveOS: find moved files, under `lock`
     std::condition_variable wake;
     bool stopping = false;
     std::string card_top, root, folder;

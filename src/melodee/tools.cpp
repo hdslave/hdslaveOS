@@ -1892,6 +1892,41 @@ const Preview previews[] {
          s.ui.ask = UiState::Ask::DeleteFile; s.ui.ask_target = int(DeleteWhat::Folder);
          std::snprintf(s.ui.ask_name.data(), s.ui.ask_name.size(), "Edits");
      }},
+    // hdslaveOS: find moved files (shell/find_moved.h): the question once the quick checks have found what they could, the
+    // search under way, what it did not find; the Samples page with samples not found (Shift: FIND MISSING, FORGET) and
+    // with a search put away (FINDING; Shift: CANCEL); and Settings' row.
+    {"findmissing", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Stage; s.ui.track = 3; s.playing = true;
+         s.ui.ask = UiState::Ask::FindMissing; s.ui.ask_target = 12; s.ui.find.missing = 12;
+     }},
+    {"findsearching", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Stage; s.ui.track = 3; s.playing = true;
+         s.ui.ask = UiState::Ask::FindSearching; s.ui.ask_target = 12;
+         s.ui.find.missing = 12; s.ui.find.searching = true; s.ui.find.asked = 12; s.ui.find.found = 9; s.ui.find.looked = 4210;
+     }},
+    {"findresult", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Stage; s.ui.track = 3; s.playing = true;
+         s.ui.ask = UiState::Ask::FindResult; s.ui.ask_target = 3; s.ui.find.missing = 3; s.ui.find.asked = 12; s.ui.find.found = 9;
+     }},
+    {"samplesnotfound", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = s.sample_root; s.files_top = false;
+         for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name, name, 0, true});
+         for (auto name : {"BASS LOOP", "BREAK", "KEYS"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
+         s.ui.files_count = uint16_t(s.files.size());
+         s.ui.find.missing = 3;
+         s.ui.shift = true; s.ui.shift_used = true;
+     }},
+    {"samplesfinding", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 1; s.sample_root = "/media/card/Melodee/Samples";
+         s.files_folder = s.sample_root; s.files_top = false;
+         for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name, name, 0, true});
+         for (auto name : {"BASS LOOP", "BREAK", "KEYS"}) s.files.push_back({std::string("/media/card/Melodee/Samples/") + name + ".wav", name, 0, false});
+         s.ui.files_count = uint16_t(s.files.size());
+         s.ui.find.missing = 12; s.ui.find.searching = true; s.ui.find.hidden = true; s.ui.find.asked = 12; s.ui.find.found = 4; s.ui.find.looked = 1873;
+         s.ui.shift = true; s.ui.shift_used = true;
+     }},
+    {"settingsfind", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 1; s.ui.settings_cursor = Settings::FindMovedRow; }},
     {"samplesinstruments", [](Shell&, Snapshot& s) { // a folder of instruments: each tagged by its kind, a kit, an expansion
          s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 0; s.sample_root = "/media/card/Melodee/Samples";
          s.files_folder = s.sample_root + "/Instruments"; s.files_top = false;

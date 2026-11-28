@@ -104,6 +104,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [MPC Sample projects](guide/projects-and-files.md#mpc-sample-projects)
    - [SD card access](guide/projects-and-files.md#sd-card-access)
    - [Files on the card](guide/projects-and-files.md#files-on-the-card)
+   - [Moved files](guide/projects-and-files.md#moved-files)
    - [The web page](guide/projects-and-files.md#the-web-page)
    - [Update hdslaveOS](guide/projects-and-files.md#update-hdslaveos)
 15. [Settings](guide/settings.md)

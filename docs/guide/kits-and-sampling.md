@@ -152,6 +152,7 @@ own folder.
 | **B2** | Switch between the card (**CARD**) and the MPC's factory samples (**INTERNAL**). The key names the other drive. Each drive keeps its folder and row. The internal drive is read only. |
 | **B3** | **PREVIEW**: play each file when you move to it. Melodee keeps this setting when you restart. |
 | **SHIFT** + **B3** | **STAR**: star the file under the cursor, or take its star off. The key's light shows whether it is starred. |
+| **SHIFT** + **B1**, **B2** | When the project has samples **NOT FOUND**: **FIND MISSING** searches the card for them, **FORGET** takes them off their pads. While a search runs (**FINDING**): **CANCEL**. See [Moved files](projects-and-files.md#moved-files). |
 | **SHIFT** + pad | Load the file onto the next empty pad. |
 | **ERASE** | Delete the file or folder under the cursor from the card. Melodee asks first: **B3 DELETE**, **B1 CANCEL**. In **STARRED** or **RECENT**: take the file off that list. The file stays on the card. |
 

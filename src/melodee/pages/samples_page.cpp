@@ -34,6 +34,7 @@
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/browse_trim.h"
+#include "melodee/shell/find_moved.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
 #include "melodee/ui/widgets.h"
@@ -81,7 +82,12 @@ void draw_list(Paint& p, const Snapshot& s) {
         pad_label(track.last_pad % sampler_pads, label);
         h.right.push_back(pill(Icon::ArrowRight, juce::String(label), c)); // an arrow: the rows' pad glyph marks files already on a pad
     }
-    h.right.push_back(tag_of(s, s.ui.track));
+    // hdslaveOS: find moved files (shell/find_moved.h): the project's samples not found (the last pad's among them:
+    // that it is), or a search put away with HIDE; Shift shows FIND MISSING and FORGET, or CANCEL.
+    const auto& find = s.ui.find;
+    if (find.searching && find.hidden) h.right.push_back(pill(Icon::Card, "FINDING", colour::amber));
+    else if (find.missing) h.right.push_back(pill(Icon::Warn, find.pad_missing ? juce::String("NOT FOUND") : juce::String(find.missing) + " NOT FOUND", colour::amber));
+    else h.right.push_back(tag_of(s, s.ui.track));
     juce::String other = drive == Drive::Card ? "INTERNAL" : "CARD";
     // The file under the cursor as it previews (mock 7): its row fills as it plays; B3 lit while there is sound.
     PreviewPlace heard = s.ui.settings.preview ? preview_place(s.heads, int(sampler_pads), uint16_t(preview_slot), dsp::model_rate) : PreviewPlace {};
@@ -96,6 +102,8 @@ void draw_list(Paint& p, const Snapshot& s) {
         keys.glyphs[2] = keys.labels[2].isEmpty() ? Icon::None : Icon::Star;
         keys.toggles = 4;
         keys.lit = at && at->starred ? 4 : 0;
+        if (find.searching) { keys.labels[0] = "CANCEL"; keys.icons[0] = KeyIcon::None; keys.labels[1] = ""; }
+        else if (find.missing) { keys.labels[0] = "FIND MISSING"; keys.icons[0] = KeyIcon::None; keys.labels[1] = "FORGET"; keys.tints[1] = colour::rec; }
     }
     frame(p, s, keys, h);
     if (s.files.empty()) { // a glyph and two words: no card, or nothing here
@@ -344,6 +352,13 @@ void soft(Context& c, int key) {
     if (ui.browse.up() && !(ui.shift && key == 2)) { // the trim sheet: B1 lowers it, B2 waits, B3 PREVIEW (Shift + B3: STAR)
         if (!ui.shift && key == 0) c.browse_close();
         if (!ui.shift && key == 2) soft_preview(c);
+        return;
+    }
+    if (ui.shift && key < 2 && c.moved && (c.moved->searching() || c.moved->missing_count())) { // hdslaveOS: find moved files
+        ui.shift_used = true;
+        if (c.moved->searching()) { if (key == 0) c.moved->cancel(c); }
+        else if (key == 0) c.moved->search(c, true); // FIND MISSING: the card walked anew (files may have come back)
+        else c.moved->forget(c);                     // FORGET
         return;
     }
     if (key == 0) { // at the top (as shown): CANCEL; else up, the cursor to land on the folder left

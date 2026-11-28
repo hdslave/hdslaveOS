@@ -644,6 +644,11 @@ void MelodeeApp::card_access(Hardware& hardware) {
     case CardRequest::Lend:
         card_note = CardNote::None;
         card_warm.stop(); // nothing of Melodee's reads the card's device while it is lent
+        { // hdslaveOS: find moved files: nor the finder's walk, stopped within a folder (its checks wait, shell/find_moved.h)
+            auto& finder = shell.moved_files().files();
+            finder.cancel();
+            for (int k = 0; k < 50 && finder.progress().walking; ++k) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
         if (gadget_mirror_live()) card_note = CardNote::Camera; // nothing let go: the camera would be unplugged under the computer
         else if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
         else if (!library.release_instruments()) card_note = CardNote::Failed;
@@ -662,6 +667,7 @@ void MelodeeApp::card_access(Hardware& hardware) {
         card_looked_at = 0;
         library.rescan();
         store.rescan();
+        shell.moved_files().files().drop_index(); // hdslaveOS: find moved files: its files may have moved on the computer
     }
     CardNote note = card_note;
     if (note == CardNote::None && !now.message.empty()) {
@@ -848,5 +854,6 @@ void MelodeeApp::web_service(Hardware& hardware) {
         library.rescan();
         store.rescan();
         plugins.card_changed();
+        shell.moved_files().files().drop_index(); // hdslaveOS: find moved files: a file uploaded may be one missing
     }
 }

@@ -30,6 +30,7 @@
 #include "melodee/shell/record_place.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/files_view.h"
+#include "melodee/shell/find_moved.h" // hdslaveOS: find moved files
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
@@ -198,6 +199,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     ui.lead_pattern = project.tracks[0].pattern; // as the audio thread starts it
     free_retired();
     send_reload(new ProjectPack(project, patterns), false);
+    if (moved) moved->switched(); // hdslaveOS: find moved files: the last project's finding dropped
     ui.loading = true; // the Loading sheet until it is built and its samples are in (reload_tick)
     ui.loading_since = loading_moved = now;
     loading_instruments.reset();
@@ -1863,6 +1865,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (e.pattern_was >= 0 && e.pattern >= 0) // the pattern it played before, or the one the edit made it play, kept
         pick(e.track % track_count, unsigned(after ? e.pattern : e.pattern_was) % pattern_count);
     if (const auto& m = after ? e.jams_after : e.jams_before) { jams = *m; publish_jams(); } // a jam deleted (JAMS' ERASE)
+    if (e.forget && moved) moved->forgot(*this, *e.forget, after); // hdslaveOS: find moved files, FORGET
     if (const auto& m = after ? e.scene_after : e.scene_before) { // a sequence kept or cleared
         project.scenes[m->index % pattern_count] = m->scene;
         for (unsigned t = 0; t < track_count; ++t) {
@@ -2103,6 +2106,7 @@ int Context::sample_slot(const std::string& path, const std::string& name) {
     std::strncpy(ref.name, name.c_str(), sizeof(ref.name) - 1);
     ref.frames = 0; // known once loaded
     if (!library->load(unsigned(free), path)) slots_waiting.push_back(uint16_t(free)); // a kit of many: the rest as the queue drains
+    if (moved) moved->added(unsigned(free)); // hdslaveOS: find moved files: looked for if it is not there
     return free;
 }
 

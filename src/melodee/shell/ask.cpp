@@ -4,6 +4,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/delete_jobs.h"
+#include "melodee/shell/find_moved.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
@@ -46,7 +47,13 @@ bool ask_button(Context& c, SurfaceButton button) {
     if (button == B::TopLeft) { // Cancel (LATER on the update question: asked again when the card is returned)
         if (ui.ask == UiState::Ask::InstallUpdate && c.updates) c.updates->decline();
         if (ui.ask == UiState::Ask::Rechop) c.chop_pending = nullptr; // the slices stay as they are
+        if (ui.ask == UiState::Ask::FindSearching && c.moved) { c.moved->cancel(c); return true; } // hdslaveOS: CANCEL (NOT NOW, KEEP: as they are)
         ui.ask = UiState::Ask::None;
+        return true;
+    }
+    if (button == B::TopMiddle && ui.ask == UiState::Ask::FindMissing) { // hdslaveOS: FORGET, with no search
+        ui.ask = UiState::Ask::None;
+        if (c.moved) c.moved->forget(c);
         return true;
     }
     if (button == B::TopMiddle && ui.ask == UiState::Ask::NewProject) { // KIT: a new project with the factory kit on track 1
@@ -98,6 +105,9 @@ bool ask_button(Context& c, SurfaceButton button) {
         unsigned t = unsigned(ui.ask_target) % track_count;
         c.unfreeze(t);
     }
+    else if (c.moved && kind == UiState::Ask::FindMissing) c.moved->search(c, false); // hdslaveOS: find moved files, SEARCH
+    else if (c.moved && kind == UiState::Ask::FindSearching) c.moved->hide(c);        // HIDE: it goes on
+    else if (c.moved && kind == UiState::Ask::FindResult) c.moved->forget(c);         // FORGET what was not found
     return true;
 }
 
@@ -119,6 +129,9 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::DeleteFile: return std::string("Delete ") + ui.ask_name.data() + "?";
     case UiState::Ask::ReplacePlugin: return std::string("Replace ") + ui.ask_name.data() + "?";
     case UiState::Ask::Rechop: return std::string("Rechop ") + (ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].name : "") + "?";
+    case UiState::Ask::FindMissing: return std::to_string(ui.ask_target) + (ui.ask_target == 1 ? " sample missing" : " samples missing");
+    case UiState::Ask::FindSearching: return "Searching for " + std::to_string(ui.find.asked) + (ui.find.asked == 1 ? " sample" : " samples");
+    case UiState::Ask::FindResult: return std::to_string(ui.ask_target) + (ui.ask_target == 1 ? " sample not found" : " samples not found");
     default: return {};
     }
 }
@@ -151,6 +164,9 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::ReplacePlugin) return "Its sound and settings go. Undo brings them back.";
     if (ui.ask == UiState::Ask::Rechop)
         return std::to_string(ui.ask_target) + (ui.ask_target == 1 ? " slice hit changes" : " slice hits change") + " sound. Undo brings them back.";
+    if (ui.ask == UiState::Ask::FindMissing) return "Search the card for them? Play and Stop work meanwhile.";
+    if (ui.ask == UiState::Ask::FindSearching) return std::to_string(ui.find.found) + " found, " + std::to_string(ui.find.looked) + " files looked at.";
+    if (ui.ask == UiState::Ask::FindResult) return "Found " + std::to_string(ui.find.found) + " of " + std::to_string(ui.find.asked) + ". Forget the rest?";
     if (ui.ask == UiState::Ask::NewProject)
         return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 || ui.ask_target == 3 ? "Unsaved changes are lost." : "The open project closes.";
     return {};

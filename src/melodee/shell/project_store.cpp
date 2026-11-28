@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/file_finder.h" // hdslaveOS: find moved files
 #include "melodee/model/card_folders.h"
 #include "drivers/platform.h"
 #include "melodee/crash_log.h"
@@ -376,8 +377,18 @@ void import_mpc(LoadedProject& l, const std::string& root) {
     l.bytes = save_project(*project, *patterns);
     l.imported = true;
     l.note = "Opened a copy of " + fs::path(l.path).stem().string();
-    if (report.missing) l.note = std::to_string(report.missing) + " samples missing";
-    else if (report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out) l.note += ", some left out";
+    // hdslaveOS: find moved files: a pad's sample not in its data folder is looked for once it opens (shell/find_moved.h),
+    // which says what is still missing then. What else is missing (an Audio track's take) is said here.
+    if (report.missing) {
+        unsigned samples_gone = 0;
+        for (unsigned n = 0, span = unsigned(project->samples.span()); n < span; ++n) {
+            const auto& ref = project->samples[n];
+            std::error_code gone;
+            if (ref.used() && ref.path[0] == '/' && !fs::exists(split_saved(ref.path).file, gone)) ++samples_gone;
+        }
+        if (!samples_gone) { l.note = std::to_string(report.missing) + (report.missing == 1 ? " file missing" : " files missing"); return; }
+    }
+    if (report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out) l.note += ", some left out";
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
     for (const char* tail : project_folders) {

@@ -169,6 +169,15 @@ struct SceneState {
     uint16_t muted = 0; // the tracks it keeps muted, a bit each (Track::scene_mutes)
 };
 
+// hdslaveOS: find moved files. FORGET (shell/find_moved.h): the missing samples' slots and the paths they named, and
+// each pad that played one as it was. The slots stay as they are; no pad plays them after, so the save after the
+// project's next opening frees them (samples_in_use keeps them while this step can be undone).
+struct ForgetSamples {
+    std::vector<std::pair<uint16_t, std::string>> slots;
+    struct Pad { uint8_t track = 0, pad = 0; PadState before; };
+    std::vector<Pad> pads;
+};
+
 struct Edit {
     std::string what;             // shown on undo and redo: "Delete A01"
     uint32_t at = 0;              // when it was kept (History::clock, ms): the undo list's "2 min"
@@ -203,6 +212,7 @@ struct Edit {
     std::unique_ptr<PluginSwap> plugin; // a plug-in replaced (its track's name and pads in track_before / after)
     std::unique_ptr<SceneState> scene_before, scene_after; // a sequence kept or cleared
     std::unique_ptr<JamList> jams_before, jams_after;      // a jam deleted (JAMS' ERASE)
+    std::unique_ptr<ForgetSamples> forget;                 // hdslaveOS: find moved files, FORGET
     size_t bytes = 0;                                      // what it holds, as History counted it when kept (edit_bytes)
 };
 
@@ -231,6 +241,10 @@ inline size_t edit_bytes(const Edit& e) {
     if (e.plugin) n += sizeof(PluginSwap) + e.plugin->state_before.size() + e.plugin->state_after.size();
     for (const auto* j : {e.jams_before.get(), e.jams_after.get()})
         if (j) for (const auto& log : j->jams) n += sizeof(log) + log.bars.size() * sizeof(JamBar);
+    if (e.forget) { // hdslaveOS: find moved files
+        n += sizeof(ForgetSamples) + e.forget->pads.size() * sizeof(ForgetSamples::Pad);
+        for (const auto& s : e.forget->slots) n += sizeof(s) + s.second.size();
+    }
     return n;
 }
 
@@ -307,6 +321,7 @@ inline std::array<bool, sample_slots> samples_in_use(const Project& project, con
         for (const auto& kept : e.pads_after) mark(kept.second.sound);
         for (const auto* t : {e.track_before.get(), e.track_after.get()}) if (t) for (const auto& p : t->track.pads) mark(p);
         for (const auto* c : {e.chop_before.get(), e.chop_after.get()}) if (c && c->sample < sample_slots) used[c->sample] = true;
+        if (e.forget) for (const auto& p : e.forget->pads) mark(p.before.sound); // hdslaveOS: find moved files, FORGET undone
     });
     return used;
 }

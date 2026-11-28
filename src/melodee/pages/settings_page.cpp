@@ -53,7 +53,7 @@ const std::array<Door, 8> doors {{
     {Icon::Pads, "PADS", ROWS(Settings::PadResponse, Settings::PadPressure, Settings::RepeatVelocity, Settings::PadLights, Settings::PadFade,
                               Settings::TapLight, Settings::PadLevel)},
     {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::NotePreview, Settings::MuteKind, Settings::DoubleSeq,
-                            Settings::CaptureBars, Settings::CaptureQuantize, Settings::Autosave)},
+                            Settings::CaptureBars, Settings::CaptureQuantize, Settings::Autosave, Settings::FindMovedRow)}, // hdslaveOS: find moved files
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
     {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::Refresh, Settings::PlaceBarRow,
                                   Settings::PluginSkins, Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
