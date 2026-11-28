@@ -480,7 +480,9 @@ void MelodeeApp::draw(juce::Graphics& g) {
         const Bounce::State render = Bounce::State(frame->render_state);
         const bool busy = frame->playing || take == Take::Armed || take == Take::Recording || take == Take::Cued ||
                           render == Bounce::State::Cued || render == Bounce::State::Running || render == Bounce::State::Tail;
-        const bool shows = saver.shows(frame->ui.settings.screensaver, now, touched.load(std::memory_order_relaxed), busy);
+        // hdslaveOS: rested also by the shell's clock (Power, a load, a print, stems, the looper: Dim after's).
+        const uint32_t last = screensaver::latest(touched.load(std::memory_order_relaxed), shell.quiet_since());
+        const bool shows = saver.shows(frame->ui.settings.screensaver, now, last, busy);
         saver_shows.store(shows, std::memory_order_relaxed); // the service thread dims the backlight
         if (shows) {
             ui::use_palette(frame->ui.settings.palette);

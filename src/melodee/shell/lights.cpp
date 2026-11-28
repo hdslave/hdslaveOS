@@ -105,6 +105,7 @@ void Shell::power_tick(SurfaceLights& lights, uint32_t now) {
     const bool running = host.playing() || host.song_playing() || host.looper().recording() || host.looper().armed() || host.looper().sounding() || ui.recording
                       || ui.rec_armed || host.recorder().state() != TakeRecorder::State::Idle || ui.audio_rec_running;
     if (running || working || !last_busy_) last_busy_ = now ? now : 1;
+    quiet_since_.store(int32_t(last_input_ - last_busy_) > 0 ? last_input_ : last_busy_, std::memory_order_relaxed);
     const uint32_t wait = set.dim_ms();
     const bool dim = wait && now - last_input_ >= wait && now - last_busy_ >= wait;
     dimmed_.store(dim, std::memory_order_relaxed);
@@ -426,6 +427,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     if (presses != power_seen) { // a second press while it is open closes it, as B1 STAY does
         power_seen = presses;
         last_input_ = now; // a control as the surface's are, though it comes by the service thread: Dim after ends
+        quiet_since_.store(now, std::memory_order_relaxed); // and the screensaver, now (power_tick ran before this)
         if (ui_.exit_open) { ui_.exit_open = ui_.exit_off = ui_.exit_saved = false; leave_after_save = -1; off_after_save = false; }
         else { ui_.exit_pick = 0; ui_.exit_open = true; } // the wheel starts on STAY
     }

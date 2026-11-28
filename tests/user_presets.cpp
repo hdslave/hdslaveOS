@@ -923,6 +923,12 @@ int main(int argc, char** argv) {
             slot.kind = plugin_effect_kind;
             slot.params[0] = int16_t(at);
         }
+        if (mode == "presets-track") { // track 6: a plug-in that will not open (no list to follow)
+            project.plugins[5] = ref;
+            std::snprintf(project.plugins[5].path, sizeof(project.plugins[5].path), "/nowhere/Gone.clap");
+            load_sound(project.tracks[5], EngineKind::Plugin, 0);
+            project.tracks[5].plugin = 5;
+        }
         if (late)
             for (unsigned e = 2, n = 0; e < max_plugins; ++e) {
                 if (e == 3 || e == 4) continue;
@@ -1648,8 +1654,13 @@ int main(int argc, char** argv) {
         CHECK(ui.track == 3 && t4.engine == EngineKind::Plugin && t4.plugin != entry && tr.plugin == entry);
         CHECK(ui.page != PageId::PluginPresets || ui.presets_entry == t4.plugin);
         wait([&] { return ready(t4.plugin); });
-        if (ui.page != PageId::PluginPresets) { // back on track 4's Stage PRESETS: Push opens its own list
+        if (ui.page != PageId::PluginPresets) { // back on track 4's Stage, on its own page; its PRESETS: Push opens its list
             CHECK(ui.page == PageId::Stage);
+            // The list closed: the track's page as it was (B1's first). copy-presets-late: the list followed the
+            // shared plug-in first, so that track went to its PRESETS then.
+            if (late) CHECK(stage_page_now(ui, t4, false).kind == StageKind::PluginSound);
+            else CHECK(ui.stage_group[3] == 0 && ui.stage_sub[3] == 0);
+            CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
             wait([&] { return ui.plugin_panel.entry == t4.plugin && ui.plugin_panel.programs == 3; });
             tap(SurfaceButton::WheelPush);
         }
@@ -2778,6 +2789,16 @@ int main(int argc, char** argv) {
         CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == 4);
         pick_track(1);
         CHECK(ui.track == 1 && ui.page == PageId::PluginPresets && ui.presets_entry == 4);
+        // A track whose plug-in has no list (it would not open): the list closes on that track's Stage, on the page
+        // it was left on (here B1's first), not moved to its PRESETS.
+        c.open(PageId::Stage);
+        pick_track(0);
+        CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
+        wait([&] { return ui.plugin_panel.entry == entry && ui.plugin_panel.programs == 3; });
+        tap(SurfaceButton::WheelPush);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        pick_track(5);
+        CHECK(ui.track == 5 && ui.page == PageId::Stage && ui.stage_group[5] == 0 && ui.stage_sub[5] == 0);
         shell->set_plugins(nullptr);
         return 0;
     }
@@ -2954,6 +2975,24 @@ int main(int argc, char** argv) {
         bool again = false;
         for (int k = 0; k < 120; ++k) { tick(); again |= opening() || std::string(ref.preset) != "/user/My Patch"; }
         CHECK(!again && whole() && playing() == all[3].index);
+
+        // Receive program change while the plug-in opens again (a user preset) or looks for its presets: held, and
+        // the place asked last taken from the whole list, not from the user presets listed alone meanwhile.
+        to_factory();
+        wheel(1);
+        rest(); // My Patch: the plug-in opens again
+        wait(opening);
+        c.midi_program(1, 1); // Low, while it opens
+        CHECK(c.program_waiting[entry] == 1 && std::string(ui.notice) == "Looking for presets");
+        wait(looking);
+        c.midi_program(1, 4); // then Other, while the list is not whole: the last asked wins
+        CHECK(c.program_waiting[entry] == 4);
+        wait([&] { return whole() && c.program_waiting[entry] < 0 && playing() == all[4].index; });
+        wait([&] { return whole() && std::string(ref.preset) == "/user/Other"; });
+        to_factory();
+        c.midi_program(1, 4); // the list whole: taken at once (Other again, so the walks below start past Mid)
+        CHECK(c.program_waiting[entry] < 0 && std::string(ui.notice) == "Program 5: Other");
+        wait([&] { return whole() && playing() == all[4].index; });
 
         // A frozen track asks before its preset changes, and not for a turn against the list's end; the keys,
         // the octave, ask nothing.

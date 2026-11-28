@@ -397,6 +397,11 @@ public:
     // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
     // track) to the preset at `place` in its list; the header says which.
     void midi_program(uint16_t tracks, unsigned place);
+    // hdslaveOS: one asked while the plug-in opens or still looks for its presets (a user preset opens it again, and
+    // the list is the user presets alone until the plug-in's own are found): the place asked last, per entry, taken
+    // once the list is whole (programs_waiting_tick(), from plugins_tick); -1 none.
+    std::array<int32_t, max_plugins> program_waiting = [] { std::array<int32_t, max_plugins> a {}; a.fill(-1); return a; }();
+    void programs_waiting_tick();
     // Send program change (shell/program_in.h): a preset picked here for plug-in `entry`, at `place` in its list, queued
     // for each channel it goes out on; MidiIo's next pump sends them (Bank Select, then the Program Change).
     struct ProgramOut { uint8_t channel = 1; unsigned place = 0; };

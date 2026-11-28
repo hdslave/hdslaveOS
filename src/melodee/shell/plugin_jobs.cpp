@@ -453,11 +453,12 @@ void Context::presets_follow() {
     if (presets_instrument) {
         if (here == owner && t.engine == EngineKind::Plugin && t.plugin == ui.presets_entry) return; // still its own
         if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) {
-            // The track in hand's Stage on its PRESETS, where B1 (or the list closing) brings it back: a plug-in with
-            // its own screen would open on PANEL, B1's first page.
-            if (ui.presets_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginSound);
             auto programs = plugins->programs(t.plugin);
             if (!programs.list.empty()) {
+                // The list is this track's PRESETS now: B1 brings it back to its Stage's PRESETS, not to PANEL (B1's
+                // first page for a plug-in with its own screen). A list that cannot follow closes on the track's own
+                // page, as any track change shows it.
+                if (ui.presets_back == PageId::Stage) stage_go(ui, EngineKind::Plugin, StageKind::PluginSound);
                 auto place = preset_place(programs.list, programs.current);
                 ui.presets_entry = t.plugin;
                 presets_track = int8_t(here);
@@ -553,6 +554,12 @@ void Context::midi_program(uint16_t tracks, unsigned place) {
     for (unsigned e = 0; e < max_plugins; ++e) {
         if (!((entries >> e) & 1)) continue;
         const auto programs = plugins->programs(e);
+        if (plugins->status(e) == PluginStatus::Loading || programs.finding) { // hdslaveOS: its list not whole: later
+            program_waiting[e] = int32_t(std::min(place, unsigned(INT32_MAX)));
+            if (said.empty()) said = "Looking for presets";
+            continue;
+        }
+        program_waiting[e] = -1; // this one is the last asked
         if (place < programs.list.size()) {
             take_program(*this, e, programs.list[place], place, false); // in by MIDI: not sent back
             said = "Program " + std::to_string(place + 1) + ": " + programs.list[place].name;
@@ -562,6 +569,29 @@ void Context::midi_program(uint16_t tracks, unsigned place) {
         }
     }
     if (!said.empty()) notice(said);
+}
+
+// hdslaveOS: a Program Change that came while its plug-in opened or looked for its presets, taken once the list is
+// whole (in by MIDI: never sent back), or dropped when the plug-in went, would not open, or a frozen track now plays it.
+void Context::programs_waiting_tick() {
+    for (unsigned e = 0; e < max_plugins; ++e) {
+        const int32_t place = program_waiting[e];
+        if (place < 0) continue;
+        const auto status = plugins->status(e);
+        if (status == PluginStatus::Loading) continue;
+        const auto programs = plugins->programs(e);
+        if (status == PluginStatus::Ready && programs.finding) continue;
+        program_waiting[e] = -1;
+        if (status != PluginStatus::Ready || !project.plugins[e].used()) continue;
+        bool still = false;
+        for (unsigned t = 0; t < track_count; ++t)
+            still |= frozen(t) && project.tracks[t].engine == EngineKind::Plugin && project.tracks[t].plugin == e;
+        if (still) continue;
+        if (size_t(place) < programs.list.size()) {
+            take_program(*this, e, programs.list[size_t(place)], unsigned(place), false);
+            notice("Program " + std::to_string(place + 1) + ": " + programs.list[size_t(place)].name);
+        } else notice(programs.list.empty() ? "No presets in this plug-in" : "No preset " + std::to_string(place + 1));
+    }
 }
 
 // Companion screens (plugin/companion_screen.h) ask; the shell makes the change as a pot turn on the plug-in's card
@@ -633,6 +663,7 @@ void Context::plugins_tick(uint32_t at) {
     split_shared_plugins();
     presets_follow(); // a shared copy's plug-in in its own entry now: an open PRESETS list follows it
     plugins->sync(project, plugins_asleep());
+    programs_waiting_tick(); // hdslaveOS: a Program Change that came while its list was not whole
     { // hdslaveOS: find moved files: a plug-in found elsewhere on the card (the project names it there now, written by
       // the next save), or not at all
         PluginRack::FileNote note;

@@ -14,6 +14,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/screensaver.h"
 #include "melodee/shell/shell.h"
 #include "runtime/controller.h"
 #include <chrono>
@@ -263,6 +264,27 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     until("asked", [&] { return ui.ask == UiState::Ask::FindMissing; });
     CHECK(ui.ask_target == 2 && ui.find.missing == 2 && moved.files().walks() == 0);
     play_stop();
+    { // The screensaver rests by the shell's clock too, as Dim after does (Shell::quiet_since()): ten minutes of
+      // nothing and it is due; Power, or something playing, keeps it away.
+        now += 600000;
+        pass();
+        CHECK(screensaver::due(1, now, shell->quiet_since(), false));
+        shell->power_pressed(); // the Exit sheet opens; a second press closes it
+        pass();
+        CHECK(ui.exit_open && !screensaver::due(1, now, shell->quiet_since(), false));
+        shell->power_pressed();
+        pass();
+        CHECK(!ui.exit_open);
+        now += 600000;
+        press(SurfaceButton::Play);
+        until("playing", [&] { return host->playing(); }, 5);
+        now += 600000;
+        pass();
+        CHECK(!screensaver::due(1, now, shell->quiet_since(), false)); // its own busy test sees Play; a job alike
+        press(SurfaceButton::Stop);
+        until("stopped", [&] { return !host->playing(); }, 5);
+        CHECK(screensaver::latest(5, 3) == 5 && screensaver::latest(3, 5) == 5 && screensaver::latest(2, 0xfffffff0u) == 2);
+    }
     { // Power's Exit sheet over the question: its keys are the sheet's (B2 POWER OFF), not the question's (FORGET).
         shell->power_pressed();
         pass();

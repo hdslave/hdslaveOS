@@ -32,6 +32,10 @@ inline long backlight(long level, long maximum, bool shows) {
     return shows && level > dim ? dim : level;
 }
 
+// hdslaveOS: of two stamps of the last control (the app's, `touched`, and the shell's, Shell::quiet_since(), which also
+// counts Power and anything playing, recording or working, as Dim after does), the later one, past the clock's wrap.
+inline uint32_t latest(uint32_t a, uint32_t b) { return int32_t(a - b) > 0 ? a : b; }
+
 struct Place { int x = 0, y = 0; unsigned bounces = 0; };
 
 // One axis: `start` px into a `room` px run (screen less logo), `speed` px a second, `ms` in; back and forth.

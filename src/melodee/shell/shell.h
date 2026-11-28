@@ -71,6 +71,9 @@ public:
     // a job that wants the CPUs' full speed with no hand on the controls (a load, a print, an export, stems).
     bool dimmed() const { return dimmed_.load(std::memory_order_relaxed); }
     bool working() const { return working_.load(std::memory_order_relaxed); }
+    // quiet_since(): the last control (the surface, a MIDI note or controller, Power) or moment something played,
+    // recorded or worked, as Dim after counts them (now_ms() clock): Settings' Screensaver rests from it too.
+    uint32_t quiet_since() const { return quiet_since_.load(std::memory_order_relaxed); }
     unsigned cpu_speed() const { return cpu_wanted.load(std::memory_order_relaxed); }      // Settings::CpuFull ...
     unsigned refresh_fps() const { return refresh_wanted.load(std::memory_order_relaxed); } // frames a second
     // Any thread: Settings' sample rate and buffer (periods): the card's from start_settings(), else the default.
@@ -194,6 +197,7 @@ private:
     std::atomic<bool> usb_full {true}, usb_direct {true}, usb_submixes {false}, file_sharing_wanted {true};
     std::atomic<float> direct_gain {1.0f};
     std::atomic<bool> dimmed_ {false}, working_ {true}; // working until the first pass says otherwise: the start is at full speed
+    std::atomic<uint32_t> quiet_since_ {0};
     std::atomic<uint8_t> cpu_wanted {Settings::CpuFull}, refresh_wanted {30};
     uint32_t last_busy_ = 0; // MIDI thread: when something last played, recorded or worked (power_tick())
     void want_audio_format() {
