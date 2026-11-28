@@ -91,38 +91,38 @@ Melodee's official `melodee.screen/1` extension.
       <b><a href="https://github.com/hdslave/hdslave-Slink-Synth">Slink</a></b> — 303-style acid bass with a generative sequencer
     </td>
     <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Anvil-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/anvil.gif" alt="Anvil percussion synth interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Anvil-Synth">Anvil</a></b> — percussion synth with an 8-step sequencer
+      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — pad and chord synth: the pads play chord progressions
     </td>
   </tr>
   <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Anvil-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/anvil.gif" alt="Anvil percussion synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Anvil-Synth">Anvil</a></b> — percussion synth with an 8-step sequencer
+    </td>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Mystik-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/mystik.gif" alt="Mystik hand drum interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Mystik-Synth">Mystik</a></b> — West Coast hand drum with a low-pass gate and a sequencer
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Machine"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/machine.gif" alt="Machine multi-machine synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Machine">Machine</a></b> — multi-machine synth: FM, drums and kits
     </td>
-  </tr>
-  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Psychic-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/psychic.gif" alt="Psychic generative synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Psychic-Synth">Psychic</a></b> — generative synth with two corruptible sequencers
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Necronomicon-Synth"><img src="docs/images/plugins/necronomicon.gif" alt="Necronomicon polyrhythmic subharmonic synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Necronomicon-Synth">Necronomicon</a></b> — polyrhythmic subharmonic synth
     </td>
-  </tr>
-  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Nexus-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/nexus.gif" alt="Nexus macro oscillator synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Nexus-Synth">Nexus</a></b> — multi-model macro oscillator synth
-    </td>
-    <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — pad and chord synth: the pads play chord progressions
     </td>
   </tr>
   <tr>
