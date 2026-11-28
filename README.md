@@ -101,34 +101,34 @@ Melodee's official `melodee.screen/1` extension.
       <b><a href="https://github.com/hdslave/hdslave-Mystik-Synth">Mystik</a></b> — West Coast hand drum with a low-pass gate and a sequencer
     </td>
     <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Cortex-Filter"><img src="docs/images/plugins/cortex-filter.gif" alt="Cortex Filter 3D morphing filter interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Cortex-Filter">Cortex Filter</a></b> — stereo 3D morphing filter with a filter sequencer
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Machine"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/machine.gif" alt="Machine multi-machine synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Machine">Machine</a></b> — multi-machine synth: FM, drums and kits
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Psychic-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/psychic.gif" alt="Psychic generative synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Psychic-Synth">Psychic</a></b> — generative synth with two corruptible sequencers
     </td>
-  </tr>
-  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Necronomicon-Synth"><img src="docs/images/plugins/necronomicon.gif" alt="Necronomicon polyrhythmic subharmonic synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Necronomicon-Synth">Necronomicon</a></b> — polyrhythmic subharmonic synth
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
       <a href="https://github.com/hdslave/hdslave-Nexus-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/nexus.gif" alt="Nexus macro oscillator synth interface on hdslaveOS" width="320"></a><br>
       <b><a href="https://github.com/hdslave/hdslave-Nexus-Synth">Nexus</a></b> — multi-model macro oscillator synth
     </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — pad and chord synth: the pads play chord progressions
+    </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — pad and chord synth: the pads play chord progressions
+      <a href="https://github.com/hdslave/hdslave-Cortex-Filter"><img src="docs/images/plugins/cortex-filter.gif" alt="Cortex Filter 3D morphing filter interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Cortex-Filter">Cortex Filter</a></b> — the effect: a stereo 3D morphing filter with a filter sequencer
     </td>
   </tr>
 </table>
