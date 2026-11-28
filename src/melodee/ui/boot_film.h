@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// hdslave_boot_slide.mkv 0-2.25 s at 1.5x, hdslave_intro.ogv 5.25-7 s at 1.5x, hdslave_intro.ogv 7-7.74 s at 0.6x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
+// hdslave_boot_slide.mkv 0-0.9 s at 1.5x, hdslave_approach_formation.mkv 0-1.9 s at 1x, 0253.png 0-1.4 s at 1x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
 // Written by tools/boot_film.py; run it again rather than editing this file.
 #pragma once
 #include <cstdint>

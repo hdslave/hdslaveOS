@@ -14,6 +14,9 @@ red light past −0.1 dBFS.
 
 ## The screen
 
+At startup, the finished purple badge holds briefly before a band of VHS
+static rolls through it and the first page appears. Press a button or pad to skip the boot film.
+
 ![The parts of a Melodee page](../images/guide/screen.png)
 
 The header shows a state with a symbol and a short word: a play triangle, a

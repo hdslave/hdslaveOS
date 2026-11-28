@@ -64,7 +64,10 @@ up for making and playing techno.
   `NIGHT`) and **MONO** (high-contrast black and white), both with square
   corners. Kit pads light as vividly as the screen shows their colours.
 - **Its own boot film**, the **hdslave intro**, in place of the default
-  splash.
+  splash. The purple badge starts forming as the camera slides into place,
+  then holds for a beat. The lower edge tears, tracking briefly settles, and
+  the picture rolls once before the static breaks into a narrow strip and
+  cuts to black. The interface fades in from there.
 
 ## The instruments
 

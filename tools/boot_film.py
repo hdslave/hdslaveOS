@@ -6,25 +6,25 @@
                                      [--outro SECONDS] [--fps 30] [--zoom 1.1] [--hold MS] [--quality 4]
 
 The film is its parts one after another: seconds START to END of VIDEO (or of another FILE, a 16:9 video too),
-each played SPEED times as fast. Every picture is scaled to cover the screen's 320 px width ZOOM times over
+each played SPEED times as fast. A PNG part holds that still for the specified interval. Every picture is scaled to cover the screen's 320 px width ZOOM times over
 (cropped at the sides, black bars above and below). A part with its own ZOOM starts that many times closer
 and eases back to that framing over the part, a camera pulling back (smootherstep, so it starts and lands
 gently). The film is resampled to FPS frames a second; nothing of the sound is kept.
 
 --grade purple maps every picture's brightness onto a black, dark violet and lavender ramp: a dark purple shine,
 with none of the source's own hues. --outro SECONDS ends the film on a VHS tape failing over its last SECONDS:
-the lines' timebase wobbles and the frame jumps, lines tear sideways, a torn tracking band rolls down, the
-head-switching strip frays the bottom edge, the luma goes soft and smeared with a deck's edge ringing and a
-ghost, dropouts flash as short white scratches, stretched tape grain and interlace scanlines grow, while the
-picture fades through deep purple; a burst of snow as the signal dies, and black on the last frame alone. It
-works on the brightness before the grade, so every artefact stays purple.
+a mistracking band sweeps through the badge, bending the two fields and exposing streaks of RF noise.
+Short RF dropouts borrow the last intact line. Purple bleeds behind the bright detail, wavers as the heads
+briefly regain tracking, then loses lock before the luma does. The head switch tears partway across a lower
+scanline. The tracking band splits when the head slips. After one vertical roll the badge drops out,
+leaving moving monochrome snow for a beat. A final field slips, leaving a strip of snow, then black. All of this is baked into the JPEGs.
 
 The default is the hdslave intro's cut: its wide shot (4 to 5.25 s) at 1.25 times with the camera easing back
 from 1.8 times closer, so one short shot stands for the film's two close-ups and lands where the badge starts to
 form; the formation (5.25 to 7 s) at 1.5 times; the finished badge (7 s to the end) slowed to 0.6 times under a
 1 s VHS outro. 3.4 s, purple. The screen then holds the last (black) frame HOLD ms before it fades over the app.
-melodee-hdslave's own film (hdslave.12 on) replaces the first two parts with one slide rendered for it from the
-intro's Blender recipe, given as another FILE (its making is outside this repository): see the cut in boot_film.h.
+The hdslaveOS cut begins on its own rendered camera slide. The crystal fronts develop during the approach,
+and the finished badge holds before tracking fails. The exact sources and speeds are listed in boot_film.h.
 
 Each frame is kept as a baseline JPEG. The repository keeps source text only, and no file over 2 MB
 (base/tools/check_private_files.py), so the frames are Base64 strings spread over as many boot_film_N.cpp files
@@ -35,6 +35,8 @@ licence line.
 from pathlib import Path
 import argparse
 import base64
+import math
+import random
 import shutil
 import subprocess
 import sys
@@ -95,41 +97,204 @@ def framing(wide, tall, zoom, length):
             f"crop={2 * WIDTH}:{2 * tall},scale={WIDTH}:{tall}:flags=lanczos,{pad}")
 
 
-def frac(x):
-    """The fractional part of an ffmpeg expression: with sin, a cheap per-pixel or per-line die."""
-    return f"mod(abs({x}),1)"
+def tape_floor():
+    """The existing slide's faint noise below the head switch, before the purple grade."""
+    grain = "mod(abs(sin(floor(X/2)*12.9898+Y*78.233+N*37.719)*43758.5453),1)"
+    return f"geq=lum='clip(p(X-gt(Y,H-10)*5,Y)+({grain}-0.5)*gt(Y,H-10)*140,0,255)'"
 
 
-def vhs(seconds, start):
-    """The VHS outro on a grey picture: the film's last `seconds`, from `start` on its clock (geq registers 0-9)."""
-    line = frac("sin(Y*12.9898+floor(N/2)*78.233)*43758.5453")         # a line's die, new every 2 frames
-    jump = frac("sin(floor(N/3)*91.7)*4375.85")                         # the frame's die, every 3 frames
-    drop = frac("sin(Y*7.13+N*3.71)*15731.7")                           # a line's dropout die, every frame
-    grain = frac("sin(floor(X/2)*12.9898+Y*78.233+N*37.719)*43758.5453")  # tape grain, 2 px wide
-    snow = frac("sin(X*3.17+Y*91.1+N*17.3)*24634.6")
-    at = "X-ld(4)"
-    up = "Y-ld(6)"
-    expression = (
-        f"st(0,clip((T-{start:g})/{seconds:g},0,1));"                           # 0..1 over the outro
-        "st(1,clip(ld(0)/0.45,0,1));st(1,ld(1)*ld(1)*(3-2*ld(1)));"            # the failure builds
-        "st(2,clip((ld(0)-0.5)/0.5,0,1));st(2,1-ld(2)*ld(2)*(3-2*ld(2)));"     # the picture fades, black at the end
-        f"st(3,{line});"
-        "st(5,lt(abs(Y-(mod(T*170,H+90)-45)),6));"                             # the tracking band rolling down
-        f"st(6,gt({jump},0.8)*ld(1)*2);"                                       # the frame jumps 2 lines now and then
-        # Sideways: timebase wobble, line jitter, rare tears, the band, the head-switching strip at the bottom.
-        "st(4,ld(1)*(1.2*sin(Y*0.08+T*19)+0.6*sin(Y*0.37-T*53)+(ld(3)-0.5)*3+gt(ld(3),0.93)*(ld(3)-0.93)*370)"
-        "+ld(5)*ld(1)*16+gt(Y,H-10)*(5+10*ld(1)));"
-        # Soft, smeared luma, the deck's edge ringing and a ghost; untouched while the failure is 0.
-        f"st(7,p({at},{up})*(1-0.5*ld(1))+(p({at}-1,{up})*0.3+p({at}-2,{up})*0.2)*ld(1)"
-        f"+max(0,p({at}-3,{up})-p({at},{up}))*0.55*ld(1)+p({at}-7,{up})*0.22*ld(1));"
-        # Dropouts: on about 3 lines in 100 a short streak, 8 to 63 px from a place the die picks.
-        f"st(8,{drop});"
-        f"st(9,gt(ld(8),0.972)*gte(X,{frac('ld(8)*97.3')}*W)*lte(X,{frac('ld(8)*97.3')}*W+8+{frac('ld(8)*13.1')}*55));"
-        "clip((ld(7)*(1-0.25*ld(1)*mod(Y,2))"                                   # interlace scanlines
-        f"+({grain}-0.5)*(26*ld(1)+ld(5)*130*ld(1)+gt(Y,H-10)*140)+ld(9)*255*ld(1))*ld(2)"
-        f"+{snow}*70*clip((ld(0)-0.72)/0.13,0,1)*clip((1-ld(0))/0.12,0,1)"    # snow as the signal dies
-        ",0,255)")
-    return f"geq=lum='{expression}'"
+def ease(start, end, t):
+    u = max(0.0, min(1.0, (t - start) / (end - start)))
+    return u * u * (3 - 2 * u)
+
+
+def luma_line(line, dx, gain, wear, noise, rng):
+    """Sample the time-base error between pixels and pass the luma and RF noise through the deck."""
+    width = len(line)
+    start = math.floor(-dx)
+    fraction = -dx - start
+    result = bytearray(width)
+    previous = filtered = grain = 0.0
+    for x in range(width):
+        sx = x + start
+        left = line[sx] if 0 <= sx < width else 0
+        right = line[sx + 1] if 0 <= sx + 1 < width else 0
+        value = left + fraction * (right - left)
+        filtered = value + 0.46 * wear * (filtered - value)
+        sample = (filtered + 0.15 * wear * (value - previous)) * gain
+        grain = 0.32 * grain + 0.68 * (rng.random() - 0.45)
+        result[x] = min(255, max(0, round(sample + grain * noise)))
+        previous = value
+    return result
+
+
+def chroma_lines(blue, red, delay, persistence, saturation, angle):
+    """Both colour differences share a low-pass filter and a burst reference which can slip in phase."""
+    width = len(blue)
+    u, v = bytearray(width), bytearray(width)
+    sine, cosine = saturation * math.sin(angle), saturation * math.cos(angle)
+    trail_u = trail_v = 0.0
+    for x in range(width):
+        sx = x - delay
+        cb = blue[sx] - 128 if 0 <= sx < width else 0
+        cr = red[sx] - 128 if 0 <= sx < width else 0
+        trail_u = cb + persistence * (trail_u - cb)
+        trail_v = cr + persistence * (trail_v - cr)
+        u[x] = max(0, min(255, round(128 + cosine * trail_u - sine * trail_v)))
+        v[x] = max(0, min(255, round(128 + sine * trail_u + cosine * trail_v)))
+    return u, v
+
+
+def dropout(line, previous, start, length, strength, rng):
+    """The dropout compensator repeats the preceding good line from the same field across the RF gap."""
+    end = min(len(line), start + length)
+    for x in range(max(0, start), end):
+        k = (x - start) / length
+        # The leading burst of noise gives way to delayed video, then blends back into the current line.
+        tip = max(0, 1 - 4 * k)
+        mix = strength * min(1, (1 - k) * 5)
+        replacement = previous[x] * (1 - tip) + rng.uniform(65, 240) * tip
+        line[x] = round(line[x] + mix * (replacement - line[x]))
+
+
+def interrupted_field(result, width, height, field, at, phase, rng):
+    """Write only the scanlines the deck can still read as its output cuts to black."""
+    last_strip = at >= 0.917
+    top, depth = (0.67, 0.07) if last_strip else (0.12, 0.51)
+    top += 0.014 * math.sin(phase * 47 + field)
+    start = 2 * round(height * top / 2) + field
+    rows = max(2, 2 * round(height * depth / 2))
+    black = bytes(width)
+    for y in range(start, min(start + rows, height), 2):
+        # A ragged, noisy leading edge crosses the line while the head briefly reacquires signal.
+        edge = max(0, 1 - (y - start) / (height * 0.025))
+        noise = (200 + 45 * field) * (1 + 1.3 * edge) * rng.uniform(0.83, 1.16)
+        line = luma_line(black, 0, 0, 1, noise, rng)
+        if y == start:
+            line_start = round(width * (0.30 + 0.18 * math.sin(phase * 39 + field)))
+            line[:line_start] = black[:line_start]
+        result[y * width:(y + 1) * width] = line
+
+
+def tape_frame(source, t, clock, rng, width=WIDTH, height=HEIGHT, *, field_step=1/58, field_seconds=1/60):
+    """Record two successive head passes into one full-range 4:2:0 picture."""
+    area = width * height
+    result = bytearray(area) + bytearray([128]) * (area // 2)
+    if t <= 0:
+        return source
+    if t >= 0.955:
+        return result
+
+    source = memoryview(source)
+    xs, ys = width / WIDTH, height / HEIGHT
+    half, quarter = width // 2, area // 4
+    raster = height + 2 * round(8 * ys)  # vertical blanking travels with the recorded picture
+    for field in (0, 1):
+        phase = clock + field * field_seconds
+        at = min(1.0, t + field * field_step)
+        if at >= 0.875:
+            if at < 0.955:
+                interrupted_field(result, width, height, field, at, phase, rng)
+            continue
+        wear = ease(0.0, 0.31, at)
+        # A brief return of tracking restores the colour before the vertical sync drops out.
+        catch = ease(0.37, 0.42, at) * (1 - ease(0.45, 0.50, at))
+        # On two short stretches the head wanders far enough to pick up the edge of the adjacent track.
+        slip = (ease(0.23, 0.26, at) * (1 - ease(0.32, 0.39, at))
+                + ease(0.46, 0.49, at) * (1 - ease(0.57, 0.65, at)))
+        roll = ease(0.47, 0.73, at)
+        roll_motion = 4 * roll * (1 - roll)
+        top = 2 * round(roll * raster / 2)
+        picture = 1 - ease(0.55, 0.73, at)
+        # Snow takes over as the picture disappears and holds until the final loss of sync.
+        snow = ease(0.58, 0.72, at)
+        burst_lock = (1 - ease(0.45, 0.67, at)) * (1 - 0.30 * wear + 0.30 * catch)
+        # The weaker head loses contact first. Its companion can still read the other field.
+        weak_head = field * ease(0.25, 0.42, at) * (1 - 0.92 * catch)
+        travel = ease(0.08, 0.80, at) - 0.10 * catch
+        centre = HEIGHT * (1.17 - 1.33 * travel) + 3 * math.sin(phase * 27)
+        centre += slip * (8 * math.sin(phase * 43) + 5 * field)
+        fringe_offset = 18 + 5 * math.sin(phase * 31 + field)
+        switch_y = HEIGHT - 3 - wear * (5.5 + 2.8 * math.sin(phase * 23) + field)
+        switch_x = round(width * (0.50 + 0.34 * math.sin(phase * 19 + 1.3 * field)))
+        previous_good = bytes(width)
+        flutter = 0.0
+        for y in range(field, height, 2):
+            sy = (y - top) % raster
+            if sy >= height:
+                continue
+            # Read faults belong to the tape scanline, so they also roll across the display.
+            scan = sy / ys
+            distance = scan - centre
+            band = max(0.0, 1 - abs(distance) / (5 + wear * (14 + 6 * field)))
+            fringe = slip * max(0.0, 1 - abs(distance + fringe_offset) / (4 + 2 * field))
+            hook = math.exp(-distance / 17) if distance >= 0 else 0
+            switch = scan - switch_y
+            switched = switch >= 0
+            head_noise = math.exp(-switch / 3.4) if switched else 0.0
+            loss = min(1.0, band * (0.70 + 0.37 * field) * (1 - 0.85 * catch)
+                       + 0.84 * fringe + 0.88 * head_noise)
+            flutter = 0.70 * flutter + rng.uniform(-1, 1) * (0.8 + (7 + 4 * slip) * loss)
+            bend = 1.6 * math.sin(scan * 0.04 + phase * 14) + flutter
+            bend += 25 * math.exp(-scan / 30) * math.sin(phase * 26)
+            bend += hook * (38 + 15 * field) * (1 - 0.8 * catch)
+            bend += slip * hook * (22 + 10 * field) - fringe * (27 + 9 * field)
+            # RF falls sharply inside a mistracked field. The noise gate closes after the picture goes.
+            gain = picture * (1 - 0.72 * wear * loss) * (1 - weak_head * (0.23 + 0.56 * roll_motion))
+            noise = wear * (3 + 260 * loss**2 + 68 * weak_head + 146 * snow)
+            line = source[sy * width:(sy + 1) * width]
+            dx = xs * wear * bend
+            luma = luma_line(line, dx, gain, wear, noise, rng)
+
+            if switched:
+                # A head change can occur partway across a line. Read the suffix with the next head's timing.
+                begin = switch_x if switch < 2 / ys else 0
+                skew = dx - xs * wear * (12 + 44 * head_noise)
+                switched_line = luma_line(line, skew, gain, wear, noise + 95 * wear * head_noise, rng)
+                luma[begin:] = switched_line[begin:]
+            if loss > 0.18 and rng.random() < loss * 0.84:
+                scar = width * (0.40 + 0.31 * math.sin(phase * 17))
+                start = round(scar + xs * (distance * 7.1 + rng.uniform(-9, 9)))
+                dropout(luma, previous_good, start, round(xs * rng.randint(25, 99)), wear, rng)
+            elif rng.random() < wear * (0.009 + 0.08 * weak_head):
+                dropout(luma, previous_good, rng.randrange(width), round(xs * rng.randint(8, 41)), wear, rng)
+            result[y * width:(y + 1) * width] = luma
+            if loss < 0.38:
+                previous_good = luma
+
+            # The even head supplies the shared 4:2:0 colour row. Chroma trails the luma, briefly swings
+            # in hue at the edge of a tear, and falls back to neutral when the burst reference disappears.
+            if field == 0:
+                src = area + sy // 2 * half
+                dest = area + y // 2 * half
+                delay = round(dx / 2 + xs * wear * (2.8 + 4.2 * band + 2 * head_noise))
+                angle = wear * (0.20 * math.sin(phase * 29 + scan * 0.023) + 1.26 * hook) * (1 - catch)
+                u, v = chroma_lines(source[src:src + half], source[src + quarter:src + quarter + half],
+                                    delay, 0.80 * wear, picture * burst_lock * (1 - loss * wear), angle)
+                result[dest:dest + half] = u
+                result[dest + quarter:dest + quarter + half] = v
+    return result
+
+
+def record_outro(path, seconds, fps):
+    """Process just the tail of the raw spool, timed against the frames actually emitted by the cut."""
+    frame_bytes = WIDTH * HEIGHT * 3 // 2
+    count, remainder = divmod(path.stat().st_size, frame_bytes)
+    if not count or remainder:
+        raise SystemExit("ffmpeg wrote an incomplete film")
+    affected = max(1, round(min(seconds, count / fps) * fps))
+    # The first sample of the ramp is the clean picture. Even a one-frame outro ends in black.
+    first = 1 if affected > 1 else 0
+    with path.open("r+b") as spool:
+        for i in range(first, affected):
+            offset = (count - affected + i) * frame_bytes
+            spool.seek(offset)
+            frame = spool.read(frame_bytes)
+            t = i / (affected - 1) if affected > 1 else 1.0
+            recorded = tape_frame(frame, t, i / fps, random.Random(0x564853 + i),
+                                  field_step=0.5 / max(1, affected - 1), field_seconds=0.5 / fps)
+            spool.seek(offset)
+            spool.write(recorded)
 
 
 def frames(sources, parts, fps, zoom, grade, outro, quality, folder):
@@ -139,28 +304,34 @@ def frames(sources, parts, fps, zoom, grade, outro, quality, folder):
         raise SystemExit("--zoom too large: the picture would be cut at the top and bottom")
     graph, taken = [], [0] * len(sources)
     uses = [sum(1 for p in parts if p[0] == n) for n in range(len(sources))]
-    for n in range(len(sources)):
-        graph.append(f"[{n}:v]split={uses[n]}" + "".join(f"[s{n}_{k}]" for k in range(uses[n])))
-    length = 0.0
+    for n, path in enumerate(sources):
+        hold = "loop=loop=-1:size=1:start=0,settb=1/60,setpts=N," if path.suffix.lower() == ".png" else ""
+        graph.append(f"[{n}:v]{hold}split={uses[n]}" + "".join(f"[s{n}_{k}]" for k in range(uses[n])))
     for n, (source, start, end, speed, closer) in enumerate(parts):
         seconds = (end - start) / speed
         graph.append(f"[s{source}_{taken[source]}]trim={start}:{end},setpts=(PTS-STARTPTS)/{speed},fps=60,"
                      f"{framing(wide, tall, closer, seconds)},format=yuv444p[p{n}]")
         taken[source] += 1
-        length += seconds
     chain = [f"concat=n={len(parts)}:v=1:a=0", f"fps={fps}"]
     if grade != "none" or outro:
         chain.append("format=gray")
     if outro:
-        chain.append(vhs(outro, max(0.0, length - outro)))
+        chain.append(tape_floor())
     if GRADES[grade]:
         chain.append(GRADES[grade])
     chain.append("format=yuvj420p")
     graph.append("".join(f"[p{n}]" for n in range(len(parts))) + ",".join(chain) + "[out]")
     inputs = [arg for path in sources for arg in ("-i", str(path))]
-    subprocess.run([ffmpeg(), "-v", "error", "-y", *inputs, "-an", "-filter_complex", ";".join(graph),
-                    "-map", "[out]", "-c:v", "mjpeg", "-q:v", str(quality), "-fflags", "+bitexact", "-flags", "+bitexact",
-                    str(folder / "f%04d.jpg")], check=True)
+    command = [ffmpeg(), "-v", "error", "-y"]
+    video = [*inputs, "-an", "-filter_complex", ";".join(graph), "-map", "[out]"]
+    if outro:
+        spool = folder / "film.yuv"
+        subprocess.run(command + video + ["-f", "rawvideo", str(spool)], check=True)
+        record_outro(spool, outro, fps)
+        video = ["-f", "rawvideo", "-pixel_format", "yuvj420p", "-video_size", f"{WIDTH}x{HEIGHT}",
+                 "-framerate", str(fps), "-i", str(spool), "-vf", "setsar=1"]
+    subprocess.run(command + video + ["-c:v", "mjpeg", "-q:v", str(quality), "-fflags", "+bitexact",
+                                      "-flags", "+bitexact", str(folder / "f%04d.jpg")], check=True)
     out = sorted(folder.glob("f*.jpg"))
     if not out:
         raise SystemExit("ffmpeg wrote no frames")
@@ -183,7 +354,7 @@ def main():
     parser.add_argument("video")
     parser.add_argument("--part", type=part, action="append", help="[FILE@]START:END:SPEED[:ZOOM] (seconds of the source)")
     parser.add_argument("--grade", choices=sorted(GRADES), default="purple")
-    parser.add_argument("--outro", type=float, default=1.0, help="seconds of VHS glitch fading to black at the end; 0 none")
+    parser.add_argument("--outro", type=float, default=1.0, help="seconds of VHS tracking loss cutting to black at the end; 0 none")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--zoom", type=float, default=1.1)
     parser.add_argument("--hold", type=int, default=0, help="ms the last frame stays before the fade over the app")
@@ -191,8 +362,10 @@ def main():
     arguments = parser.parse_args()
     if not 10 <= arguments.fps <= 60:
         raise SystemExit("--fps: 10 to 60")
+    if not math.isfinite(arguments.outro) or arguments.outro < 0:
+        raise SystemExit("--outro: a finite, non-negative duration")
     if arguments.outro and arguments.grade == "none":
-        raise SystemExit("--outro works on the picture's brightness: it needs a --grade")
+        raise SystemExit("--outro needs a --grade")
     sources = []  # the inputs the parts use, each once (VIDEO only if a part does); a part names its source by its place
     parts = []
     for name, start, end, speed, closer in arguments.part or [part(p) for p in DEFAULT_PARTS]:
