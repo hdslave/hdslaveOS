@@ -151,8 +151,13 @@ std::vector<fs::path> folders_that_run(const fs::path& from) {
 // A plug-in's files into `to`: a VST3 bundle without other machines' builds, an MPC plug-in folder (its folders with
 // no library linked, so its data stays on the card: OxZygen's samples are 160 MB), a .so alone; the folders beside it
 // linked.
+// `to` is emptied first: its name counts from 1 in each process, so one that ended without removing its copies (killed,
+// or gone with _Exit) leaves them under the names the next start in the same boot uses, and a folder linked there
+// again would fail ("File exists").
 bool stage_copy(const PluginFile& file, const fs::path& to, std::string& error) {
     std::error_code e;
+    fs::remove_all(to, e);
+    e.clear();
     fs::create_directories(to, e);
     fs::path from(file.path);
     link_neighbours(from, to);

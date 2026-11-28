@@ -230,6 +230,25 @@ class PluginHostTests(unittest.TestCase):
                 with self.subTest(mode=mode):
                     self.assertEqual(run.returncode, 0, out.decode(errors="replace")[-2000:])
 
+    def test_a_plugin_opens_over_copies_an_earlier_process_left_in_the_stage(self):
+        """An MPC plug-in folder with a folder of skins: an earlier process that ended without removing its copies (killed,
+        or gone with _Exit) left them under the names this one uses, the skins linked. The plug-in opens all the same
+        (it failed with "Could not copy: File exists")."""
+        subprocess.run(["make", "-s", "build/test-user-presets"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            folder = card / "Melodee/Plugins/Test VST"
+            (folder / "Skins").mkdir(parents=True)
+            (folder / "Skins/knob.png").write_bytes(b"png")
+            (folder / "plugin-meta.xml").write_text('<PLUGIN name="Test VST" file="Test.so" isInstrument="1"/>\n')
+            subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, "-shared", "-fPIC",
+                            str(ROOT / "tests/vst2_fixture.cpp"), "-o", str(folder / "Test.so")], check=True)
+            result = subprocess.run([str(ROOT / "build/test-user-presets"), str(card), str(folder), "stale-stage"],
+                                    capture_output=True, text=True, timeout=300,
+                                    env={**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")})
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("stale-stage ok", result.stdout)
+
     def test_midi_start_while_playing_plays_from_the_top(self):
         self.run_rack_fixture("midi-start")
 
