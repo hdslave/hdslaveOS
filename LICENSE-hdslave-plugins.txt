@@ -1,0 +1,52 @@
+hdslave Plug-in License 1.0
+Copyright 2026 hdslave
+
+Scope
+
+This license applies to the parts of hdslave's custom music plug-ins for
+which hdslave holds the applicable rights, including source code, compiled
+plug-ins, factory presets, artwork and documentation. It applies to those
+parts in current and earlier official releases on every platform. A file or
+component carrying a separate license is governed by that license. This
+license preserves all permissions granted under any previous license.
+
+Making music
+
+You may install and use the plug-ins worldwide, free of charge, for as long
+as you wish. You may make, record, perform, stream, publish, license and
+sell music and other audio you create with them. Paid studio work, client
+projects and live performances are included. You owe hdslave no royalties
+or attribution for these uses. hdslave claims no rights in your music
+through your use of the plug-ins.
+
+Source code and private changes
+
+You may read, download, build and privately modify the source. You may use
+your own builds to make music on the same terms as the official releases.
+
+Sharing official releases
+
+You may give away an unchanged official release, on its own or in a free
+collection. Keep the complete release together, including this license and
+all copyright notices, third-party notices and license texts. Each recipient
+receives the same permissions directly from hdslave.
+
+Commercial distribution and modified copies
+
+You need prior written permission from hdslave to sell or license copies of
+the plug-in for a fee, charge for access to a download, or include copies
+in a paid product, hardware bundle, service or subscription. This applies
+to source and binaries and to versions containing hdslave's original code,
+even if renamed or offered as a free extra with a purchase. Distributing a
+modified version also requires prior written permission. A musician charging
+for recordings, performances or production services is exercising the
+permissions under Making music.
+
+Other rights and warranty
+
+All rights in hdslave's material beyond the permissions above are reserved.
+These terms grant no right to imply endorsement by hdslave and do not limit
+rights you have under applicable law. The plug-ins are provided as is,
+without warranties, including warranties of merchantability, fitness for a
+particular purpose or noninfringement. To the extent permitted by law,
+hdslave is not liable for damages arising from their use or distribution.
