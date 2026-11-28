@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstdint>
 
 // The colours Melodee gives its tracks and loops, as 0xRRGGBB: the screen's
@@ -27,6 +28,17 @@ constexpr std::array<const char*, 16> track_colour_names {
 // The sixteen as the nearest of Ableton Live's clip and track colours (its palette's index), for the Live Set export
 // (shell/live_export.h): Coral as Live's salmon, Amber its orange, and so on.
 constexpr std::array<uint8_t, 16> track_live_colours {28, 1, 20, 10, 8, 12, 4, 11, 21, 17, 0, 18, 9, 15, 26, 37};
+// Which of the sixteen each track shows (issue 69, model/project.h track_colour_slot): its place's (track n the nth)
+// until one is picked for it on the mixer's MENU. The shell sets them from the project each frame
+// (shell/track_colours.h); the screen, the pad lights and the exports read them through track_slot(). Any thread.
+struct TrackSlots {
+    std::array<std::atomic<uint8_t>, 16> at;
+    TrackSlots() { for (unsigned n = 0; n < 16; ++n) at[n].store(uint8_t(n), std::memory_order_relaxed); }
+};
+inline TrackSlots& track_slot_table() { static TrackSlots table; return table; }
+inline unsigned track_slot(unsigned track) { return track_slot_table().at[track % 16].load(std::memory_order_relaxed) % 16u; }
+inline void set_track_slot(unsigned track, unsigned slot) { track_slot_table().at[track % 16].store(uint8_t(slot % 16), std::memory_order_relaxed); }
+
 // The Looper's tracks L1-L4 (docs/LOOPER.md): colours of their own, apart from the sixteen, shaded the same way.
 constexpr std::array<std::array<uint32_t, 3>, 4> loop_shades {{
     {0x6FD3FF, 0x6FA6FF, 0x6FFFE5}, {0xFFA36F, 0xFF7A6F, 0xFFD06F}, {0xC09CFF, 0x9C9EFF, 0xE69CFF}, {0x7DEBA6, 0x7DEBD9, 0xA4EB7D},

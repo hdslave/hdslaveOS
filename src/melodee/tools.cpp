@@ -8,6 +8,7 @@
 #include "melodee/plugin/plugin_pages.h"
 #include "melodee/plugin/plugin_skin.h"
 #include "melodee/shell/menu.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/mixer_channels.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/sample_lists.h"
@@ -43,6 +44,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/ui/boot.h"
+#include "melodee/ui/screensaver.h"
 #include "melodee/ui/shades.h"
 #include "melodee/ui/tokens.h"
 #include "drivers/usb_audio.h"
@@ -554,6 +556,18 @@ void loose_hand(Pattern& p) {
     p.length = 4 * 4 * ticks_per_quarter;
     const unsigned played[] {30, 210, 520, 700, 980, 1170, 1400, 1650};
     for (unsigned n = 0; n < 8; ++n) { Event e; e.tick = played[n]; e.key = uint8_t(48 + n % 3 * 4); p.add(e); }
+}
+
+// Time Correct: track 1's pattern in hand played by hand, felt 70 % toward Q, swung 62 %, with the groove of A3 (another
+// take by hand).
+void time_correct_scene(Shell& shell, const Snapshot& s) {
+    auto& at = shell.patterns().at[0];
+    const unsigned here = s.project.tracks[0].pattern % pattern_count, from = here == 2 ? 3 : 2;
+    loose_hand(at[here]);
+    loose_hand(at[from]);
+    auto& feel = at[here].feel;
+    feel.strength = 70; feel.swing = 62; feel.groove_from = groove_source(0, from);
+    groove_of(at[from], feel);
 }
 
 // midi-track A: what a MIDI track sent over the last four seconds, a bass line and a chord, two notes on their way now.
@@ -1676,12 +1690,16 @@ const Preview previews[] {
     {"recarmed", [](Shell&, Snapshot& s) { // Seq Record pressed while stopped: Play starts the take
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.rec_armed = true; s.ui.locate = 5 * ticks_per_quarter + 120;
      }},
-    {"timecorrect", [](Shell& shell, Snapshot& s) { // Shift + Pad 14 (time-correct C): 70 % toward Q, swung 62 %, as it plays
+    {"timecorrect", [](Shell& shell, Snapshot& s) { // Shift + Pad 14 (time-correct C): 70 % toward Q, swung 62 %, A3's groove, as it plays
          s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
-         loose_hand(shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count]);
-         auto& feel = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count].feel;
-         feel.strength = 70; feel.swing = 62; feel.groove_from = 1 + 2;
+         time_correct_scene(shell, s);
          s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"timecorrectgroove", [](Shell& shell, Snapshot& s) { // B2 GROOVE held: track 1's patterns of bank A, A3's lit, A1 in hand ringed
+         s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
+         time_correct_scene(shell, s);
+         s.ui.tc_groove_held = true; s.ui.tc_groove_track = 0; s.ui.tc_groove_bank = 0;
+         for (unsigned n : {0u, 2u, 4u, 8u}) s.sketches[0][n].notes = true;
      }},
     {"timecorrectoff", [](Shell& shell, Snapshot& s) { // QUANTIZE off: the notes as written, nothing slid
          s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
@@ -3133,6 +3151,7 @@ const Preview previews[] {
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {
+    show_track_colours(s.project); // issue 69: the colour each track shows
     ui::use_palette(s.ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : s.ui.settings.font); // LCD sets its own
     ui::Paint p(g);
@@ -3460,6 +3479,43 @@ int boot_frames(const std::string& folder) {
     return written > 1 ? 0 : 1;
 }
 
+// hdslaveOS: Settings > SCREEN's Screensaver as it shows (ui/screensaver.cpp: the name hdslaveOS, never Melodee's
+// logo), in HDSLAVE and DAY, a frame every three seconds from its start, at 320 x 240 and @2x: saver-*.png. Fails when
+// it would not show (its picture did not load) or draws nothing but the ground.
+int saver_frames(const std::string& folder) {
+    ui::Screensaver saver;
+    const uint32_t start = 60000; // Screensaver 1 min, the controls last touched at 0
+    unsigned written = 0;
+    for (const char* palette : {"HDSLAVE", "DAY"}) {
+        ui::use_palette(ui::palette_named(palette));
+        for (uint32_t s = 0; s < 12; s += 3) {
+            const uint32_t now = start + s * 1000;
+            if (!saver.shows(1, now, 0, false)) { std::cout << "MELODEE_SAVER shows=0\n"; return 1; }
+            for (int scale : {1, 2}) {
+                juce::Image image(juce::Image::ARGB, screen_width * scale, screen_height * scale, true);
+                {
+                    juce::Graphics g(image);
+                    g.addTransform(juce::AffineTransform::scale(float(scale)));
+                    saver.draw(g, now);
+                }
+                if (scale == 1) { // something drawn over the ground
+                    const auto ground = image.getPixelAt(0, 0);
+                    bool ink = false;
+                    for (int y = 0; y < image.getHeight() && !ink; ++y)
+                        for (int x = 0; x < image.getWidth() && !ink; ++x) ink = image.getPixelAt(x, y) != ground;
+                    if (!ink) { std::cout << "MELODEE_SAVER blank\n"; return 1; }
+                }
+                char name[64];
+                std::snprintf(name, sizeof name, "/saver-%s-%02u%s.png", palette, unsigned(s), scale == 1 ? "" : "@2x");
+                save_png(image, folder + name);
+                ++written;
+            }
+        }
+    }
+    std::cout << "MELODEE_SAVER frames=" << written << '\n';
+    return 0;
+}
+
 // Draws every preview page `rounds` times at 320 x 240 and prints the mean
 // time per draw, for comparing drawing cost before and after a change.
 int bench(unsigned rounds, const std::vector<std::string>& names) {
@@ -3646,7 +3702,7 @@ static int mpc_import(const char* path) {
     MpcImport report;
     auto began = std::chrono::steady_clock::now();
     const std::string kind = std::filesystem::path(path).extension().string();
-    auto error = kind == ".xpm" || kind == ".XPM" ? import_mpc_program(bytes, path, *project, report)
+    auto error = is_mpc_program(path) ? import_mpc_program(bytes, path, *project, report) // .xpm, .xty, .xtd (issue 62)
                                                   : import_mpc_project(bytes, path, *project, *patterns, report);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
@@ -3881,7 +3937,7 @@ static int project_export(bool live, const char* path, const char* folder, const
     auto began = std::chrono::steady_clock::now();
     if (live) {
         LiveExport report;
-        const LiveColours colours = ui::track_live_colours;
+        const LiveColours colours = live_track_colours(*project);
         error = export_live_set(*project, *patterns, folder, name, report, prints.get(), prints_dir, audio_dir, &colours);
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
         if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
@@ -4290,6 +4346,7 @@ std::optional<int> run_tool(int argc, char** argv) {
         return error.empty() ? 0 : 1;
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
+    if (argc == 3 && !std::strcmp(argv[1], "--melodee-saver")) return saver_frames(argv[2]); // hdslaveOS
     // Companion screens (sdk/melodee-screen/melodee_companion.h): the plug-in with a package's screen, as the MPC
     // draws it; the plug-in's parameters for writing screen.json; a package checked against the plug-in.
     if (argc >= 5 && !std::strcmp(argv[1], "--melodee-companion-screen")) // PLUGIN PACKAGE DIR [STEP...]

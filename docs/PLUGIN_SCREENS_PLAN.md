@@ -133,6 +133,11 @@ dot and the fader and Shift marks only while they apply, the strip 320 x 144
 with no cards. Checked on the MPC with the CLAP fixture: PANEL, EDIT, the
 strip, the full page with the wheel, B3 back, Shift + B3 cards.
 
+Later (2026-11-27, Kerem): PANEL moved to B1's first page, before PRESETS
+and EDIT, so a plug-in with its own screen (its own preset picker) opens on
+it; a plug-in picked from Stage opens EDIT and moves to PANEL once it is open
+and says it draws one (screen_view.h, plugin_screen_first()).
+
 **5. Example and docs.** `sdk/melodee-screen/example`: a small MIT plug-in,
 one source built as CLAP and as VST2 (aarch64, and armv7 for the bridge),
 drawing its own page and strip. docs/PLUGIN_SCREENS.md (MIT): the format

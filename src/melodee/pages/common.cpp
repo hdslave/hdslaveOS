@@ -8,6 +8,8 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/pad_job.h"
 #include "melodee/pages/common.h"
+#include "melodee/shell/song_range.h"
+#include "melodee/model/print.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/undo_scope.h"
@@ -185,6 +187,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         }
         c.fill = b.fraction();
         c.frozen = card_frozen(s.freeze, s.project, s.ui, b); // freeze plan F2c
+        c.quiet = s.ui.page == PageId::TimeCorrect && b.kind == Binding::Kind::FeelSwing && !s.pattern.feel.strength; // swing needs STRENGTH
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
             c.state = ui::KnobCard::State::Pickup;
@@ -506,7 +509,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
-    case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
+    case Kind::SongPattern: { // issue 60: the place in the list, named as the pattern is elsewhere
+        const int clip = s.project.song.clip_at(s.ui.track, s.ui.song_cursor);
+        const unsigned now = clip >= 0 ? s.project.song.clips[size_t(clip)].pattern : s.ui.song_pattern;
+        const auto list = song_pattern_list(s.ui.song_used, now);
+        c.label = "PATTERN";
+        c.value = juce::String(print_pattern_name(list[size_t(std::clamp(b.value, 0, int(list.size()) - 1))]));
+        break;
+    }
     case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
     case Kind::RegionGain: { // freeze plan F3: Stage on an audio track's pattern's take
         c.label = "LEVEL";
@@ -687,15 +697,22 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         if (!pad.layer(unsigned(b.value) % pad_layers).used()) c.unit = "empty";
         break;
     }
-    case Kind::LayerLow: c.label = "VEL LOW"; c.value = juce::String(b.value); break;
+    case Kind::LayerLow: { // issue 66: under CC, the controller's values (1 takes in 0)
+        const bool cc = track.pads[track.last_pad % sampler_pads].layer_play == LayerPlay::Cc;
+        c.label = cc ? "CC LOW" : "VEL LOW"; c.value = juce::String(cc && b.value == 1 ? 0 : b.value);
+        break;
+    }
     case Kind::ZonePick: c.label = "ZONE"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1); break; // round 3
     case Kind::ZoneTune: c.label = "TUNE"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
     case Kind::ZoneLevel: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;
     case Kind::PadLoopXfade: c.label = "XFADE"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); c.unit = b.value ? "ms" : ""; break;
-    case Kind::LayerHigh: c.label = "VEL HIGH"; c.value = juce::String(b.value); break;
+    case Kind::LayerHigh: c.label = track.pads[track.last_pad % sampler_pads].layer_play == LayerPlay::Cc ? "CC HIGH" : "VEL HIGH"; c.value = juce::String(b.value); break;
     case Kind::LayerPitch: c.label = "TUNE"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
     case Kind::LayerGain: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;
-    case Kind::LayerPlayMode: c.label = "PLAY"; c.value = name_case(juce::String(layer_play_name(LayerPlay(b.value)))); break;
+    case Kind::LayerPlayMode: // issue 66: past RANDOM HOLD the CCs, CC 1 to CC 127
+        c.label = "PLAY";
+        c.value = b.value >= int(LayerPlay::Cc) ? "CC " + juce::String(b.value - int(LayerPlay::Cc) + 1) : name_case(juce::String(layer_play_name(LayerPlay(b.value))));
+        break;
     case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
     case Kind::ChopAmount: {
         auto mode = ChopMode(b.id);
@@ -760,6 +777,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
     case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
     case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PreviewLevel: c.label = "PREVIEW"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;
     case Kind::Features: c.label = "FEATURES"; c.value = b.value ? "Full" : "Basic"; break;
     case Kind::UsageLog: c.label = "USAGE LOG"; c.value = b.value ? "On" : "Off"; break;
     case Kind::SettingRow: { // Settings: the row under the cursor, at the card's value (one that waits for K1 to rest too)

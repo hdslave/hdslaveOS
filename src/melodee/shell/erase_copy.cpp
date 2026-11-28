@@ -121,6 +121,7 @@ void copy_press(Context& c, bool kit_pads, bool key_pads) {
     case CopyHere::Steps: arm(UiState::Copying::Steps); ui.sheet_open = false; return;
     case CopyHere::Scenes: arm(UiState::Copying::Scenes); return;
     case CopyHere::Clip: song_copy(c); return;
+    case CopyHere::Bars: if (song_copy_bars(c)) arm(UiState::Copying::Bars); return; // issue 60: Push pastes them
     case CopyHere::Project: if (!project_copy(c)) c.notice("Copy: pick a project"); return;
     case CopyHere::Effect: chain_copy(c); return;
     case CopyHere::Slice: c.extract_slice(); return;

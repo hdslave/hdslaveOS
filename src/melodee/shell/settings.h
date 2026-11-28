@@ -9,6 +9,7 @@
 #include "melodee/model/midi_config.h"
 #include "melodee/ui/faces.h"
 #include "melodee/ui/palettes.h"
+#include "melodee/shell/screensaver.h"
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -40,6 +41,7 @@ struct Settings {
                          Screen, PlaceBarRow, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume,
                          CpuSpeed, Refresh, DimAfter, PadLevel, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow,
+                         ScreensaverRow, SeqPads,
                          FindMovedRow, Rows }; // FindMovedRow: hdslaveOS's own (shell/find_moved.h)
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
@@ -57,6 +59,7 @@ struct Settings {
     uint8_t chop_mode = 0;    // Chop's K3: the type picked last, which a sample with no chop of its own opens on (model/chop_slices.h ChopMode)
     bool stems_best = true;   // STEMS' B2 BEST: up to 16 kHz in two passes, about three times as long (shell/stems.h)
     bool preview = false;     // the sample browser's B3 PREVIEW: each file plays as the cursor lands on it
+    uint8_t preview_level = 100; // and how loud: the fader while Samples is in view, 0..127, 100 as the file is (+6 dB at 127)
     bool double_copies = true; // Double Seq (Shift + Pad 3): the new half plays the notes again (the MPC's way), or starts empty
     // Capture (Shift + Seq Record; round 2, capture C): how many of the last bars played it keeps (roadmap P5: 0 Auto,
     // the phrase as long as it is), and how it puts them on the grid: 0 as played, 1 onto sixteenths, 2 onto eighths.
@@ -102,6 +105,9 @@ struct Settings {
     // Mute (issue 27): Audio, a muted track or kit pad is silent at once, as on the MPC; Notes, it starts no new notes
     // and what it plays rings on (a MIDI track's notes end on their own), as on Elektron machines.
     bool note_mutes = false;
+    // Seq + pad (issue 50): Patterns, Seq held's pads launch the selected track's patterns and Shift + pad a sequence;
+    // Sequences, the other way round, for live play (shell/sequences.h). Patterns' own pads stay patterns.
+    bool seq_pads_sequences = false;
     // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
@@ -157,6 +163,9 @@ struct Settings {
     // File sharing: the card as a network drive (SMB) for the computer on USB-C, at smb://melodee.local, while it is
     // the MPC's (base drivers/file_share.h). On unless turned off; off closes the computer's connection.
     bool file_sharing = true;
+    // Screensaver (shell/screensaver.h): the minutes the controls rest before the logo bounces over the screen, one
+    // of screensaver::minutes; 0 Off.
+    uint8_t screensaver = 0;
     uint8_t mirror_size = 3;  // 1280 x 960: the sharpest (1280 x 720 is stretched soft in a Retina window)
     uint8_t mirror_fps = 30;  // 30 or 60
     ScreenMirrorMode mirror_mode() const {
@@ -194,6 +203,7 @@ struct Settings {
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
                                     "CPU speed", "Display refresh", "Dim after", "Pad brightness",
                                     "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing",
+                                    "Screensaver", "Seq + pad",
                                     "Find moved files"};
         return names[row % Rows];
     }
@@ -237,6 +247,7 @@ struct Settings {
         case Autosave: return autosave ? "On" : "Off";
         case NotePreview: return note_preview ? "On" : "Off";
         case MuteKind: return note_mutes ? "Notes" : "Audio";
+        case SeqPads: return seq_pads_sequences ? "Sequences" : "Patterns";
         case PluginSkins: return plugin_skins ? "On" : "Off";
         case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         case SeqFollow: return seq_follow == 1 ? "Page" : seq_follow == 2 ? "Step" : "Off";
@@ -250,6 +261,10 @@ struct Settings {
         case UsbOut: return usb_submixes ? "Submixes" : "Tracks";
         case FileSharingRow: return file_sharing ? "On" : "Off";
         case FindMovedRow: return find_moved == FindAlways ? "Always" : find_moved == FindOff ? "Off" : "Ask";
+        case ScreensaverRow: {
+            unsigned wait = screensaver::minutes[screensaver % screensaver::minutes.size()];
+            return wait ? std::to_string(wait) + " min" : std::string("Off");
+        }
         case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
         default: return std::to_string(screen) + " %";
         }
@@ -286,6 +301,7 @@ struct Settings {
         case Autosave: autosave = !autosave; break;
         case NotePreview: note_preview = !note_preview; break;
         case MuteKind: note_mutes = !note_mutes; break;
+        case SeqPads: seq_pads_sequences = !seq_pads_sequences; break;
         case PluginSkins: plugin_skins = !plugin_skins; break;
         case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         case SeqFollow: seq_follow = uint8_t(step_in(seq_follow % 3, 3, way)); break;
@@ -299,6 +315,7 @@ struct Settings {
         case UsbOut: usb_submixes = !usb_submixes; break;
         case FileSharingRow: file_sharing = !file_sharing; break;
         case FindMovedRow: find_moved = uint8_t(step_in(find_moved % FindCount, FindCount, way)); break;
+        case ScreensaverRow: screensaver = uint8_t(step_in(screensaver % screensaver::minutes.size(), unsigned(screensaver::minutes.size()), way)); break;
         case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
         default: break;
         }
@@ -314,6 +331,7 @@ struct Settings {
         case KnobTakeover: case KnobFxTakeover: case FaderTakeover: return unsigned(Takeover::Count);
         case CaptureBars: return unsigned(capture_lengths.size());
         case Screen: return 9;
+        case ScreensaverRow: return unsigned(screensaver::minutes.size());
         case SampleRate: return unsigned(rates.size());
         case AudioBuffer: return unsigned(buffers.size());
         case RecallGrabRow: return unsigned(RecallGrab::Count);
@@ -362,6 +380,7 @@ struct Settings {
         case Autosave: return autosave;
         case NotePreview: return note_preview;
         case MuteKind: return note_mutes;
+        case SeqPads: return seq_pads_sequences;
         case PluginSkins: return plugin_skins;
         case RepeatVelocity: return repeat_pressure;
         case SeqFollow: return seq_follow % 3u;
@@ -375,6 +394,7 @@ struct Settings {
         case UsbOut: return usb_submixes;
         case FileSharingRow: return file_sharing;
         case FindMovedRow: return find_moved % FindCount;
+        case ScreensaverRow: return screensaver % screensaver::minutes.size();
         case DirectLevel: return direct_level % direct_levels.size();
         default: return 0;
         }
@@ -411,6 +431,7 @@ struct Settings {
         case Autosave: autosave = n; break;
         case NotePreview: note_preview = n; break;
         case MuteKind: note_mutes = n; break;
+        case SeqPads: seq_pads_sequences = n; break;
         case PluginSkins: plugin_skins = n; break;
         case RepeatVelocity: repeat_pressure = n; break;
         case SeqFollow: seq_follow = uint8_t(n); break;
@@ -424,6 +445,7 @@ struct Settings {
         case UsbOut: usb_submixes = n; break;
         case FileSharingRow: file_sharing = n; break;
         case FindMovedRow: find_moved = uint8_t(n); break;
+        case ScreensaverRow: screensaver = uint8_t(n); break;
         case DirectLevel: direct_level = uint8_t(n); break;
         default: break;
         }
@@ -466,9 +488,9 @@ struct Settings {
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\npalette=" << int(palette) << "\nhdslave_palette=" << int(palette)
             << "\nfont=" << int(font) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
-            << "\nzero_snap=" << int(zero_snap) << "\nslice_play=" << int(slice_play) << "\nslice_pattern=" << int(slice_pattern) << "\nchop_mode=" << int(chop_mode) << "\nstems_best=" << int(stems_best) << "\npreview=" << int(preview) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
+            << "\nzero_snap=" << int(zero_snap) << "\nslice_play=" << int(slice_play) << "\nslice_pattern=" << int(slice_pattern) << "\nchop_mode=" << int(chop_mode) << "\nstems_best=" << int(stems_best) << "\npreview=" << int(preview) << "\npreview_level=" << int(preview_level) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
-            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow) << "\nnote_preview=" << int(note_preview) << "\nnote_mutes=" << int(note_mutes) << "\nplugin_skins=" << int(plugin_skins)
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure) << "\nseq_follow=" << int(seq_follow) << "\nnote_preview=" << int(note_preview) << "\nnote_mutes=" << int(note_mutes) << "\nseq_pads=" << int(seq_pads_sequences) << "\nplugin_skins=" << int(plugin_skins)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nmonitor_before_mic=" << int(input.before_mic) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
             << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
@@ -477,7 +499,7 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\nusb_out=" << int(usb_submixes) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nfile_sharing=" << int(file_sharing) << "\nfind_moved=" << int(find_moved)
+            << "\nfile_sharing=" << int(file_sharing) << "\nscreensaver=" << int(screensaver) << "\nfind_moved=" << int(find_moved)
             << "\nscale_keys=" << int(scale_keys)
             << "\ncpu_speed=" << int(cpu_speed) << "\nrefresh=" << int(refresh_fps()) << "\ndim_after=" << int(dim_minutes[dim_after % dim_minutes.size()])
             << "\npad_level=" << int(pad_percent()) << '\n';
@@ -522,6 +544,7 @@ struct Settings {
             else if (key == "seq_follow") seq_follow = uint8_t(std::clamp(value, 0, 2));
             else if (key == "note_preview") note_preview = value != 0;
             else if (key == "note_mutes") note_mutes = value != 0;
+            else if (key == "seq_pads") seq_pads_sequences = value != 0;
             else if (key == "plugin_skins") plugin_skins = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "palette") { // older files also wrote NIGHT (0) when the user had never picked a theme
@@ -537,6 +560,7 @@ struct Settings {
             else if (key == "chop_mode") chop_mode = uint8_t(std::clamp(value, 0, 4));
             else if (key == "stems_best") stems_best = value != 0;
             else if (key == "preview") preview = value != 0;
+            else if (key == "preview_level") preview_level = uint8_t(std::clamp(value, 0, 127));
             else if (key == "double_copies") double_copies = value != 0;
             else if (key == "capture_bars") { capture_bars = 0; for (auto n : capture_lengths) if (n && int(n) <= value) capture_bars = n; } // the nearest below; 0 Auto
             else if (key == "capture_quantize") capture_quantise = uint8_t(std::clamp(value, 0, 2));
@@ -567,6 +591,7 @@ struct Settings {
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "file_sharing") file_sharing = value != 0;
             else if (key == "find_moved") find_moved = uint8_t(std::clamp(value, 0, int(FindCount) - 1));
+            else if (key == "screensaver") screensaver = uint8_t(std::clamp(value, 0, int(screensaver::minutes.size()) - 1));
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
             else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
             else if (key == "cpu_speed") cpu_speed = uint8_t(std::clamp(value, 0, int(CpuCount) - 1));

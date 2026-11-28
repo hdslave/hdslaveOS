@@ -9,6 +9,7 @@
 #include "melodee/model/jam_log.h"
 #include "melodee/engine/macros.h"
 #include <sstream>
+#include <deque>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -74,6 +75,7 @@
 #include "melodee/shell/browse_trim.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/sample_lists.h"
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/history_list.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
@@ -87,6 +89,8 @@
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
+#include "melodee/shell/program_in.h"
+#include "melodee/plugin/program_jobs.h"
 #include "melodee/shell/scale_keys.h"
 #include "melodee/engine/midi_out.h"
 #include "melodee/engine/midi_engine.h"
@@ -110,6 +114,11 @@
 #include "melodee/shell/features.h"
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/levels_keys.h"
+#include "melodee/shell/progression_tree.h"
+#include "melodee/shell/track_colours.h"
+#include "melodee/shell/time_correct.h"
+#include "melodee/shell/pad_context.h"
+#include "melodee/shell/pad_light.h"
 #include "melodee/shell/menu.h"
 #include "melodee/shell/stems.h"
 #include "melodee/shell/stems_room.h"
@@ -1461,6 +1470,28 @@ void button_remap() {
         q.copying = UiState::Copying::Patterns; CHECK(!sequences_on_pads(q)); q.copying = UiState::Copying::Off;
         q.page = PageId::Patterns; CHECK(sequences_on_pads(q)); q.page = PageId::Stage;
         q.seq_held = false; CHECK(!sequences_on_pads(q)); q.shift = false; // Shift alone: its printed jobs
+        // Settings > SEQ > Seq + pad on Sequences (issue 50): Seq held's pads the sequences, Shift + pad the patterns;
+        // Patterns' own pads (Seq not held) stay as they are.
+        q.settings.seq_pads_sequences = true;
+        CHECK(!pad_launches_sequence(q) && !sequences_on_pads(q));
+        q.shift = true; CHECK(pad_launches_sequence(q) && !sequences_on_pads(q)); q.shift = false; // Patterns' Shift + pad
+        q.seq_held = true; CHECK(pad_launches_sequence(q) && sequences_on_pads(q) && sequences_lit(q));
+        q.shift = true; CHECK(!pad_launches_sequence(q) && !sequences_on_pads(q) && !sequences_lit(q));
+        q.shift = false; q.seq_print = true; CHECK(!sequences_on_pads(q)); q.seq_print = false;
+        q.erase = true; CHECK(sequences_on_pads(q) && !sequences_lit(q)); q.erase = false;
+        q.seq_held = false; q.settings.seq_pads_sequences = false;
+        {
+            Settings fresh;
+            CHECK(!fresh.seq_pads_sequences && fresh.value_text(Settings::SeqPads) == "Patterns" &&
+                  std::string(Settings::row_name(Settings::SeqPads)) == "Seq + pad");
+            Settings swapped = fresh;
+            swapped.step(Settings::SeqPads, 1);
+            CHECK(swapped.seq_pads_sequences && swapped.value_text(Settings::SeqPads) == "Sequences");
+            Settings back; back.read(swapped.text());
+            CHECK(back.seq_pads_sequences);
+            Settings old; old.read("note_mutes=1\n"); // a file from before the row: Patterns
+            CHECK(!old.seq_pads_sequences);
+        }
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
         Track used = project->tracks[0]; // a track with a sound
@@ -1629,6 +1660,29 @@ void button_remap() {
         // GO's pad 16 is LEARN.
         CHECK(std::string(menu_places()[15].name) == "LEARN" && menu_tile_shown(full, 15));
     }
+    // 16 Levels FILE's folders (issue 65, shell/progression_tree.h): each file's place, a folder's rows (its folders
+    // by name first, then its files in the list's order), and the way up.
+    {
+        const std::string card = "/media/card";
+        const std::vector<std::string> paths {card + "/Melodee/Progressions/Mine 1.progression", card + "/Melodee/Progressions/jazz/ii-V-I.progression",
+                                              card + "/Melodee/Progressions/Hip Hop/Boom.progression", card + "/Melodee/Progressions/Hip Hop/Dusty/Lo.progression",
+                                              card + "/Progressions/Top.progression", card + "/Melodee/Samples/Expansions/Organs/Progressions/Gospel.progression",
+                                              card + "/Samples/Expansions/Old/Blue.progression"};
+        std::vector<std::string> places;
+        for (const auto& p : paths) places.push_back(prog_place(card, p));
+        CHECK(places[0] == "Mine 1.progression" && places[1] == "jazz/ii-V-I.progression" && places[3] == "Hip Hop/Dusty/Lo.progression");
+        CHECK(places[4] == "Progressions/Top.progression" && places[5] == "Expansions/Organs/Progressions/Gospel.progression" && places[6] == "Expansions/Old/Blue.progression");
+        auto top = prog_folder_rows(places, "");
+        CHECK(top.size() == 5 && top[0].name == "Expansions" && top[0].file < 0 && top[1].name == "Hip Hop" && top[2].name == "jazz" &&
+              top[3].name == "Progressions" && top[4].name == "Mine 1" && top[4].file == 0);
+        auto hip = prog_folder_rows(places, "Hip Hop");
+        CHECK(hip.size() == 2 && hip[0].name == "Dusty" && hip[0].file < 0 && hip[1].name == "Boom" && hip[1].file == 2);
+        CHECK(prog_folder_rows(places, "Hip Hop/Dusty").size() == 1 && prog_folder_rows(places, "Hip Hop/Dusty")[0].file == 3);
+        CHECK(prog_folder_rows(places, "Expansions").size() == 2 && prog_folder_rows(places, "Hip").empty()); // a name's start is not a folder
+        CHECK(prog_place_folder(places[3]) == "Hip Hop/Dusty" && prog_place_folder(places[0]).empty());
+        CHECK(prog_folder_up("Hip Hop/Dusty") == "Hip Hop" && prog_folder_up("Hip Hop").empty() && prog_folder_name("Expansions/Organs") == "Organs");
+        CHECK(prog_place(card, "/elsewhere/Loose.progression") == "Loose.progression");
+    }
     // 16 Levels held's keys (shell/levels_keys.h): SCALE and CHORDS by the type; on Chords FILE and SET; SET's chords.
     {
         Track kit; kit.engine = EngineKind::Sampler;
@@ -1702,6 +1756,103 @@ void button_remap() {
         CHECK(count >= 4 && items[0].job == MenuJob::TrackMove && items[count - 1].job == MenuJob::TrackClear);
         m.page = PageId::Tempo;
         CHECK(menu_here(*project, m, items) == 0 && std::string(menu_page_name(PageId::Tempo)).empty());
+    }
+    // Track colour (issue 69, shell/track_colours.h): its place's until one is picked; kept in TCOL (none written while
+    // every track is in its place's); the screen, the pads and the Live Set export follow; the MENU offers it on the mixer.
+    {
+        auto coloured = std::make_unique<Project>();
+        coloured->tracks[3].engine = EngineKind::Sampler;
+        CHECK(track_colour_slot(coloured->tracks[3], 3) == 3 && track_colour_slot(coloured->tracks[9], 9) == 9);
+        auto bank = std::make_unique<PatternBank>();
+        auto bytes = save_project(*coloured, *bank);
+        auto has_tcol = [](const std::vector<uint8_t>& b) {
+            for (size_t n = 0; n + 4 <= b.size(); ++n) if (std::memcmp(&b[n], "TCOL", 4) == 0) return true;
+            return false;
+        };
+        CHECK(!has_tcol(bytes));
+        coloured->tracks[3].colour = 5; // Sky
+        CHECK(track_colour_slot(coloured->tracks[3], 3) == 4);
+        bytes = save_project(*coloured, *bank);
+        CHECK(has_tcol(bytes));
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty() && back->tracks[3].colour == 5 && back->tracks[4].colour == 0);
+        show_track_colours(*back);
+        CHECK(ui::track_slot(3) == 4 && ui::track_slot(4) == 4 && ui::track_slot(0) == 0); // two tracks in Sky now
+        CHECK(pad_light::track(3, 1.0f).colour == pad_light::colour_slot(4, 1.0f).colour && pad_light::track(0, 1.0f).colour != pad_light::colour_slot(4, 1.0f).colour);
+        auto live = live_track_colours(*back);
+        CHECK(live[3] == ui::track_live_colours[4] && live[0] == ui::track_live_colours[0]);
+        CHECK(colour_slot_step(15, 1) == 0 && colour_slot_step(0, -1) == 15 && colour_slot_step(4, 3) == 7);
+        show_track_colours(Project {}); // back as the other tests expect
+        CHECK(ui::track_slot(3) == 3);
+        std::array<MenuItem, menu_here_max> items {};
+        UiState m; m.track = 3; m.page = PageId::Mixer;
+        unsigned count = menu_here(*coloured, m, items);
+        bool offered = false;
+        for (unsigned n = 0; n < count; ++n) offered |= items[n].job == MenuJob::TrackColour;
+        CHECK(offered);
+        m.track = 7; count = menu_here(*coloured, m, items); // an empty track: nothing to colour
+        for (unsigned n = 0; n < count; ++n) CHECK(items[n].job != MenuJob::TrackColour);
+        m.colour_sheet = true; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::ColourPick);
+        m.ask = UiState::Ask::ClearTrack; CHECK(pad_context(m, coloured->tracks[3], PadFacts {}, 0) == PadContext::Sheet);
+    }
+    // Song (issue 60, shell/song_range.h): the loop range copied, pasted as an insert and taken out, on one lane or
+    // every lane with the markers and tempo points; K2's list of the patterns that hold notes and the next empty.
+    {
+        Song song;
+        song.place({0, 0, 0, 4, false});  // T1 bars 1-4
+        song.place({0, 1, 4, 4, false});  // T1 bars 5-8
+        song.place({1, 2, 2, 4, false});  // T2 bars 3-6
+        song.step_marker(4);
+        song.tempo.set(6, 1300, false);
+        auto section = song_copy_range(song, 2, 6, song_lanes(false, 0)); // T1's bars 3-6
+        CHECK(section.bars == 4 && section.clips.size() == 2 && section.clips[0].bar == 0 && section.clips[0].bars == 2 &&
+              section.clips[1].bar == 2 && section.clips[1].bars == 2 && section.clips[1].pattern == 1);
+        auto every = song_copy_range(song, 2, 6, song_all_lanes);
+        CHECK(every.clips.size() == 3 && every.lanes == song_all_lanes);
+        Song one = song;
+        CHECK(song_paste(one, section, 2)); // T1 alone: what is at bar 3 on moves 4 bars on, cut where the cursor is
+        CHECK(one.clip_at(0, 1) >= 0 && one.clips[size_t(one.clip_at(0, 1))].bars == 2);              // bars 1-2 stay
+        CHECK(one.clip_at(0, 2) >= 0 && one.clips[size_t(one.clip_at(0, 2))].pattern == 0);           // the paste's first part
+        CHECK(one.clip_at(0, 4) >= 0 && one.clips[size_t(one.clip_at(0, 4))].pattern == 1);           // its second
+        CHECK(one.clip_at(0, 6) >= 0 && one.clips[size_t(one.clip_at(0, 6))].pattern == 0 && one.length() == 12); // the tail of the first clip moved on
+        CHECK(one.clip_at(1, 2) >= 0 && one.clips[size_t(one.clip_at(1, 2))].bar == 2);               // T2 not moved
+        CHECK(one.markers[0].bar == 4 && one.tempo.points[0].bar == 6);                              // one lane: markers stay
+        Song all = song;
+        CHECK(song_paste(all, every, 2));
+        CHECK(all.clip_at(1, 6) >= 0 && all.clips[size_t(all.clip_at(1, 6))].bar == 6 && all.markers[0].bar == 8 && all.tempo.points[0].bar == 10);
+        Song out = song;
+        CHECK(song_remove_bars(out, 2, 6, song_all_lanes)); // bars 3-6 out of every lane
+        CHECK(out.length() == 4 && out.clip_at(0, 0) >= 0 && out.clips[size_t(out.clip_at(0, 0))].bars == 2);
+        CHECK(out.clip_at(0, 2) >= 0 && out.clips[size_t(out.clip_at(0, 2))].pattern == 1 && out.clips[size_t(out.clip_at(0, 2))].bars == 2);
+        CHECK(out.clip_at(1, 2) < 0 && out.marker_count == 0 && out.tempo.points[0].bar == 2);
+        Song full;
+        for (unsigned n = 0; n < song_clips; ++n) full.place({uint8_t(n % 16), 0, uint16_t(n / 16 * 2), 2, false});
+        CHECK(!song_paste(full, every, 1)); // no room: nothing done
+        std::array<uint64_t, 2> used {};
+        used[0] = (1u << 0) | (1u << 3); used[1] = uint64_t(1) << (70 - 64);
+        auto list = song_pattern_list(used, 0);
+        CHECK((list == std::vector<uint8_t> {0, 3, 70, 71}) && song_pattern_index(list, 70) == 2);
+        list = song_pattern_list(used, 20); // a clip on an empty pattern keeps it in the list
+        CHECK((list == std::vector<uint8_t> {0, 3, 20, 70, 71}) && song_pattern_index(list, 20) == 2);
+        CHECK((song_pattern_list({}, 0) == std::vector<uint8_t> {0}));
+        CHECK(print_pattern_name(17) == "B2");
+        // LOOP: start and end at the cursor over clips or empty time; twice on one bar of a clip, its bars; then off.
+        Song looped = song;
+        int16_t waiting = -1;
+        CHECK(song_loop_tap(looped, waiting, 1, looped.clip_at(0, 1)) == SongLoopTap::Start && waiting == 1 && !looped.looping()); // on a clip: a start
+        CHECK(song_loop_tap(looped, waiting, 5, looped.clip_at(0, 5)) == SongLoopTap::Set && looped.loop_start == 1 && looped.loop_end == 6 && waiting == -1);
+        CHECK(song_loop_tap(looped, waiting, 3, -1) == SongLoopTap::Off && !looped.looping());
+        CHECK(song_loop_tap(looped, waiting, 6, looped.clip_at(0, 6)) == SongLoopTap::Start);
+        CHECK(song_loop_tap(looped, waiting, 6, looped.clip_at(0, 6)) == SongLoopTap::Set && looped.loop_start == 4 && looped.loop_end == 8); // the clip's bars
+        CHECK(song_loop_tap(looped, waiting, 9, -1) == SongLoopTap::Off);
+        CHECK(song_loop_tap(looped, waiting, 9, -1) == SongLoopTap::Start && song_loop_tap(looped, waiting, 7, -1) == SongLoopTap::Set &&
+              looped.loop_start == 7 && looped.loop_end == 10); // either way round
+        auto long_song = std::make_unique<Project>(); // a clip longer than a pattern (an MPC song's) keeps its length
+        long_song->song.place({0, 0, 0, 200, true});
+        auto bank = std::make_unique<PatternBank>();
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(save_project(*long_song, *bank), *back, *bank).empty() && back->song.clips[0].bars == 200 && back->song.clips[0].muted);
     }
     // Stems (shell/stems_jobs.cpp): a kit pad that holds a sample offers STEMS in the MENU on Stage and on Shift + B3
     // of its TRIM, in Basic as in Full; an empty pad and an instrument do not.
@@ -2390,6 +2541,9 @@ void timing() {
         auto tc_shift = page_bindings(project, ui, five, true); // Shift: humanize, its velocity, the groove's amount
         CHECK(tc_shift[0].kind == Binding::Kind::FeelHumanize && tc_shift[0].value == 20 && tc_shift[1].kind == Binding::Kind::FeelVelocity
               && tc_shift[2].kind == Binding::Kind::GrooveAmount);
+        int start = -1; // Erase + pot on a feel card: back to a new pattern's
+        CHECK(feel_reset_value(tc[2], start) && start == 50 && feel_reset_value(tc[1], start) && start == 0);
+        CHECK(feel_reset_value(tc_shift[2], start) && start == 100 && erase_resets(tc_shift[0]) && !feel_reset_value(tc[0], start));
         CHECK(shift_pad_job(1).kind == ShiftPadJob::Kind::Action && shift_pad_job(13).kind == ShiftPadJob::Kind::Open);
     }
 }
@@ -4101,6 +4255,14 @@ void fader_and_takeover() {
     ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target); // step entry: no nudge (round 2)
     ui.page = PageId::Compressor; CHECK(fader_job(*project, ui).binding.kind == Kind::CompAmount);
     ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
+    // The sample browser on a kit: its preview's level, kept with the settings (100 as the file is); on a track of
+    // notes the track's own target.
+    ui.page = PageId::Samples; ui.settings.preview_level = 70;
+    job = fader_job(*project, ui);
+    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::PreviewLevel && job.binding.value == 70
+          && job.binding.min == 0 && job.binding.max == 127 && !job.centred && !job.bend);
+    ui.track = 2; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
+    ui.track = 3; ui.settings.preview_level = 100;
     ui.page = PageId::KnobFx; // no effect loaded: the track's target
     CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
     project->knob_fx.kind = uint8_t(EffectKind::Chorus); project->knob_fx.morph = 40;
@@ -4296,14 +4458,22 @@ void midi_and_sync() {
         CHECK(set.midi.port == MidiPort::External && set.midi.in_channel == 0 && set.midi.out_channel == 1 && set.midi.pad_in &&
               set.midi.pad_out == PadMidiOut::Never && set.midi.sync_in == MidiSync::Off && !set.midi.cv_out && set.midi.cv_ppqn() == 2);
         set.midi.port = MidiPort::Usb; set.midi.in_channel = 10; set.midi.out_channel = 16; set.midi.pad_out = PadMidiOut::Empty;
-        set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = true;
+        set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = program_plugin;
         set.midi.cv_out = true; set.midi.cv_base = 4; set.midi.cv_division = 24; set.midi.pad_in = false;
+        set.midi.preset_cc = 74; set.midi.preset_knob = knob_signed_bit_2; set.midi.send_program = true;
         Settings back; back.read(set.text());
         CHECK(back.midi == set.midi && back.midi.cv_ppqn() == 96);
         Settings older; older.read("pad_response=2\nscreen=80\n");
         CHECK(older.midi == MidiConfig {} && older.pad_response == 2);
-        Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\n");
+        Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\nprogram_change=9\n");
         CHECK(bad.midi.cv_base == 8 && bad.midi.cv_division == 1 && bad.midi.out_channel == 1 && bad.midi.in_channel == 16);
+        CHECK(bad.midi.program_change == program_plugin);
+        Settings knob; knob.read("remote_preset_cc=200\nremote_preset_knob=9\n");
+        CHECK(knob.midi.preset_cc == 127 && knob.midi.preset_knob == knob_signed_bit_2);
+        CHECK(MidiConfig {}.preset_cc == 0 && MidiConfig {}.preset_knob == knob_binary_offset); // Off; Saadet's and the MiniLab 3's Relative1
+        CHECK(!MidiConfig {}.send_program && back.midi.send_program);
+        Settings on; on.read("program_change=1\n"); // an older file's On: Sequence, as before
+        CHECK(on.midi.program_change == program_sequence);
         set.toggle_favourite(0, 3); set.screen = 50;
         set.reset_factory();
         CHECK(set.midi == MidiConfig {} && set.screen == 100 && set.favourite(0, 3));
@@ -4327,6 +4497,32 @@ void midi_and_sync() {
         midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
         midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
         CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset factory settings");
+        // Receive program change: Off, Sequence, Plug-in, round; K1's list the same three.
+        CHECK(midi_row_choices(ProgramChangeRow) == 3);
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(midi_row_value(set, track, ProgramChangeRow) == "Sequence");
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(midi_row_value(set, track, ProgramChangeRow) == "Plug-in");
+        CHECK(midi_row_choice(set, track, ProgramChangeRow) == 2);
+        midi_row_step(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_off);
+        midi_row_step(set, track, ProgramChangeRow, -1); CHECK(set.midi.program_change == program_plugin);
+        midi_row_set(set, track, ProgramChangeRow, 1); CHECK(set.midi.program_change == program_sequence);
+        midi_row_set(set, track, ProgramChangeRow, 0);
+        // Send program change: On / Off, after Receive program change.
+        CHECK(std::string(midi_row_name(SendProgramRow)) == "Send program change" && SendProgramRow == ProgramChangeRow + 1);
+        CHECK(midi_row_value(set, track, SendProgramRow) == "Off" && midi_row_choices(SendProgramRow) == 2);
+        midi_row_step(set, track, SendProgramRow, 1); CHECK(set.midi.send_program && midi_row_value(set, track, SendProgramRow) == "On");
+        midi_row_set(set, track, SendProgramRow, 0); CHECK(!set.midi.send_program && midi_row_choice(set, track, SendProgramRow) == 0);
+        // The preset knob's rows, after Remote sequence CC; Push learns the four CC rows, not the knob's mode.
+        CHECK(std::string(midi_row_name(PresetCcRow)) == "Remote preset CC" && midi_row_value(set, track, PresetCcRow) == "Off");
+        CHECK(midi_row_choices(PresetCcRow) == 128 && midi_row_choices(PresetKnobRow) == 5);
+        CHECK(midi_row_value(set, track, PresetKnobRow) == "Binary offset");
+        midi_row_step(set, track, PresetKnobRow, 1); CHECK(midi_row_value(set, track, PresetKnobRow) == "2's complement");
+        midi_row_step(set, track, PresetKnobRow, -1); midi_row_step(set, track, PresetKnobRow, -1);
+        CHECK(midi_row_value(set, track, PresetKnobRow) == "Absolute");
+        midi_row_set(set, track, PresetKnobRow, 4); CHECK(set.midi.preset_knob == knob_signed_bit_2 && midi_row_choice(set, track, PresetKnobRow) == 4);
+        midi_row_set(set, track, PresetCcRow, 74); CHECK(midi_row_value(set, track, PresetCcRow) == "74");
+        CHECK(midi_row_learns(TrackCcRow) && midi_row_learns(PatternCcRow) && midi_row_learns(SceneCcRow) && midi_row_learns(PresetCcRow));
+        CHECK(!midi_row_learns(PresetKnobRow) && !midi_row_learns(RemoteChannelRow) && !midi_row_learns(PanicRow));
+        set.midi.preset_cc = 0; set.midi.preset_knob = knob_binary_offset;
         // Scale on white keys: off at first, a toggle, kept in the settings file, off again after Reset.
         CHECK(std::string(midi_row_name(ScaleKeysRow)) == "Scale on white keys" && midi_row_choices(ScaleKeysRow) == 2);
         CHECK(!set.scale_keys && midi_row_value(set, track, ScaleKeysRow) == "Off" && midi_row_choice(set, track, ScaleKeysRow) == 0);
@@ -4399,6 +4595,84 @@ void midi_and_sync() {
         CHECK(note_tracks(config, own, 0, 2, 3, false) == 0);       // nobody listens, not MIDI Config's port
         CHECK(note_tracks(config, own, 0, 2, 3, true) == (1u << 2)); // MIDI Config's port: the selected track
         CHECK(note_tracks(config, own, heard, 2, 1, false) == 0);
+        // Receive program change, Plug-in: the place in the preset list, past 128 with the Bank Select CCs before it.
+        ProgramBanks banks;
+        CHECK(banks.place(1, 0) == 0 && banks.place(1, 127) == 127);
+        banks.control(1, 32, 1); CHECK(banks.place(1, 0) == 128 && banks.place(1, 4) == 132);
+        banks.control(1, 0, 1); CHECK(banks.place(1, 0) == (128 + 1) * 128);
+        banks.control(1, 7, 99); banks.control(17, 0, 5); banks.control(0, 32, 5);
+        CHECK(banks.place(1, 0) == (128 + 1) * 128 && banks.place(2, 5) == 5); // another channel: its own bank
+        banks.control(1, 0, 0); banks.control(1, 32, 0); CHECK(banks.place(1, 9) == 9);
+        // The plug-ins it reaches: each PLUGIN track's once, never a frozen track's, an empty entry's or a kit's.
+        {
+            auto p = std::make_unique<Project>();
+            std::snprintf(p->plugins[3].path, plugin_path_length, "/media/card/Plugins/Synth.vst3");
+            std::snprintf(p->plugins[5].path, plugin_path_length, "/media/card/Plugins/Bass.clap");
+            for (unsigned t : {0u, 1u, 2u, 4u}) p->tracks[t].engine = EngineKind::Plugin;
+            p->tracks[0].plugin = 3; p->tracks[1].plugin = 3; p->tracks[2].plugin = 5; p->tracks[4].plugin = 7;
+            p->tracks[3].engine = EngineKind::Sampler; p->tracks[3].plugin = 5;
+            CHECK(program_entries(*p, 0xffff, 0) == ((1u << 3) | (1u << 5)));
+            CHECK(program_entries(*p, 1u << 1, 0) == (1u << 3));        // track 2 alone: the entry it shares with track 1
+            CHECK(program_entries(*p, 0xffff, 1u << 2) == (1u << 3));   // track 3 frozen
+            CHECK(program_entries(*p, (1u << 3) | (1u << 4), 0) == 0);   // a kit, a PLUGIN track with no plug-in
+        }
+        // Send program change: each PLUGIN track playing the plug-in, on its own channel else MIDI Config's Out, each
+        // channel once; Bank Select MSB and LSB, then the program, counted as Receive program change counts them.
+        {
+            auto p = std::make_unique<Project>();
+            MidiConfig out; out.out_channel = 5;
+            for (unsigned t : {0u, 1u, 2u, 3u}) { p->tracks[t].engine = EngineKind::Plugin; p->tracks[t].plugin = 3; }
+            p->tracks[1].midi_channel = 9; p->tracks[2].midi_channel = 9; p->tracks[3].plugin = 4;
+            p->tracks[4].engine = EngineKind::Sampler; p->tracks[4].plugin = 3; p->tracks[4].midi_channel = 12;
+            CHECK(program_channels(*p, out, 3) == ((1u << 4) | (1u << 8))); // tracks 1 (Out 5), 2 and 3 (9, once)
+            CHECK(program_channels(*p, out, 4) == (1u << 4) && program_channels(*p, out, 7) == 0);
+            CHECK((program_bytes(1, 5) == std::array<uint8_t, 8> {0xb0, 0, 0, 0xb0, 32, 0, 0xc0, 5}));
+            CHECK((program_bytes(16, 129) == std::array<uint8_t, 8> {0xbf, 0, 0, 0xbf, 32, 1, 0xcf, 1}));
+            CHECK((program_bytes(2, (128 + 1) * 128 + 9) == std::array<uint8_t, 8> {0xb1, 0, 1, 0xb1, 32, 1, 0xc1, 9}));
+            ProgramBanks back; // what Receive program change makes of it: the same place
+            back.control(2, 0, 1); back.control(2, 32, 1); CHECK(back.place(2, 9) == (128 + 1) * 128 + 9);
+        }
+        // The preset knob: steps a message, + next, - previous, in each of the five ways knobs send.
+        CHECK(knob_steps(knob_binary_offset, 65, -1) == 1 && knob_steps(knob_binary_offset, 63, -1) == -1 && knob_steps(knob_binary_offset, 68, -1) == 4);
+        CHECK(knob_steps(knob_binary_offset, 64, -1) == 0);
+        CHECK(knob_steps(knob_twos_complement, 1, -1) == 1 && knob_steps(knob_twos_complement, 127, -1) == -1 && knob_steps(knob_twos_complement, 124, -1) == -4);
+        CHECK(knob_steps(knob_signed_bit, 1, -1) == 1 && knob_steps(knob_signed_bit, 65, -1) == -1 && knob_steps(knob_signed_bit, 67, -1) == -3);
+        CHECK(knob_steps(knob_signed_bit_2, 65, -1) == 1 && knob_steps(knob_signed_bit_2, 1, -1) == -1);
+        CHECK(knob_steps(knob_absolute, 40, -1) == 0 && knob_steps(knob_absolute, 41, 40) == 1 && knob_steps(knob_absolute, 30, 41) == -1);
+        CHECK(knob_steps(knob_absolute, 127, 127) == 0); // at its end: nothing more
+        // Learn: turned right, rising values are a knob's position; the same value again a relative knob.
+        CHECK(guess_knob({40, 41, 43}) == knob_absolute && guess_knob({65, 65, 65}) == knob_binary_offset);
+        CHECK(guess_knob({1, 1, 2}) == knob_twos_complement && guess_knob({127, 127, 127}) == knob_binary_offset);
+        CHECK(!learnable_cc(0) && !learnable_cc(32) && !learnable_cc(6) && !learnable_cc(99) && !learnable_cc(123) && learnable_cc(74) && learnable_cc(1));
+        // A wait that ran out leaves nothing behind (MPC, 2026-11-27: two values of a first Push and one of a second took
+        // the knob, and the next two stepped a plug-in's presets); the control just taken is quiet while it moves on.
+        {
+            LearnTake take;
+            CHECK(!take.take(100, 1, 3, 65, learn_values, 0) && !take.take(100, 1, 3, 65, learn_values, 10));   // the first Push's two
+            CHECK(!take.take(200, 1, 3, 65, learn_values, 20000) && !take.take(200, 1, 3, 65, learn_values, 20010)); // a new Push: from 0
+            CHECK(take.take(200, 1, 3, 65, learn_values, 20020) && take.channel == 1 && take.cc == 3 && take.values[2] == 65);
+            CHECK(take.quiet(20100, 1, 3) && take.quiet(20650, 1, 3));  // still turning: dropped, its rest starts again
+            CHECK(!take.quiet(20700, 1, 4) && !take.quiet(20700, 2, 3)); // another control, another channel
+            CHECK(!take.quiet(21300, 1, 3));                              // rested: it steps
+            CHECK(!take.take(300, 1, 5, 1, learn_values, 30000) && !take.take(300, 1, 6, 1, learn_values, 30010)); // another control: over
+            CHECK(take.take(300, 9, 102, 0, 1, 40000) && take.channel == 9 && take.cc == 102); // a track row: the first CC takes it
+        }
+        // Program changes in quick succession: one waiting per plug-in, the last asked; another plug-in's, a load and
+        // a replaced plug-in's (another generation) left as they are.
+        {
+            struct Job { enum class Kind { Load, Program } kind; unsigned entry; uint32_t generation; int32_t id; };
+            std::deque<Job> waiting;
+            auto ask = [&](Job j) { if (!replace_waiting_program(waiting, j)) waiting.push_back(j); };
+            ask({Job::Kind::Load, 2, 1, 0});
+            for (int32_t n = 0; n < 30; ++n) ask({Job::Kind::Program, 2, 1, n});
+            ask({Job::Kind::Program, 4, 1, 7});
+            ask({Job::Kind::Program, 2, 2, 9});
+            CHECK(waiting.size() == 4 && waiting[1].kind == Job::Kind::Program && waiting[1].entry == 2 && waiting[1].id == 29);
+            CHECK(waiting[0].kind == Job::Kind::Load && waiting[2].entry == 4 && waiting[2].id == 7 && waiting[3].id == 9);
+            waiting.pop_front(); waiting.pop_front();       // the rack took them: the next ask queues again
+            ask({Job::Kind::Program, 2, 1, 3});
+            CHECK(waiting.size() == 3 && waiting.back().id == 3);
+        }
         // Remote: CCs on its channel select a track, launch a pattern or a scene; the rest go on to the tracks.
         MidiConfig remote;
         CHECK(remote_cc(remote, 1, remote.track_cc, 3).kind == RemoteJob::Kind::None); // Off
@@ -4412,6 +4686,13 @@ void midi_and_sync() {
         CHECK(remote_cc(remote, 16, remote.track_cc, 16).kind == RemoteJob::Kind::Ignored); // past T16: taken, nothing done
         CHECK(remote_cc(remote, 15, remote.track_cc, 3).kind == RemoteJob::Kind::None);
         CHECK(remote_cc(remote, 16, 7, 3).kind == RemoteJob::Kind::None);
+        // The transport's (issue 7): Off until learned; a press (64 up) plays or records, its let go is taken.
+        CHECK(remote.play_cc == 0 && remote.record_cc == 0);
+        remote.play_cc = 64; remote.record_cc = 65;
+        CHECK(remote_cc(remote, 16, 64, 127).kind == RemoteJob::Kind::Play && remote_cc(remote, 16, 64, 64).kind == RemoteJob::Kind::Play);
+        CHECK(remote_cc(remote, 16, 64, 0).kind == RemoteJob::Kind::Ignored && remote_cc(remote, 16, 64, 63).kind == RemoteJob::Kind::Ignored);
+        CHECK(remote_cc(remote, 16, 65, 127).kind == RemoteJob::Kind::Record && remote_cc(remote, 16, 65, 0).kind == RemoteJob::Kind::Ignored);
+        CHECK(remote_cc(remote, 15, 64, 127).kind == RemoteJob::Kind::None); // another channel: the tracks' sustain pedal
         remote.track_cc = 0;
         CHECK(remote_cc(remote, 16, 0, 3).kind == RemoteJob::Kind::None); // a CC row Off
         std::ostringstream text;
@@ -4440,6 +4721,20 @@ void midi_and_sync() {
         CHECK(f.tempo_tenths() == 0);
         for (unsigned n = 1; n < 30; ++n) f.pulse(at + 96 * 20833333ull + 500000000ull + n * 15625000ull); // 160 BPM
         CHECK(f.tempo_tenths() >= 1599 && f.tempo_tenths() <= 1601);
+    }
+    // The tempo clock in sets, held through its wobble (an SMK-37 at 120 read 119.9 and 119.8 now and then, and the
+    // header shook); readings on one side for four beats are taken, half a BPM or more at once, a pause starts over.
+    {
+        TempoSteady t;
+        CHECK(t.take(0) == 0 && t.take(1200) == 1200);
+        for (unsigned n = 0; n < 500; ++n) CHECK(t.take(n % 7 == 3 ? 1198 : n % 11 == 5 ? 1202 : n % 5 == 1 ? 1199 : 1200) == 1200);
+        for (unsigned n = 0; n < 60; ++n) CHECK(t.take(n % 2 ? 1201 : 1199) == 1200); // either side: never taken
+        CHECK(t.take(1200) == 1200);       // back on it: the count starts over
+        for (unsigned n = 1; n < TempoSteady::steady_pulses; ++n) CHECK(t.take(n % 3 ? 1202 : 1203) == 1200);
+        CHECK(t.take(1202) == 1202);       // a slow ramp: taken after four beats on one side
+        CHECK(t.take(1207) == 1207);       // half a BPM: at once
+        CHECK(t.take(0) == 1207);          // no reading: kept
+        t.reset(); CHECK(t.take(900) == 900);
     }
     // The clocks out, from the tempo (not the swung ticks), to the frame.
     {
@@ -5295,6 +5590,45 @@ void device_rates() {
         c.read("screen_mirror=1\n"); CHECK(c.file_sharing);
         b.reset_factory(); CHECK(b.file_sharing);
     }
+    // Screensaver (shell/screensaver.h): Off until picked, kept and read back; it waits the minutes after the last
+    // control and never while busy; the logo stays on the screen and counts its bounces.
+    {
+        Settings a;
+        CHECK(a.screensaver == 0 && a.value_text(Settings::ScreensaverRow) == "Off" && std::string(Settings::row_name(Settings::ScreensaverRow)) == "Screensaver");
+        a.step(Settings::ScreensaverRow, 1);
+        CHECK(a.value_text(Settings::ScreensaverRow) == "1 min" && a.text().find("\nscreensaver=1\n") != std::string::npos);
+        for (int n = 0; n < 9; ++n) a.step(Settings::ScreensaverRow, 1);
+        CHECK(a.value_text(Settings::ScreensaverRow) == "30 min");
+        Settings b;
+        b.read(a.text()); CHECK(b.screensaver == 5);
+        b.read("screensaver=99\n"); CHECK(b.screensaver == 5);
+        b.reset_factory(); CHECK(b.screensaver == 0);
+        CHECK(!screensaver::due(0, 1u << 31, 0, false));
+        CHECK(!screensaver::due(1, 59999, 0, false) && screensaver::due(1, 60000, 0, false) && !screensaver::due(1, 60000, 0, true));
+        CHECK(!screensaver::due(1, 0xffffff00u + 59999u, 0xffffff00u, false) && screensaver::due(1, 0xffffff00u + 60000u, 0xffffff00u, false)); // past the clock's wrap
+        // A pad hit stamped on the MIDI thread after the frame read its clock: just touched, not four billion ms ago.
+        CHECK(!screensaver::due(1, 500000, 500001, false) && !screensaver::due(5, 500000, 500040, false));
+        // The backlight while it shows: the MPC's six steps down to the second, never up, back when it ends.
+        CHECK(screensaver::backlight(6, 6, true) == 2 && screensaver::backlight(3, 6, true) == 2);
+        CHECK(screensaver::backlight(2, 6, true) == 2 && screensaver::backlight(1, 6, true) == 1);
+        CHECK(screensaver::backlight(6, 6, false) == 6 && screensaver::backlight(-1, 6, true) == -1 && screensaver::backlight(1, 1, true) == 1);
+        auto p = screensaver::place(0, 135, 23, 320, 240, 400, 30);
+        CHECK(p.x == 400 % 185 && p.y == 30 && p.bounces == 0);
+        p = screensaver::place(5442, 135, 23, 320, 240, 0, 0); // just past the right edge: back by 28 milli-px
+        CHECK(p.x == 184 && p.y == 141 && p.bounces == 1);
+        p = screensaver::place(10882, 135, 23, 320, 240, 0, 0);
+        CHECK(p.x == 0 && p.y == 151 && p.bounces == 2); // back at the left, and off the bottom once
+        unsigned bounces = 0;
+        bool inside = true, rising = true;
+        for (uint32_t ms = 0; ms < 600000; ms += 17) {
+            auto at = screensaver::place(ms, 135, 23, 320, 240, 77, 190);
+            inside = inside && at.x >= 0 && at.x <= 185 && at.y >= 0 && at.y <= 217;
+            rising = rising && at.bounces >= bounces;
+            bounces = at.bounces;
+        }
+        CHECK(inside && rising && bounces > 150);
+        CHECK(screensaver::place(1000, 320, 240, 320, 240, 5, 5).x == 0);
+    }
     // LIGHTS: Pad fade 100 ms and Tap Tempo light on until changed; kept and read back; the fade stops at the list's ends.
     {
         Settings a;
@@ -5766,7 +6100,7 @@ void stage() {
             }
         }
     }
-    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginSound);
+    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginScreen && stage_groups(EngineKind::Plugin).groups[0].pages[1].kind == StageKind::PluginSound);
     CHECK(stage_groups(EngineKind::Plugin).groups[2].pages[0].kind == StageKind::Mix && stage_groups(EngineKind::Sampler).groups[2].pages[0].kind == StageKind::PadMix);
     CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
@@ -5789,17 +6123,41 @@ void stage() {
     CHECK(key() == "PRESETS");
     stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
     stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
-    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PRESETS -> PANEL -> EDIT; Plug-in screens off, no PANEL.
-        ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
-        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
-        CHECK(plugin_screen_place(*project, ui, {}).entry == int(project->tracks[0].plugin) && plugin_screen_place(*project, ui, {}).area == 0);
-        std::array<TrackFreeze, track_count> frozen {};
-        frozen[1].state = FreezeState::Frozen; // another track's print: the screen in view
-        CHECK(plugin_screen_place(*project, ui, frozen).entry == int(project->tracks[0].plugin));
-        frozen[0].state = FreezeState::Frozen; // its own: Stage draws the print, no screen in view (freeze plan F2c)
-        CHECK(plugin_screen_place(*project, ui, frozen).entry < 0);
+    { // A plug-in that draws its own screen (shell/screen_view.h): B1 PANEL first, then PRESETS, EDIT; Plug-in screens
+      // off, no PANEL.
+        const uint8_t own = project->tracks[0].plugin;
+        ui.plugin_panel.entry = own; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        CHECK(key() == "PRESETS"); // the page the track was on is kept
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
         CHECK(plugin_screen_place(*project, ui, {}).entry < 0); // EDIT: Melodee's pages
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL");
+        CHECK(plugin_screen_place(*project, ui, {}).entry == int(own) && plugin_screen_place(*project, ui, {}).area == 0);
+        std::array<TrackFreeze, track_count> frozen {};
+        frozen[1].state = FreezeState::Frozen; // another track's print: the screen in view
+        CHECK(plugin_screen_place(*project, ui, frozen).entry == int(own));
+        frozen[0].state = FreezeState::Frozen; // its own: Stage draws the print, no screen in view (freeze plan F2c)
+        CHECK(plugin_screen_place(*project, ui, frozen).entry < 0);
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
+        stage_press(ui, project->tracks[0], 1, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "ARP");
+        stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PANEL"); // B1 from elsewhere: its first page
+        ui.stage_group[0] = ui.stage_sub[0] = 0; CHECK(key() == "PANEL");                                                 // and a track's first look
+        // Picked from Stage (Context::choose_plugin): EDIT while it opens, then PANEL once it says it draws its own screen.
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        ui.plugin_screen_due = own; ui.plugin_panel.status = PluginStatus::Loading; ui.plugin_panel.has_screen = false;
+        plugin_screen_first(*project, ui); CHECK(key() == "EDIT" && ui.plugin_screen_due == own);
+        ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.has_screen = true;
+        plugin_screen_first(*project, ui); CHECK(key() == "PANEL" && ui.plugin_screen_due == no_plugin);
+        // One without a screen of its own stays on EDIT; a page chosen while it opened is kept; another track: not awaited.
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
+        ui.plugin_screen_due = own; ui.plugin_panel.has_screen = false;
+        plugin_screen_first(*project, ui); CHECK(key() == "EDIT" && ui.plugin_screen_due == no_plugin);
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginSound);
+        ui.plugin_screen_due = own; ui.plugin_panel.has_screen = true;
+        plugin_screen_first(*project, ui); CHECK(key() == "PRESETS" && ui.plugin_screen_due == no_plugin);
+        ui.plugin_screen_due = own; ui.track = 1;
+        plugin_screen_first(*project, ui); CHECK(ui.plugin_screen_due == no_plugin);
+        ui.track = 0;
+        stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit);
         ui.settings.plugin_skins = false;
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "PRESETS");
         stage_press(ui, project->tracks[0], 0, stage_skip(*project, ui, project->tracks[0])); CHECK(key() == "EDIT");
@@ -6355,13 +6713,16 @@ void zero_snap() {
     CHECK(!back.stems_best);
     back.read(fresh.text());
     CHECK(back.stems_best);
-    // The sample browser's PREVIEW: off at first, on kept.
-    CHECK(!fresh.preview);
-    Settings hearing; hearing.preview = true;
+    // The sample browser's PREVIEW: off at first, on kept; its level (the fader's on Samples) 100 at first, kept,
+    // and held to 0..127.
+    CHECK(!fresh.preview && fresh.preview_level == 100);
+    Settings hearing; hearing.preview = true; hearing.preview_level = 64;
     back.read(hearing.text());
-    CHECK(back.preview);
+    CHECK(back.preview && back.preview_level == 64);
     back.read(fresh.text());
-    CHECK(!back.preview);
+    CHECK(!back.preview && back.preview_level == 100);
+    back.read("preview_level=300\n");
+    CHECK(back.preview_level == 127);
 
     // TO PADS as Simpler's Playback: POLY as before, MONO in one mute group, THRU that and on to the region's end;
     // the pick kept with the settings, POLY at first.
@@ -7628,6 +7989,62 @@ void card_plugin_paths() {
     fs::remove_all(top);
 }
 
+// Files saved on another card (shell/card_paths.h, issue 72): a card mounts at /media/<its volume id>, so a project,
+// bank or settings file from another card names its files under a folder that is not there. They are looked for at
+// the same place on the card in now. A path on this card, off the mounts, relative, or still there stays as saved.
+void card_paths_moved() {
+    namespace fs = std::filesystem;
+    auto mounts = fs::temp_directory_path() / ("melodee-mounts-" + std::to_string(getpid()));
+    fs::remove_all(mounts);
+    const std::string m = mounts.string(), top = m + "/NEW-CARD", old = m + "/3265-3932";
+    const std::string kick = "/Melodee/Samples/Kit/Kick.wav";
+    fs::create_directories(top + "/Melodee/Samples/Kit");
+    CHECK(on_card_now(old + kick, top) == top + kick);
+    CHECK(on_card_now(old + kick, top + "/") == top + kick);
+    CHECK(on_card_now(old + "/Melodee/../Melodee/Samples/Kit/Kick.wav", top) == top + kick);
+    CHECK(on_card_now(top + kick, top) == top + kick);                                  // this card
+    CHECK(on_card_now("/content/Samples/Kick.wav", top) == "/content/Samples/Kick.wav"); // the internal drive
+    CHECK(on_card_now("Melodee/Plugins/X.vst3", top) == "Melodee/Plugins/X.vst3");       // relative
+    CHECK(on_card_now("(memory) Take 1", top) == "(memory) Take 1");
+    CHECK(on_card_now(old, top) == old);                                                 // the mount itself
+    CHECK(on_card_now(m + "2/x.wav", top) == m + "2/x.wav");                              // beside the mounts
+    CHECK(on_card_now(old + kick, "") == old + kick);                                     // no card
+    CHECK(on_card_now("", top).empty());
+    CHECK(on_card_now("/x.wav", "/card") == "/x.wav");                                    // a card at the top: no mounts
+    fs::create_directories(m + "/USB-STICK/Drums");
+    { std::ofstream(m + "/USB-STICK/Drums/Snare.wav") << "x"; }
+    CHECK(on_card_now(m + "/USB-STICK/Drums/Snare.wav", top) == m + "/USB-STICK/Drums/Snare.wav"); // another drive in
+
+    Project project;
+    std::snprintf(project.samples.edit(3).path, sizeof(SampleRef::path), "%s", (old + kick).c_str());
+    std::snprintf(project.samples.edit(700).path, sizeof(SampleRef::path), "%s", (top + "/a.wav").c_str());
+    std::snprintf(project.plugins[1].path, sizeof(project.plugins[1].path), "%s", (old + "/Melodee/Plugins/Surge XT.vst3").c_str());
+    std::snprintf(project.plugins[2].path, sizeof(project.plugins[2].path), "%s", "Melodee/Plugins/Mine");
+    CHECK(samples_on_card_now(project, top));
+    CHECK(std::string(project.samples[3].path) == top + kick);
+    CHECK(std::string(project.samples[700].path) == top + "/a.wav");
+    CHECK(!project.samples[4].used());
+    CHECK(std::string(project.plugins[1].path) == top + "/Melodee/Plugins/Surge XT.vst3");
+    CHECK(std::string(project.plugins[2].path) == "Melodee/Plugins/Mine");
+    CHECK(!samples_on_card_now(project, top)); // already on this card
+    CHECK(!samples_on_card_now(project, ""));
+    Project full; // 255 characters saved; on a card whose folder name is longer it would not fit: kept as saved
+    const std::string longest = old + "/" + std::string(sizeof(SampleRef::path) - old.size() - 2, 'x');
+    std::snprintf(full.samples.edit(5).path, sizeof(SampleRef::path), "%s", longest.c_str());
+    CHECK(std::string(full.samples[5].path) == longest);
+    CHECK(!samples_on_card_now(full, m + "/A-LONGER-CARD"));
+    CHECK(std::string(full.samples[5].path) == longest);
+
+    BankFile bank;
+    std::snprintf(bank.samples[0].path, sizeof(SampleRef::path), "%s", (old + kick).c_str());
+    std::snprintf(bank.samples[17].path, sizeof(SampleRef::path), "%s", "/content/Samples/Kick.wav");
+    samples_on_card_now(bank, top);
+    CHECK(std::string(bank.samples[0].path) == top + kick);
+    CHECK(std::string(bank.samples[17].path) == "/content/Samples/Kick.wav");
+    CHECK(!bank.samples[1].used());
+    fs::remove_all(mounts);
+}
+
 // An Open MPC skin's Q-Link pages (plugin/plugin_files.h): a "Column" page (every toolkit skin) is read in its
 // layout's slot order, Q-Links 13, 9, 5, 1, 14, ... 4, so each three are one K1-K3 row as the skin shows them; any
 // other direction in Q-Link number order. -1 skipped, each parameter once.
@@ -8377,11 +8794,24 @@ void pad_lights() {
     // Roll: the note in focus white, notes elsewhere Dim, none Faint.
     ui.page = PageId::Roll; ui.roll_key = 37; light({});
     CHECK(is(1, Hue::White, 4) && is(0, Hue::Track, 2) && is(5, Hue::Track, 1));
-    // Time Correct: whose notes move.
-    ui.page = PageId::TimeCorrect; ui.tc_all = true; light({});
-    CHECK(is(0, Hue::Track, 4) && is(1, Hue::Track, 4) && is(5, Hue::None, 0));
-    ui.tc_all = false; ui.tc_toggle(36); light({});
-    CHECK(is(0, Hue::Track, 4) && is(1, Hue::Track, 2));
+    // Time Correct: the pads play the track, lit as its pads are anywhere (the groove is on the encoder).
+    ui.page = PageId::TimeCorrect; light(plays); auto played = looks;
+    ui.page = PageId::Stage; light(plays);
+    for (unsigned k = 0; k < 16; ++k) CHECK(played[k].hue == looks[k].hue && rung(played[k].level) == rung(looks[k].level));
+    {   // B2 GROOVE held: the patterns of the bank shown, the groove's Full, the one in hand White, with notes Dim.
+        auto& patterns = bank->at[1];
+        const unsigned here = project->tracks[1].pattern % pattern_count;
+        Event e; e.tick = 0; e.length = 120; e.key = 36;
+        patterns[18].events.push_back(e); patterns[20].events.push_back(e); // B3, B5
+        patterns[here].feel.groove_from = groove_source(1, 18);
+        ui.page = PageId::TimeCorrect; ui.tc_groove_held = true; ui.tc_groove_track = 1; ui.tc_groove_bank = 1; light(plays);
+        CHECK(is(2, Hue::Track, 4) && is(4, Hue::Track, 2) && is(0, Hue::None, 0));
+        ui.tc_groove_bank = uint8_t(here / pattern_pads); light(plays);
+        CHECK(is(here % pattern_pads, Hue::White, 3));
+        ui.tc_groove_held = false; light(plays); // let go: the track's pads again
+        for (unsigned k = 0; k < 16; ++k) CHECK(played[k].hue == looks[k].hue && rung(played[k].level) == rung(looks[k].level));
+        patterns[here].feel.groove_from = 0; patterns[18].events.clear(); patterns[20].events.clear();
+    }
 
     // Chop: the slices, the one in hand Full; Manual armed, pad 1 flashes red.
     ui.page = PageId::Chop; ui.slices.count = 5; ui.chop_slice = 2; light({});
@@ -8677,6 +9107,17 @@ void erase_copy_everywhere() {
     light(keys); CHECK(is(0, Hue::Track, 2) && is(2, Hue::None, 0)); // the keys that can be copied
     ui.copy_from = int16_t(k0);
     light(keys); CHECK(is(0, Hue::White, 4) && is(2, Hue::Track, 1)); // the source white, where it can land Faint
+    {   // Time Correct's B2 GROOVE (shell/time_correct.h): the bank it shows, what a pad does, Minus / Plus's track.
+        CHECK(groove_view(0, 3, 37).track == 3 && groove_view(0, 3, 37).bank == 2); // no groove: the bank of the one in hand
+        CHECK(groove_view(groove_source(5, 70), 3, 0).track == 5 && groove_view(groove_source(5, 70), 3, 0).bank == 4);
+        CHECK(groove_pick(0, 3, 0, 3, 2, true) == GroovePick::Take && groove_pick(groove_source(3, 2), 3, 0, 3, 2, true) == GroovePick::Clear);
+        CHECK(groove_pick(0, 3, 0, 3, 0, true) == GroovePick::Here && groove_pick(0, 3, 0, 3, 5, false) == GroovePick::Empty);
+        CHECK(groove_pick(0, 3, 0, 4, 0, true) == GroovePick::Take); // another track's first pattern is not the one in hand
+        std::array<bool, track_count> notes {};
+        notes[1] = notes[6] = true;
+        CHECK(groove_track_step(notes, 3, 3, 1) == 6 && groove_track_step(notes, 3, 6, -1) == 3 && groove_track_step(notes, 3, 3, -1) == 1);
+        CHECK(groove_track_step(notes, 3, 6, 1) == 6 && groove_track_step(notes, 3, 1, -1) == 1); // it stops at the ends
+    }
     CHECK(k2 != k0);
     ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::KeyCopy);
     ui.page = PageId::StepEdit; ui.step_pads = true; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // keys are not steps
@@ -9869,6 +10310,19 @@ void feel_p1() {
     p.feel.strength = 100; p.feel.swing = 75; // every second sixteenth half a sixteenth late
     played = feel_pattern(p);
     CHECK(played.events[1].tick == 360 && played.events[2].tick == 480);
+    // Time Correct's APPLY (issue 55): the notes where they play, the feel plain, so it sounds the same; a note
+    // hidden past the end stays as written.
+    {
+        Pattern a = p;
+        Event hidden; hidden.tick = a.length + 100; hidden.key = 70; hidden.velocity = 90; hidden.length = 60;
+        a.events.push_back(hidden);
+        apply_feel(a);
+        CHECK(a.feel.plain() && a.feel == Feel {});
+        CHECK(a.events.size() == 4 && a.events[0].tick == 0 && a.events[1].tick == 360 && a.events[2].tick == 480 && a.events[3].tick == hidden.tick);
+        CHECK(feel_pattern(a) == a); // plain now: played as written, where the feel put them
+        Pattern plain_one; note(plain_one, 50, 60, 100);
+        apply_feel(plain_one); CHECK(plain_one.events[0].tick == 50); // no feel: nothing moves
+    }
     // Humanize: each note a little early or late (at most a quarter of a step) and softer or harder (at most 20),
     // the same each time it is laid, until its amount changes.
     Pattern h;
@@ -9896,6 +10350,19 @@ void feel_p1() {
     bass.feel.groove_amount = 50;
     played = feel_pattern(bass);
     CHECK(played.events[1].tick == 260 && played.events[1].velocity == 84);
+    {   // Time Correct's picture (shell/time_correct.h): each note where feel_pattern plays it; one pulled early off
+        // the first step drawn before the start, not round the loop at the end.
+        FeltTicks felt(bass);
+        CHECK(felt.at(bass.events[0]) == 0 && felt.at(bass.events[1]) == 260);
+        Pattern early;
+        note(early, 10, 60, 100); note(early, 250, 61, 100);
+        early.feel.groove_offsets.assign(1, int16_t(-60)); early.feel.groove_levels.assign(1, uint8_t(100));
+        CHECK(feel_pattern(early).events.back().tick > early.length / 2); // heard round the loop
+        FeltTicks pulled(early);
+        CHECK(pulled.at(early.events[0]) == -50 && pulled.at(early.events[1]) == 190);
+        Event hidden; hidden.tick = early.length + 5; hidden.key = 62;
+        CHECK(pulled.at(hidden) == hidden.tick); // past the end: not played, drawn as written
+    }
     // Heard: the audio thread plays the feel (a note written on tick 50, at strength 100 on tick 0's frame).
     {
         Pattern q;
@@ -10221,6 +10688,33 @@ void pad_layers_p3() {
         CHECK(two != one && hit(e, 10) == two);
         e.hold_layer(2, false);
         CHECK(std::string(layer_play_name(LayerPlay::CycleHold)) == "CYCLE HOLD" && int(LayerPlay::RandomHold) == 4); // saved: appended
+        // Issue 66: CC, the layer the controller's value falls in, whatever the velocity; none heard yet, 0 (as 1).
+        PadSound hat = pad;
+        CHECK(int(LayerPlay::Cc) == 5 && std::string(layer_play_name(LayerPlay::Cc)) == "CC" && hat.layer_cc == 4);
+        set_layer_play_choice(hat, layer_play_choice(hat) + 0); // still Velocity
+        CHECK(hat.layer_play == LayerPlay::Velocity);
+        set_layer_play_choice(hat, int(LayerPlay::Cc) + 3); // CC 4
+        CHECK(hat.layer_play == LayerPlay::Cc && hat.layer_cc == 4 && layer_play_choice(hat) == int(LayerPlay::Cc) + 3);
+        CHECK(hat.low_velocity == 1 && hat.layers[0].low == 64); // ranges of their own: kept
+        e.set_pad(2, hat);
+        CHECK((hit(e, 127) == std::vector<uint16_t> {4}));     // CC 4 not heard: 0, the first layer
+        e.control(4, 80);
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5}));      // half open, however soft the hit
+        e.control(4, 120);
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5, 6}));
+        e.control(7, 0); // another controller changes nothing
+        CHECK((hit(e, 10) == std::vector<uint16_t> {5, 6}));
+        set_layer_play_choice(hat, int(LayerPlay::Cc) + 10); // CC 11: not heard, 0
+        e.set_pad(2, hat);
+        CHECK(hat.layer_cc == 11 && (hit(e, 10) == std::vector<uint16_t> {4}));
+        PadSound even = pad; // every layer on the whole range: CC first spreads it, in order
+        even.low_velocity = 1; even.high_velocity = 127;
+        even.layers[0].low = 1; even.layers[0].high = 127; even.layers[1].low = 1; even.layers[1].high = 127;
+        set_layer_play_choice(even, int(LayerPlay::Cc) + 3);
+        CHECK(even.low_velocity == 1 && even.high_velocity == 41 && even.layers[0].low == 42 && even.layers[0].high == 84 &&
+              even.layers[1].low == 85 && even.layers[1].high == 127);
+        set_layer_play_choice(even, 0);
+        CHECK(even.layer_play == LayerPlay::Velocity && even.layer_cc == 4);
     }
     {   // A layer's offsets go over the pad's; its region and loop point are its own.
         PadSound one = pad;
@@ -10282,6 +10776,17 @@ void pad_layers_p3() {
         CHECK(shifted[0].kind == Binding::Kind::LayerPlayMode && shifted[1].kind == Binding::Kind::LayerPitch && shifted[2].kind == Binding::Kind::LayerGain);
         project.tracks[1].pads[9].layer_play = LayerPlay::Cycle;
         CHECK(!base_bindings(project, ui, none)[1].bound());
+        // Issue 66: CC's ranges on K2 / K3; Shift + K1 past the five, CC 1-127; kept in LYCC, as is the pad's CC.
+        set_layer_play_choice(project.tracks[1].pads[9], int(LayerPlay::Cc) + 7); // CC 8
+        CHECK(base_bindings(project, ui, none)[1].kind == Binding::Kind::LayerLow);
+        auto play = shift_bindings(project, ui, none)[0];
+        CHECK(play.max == layer_play_choices - 1 && play.value == int(LayerPlay::Cc) + 7);
+        auto bank = std::make_unique<PatternBank>();
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(save_project(project, *bank), *back, *back_bank).empty());
+        CHECK(back->tracks[1].pads[9].layer_play == LayerPlay::Cc && back->tracks[1].pads[9].layer_cc == 8 && back->tracks[1].pads[3].layer_cc == 4);
+        CHECK(lane_name(project.tracks[1], motion_lane(motion_cc, 4), &project) == "CC 4" && !lane_binding(project.tracks[1], 1, motion_lane(motion_cc, 4), &project).bound());
         CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadPage);
         CHECK(stage_kit_page(StageKind::Layers) == PageId::LayersPage);
     }
@@ -12565,6 +13070,43 @@ void sequence_links() {
         play(10);
         host->send({Command::Type::Play});
         CHECK(play(bar) >= 2); // the bar's two (the next bar's first may fall in the last block)
+        // Issue 40: a mute with a grid (Rec quantize's Q) waits for its next step while playing, the note on that
+        // step left out; pressed back before it, nothing waits; Stop sets what waits.
+        host->send({Command::Type::Stop});
+        play(10);
+        host->send({Command::Type::Play});
+        CHECK(play(bar / 4) == 1); // the first note, at tick 0
+        Command mute {Command::Type::Mute, 0, 0, 0, 1};
+        mute.position = 2 * ticks_per_quarter; // half a bar
+        host->send(mute);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        CHECK(play(bar / 4 - 20) == 0 && host->mutes_waiting() == 1); // still before the half: waiting, nothing to play
+        CHECK(play(bar / 2) == 0 && host->mutes_waiting() == 0);      // on the half: muted before its note
+        Command back {Command::Type::Mute, 0, 0, 0, 0};
+        back.position = 4 * ticks_per_quarter; // the bar
+        host->send(back);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        back.value = 1; host->send(back); // pressed back: as it is, nothing waits
+        play(1);
+        CHECK(host->mutes_waiting() == 0);
+        back.value = 0; host->send(back);
+        play(1);
+        CHECK(host->mutes_waiting() == 1);
+        host->send({Command::Type::Stop}); // set on Stop
+        play(10);
+        CHECK(host->mutes_waiting() == 0);
+        host->send({Command::Type::Play});
+        CHECK(play(bar) >= 2);
+        // A kit pad's mute waits the same way, a bit a pad.
+        Command pad {Command::Type::PadMute, 0, 0, 3, 1};
+        pad.position = ticks_per_quarter;
+        host->send(pad);
+        play(1);
+        CHECK(host->pad_mutes_waiting(0, 0) == 8u && host->mutes_waiting() == 0);
+        play(bar / 4 + 10);
+        CHECK(host->pad_mutes_waiting(0, 0) == 0);
     }
     {   // Issue 59: a MIDI track plays from the first bar after Play, Locate or MTC, however far on it stopped, with a
         // negative DELAY (read ahead) or none.
@@ -12975,6 +13517,7 @@ int main() {
     preset_folders();
     nam_page();
     card_plugin_paths();
+    card_paths_moved();
     qlink_pages();
     plugin_json();
     xpl_presets();

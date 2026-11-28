@@ -230,14 +230,17 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     CHECK(mode == "session");
     wav(card + "/Kit/A.wav");
     wav(card + "/Kit/B.wav");
-    // Load Kit into the project Melodee starts with, before any project is opened: its slots looked for too.
-    write_project(projects + "/Boot kit.mldp", {old + "/Kit/A.wav"});
+    wav(projects + "/BootA.wav");
+    // Load Kit into the project Melodee starts with, before any project is opened: its slots looked for too, here
+    // beside the kit's own file. (A renamed card's paths are this card's already when a kit is read, shell/card_paths.h:
+    // nothing is left for the finder there.)
+    write_project(projects + "/Boot kit.mldp", {card + "/Gone/BootA.wav"});
     c.select_track(0);
     c.load_kit_file(projects + "/Boot kit.mldp", "Boot kit");
     until("the kit", [&] { return c.kit_from.empty() && moved.idle(); });
     {
         int kit = -1;
-        for (unsigned n = 0; n < 8; ++n) if (path(n) == card + "/Kit/A.wav") kit = int(n);
+        for (unsigned n = 0; n < 8; ++n) if (path(n) == projects + "/BootA.wav") kit = int(n);
         CHECK(kit >= 0);
         until("loaded", [&] { return ready(unsigned(kit)); });
     }

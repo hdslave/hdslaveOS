@@ -78,7 +78,8 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq && !sound) draw_fader_header(p, s);
     // 16 Levels' FILE or SET (shell/levels_keys.h), or, while it is held with Chords on, what each pad plays.
     if (!sheet && !tracks && !seq && !sound && s.ui.ask == UiState::Ask::None && !s.ui.menu) {
-        if (s.ui.levels_sheet) draw_levels_sheet(p, s);
+        if (s.ui.colour_sheet) draw_colour_sheet(p, s);
+        else if (s.ui.levels_sheet) draw_levels_sheet(p, s);
         else if (levels_held_cards(s.project, s.ui) && levels_chords_on(s.track()) && (s.ui.levels_used || s.now - s.ui.levels_down >= levels_hold_ms))
             draw_levels_chords(p, s);
     }
@@ -187,7 +188,7 @@ void draw_key_list(Paint& p, const Snapshot& s) {
 
 void draw_notice(Paint& p, const Snapshot& s) {
     juce::String text;
-    bool copying = s.ui.copying != UiState::Copying::Off;
+    bool copying = s.ui.copying != UiState::Copying::Off, timed = false;
     if (!copying && s.ui.captured_at && s.now - s.ui.captured_at < 3000) { // Capture (capture C): what landed, and the undo keys
         p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
         Header h = header_of(s);
@@ -216,6 +217,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a step") : "Copy step " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
         text = juce::String::fromUTF8(s.ui.notice); // notices may hold an en dash or a middle dot
+        timed = true;
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
         const auto& t = s.track();
         bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && pad_job(s.ui) == play_pad);
@@ -227,7 +229,9 @@ void draw_notice(Paint& p, const Snapshot& s) {
     p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
     Header h = header_of(s);
     h.left.push_back(chip(text.toUpperCase(), copying ? colour_of(s) : colour::text));
-    h.right.push_back(tag_of(s, s.ui.track));
+    auto tag = tag_of(s, s.ui.track);
+    if (timed) { tag.engine = {}; tag.text = {}; } // its number alone: notices one after another (a run of program
+    h.right.push_back(tag);                        // changes, each name its own width) never move it
     header(p, h);
 }
 

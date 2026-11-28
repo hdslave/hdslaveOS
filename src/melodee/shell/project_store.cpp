@@ -7,6 +7,8 @@
 #include "melodee/crash_log.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
+#include "melodee/shell/card_paths.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/live_export.h"
@@ -138,7 +140,7 @@ void ProjectStore::start_export(Request& r) {
             note(said + why);
         } else if (live) {
             LiveExport report;
-            const LiveColours colours = ui::track_live_colours; // each track in its colour on the MPC
+            const LiveColours colours = live_track_colours(*project); // each track in its colour on the MPC (issue 69: picked or its place's)
             why = export_live_set(*project, *bank, folder.string(), name, report, prints.get(), prints_folder(from), audio_folder(from), &colours);
             if (!why.empty()) note(said + why);
             else {
@@ -282,8 +284,8 @@ void ProjectStore::service(Hardware& hardware) {
             // Nothing is created on the card until something is saved there.
             // What to open at start lives next to the projects: the one set to, else the last one open.
             auto file = read_settings_file(root);
-            start = std::move(file.start);
-            last = std::move(file.last);
+            start = on_card_now(file.start, card_of(root)); // a settings file copied from another card: this card's
+            last = on_card_now(file.last, card_of(root));
             settings = std::move(file.settings);
             {
                 std::lock_guard<std::mutex> guard(lock);
@@ -293,7 +295,7 @@ void ProjectStore::service(Hardware& hardware) {
             scan();
             const auto& resume = !start.empty() && fs::exists(start, error) ? start : last;
             if (!started && !resume.empty() && fs::exists(resume, error)) {
-                auto* l = new LoadedProject {resume, {}, read_file(resume), false, {}, {}};
+                auto* l = new LoadedProject {resume, {}, read_file(resume), false, {}, {}, card_of(root)};
                 if (l->bytes.empty() || !loaded.push(l)) delete l;
             }
             started = true;
@@ -461,7 +463,7 @@ void ProjectStore::run(Request& r) {
         start_export(r);
         return;
     case Request::Kind::Load: {
-        auto* l = new LoadedProject {r.path, {}, read_file(r.path), false, {}, {}};
+        auto* l = new LoadedProject {r.path, {}, read_file(r.path), false, {}, {}, card_of(root)};
         if (l->bytes.empty()) l->error = "Could not read";
         else if (is_mpc_project(r.path) || is_drum_program(r.path)) import_mpc(*l, root);
         if (!loaded.push(l)) delete l;

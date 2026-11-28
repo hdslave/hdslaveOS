@@ -102,6 +102,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [The Project page](guide/projects-and-files.md#the-project-page)
    - [Naming](guide/projects-and-files.md#naming)
    - [MPC Sample projects](guide/projects-and-files.md#mpc-sample-projects)
+   - [A new card](guide/projects-and-files.md#a-new-card)
    - [SD card access](guide/projects-and-files.md#sd-card-access)
    - [Files on the card](guide/projects-and-files.md#files-on-the-card)
    - [Moved files](guide/projects-and-files.md#moved-files)

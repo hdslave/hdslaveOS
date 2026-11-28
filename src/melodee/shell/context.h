@@ -18,6 +18,8 @@
 #include "melodee/shell/history.h"
 #include "melodee/shell/note_preview.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/progression_tree.h"
+#include "melodee/shell/song_range.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
 #include "melodee/shell/usage_log.h"
@@ -212,6 +214,9 @@ public:
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
+    // Issue 40: with Rec quantize on (Shift + Pad 10) and the transport running, a mute or solo of the track waits for
+    // the next step of its pattern's Q: that step in ticks as the track plays it; 0 at once.
+    uint32_t mute_grid(unsigned track) const;
     // The mixer's channels by strip number (shell/mixer_channels.h): a track's, a submix's or (mute only) a bus's.
     void set_channel_mute(unsigned strip, bool on);
     void set_channel_solo(unsigned strip, bool on);
@@ -228,7 +233,7 @@ public:
     // Motion: a pot move while recording and playing (`lane` as in
     // bindings.h: a parameter, or a kit pad's value on one pad); Erase + pot
     // on Motion, once B3 says so (one undo).
-    void record_motion(int lane, int value);
+    void record_motion(int lane, int value, uint32_t snap = 0); // snap: on the next multiple of that many ticks (issue 40)
     void record_pad_motion(PadParam which, int value);
     void clear_lane(int lane);
     // Roadmap P1: Motion is each pattern's own. A pot turned with a step (Steps) or a note (Roll, a pad held on it)
@@ -389,6 +394,22 @@ public:
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
     void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)
+    // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
+    // track) to the preset at `place` in its list; the header says which.
+    void midi_program(uint16_t tracks, unsigned place);
+    // Send program change (shell/program_in.h): a preset picked here for plug-in `entry`, at `place` in its list, queued
+    // for each channel it goes out on; MidiIo's next pump sends them (Bank Select, then the Program Change).
+    struct ProgramOut { uint8_t channel = 1; unsigned place = 0; };
+    std::vector<ProgramOut> programs_out;
+    void send_program(unsigned entry, unsigned place);
+    // Remote preset CC (MIDI Config): the selected track's presets `steps` on (- back), whatever page is open: a
+    // PLUGIN track's as PRESETS' wheel turns them (loaded once the knob rests), a MIDI track's PROGRAM (sent at once).
+    void remote_preset(int steps);
+    // Push on a Remote CC row (midi_row_learns()): the next CCs in take it (MidiIo), for learn_ms or until Push again;
+    // midi_learning() while it waits (on MIDI Config only); learned_midi() once it has one.
+    void midi_learn(unsigned row);
+    bool midi_learning() const;
+    void learned_midi(unsigned row);
     void companion_requests(); // what companion screens asked for, made here (plugin/companion_screen.h)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
@@ -575,6 +596,10 @@ public:
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     FindMoved* moved = nullptr;       // hdslaveOS: find moved files (shell/find_moved.h), the shell's
     std::vector<std::string> prog_paths; // the card's .progression files, as the Prog layout's wheel walks them (listed when first wanted)
+    SongSection song_section;             // Song's copied bars (issue 60, shell/song_range.h): Push pastes them
+    std::vector<std::string> prog_places; // and each one's place in 16 Levels FILE's folders (shell/progression_tree.h)
+    std::string prog_folder;              // FILE's folder in view ("" the top) and its rows
+    std::vector<ProgRow> prog_view;
     // Projects on the card
     ProjectStore* store = nullptr;
     UsageLog usage;           // Settings' doors K2 (shell/usage_log.h): off until turned on

@@ -8,8 +8,9 @@
 // notes on it play that track wherever you are, and its notes go out on it),
 // Track MIDI In (where that channel is heard: Any port, External, USB), Pad MIDI In, Scale on white keys (on the
 // Scale and Chords layouts a keyboard's white keys play the scale, shell/scale_keys.h), Pad MIDI Out (Never, Always,
-// Empty), Sync In and Out (Off, MIDI Clock, MTC), Thru, Receive Program Change (patterns), the Remote rows (a
-// channel, and the CCs that select a track, launch a pattern or a scene by their value), CV/Sync Out with
+// Empty), Sync In and Out (Off, MIDI Clock, MTC), Thru, Receive Program Change (Off, Sequence, Plug-in), the Remote
+// rows (a channel, the CCs that select a track, launch a pattern or a scene by their value, and the preset knob with
+// how it sends; Push on a CC row learns it from the control moved), CV/Sync Out with
 // its Base and Division (pulses a quarter: base x division), the three
 // takeover modes (Settings has them too), MIDI Panic (Push: every note off,
 // everywhere) and Reset Factory Settings (Push, then B3 YES or B1 NO). B1 goes back. The pads play, so what they send can
@@ -50,6 +51,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (row == TrackChannelRow || row == TrackInRow) value = "T" + juce::String(s.ui.track + 1) + "  " + value;
         if (row == CvDivisionRow && s.ui.settings.midi.cv_out) value += "  (" + juce::String(s.ui.settings.midi.cv_ppqn()) + " PPQN)";
         if (row == ResetRow || row == PanicRow) value = here ? "PUSH" : "";
+        if (midi_row_learns(row) && s.ui.midi_learn_until && s.now < s.ui.midi_learn_until && s.ui.midi_learn_row == row) value = "Learning";
         auto style = plain(here ? colour::text : colour::mid, type::small, Weight::Medium);
         float vw = p.width(value, style), vx = x + w - 7 - vw;
         p.text(value, vx, y, vw, rh - 1, style);
@@ -63,9 +65,10 @@ void draw(Paint& p, const Snapshot& s) {
 void wheel(Context& c, int delta) {
     c.ui.midi_cursor = uint8_t(std::clamp(int(c.ui.midi_cursor) + delta, 0, int(MidiRows) - 1));
 }
-void push(Context& c) { // the two rows that do something; the others are K1's
+void push(Context& c) { // the two rows that do something, and Learn on the Remote CC rows; the others are K1's
     if (c.ui.midi_cursor == ResetRow) ask(c, UiState::Ask::ResetSettings, 0);
     else if (c.ui.midi_cursor == PanicRow) c.midi_panic();
+    else if (midi_row_learns(c.ui.midi_cursor)) c.midi_learn(c.ui.midi_cursor);
 }
 void nudge(Context& c, int way) { if (c.ui.midi_cursor < PanicRow) c.change_midi(c.ui.midi_cursor, way); }
 void soft(Context& c, int key) {

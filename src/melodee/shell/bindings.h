@@ -140,6 +140,7 @@ struct Binding {
         // Samples' trim sheet (shell/browse_trim.h): the file under the cursor's START and END in frames (id 1: not read
         // yet, the card shows no value), Shift + K2 / K3 its zoom 0..100 (id 0 at START, 1 at END).
         BrowseStart, BrowseEnd, BrowseZoom,
+        PreviewLevel, // the browser's preview level (Settings::preview_level), the fader's job on Samples
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -246,8 +247,10 @@ int binding_lane(const Track& track, const Binding& b);
 // Erase + pot on a kit pad's own value (Tune, Mix, Play's offset, the envelopes, the filter, its sends, cloud and loop
 // crossfade): the card's value on a new pad, false for Trim's handles, a toggle or a choice.
 bool pad_reset_value(const Binding& b, int& value);
+// Time Correct's feel cards (STRENGTH, SWING, HUMANIZE, HUMAN VEL, AMOUNT): `value` as a new pattern's, for Erase + pot.
+bool feel_reset_value(const Binding& b, int& value);
 // Whether Erase + pot sends the card back to its initial value: an engine's, Knob FX's or a plug-in's parameter, a
-// kit pad's own value, or a lock card (the lock out: the lane back to what it holds there).
+// kit pad's own value, a lock card (the lock out: the lane back to what it holds there), or a feel card.
 bool erase_resets(const Binding& b);
 // Roll's Shift + K1 NUDGE (round 2): how far `e` sits off its nearest grid line of Q, in ticks (-q/2 .. q/2 - 1);
 // turning it moves the note to that line plus the offset.

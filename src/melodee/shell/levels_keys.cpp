@@ -25,14 +25,19 @@ void type_on(Context& c, LevelsKind kind) {
 // FILE's rows around the row in hand.
 void show_rows(Context& c) {
     auto& ui = c.ui;
-    const unsigned count = ui.prog_count;
+    const unsigned count = ui.prog_view_count;
     ui.prog_cursor = uint16_t(count ? std::min<unsigned>(ui.prog_cursor, count - 1) : 0);
     ui.prog_rows_first = uint16_t(prog_rows_first(ui.prog_cursor, count));
+    ui.prog_rows_folders = 0;
+    ui.prog_cursor_folder = ui.prog_cursor < c.prog_view.size() && c.prog_view[ui.prog_cursor].file < 0;
     ui.prog_rows_count = uint8_t(std::min<unsigned>(count - ui.prog_rows_first, prog_rows_shown));
     for (unsigned k = 0; k < ui.prog_rows.size(); ++k) {
         auto& row = ui.prog_rows[k];
         row[0] = 0;
-        if (k < ui.prog_rows_count) std::snprintf(row.data(), row.size(), "%s", prog_file_name(c, ui.prog_rows_first + k).c_str());
+        if (k >= ui.prog_rows_count) continue;
+        const auto& entry = c.prog_view[ui.prog_rows_first + k];
+        std::snprintf(row.data(), row.size(), "%s", entry.name.c_str());
+        if (entry.file < 0) ui.prog_rows_folders = uint8_t(ui.prog_rows_folders | 1u << k);
     }
 }
 
@@ -73,8 +78,7 @@ void levels_key(Context& c, unsigned key) {
         break;
     case LevelsKey::Chords: levels_chords_on_now(c); break;
     case LevelsKey::File:
-        if (!prog_files(c)) { c.notice("No progression files on the card"); break; }
-        ui.prog_cursor = uint16_t(std::max<int>(ui.prog_at, 0));
+        if (!prog_files_open(c)) { c.notice("No progression files on the card"); break; }
         show_rows(c);
         ui.levels_sheet = levels_sheet_files;
         ui.levels_sheet_track = ui.track;
@@ -96,11 +100,13 @@ bool levels_sheet_button(Context& c, SurfaceButton button) {
     if (button == B::PadBank && ui.levels_sheet != levels_sheet_files) return false;  // SET: Pad Bank steps to a synth's banks B and C
     auto& t = c.track();
     switch (ui.levels_sheet) {
-    case levels_sheet_files:
-        if (button == B::TopLeft) ui.levels_sheet = levels_sheet_none;
-        else if (button == B::TopRight || button == B::WheelPush) {
-            if (prog_pick(c, ui.prog_cursor)) c.notice(std::string(t.prog.file).substr(0, 28));
-            ui.levels_sheet = levels_sheet_none;
+    case levels_sheet_files: // issue 65: a folder opens, BACK goes up one; at the top BACK closes, a file is picked
+        if (button == B::TopLeft) {
+            if (prog_view_up(c)) show_rows(c);
+            else ui.levels_sheet = levels_sheet_none;
+        } else if (button == B::TopRight || button == B::WheelPush) {
+            if (prog_view_enter(c)) show_rows(c);
+            else ui.levels_sheet = levels_sheet_none;
         }
         break;
     case levels_sheet_pad:
@@ -124,8 +130,8 @@ bool levels_sheet_button(Context& c, SurfaceButton button) {
 
 void levels_sheet_wheel(Context& c, int delta) {
     auto& ui = c.ui;
-    if (ui.levels_sheet != levels_sheet_files || !ui.prog_count) return;
-    ui.prog_cursor = uint16_t(std::clamp(int(ui.prog_cursor) + delta, 0, int(ui.prog_count) - 1));
+    if (ui.levels_sheet != levels_sheet_files || !ui.prog_view_count) return;
+    ui.prog_cursor = uint16_t(std::clamp(int(ui.prog_cursor) + delta, 0, int(ui.prog_view_count) - 1));
     show_rows(c);
 }
 

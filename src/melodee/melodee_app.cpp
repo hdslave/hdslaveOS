@@ -9,6 +9,7 @@
 #include "surface/pads.h"
 #include "drivers/power_button.h"
 #include "drivers/sd_update.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/update.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
@@ -156,10 +157,14 @@ void MelodeeApp::surface(const SurfaceEvent& event) {
     bool pressed = (event.input.kind == SurfaceInput::Kind::Button && event.input.pressed) ||
                    (event.pad >= 0 && (event.midi.status & 0xf0) == 0x90 && event.midi.value > 0);
     if (pressed && !event.syncing) boot_skip.store(true, std::memory_order_relaxed);
+    if (!event.syncing) touched.store(now_ms(), std::memory_order_relaxed); // any control: the screensaver goes, or waits
     shell.surface(event, now_ms());
 }
 
-void MelodeeApp::midi(const MidiPortInfo& port, const MidiPacket& packet) { shell.midi(port, packet, now_ms()); }
+void MelodeeApp::midi(const MidiPortInfo& port, const MidiPacket& packet) {
+    if (packet.size && packet.bytes[0] < 0xF8) touched.store(now_ms(), std::memory_order_relaxed); // notes, not the clock
+    shell.midi(port, packet, now_ms());
+}
 void MelodeeApp::midi_lost() { shell.midi_lost(); }
 void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
     RemoteMidi injected;
@@ -190,6 +195,7 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     }
     Remote remote;
     while (presses.pop(remote)) {
+        touched.store(now_ms(), std::memory_order_relaxed); // a remote press, as a hand's
         if (remote.kind == 1) { // the wheel
             SurfaceEvent event;
             event.input.kind = SurfaceInput::Kind::Control; event.input.index = uint8_t(SurfaceControl::Wheel); event.input.delta = remote.delta;
@@ -468,6 +474,20 @@ void MelodeeApp::draw(juce::Graphics& g) {
     if (boot_skip.exchange(false, std::memory_order_relaxed)) boot.skip(now);
     if (boot.covers(now)) { boot.draw(g, now); return; } // the app starts drawing as the animation fades out
     shell.snapshot(*frame, now);
+    { // Settings' Screensaver (shell/screensaver.h): not while the sequencer plays, a take waits or records, or a render runs
+        using Take = TakeRecorder::State;
+        const Take take = Take(frame->take.state);
+        const Bounce::State render = Bounce::State(frame->render_state);
+        const bool busy = frame->playing || take == Take::Armed || take == Take::Recording || take == Take::Cued ||
+                          render == Bounce::State::Cued || render == Bounce::State::Running || render == Bounce::State::Tail;
+        const bool shows = saver.shows(frame->ui.settings.screensaver, now, touched.load(std::memory_order_relaxed), busy);
+        saver_shows.store(shows, std::memory_order_relaxed); // the service thread dims the backlight
+        if (shows) {
+            ui::use_palette(frame->ui.settings.palette);
+            saver.draw(g, now);
+            return;
+        }
+    }
     frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
     frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
     frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);
@@ -492,6 +512,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
         m.plugins = machine.plugins.load(std::memory_order_relaxed);
         m.plugins_load = machine.plugins_load.load(std::memory_order_relaxed);
     }
+    show_track_colours(frame->project); // issue 69: the colour each track shows, as this frame's project has them
     ui::use_palette(frame->ui.settings.palette); // Settings > SCREEN: the colours and the face this frame is drawn in
     ui::use_face(ui::palette().face >= 0 ? unsigned(ui::palette().face) : frame->ui.settings.font); // LCD sets its own
     ui::Paint p(g);
@@ -591,20 +612,24 @@ void MelodeeApp::service(Hardware& hardware) {
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();
     if (!hardware.power.pressed()) { power_presses = presses; power_known = true; }
-    // Settings' Screen row: the backlight, as a share of its range. Dimmed (Settings' Dim after, Shell::dimmed()):
-    // its lowest light, until a control is used. The backlight is left as the stock app had it until either asks.
-    unsigned screen = shell.screen();
+    // Settings' Screen row: the backlight, as a share of its range (0: as the MPC had it). Dimmed (hdslaveOS's Dim
+    // after, Shell::dimmed()): its lowest light, until a control is used. While the screensaver shows, its second
+    // step, if that is lower (shell/screensaver.h). Both: the lower.
+    const unsigned screen = shell.screen();
     const bool dimmed = shell.dimmed();
-    if (dimmed != screen_dimmed || (screen && screen != screen_applied)) {
+    const bool saver = saver_shows.load(std::memory_order_relaxed);
+    if ((screen && screen != screen_applied) || dimmed != screen_dimmed || saver != screen_saved) {
         auto backlight = hardware.platform.backlight();
         if (backlight.maximum > 0) {
-            if (dimmed && !screen_dimmed) screen_before_dim = backlight.brightness; // as it stood, whoever set it
-            const long level = dimmed ? std::min(1L, backlight.maximum)
-                             : screen ? std::max(1L, backlight.maximum * long(screen) / 100) : screen_before_dim;
-            if (level >= 0) hardware.platform.brightness(unsigned(std::min(level, backlight.maximum)));
+            if ((dimmed || saver) && !(screen_dimmed || screen_saved)) screen_lit = backlight.brightness; // as it stood, whoever set it
+            long level = screen ? std::max(1L, backlight.maximum * long(screen) / 100) : screen_lit;
+            level = melodee::screensaver::backlight(level, backlight.maximum, saver);
+            if (dimmed) level = std::min(1L, backlight.maximum);
+            if (level >= 0 && level != backlight.brightness) hardware.platform.brightness(unsigned(std::min(level, backlight.maximum)));
         }
+        screen_applied = screen;
         screen_dimmed = dimmed;
-        if (screen) screen_applied = screen;
+        screen_saved = saver;
     }
 }
 

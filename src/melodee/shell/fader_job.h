@@ -10,8 +10,9 @@
 // records it in the same lanes) and the screen and the fader light read it.
 // Pages with an obvious job take it over (Kerem, open question 2): Mix the
 // selected track's level, Sends its send, Knob FX slides from its setting
-// A to B (round 2), the Compressor its amount, Flex Beat its mix (Step Edit,
-// step entry since round 2, has none: Roll's Shift + K1 nudges a note).
+// A to B (round 2), the Compressor its amount, Flex Beat its mix, the sample
+// browser its preview's level (Step Edit, step entry since round 2, has
+// none: Roll's Shift + K1 nudges a note).
 // Everywhere else the track's own target (the Fader page, Shift + Pad 9),
 // unless it is off.
 // Plain functions of the project and the interface, for the test.

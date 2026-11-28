@@ -206,6 +206,7 @@ struct Edit {
     std::unique_ptr<MixState> mix_before, mix_after;
     std::unique_ptr<SoundState> sound_before, sound_after;
     std::unique_ptr<TrackName> name_before, name_after; // a track named (`track`)
+    int16_t colour_before = -1, colour_after = -1;        // a track's colour picked (`track`, issue 69): Track::colour
     std::unique_ptr<MasterState> master_before, master_after;
     std::unique_ptr<ChopState> chop_before, chop_after;
     std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo

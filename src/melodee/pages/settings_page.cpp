@@ -7,7 +7,7 @@
 //   new half, how many bars Capture keeps and how it puts them on the grid),
 //   KNOBS (how the knobs,
 //   Knob FX and the fader take over a value: Pickup, Scaled, Instant),
-//   SCREEN (palette, brightness, where the place bar sits, and Screen Mirror:
+//   SCREEN (palette, brightness, the screensaver, where the place bar sits, and Screen Mirror:
 //   the screen as a USB webcam for a computer, on or off, its size and rate;
 //   under the rows, while it is on, how it goes: ready, live, paused while
 //   the card is shared), AUDIO (the
@@ -52,11 +52,11 @@ constexpr int8_t none = -1;
 const std::array<Door, 8> doors {{
     {Icon::Pads, "PADS", ROWS(Settings::PadResponse, Settings::PadPressure, Settings::RepeatVelocity, Settings::PadLights, Settings::PadFade,
                               Settings::TapLight, Settings::PadLevel)},
-    {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::NotePreview, Settings::MuteKind, Settings::DoubleSeq,
+    {Icon::Pattern, "SEQ", ROWS(Settings::RecQuantize, Settings::SeqFollow, Settings::NotePreview, Settings::MuteKind, Settings::SeqPads, Settings::DoubleSeq,
                             Settings::CaptureBars, Settings::CaptureQuantize, Settings::Autosave, Settings::FindMovedRow)}, // hdslaveOS: find moved files
     {Icon::Knob, "KNOBS", ROWS(Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover)},
-    {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::Refresh, Settings::PlaceBarRow,
-                                  Settings::PluginSkins, Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
+    {Icon::Screen, "SCREEN", ROWS(Settings::Palette, Settings::Font, Settings::Screen, Settings::DimAfter, Settings::ScreensaverRow, Settings::Refresh,
+                                  Settings::PlaceBarRow, Settings::PluginSkins, Settings::Mirror, Settings::MirrorSize, Settings::MirrorRate)},
     {Icon::Speaker, "AUDIO", ROWS(Settings::SampleRate, Settings::AudioBuffer, Settings::UsbVolume, Settings::UsbOut, Settings::UsbDirect, Settings::DirectLevel,
                                   Settings::FileSharingRow, Settings::CpuSpeed)},
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
@@ -169,7 +169,7 @@ void rows_draw(Paint& p, const Snapshot& s) {
         float vw = p.width(value, style), vx = x + w - 9 - vw;
         p.text(value, vx, y, vw + 1, list_row_h, style);
         if (row == Settings::Palette) // the palette's first track colours
-            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, track_colour(t), 2);
+            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, slot_colour(t), 2);
     }
     if (count > shown) { // more rows than the screen: a bar in the right margin, an arrow where more waits
         float top = zone::picture_y + 1, height = shown * (list_row_h + list_row_gap) - list_row_gap;
@@ -233,7 +233,7 @@ void look_draw(Paint& p, const Snapshot& s) {
             m.items[n] = card_item(Icon::None, faces[n].name, faces[n].em > 0 ? "PIXEL" : "", n == m.current);
     }
     m.detail = juce::String(m.current + 1) + " / " + juce::String(m.count);
-    m.accent = track_colour(0);
+    m.accent = slot_colour(0);
     card_sheet(p, m);
 }
 

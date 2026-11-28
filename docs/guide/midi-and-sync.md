@@ -5,7 +5,8 @@ Previous: [Mixer and effects](mixer-and-effects.md) · [Contents](../GUIDE.md) �
 Press **SHIFT** + **Pad 8**, then open **MIDI**. Turn the encoder to a row.
 **K1** sets it: its card shows the row's name and value. **−** / **+** step
 it one value at a time. **MIDI panic** and **Reset factory settings** are
-done with **Push**. **B1** goes back. The header lights **IN** and **OUT**
+done with **Push**. **Push** on a Remote CC row learns it: move a control on
+the controller, and the row takes its CC and **Remote channel** its channel. **B1** goes back. The header lights **IN** and **OUT**
 as MIDI passes.
 
 ![MIDI Config](../images/screens/midiconfig.png)
@@ -22,11 +23,16 @@ as MIDI passes.
 | Pad MIDI out | Never, Always or Empty (only pads and tracks with no sound of their own send notes) |
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
-| Receive program change | Off or Sequence: a program change launches that sequence, as a pad on Sequences does |
+| Receive program change | Off, Sequence or Plug-in. Sequence: a program change launches that sequence, as a pad on Sequences does. Plug-in: it loads that preset into the plug-in of the track it plays. See [Example 5](#example-5-change-plug-in-presets-from-a-controller). |
+| Send program change | On or off. On: when you pick a preset on a plug-in track, it goes out as a program change. See [Send program changes](#send-program-changes). |
 | Remote channel | Off or 1–16: the channel of the Remote CCs |
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
 | Remote sequence CC | Launches a sequence. Value 0 is the first sequence. Default CC 104. |
+| Remote play CC | Off or a CC: a press plays, and stops while playing. See [Example 7](#example-7-start-and-stop-with-a-foot-pedal). |
+| Remote record CC | Off or a CC: a press does what **SEQ RECORD** does |
+| Remote preset CC | Off or a CC: a knob that steps the selected track's presets. See [Example 6](#example-6-step-presets-with-a-knob). |
+| Remote preset knob | How that knob sends: Absolute, Binary offset, 2's complement, Signed bit or Signed bit 2 |
 | CV/sync out | On or off: clock pulses on the sync output. **CV/sync base** (1–8) and **CV/sync division** (1–24) set how many a quarter note. |
 | Parameter, Knob FX and Fader takeover | As in Settings, **KNOBS**: Pickup, Scaled or Instant |
 | MIDI panic | Push: ends every note on every channel and port |
@@ -42,8 +48,8 @@ as MIDI passes.
     CC as it comes. MIDI tracks send CCs out on their own port and channel.
   - Each track can take its own controller. Select the track (**PAD BANK**
     + pad), set **Track channel**, then **Track MIDI in**. The selected
-    track, sync, Thru and program change listen on **MIDI port**; a track's own channel
-    uses its Track MIDI in. Seq Record records every track that a channel
+    track, sync, Thru and program changes for sequences listen on **MIDI
+    port**; a track's own channel uses its Track MIDI in. Seq Record records every track that a channel
     plays, at once.
   - Remote CCs are heard from any port and are not passed on to the tracks.
     A value past the last track, pattern or sequence does nothing.
@@ -61,6 +67,9 @@ as MIDI passes.
   counts it. With no Song Position sent since (a simple master, or a
   pause and resume), Continue plays on from exactly where it stopped,
   inside the bar too, so it stays in time with the master's clock.
+  While the clock comes in, it sets the tempo: turning the
+  tempo or tapping **TAP TEMPO** shows **Tempo locked to MIDI sync**. Set
+  **MIDI sync in** to **Off** to set the tempo on the MPC.
 - **MTC in** (24, 25, 29.97 drop-frame and 30 fps): Melodee follows the
   timecode: the song on Song, else the patterns. The header shows **EXT
   MTC**. A cue while stopped moves the playhead there, counted the same way.
@@ -156,7 +165,8 @@ kit (pads, channel 10). A second keyboard plays a bass track.
 **Track MIDI in** tells the MIDI In jack apart from a computer on USB-C: a
 track set to **External** does not hear notes on its channel from the
 computer, and a track set to **USB** does not hear the jack. The selected
-track, sync, Thru and program change listen on **MIDI port** only.
+track, sync, Thru and program changes for sequences listen on **MIDI port**
+only.
 
 ### Example 4: change tracks, patterns and sequences from the MiniLab 3
 
@@ -181,6 +191,107 @@ screen. Option names can differ between versions of MIDI Control Center.
 Use a channel for Remote that no track plays on. Remote CCs do not reach the
 tracks. With **Receive program change** on, a pad set to send Program Change
 launches that sequence.
+
+### Example 5: change plug-in presets from a controller
+
+Set **Receive program change** to **Plug-in**. A program change then loads a
+preset into the plug-in of the track it plays, as a note on the same channel
+would: the track with that **Track channel**, else the selected track. This
+works for VST3, VST2, CLAP, LV2 and MPC plug-ins, also for plug-ins that
+ignore MIDI program changes.
+
+| Message | Loads |
+| --- | --- |
+| Program 1 (sent as 0) | The first preset |
+| Program 2–128 | The presets after it, in the order the encoder steps through them on **PRESETS** |
+| Bank Select CC 32 = 1, then program 1 | Preset 129 |
+| Bank Select CC 0 = 1, CC 32 = 0, then program 1 | Preset 16385 |
+
+1. Select the plug-in track.
+2. On the controller, send program 5. The screen shows **Program 5** and the
+   name of the fifth preset.
+3. Press **SHIFT** + **B2** (**PRESETS**) to see the preset in the list.
+
+The bank stays set on that channel until the next Bank Select. A program past
+the last preset shows **No preset** and changes nothing. The plug-in of a
+frozen track keeps its preset.
+
+Program changes that come quickly, from a held **PROG +** button or a knob
+that sends one a step, do not queue up. The preset loading finishes, then the
+last one sent loads. A single program change loads at once.
+
+### Example 6: step presets with a knob
+
+Learn a knob of the controller as **Remote preset CC**. Turning it right
+loads the next preset of the selected track, turning it left the previous
+one, on any page.
+
+1. Open **MIDI** (**SHIFT** + **Pad 8**). Turn the encoder to **Remote preset CC**.
+2. Press **Push**. The row shows **Learning**.
+3. Turn the knob slowly to the right, then let go. The screen shows the CC,
+   the channel and how the knob sends. **Remote channel** is set to the
+   knob's channel. Turns that go on after that do nothing until the knob has
+   rested for a moment.
+4. Select a plug-in track and turn the knob. The screen shows each preset's
+   name. The preset loads when the knob stops.
+
+| Track | The knob steps |
+| --- | --- |
+| Plug-in | Its presets, as the encoder does on **PRESETS** |
+| MIDI | **PROGRAM** 1–128, sent at once |
+
+If the knob steps the wrong way or skips, set **Remote preset knob** to how
+the controller sends:
+
+| Remote preset knob | The controller sends | For example |
+| --- | --- | --- |
+| Absolute | Its position, 0–127 | A knob with ends. It stops stepping at the ends. |
+| Binary offset | 65 one step right, 63 one step left | MiniLab 3 encoders in Relative1, SMK-37 knobs in DAW mode REL |
+| 2's complement | 1 one step right, 127 one step left | MiniLab 3 encoders in Relative2 |
+| Signed bit | 1 one step right, 65 one step left | |
+| Signed bit 2 | 65 one step right, 1 one step left | |
+
+Use an endless encoder in a relative mode: it keeps stepping in both
+directions. **Push** again on the row stops learning. Learning also stops
+after 10 seconds, or when you leave **MIDI**.
+
+### Example 7: start and stop with a foot pedal
+
+Learn a foot pedal (a footswitch on a keyboard or MIDI controller that sends
+a CC) as **Remote play CC**. Each press then starts playback, and the next
+press stops it, while your hands stay on the keys.
+
+1. Open **MIDI** (**SHIFT** + **Pad 8**). Turn the encoder to **Remote play CC**.
+2. Press **Push**. The row shows **Learning**.
+3. Press the pedal. The screen shows the CC and the channel. **Remote
+   channel** is set to the pedal's channel.
+4. Press the pedal to play. Press it again to stop.
+
+Learn a second pedal or button as **Remote record CC** the same way. A press
+arms recording, records, or stops recording, as **SEQ RECORD** does.
+
+A press is a value of 64 or more. The pedal's release (a value below 64) does
+nothing. A pedal set to latch sends 127 on one press and 0 on the next, so it
+acts on every other press: set it to momentary. Remote CCs do not reach the
+tracks, so use a pedal other than the sustain pedal, or another channel.
+
+### Send program changes
+
+Set **Send program change** to **On**. When you pick a preset on a plug-in
+track, Melodee sends it from **MIDI port** on the track's channel: its
+**Track channel**, else **MIDI out channel**. A controller with a screen or a
+second instrument on that channel can then follow it.
+
+| Sent | Value |
+| --- | --- |
+| Bank Select MSB (CC 0) | The bank ÷ 128 |
+| Bank Select LSB (CC 32) | The bank's remainder ÷ 128 |
+| Program change | The preset's place in the bank, 1–128 |
+
+The numbers are the same as for **Receive program change**: preset 1 is
+bank 0, program 1, and preset 129 is bank 1 (CC 32 = 1), program 1. Turning
+the encoder on **PRESETS** or the preset knob sends only the preset you stop
+on. A program change that came in by MIDI is not sent back.
 
 ---
 

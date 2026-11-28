@@ -184,6 +184,24 @@ class MpcProject(unittest.TestCase):
         self.assertIn("chop file=Break from=0 to=0 slices=2 29153-74097 74097-95962", result.stdout)
         self.assertIn("chop file=Half from=0 to=0 slices=2 2000-40000 60000-0", result.stdout)
 
+    def test_mpc3_drum_kit(self):
+        # Issue 62: an MPC 3 kit (.xtd, JSON as an .xty) whose pads share samples chained in one WAV beside it in
+        # Samples/ ("../Samples/<file>" from its data folder), each layer one slice of it by sliceIndex; a layer that
+        # names only the folder plays nothing.
+        with tempfile.TemporaryDirectory() as folder:
+            kits = Path(folder) / "Drum Kits"
+            (kits / "Samples").mkdir(parents=True)
+            (kits / "Samples" / "Chain.wav").write_bytes(sliced_wav(44100, 1000, [(0, 300), (300, 650), (650, 1000)]))
+            layer = {"active": True, "sampleFile": "../Samples/Chain.wav", "sliceIndex": 2, "sliceInfo": {"Start": 0, "End": 999},
+                     "velocityStart": 0, "velocityEnd": 127}
+            kit = {"program": {"type": 0, "drum": {"instruments": [{"layersv": [layer, {"active": True, "sampleFile": "../Samples/"}]}]}}}
+            path = kits / "Kit.xtd"
+            path.write_bytes(gzip.compress(("ACVS\n3.6.0.134\nSerialisableTrackData\njson\nLinux\n" + json.dumps({"data": kit})).encode()))
+            result = self.run_tool(path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("missing=0", result.stdout)
+        self.assertIn("pad A01 file=Chain start=650", result.stdout)
+
     def test_two_members(self):
         # The factory kits in /content/Projects/Kits: the header in one gzip member, the JSON in the next.
         with tempfile.TemporaryDirectory() as folder:

@@ -15,18 +15,19 @@ cursor's bar and time, and the loop.
 | Encoder | Move the cursor by a bar. |
 | Pads | Select a lane. An empty track opens its [new track cards](tracks.md#make-a-new-track), then comes back to Song. |
 | **K1** | Zoom (4–64 bars). |
-| **K2** / **K3** | The next clip's pattern and length (1–128 bars), or those of the clip under the cursor. |
+| **K2** / **K3** | The next clip's pattern and length (1–128 bars), or those of the clip under the cursor. **K2** steps through the track's patterns that hold notes and the next empty one (A1, A2 … H16). |
+| **PAD BANK** | Show all 16 tracks at once, or the selected track's lanes again. With all tracks shown, copy, paste and erase of a loop range work on every track. |
 | **B3** | Place a clip of the pattern and length on **K2** and **K3**. On a clip: duplicate it after itself. |
 | **B2** | Mute or unmute the clip. |
 | **SHIFT** + **B2** (**MOTION**) | Open the clip's pattern on the Motion page. |
 | **SHIFT** + **B3** (**OWN PATTERN**) | Make the clip's pattern its own copy. |
 | **SHIFT** + **B1** (**JAMS**) | The jams you played outside Song, to put after the end of the song (see [Jam capture](#jam-capture)). |
-| Encoder push | Open the clip's notes: Roll, or Step Edit on a kit. On empty time, place a clip. |
+| Encoder push | Open the clip's notes: Roll, or Step Edit on a kit. On empty time, place a clip. After a copy of bars: paste them at the cursor. |
 | **CHOP** | Split the clip at the cursor. |
-| **ERASE** | Delete the clip. |
-| **SHIFT** + **ERASE** | Copy the clip, placed after itself. |
+| **ERASE** | Delete the clip. With a loop range: take its bars out (see [Sections](#sections)). |
+| **SHIFT** + **ERASE** | Copy the clip, placed after itself. With a loop range: copy its bars. |
 | **NOTE REPEAT** | Repeat the clip up to the next marker. |
-| **LOOP** | Loop the clip's bars. Press it again, or on empty time, to turn the loop off. |
+| **LOOP** | Press it at the first bar, move the cursor, press it at the last bar: that is the loop. On a clip, press it twice without moving the cursor to loop the clip's bars. With a loop on, a press turns it off. |
 | **SHIFT** + encoder push | Add a marker. On a marker: name it. |
 | **−** / **+** | Jump between markers (with no markers, between clip edges). |
 | **PLAY** | Play the song from the cursor. |
@@ -48,6 +49,28 @@ from the point before. Before the first point, the project's tempo plays.
 With points, the lane shows over the tracks with the tempo at the cursor.
 
 ![The tempo lane](../images/screens/songtempo.png)
+
+## Sections
+
+The loop range marks a section of the song to copy, paste or take out.
+
+1. Move the cursor to the section's first bar and press **LOOP**. Move
+   the cursor to its last bar and press **LOOP** again. The
+   header shows **LOOP** with the bars.
+2. Press **PAD BANK** to work on all tracks (the header shows **ALL**), or
+   leave it to work on the selected track.
+3. Press **SHIFT** + **ERASE** to copy the section. The header shows
+   **COPY**.
+4. Move the cursor and push the encoder to paste. What is at the cursor and
+   after it moves on to make room. Push again to paste another copy after
+   it, for example to make a part longer. Press **ERASE** to stop pasting.
+
+To take a section out, set the loop range and press **ERASE**. What comes
+after it moves back to close the gap. With all tracks shown, markers and
+tempo points move too. Each paste and each erase is one undo step.
+
+Playing from a bar after the loop range, the song plays on to its end and
+stops.
 
 ## Record into the song
 

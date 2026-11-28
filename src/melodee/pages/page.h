@@ -35,6 +35,7 @@ void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
 constexpr uint32_t key_list_ms = 1200; // how long a key's pages stay listed after a press
 void draw_levels_chords(ui::Paint& p, const Snapshot& s); // 16 Levels held with Chords on: what each pad plays (pages/keys_page.cpp)
 void draw_levels_sheet(ui::Paint& p, const Snapshot& s);  // 16 Levels' FILE and SET (shell/levels_keys.h)
+void draw_colour_sheet(ui::Paint& p, const Snapshot& s);  // TRACK COLOUR (shell/track_colours.h)
 void draw_lesson(ui::Paint& p, const Snapshot& s);     // a lesson's step on B1-B3 or K1-K3 (no lights): the key or the card pulses
 void draw_key_list(ui::Paint& p, const Snapshot& s);   // a soft key of several pages: their names for a moment after a press
 void draw_menu(ui::Paint& p, const Snapshot& s);       // the encoder held: HERE and GO (pages/menu_sheet.cpp)

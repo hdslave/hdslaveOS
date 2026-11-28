@@ -6,7 +6,7 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Audio tra
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **PRESETS** (or **PLUG-IN**), **PANEL** (a plug-in that draws its own screen), **EDIT** |
+| **B1** | **PANEL** (a plug-in that draws its own screen), **PRESETS** (or **PLUG-IN**), **EDIT** |
 | **B2** | **ARP**, **CHORD** |
 | **B3** | **FX** |
 
@@ -46,10 +46,12 @@ knob sets one back to off.
 ![PRESETS](../images/screens/stagepluginpresets.png)
 
 **PANEL**: the plug-in's own page, when it draws one (see
-[A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)).
+[A plug-in's own screen](plug-ins.md#a-plug-ins-own-screen)). It is the
+first page under **B1**; a plug-in without one starts on **PRESETS**.
 
 **EDIT**: all of the plug-in's parameters. Turn the encoder or press
-**−** / **+** to move through them. Picking a plug-in opens this page.
+**−** / **+** to move through them. Picking a plug-in opens this page, or
+**PANEL** once the plug-in is open when it draws its own screen.
 
 The track's level, pan and sends are on the [mixer](mixer-and-effects.md#the-mixer).
 
@@ -80,8 +82,8 @@ a single sample. Its pads play notes, as on a plug-in track.
 To make one: select an empty track, turn to **Keygroup** and push the
 encoder. Pick the instrument or sample in the browser. **SAMPLE SELECT** on
 the track opens the browser again to change it. **B3** (**PREVIEW**) plays
-each sample, program or instrument when you move to it, as on a kit.
-Melodee keeps the **PREVIEW** setting when you restart.
+each sample, program or instrument when you move to it, as on a kit. The
+fader sets the preview level. Melodee keeps both when you restart.
 
 | Key | Pages |
 | --- | --- |
@@ -320,7 +322,8 @@ with no chord is dark.
 | **−** / **+** | Octave |
 | **PAD BANK** | Banks A–C |
 
-Melodee looks for progressions in these folders on the SD card:
+Melodee looks for progressions in these folders on the SD card, and in their
+subfolders up to four deep (for example a folder for each genre):
 
 - `Melodee/Progressions` (your own progressions)
 - `Progressions`

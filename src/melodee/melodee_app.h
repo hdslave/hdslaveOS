@@ -12,6 +12,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/boot.h"
+#include "melodee/ui/screensaver.h"
 #include "melodee/web/web_app.h"
 #include "drivers/platform.h"
 #include "drivers/sd_update.h"
@@ -99,6 +100,9 @@ private:
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     melodee::ui::BootAnimation boot;          // screen thread: the boot film, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now
+    melodee::ui::Screensaver saver;           // screen thread: Settings' Screensaver (shell/screensaver.h)
+    std::atomic<bool> saver_shows {false};    // the saver covers the screen: the service thread dims the backlight
+    std::atomic<uint32_t> touched {0};        // now_ms() of the last control, remote press or MIDI note: the saver waits
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
     // queues, the MIDI thread acts it out as if by hand.
@@ -145,8 +149,9 @@ private:
     uint64_t update_scans = 0;                 // card checks done, for the web page
     std::string update_declined;               // the zip LATER was pressed on, no longer shown as asked on the web page
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
-    bool screen_dimmed = false;  // service thread: the backlight at its lowest for Dim after
-    long screen_before_dim = -1; // and what it was at before
+    bool screen_dimmed = false;  // service thread: the backlight at its lowest for Dim after (hdslaveOS)
+    bool screen_saved = false;   // and down for the screensaver
+    long screen_lit = -1;        // the backlight step when it went down, for Settings that leave it as the MPC had it
     // The web page (web/web_app.h), on its own thread; the service thread tells it about the card and updates.
     void web_service(Hardware& hardware);
     std::string web_card;                      // service thread: the card's top folder while home

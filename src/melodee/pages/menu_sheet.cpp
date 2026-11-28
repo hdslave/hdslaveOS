@@ -33,16 +33,17 @@ Icon job_icon(MenuJob job) {
     case J::PatternHalf: return Icon::Minus;
     case J::TrackMove: return Icon::Swap;
     case J::TrackCopy: return Icon::Copy;
+    case J::TrackColour: return Icon::Pads;
     case J::Looper: return Icon::Loop;
     case J::Freeze: return Icon::Snow;
     case J::Stems: return Icon::Layers;
     default: return Icon::None;
     }
 }
-// The four groups' colours: those of tracks 1, 3, 5 and 2, as the pads are lit (shell/pad_lights.cpp).
+// The four groups' colours: the first, third, fifth and second of the sixteen, as the pads are lit (shell/pad_lights.cpp).
 juce::Colour group_colour(unsigned group) {
     static const unsigned tracks[4] {0, 2, 4, 1};
-    return track_colour(tracks[group % 4]);
+    return slot_colour(tracks[group % 4]);
 }
 
 } // namespace

@@ -289,7 +289,7 @@ void SampleLibrary::remove_service() {
     std::string kind = file.extension().string();
     for (auto& c : kind) c = char(std::toupper(static_cast<unsigned char>(c)));
     if (!fs::is_directory(file, error))
-        for (const auto& [suffix, tail] : {std::pair<const char*, const char*> {".XTY", "_[TrackData]"}, {".XPM", "_[ProgramData]"}, {".XPJ", "_[ProjectData]"}}) {
+        for (const auto& [suffix, tail] : {std::pair<const char*, const char*> {".XTY", "_[TrackData]"}, {".XTD", "_[TrackData]"}, {".XPM", "_[ProgramData]"}, {".XPJ", "_[ProjectData]"}}) {
             if (kind != suffix) continue;
             const fs::path data = file.parent_path() / (file.stem().string() + tail);
             if (fs::is_directory(data, error)) fs::remove_all(data, error);
@@ -439,7 +439,7 @@ bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (
     unsigned preset = 0;
     if (split_sf2_preset(path.string(), file, preset)) return true; // roadmap P3: a preset of an .sf2
     const auto kind = upper(path.extension().string());
-    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY" || kind == ".EXS" || kind == ".DSPRESET";
+    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY" || kind == ".XTD" || kind == ".EXS" || kind == ".DSPRESET"; // .xtd: an MPC 3 kit (issue 62)
 }
 // Roadmap P3: an .sf2's presets as the browser lists a folder's files, each an instrument "<file>#<its place>",
 // by bank and program, those with nothing to play left out.
@@ -465,7 +465,7 @@ bool owned_data(const fs::path& dir) {
         if (name.size() <= t.size() || name.compare(name.size() - t.size(), t.size(), t)) continue;
         const std::string stem = name.substr(0, name.size() - t.size());
         std::error_code error;
-        for (const char* kind : {".xty", ".xpj", ".xpm", ".XTY", ".XPJ", ".XPM"})
+        for (const char* kind : {".xty", ".xtd", ".xpj", ".xpm", ".XTY", ".XTD", ".XPJ", ".XPM"})
             if (fs::exists(dir.parent_path() / (stem + kind), error)) return true;
     }
     return false;

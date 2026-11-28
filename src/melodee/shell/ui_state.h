@@ -151,6 +151,7 @@ struct UiState {
     uint8_t lead_pattern = 0;      // the pattern launched last: whose tempo plays with BPM per pattern on
     uint32_t locate = 0;           // Patterns: where Shift + Play carries on from, ticks of the track in view's pattern as written (the wheel moves it)
     bool bpm_tenths = false;       // Seq held + Push: the wheel's tempo by whole BPM or tenths
+    bool tempo_locked = false;     // MIDI Config's MIDI sync in on MIDI Clock and a clock's tempo heard: it leads, a change by hand is refused
     // Time Correct (Shift + Pad 14): shift in ticks and swing for the notes moved, and the keys chosen.
     int16_t tc_shift = 0;
     uint8_t tc_swing = 50;
@@ -161,6 +162,10 @@ struct UiState {
     // velocity, the groove's amount) and which pattern it was (track * 16 + pattern; -1 none), to put back.
     std::array<uint8_t, 4> tc_stash {};
     int16_t tc_stash_at = -1;
+    // Time Correct's B2 GROOVE held (shell/time_correct.h): the pads and the screen are track tc_groove_track's
+    // patterns in bank tc_groove_bank (Pad Bank steps it, Minus / Plus the track); a pad takes the groove from one.
+    bool tc_groove_held = false;
+    uint8_t tc_groove_track = 0, tc_groove_bank = 0;
     void tc_toggle(unsigned key) { if (key < 192) tc_keys[key / 64] ^= uint64_t(1) << (key % 64); }
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
     // Stage (pages/stage_page.cpp, shell/stage_map.h): each track's button (B1-B3) and the page of its cycle.
@@ -208,6 +213,8 @@ struct UiState {
     Pot fader;
     uint32_t fader_moved_at = 0;
     uint8_t midi_cursor = 0;                  // MIDI Config: the row under the cursor (shell/midi_config_rows.h)
+    uint8_t midi_learn_row = 0;               // and the Remote CC row Push is learning, until midi_learn_until (ms; 0 none)
+    uint32_t midi_learn_until = 0;
     uint32_t midi_in_at = 0, midi_out_at = 0; // ms: MIDI last came in, went out (the page's lights)
     std::array<uint32_t, track_count> track_out_at {}; // ms: a MIDI track last sent on its own port (Edit's DEVICE picture)
     // midi-track A (round 2): the last notes MIDI tracks sent, for their DEVICE picture: the track, key and velocity,
@@ -279,6 +286,11 @@ struct UiState {
     uint8_t song_zoom = 2;      // index into song_zooms
     uint8_t song_pattern = 0;   // what Push places on empty time
     uint8_t song_length = 4;    // bars
+    // Issue 60 (shell/song_range.h): every lane at once (PAD BANK tap on Song), and the loop's start set by a LOOP tap
+    // on empty time waiting for the tap that sets its end (-1 none).
+    bool song_all = false;
+    int16_t song_loop_in = -1;
+    std::array<uint64_t, 2> song_used {}; // the selected track's patterns that hold notes, a bit each (K2's list, refreshed on Song)
     // Jam capture (model/jam_log.h): the bars of the run being logged and whether one is (Song's foot), the jams
     // kept; JAMS (Song's Shift + B1): open, the jam picked (its index, oldest first), its bars, the part FROM-TO
     // (bars, TO not included), and whether B2 plays it.
@@ -313,6 +325,9 @@ struct UiState {
     PageId plugin_from = PageId::Stage;          // the page it opened over: an instrument's B1 (CANCEL) at the top
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
+    // A plug-in just picked onto the track from Stage: EDIT while it opens, then its own screen (PANEL) once it says
+    // it draws one (Context::plugins_tick); no_plugin when none is awaited.
+    uint8_t plugin_screen_due = no_plugin;
     // A plug-in's own screen (shell/screen_view.h): an effect slot's full page open on a chain page (Push on it).
     bool fx_panel = false;
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
@@ -472,7 +487,7 @@ struct UiState {
     // Tracks), one key's notes onto another key (a synth's play pages, Roll,
     // Step Edit), or one step onto another (Steps). Armed, then the source,
     // then the target (shell/erase_copy.h).
-    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes, Scenes }; // Notes: Roll's marked notes, Push pastes; Scenes: Sequences' pads
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes, Scenes, Bars }; // Notes: Roll's marked notes, Push pastes; Scenes: Sequences' pads; Bars: Song's loop range (issue 60), Push pastes
     Copying copying = Copying::Off;
     int16_t copy_from = -1;   // the kit pad, pattern, track, key, step or sequence picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns and kit pads: the track the pattern or pad is copied from
@@ -583,6 +598,14 @@ struct UiState {
     std::array<std::array<char, 40>, 6> prog_rows {};
     uint8_t prog_rows_count = 0;
     uint16_t prog_rows_first = 0, prog_cursor = 0;
+    // FILE's folders (issue 65, shell/progression_tree.h): the rows of the folder in view (prog_view_count), the rows
+    // in view that are folders (a bit each), the row of the track's own file (-1: not in this folder), whether the row
+    // in hand is a folder (B3 OPEN, else PICK), and the folder's name ("" the top).
+    uint16_t prog_view_count = 0;
+    uint8_t prog_rows_folders = 0;
+    int16_t prog_view_own = -1;
+    bool prog_cursor_folder = false;
+    char prog_folder_name[40] {};
     uint8_t chord_index = 0, chord_root = 0, chord_type = 0, chord_invert = 0;
     ProgChord chord_before;
     // hdslaveOS: find moved files (shell/find_moved.h), as the MIDI thread last saw it: the project's slots not found,
@@ -594,6 +617,9 @@ struct UiState {
         bool searching = false, hidden = false, pad_missing = false;
     };
     FindView find;
+    // TRACK COLOUR (issue 69, shell/track_colours.h): the sheet open, for which track, and its colour before (B1 BACK).
+    bool colour_sheet = false;
+    uint8_t colour_track = 0, colour_before = 0;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

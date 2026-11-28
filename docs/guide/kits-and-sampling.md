@@ -57,8 +57,17 @@ has no **LAYERS** page (see [Sampled instruments](#sampled-instruments)).
   plays it.
 - **SHIFT** + **K1**: how a hit picks layers: **Velocity** (every layer in
   range plays), **Cycle** (the next layer each hit), **Random**, **Cycle hold**
-  or **Random hold**. The hold choices pick like Cycle and Random, but while **NOTE REPEAT** repeats the pad, every repeat plays the
+  or **Random hold**, then **CC 1** to **CC 127**. The hold choices pick like Cycle and Random, but while **NOTE REPEAT** repeats the pad, every repeat plays the
   layer the first one picked until you let go.
+- With a **CC**, a MIDI controller picks the layer, for example a hi-hat
+  pedal on CC 4 (the first **CC** choice past the hold choices is CC 1; turn
+  on to **CC 4**). **K2** / **K3** (**CC LOW** / **CC HIGH**) set the
+  controller values that play the layer, 0 to 127. When you first choose a
+  **CC** and every layer still plays the whole range, the range is split
+  between the layers in order: with four, 0-31, 32-63, 64-95 and 96-127
+  (closed, quarter, half and open hi-hat). Until the controller moves, the
+  first layer plays. With **SEQ RECORD** on, the controller is recorded as a
+  **CC** lane on Motion and plays back with the pattern.
 - **SHIFT** + **K2** / **K3**: the layer's tune and level.
 - **SHIFT** + **B1** (**LOAD**): load a sample onto the layer. **SHIFT** +
   **B2** (**CLEAR**): remove the layer.
@@ -151,6 +160,7 @@ own folder.
 | **B1** | Go back out of a folder. At the top, **CANCEL** closes the browser. |
 | **B2** | Switch between the card (**CARD**) and the MPC's factory samples (**INTERNAL**). The key names the other drive. Each drive keeps its folder and row. The internal drive is read only. |
 | **B3** | **PREVIEW**: play each file when you move to it. Melodee keeps this setting when you restart. |
+| Fader | The preview level. It changes the file playing now too. Melodee keeps the level when you restart. |
 | **SHIFT** + **B3** | **STAR**: star the file under the cursor, or take its star off. The key's light shows whether it is starred. |
 | **SHIFT** + **B1**, **B2** | When the project has samples **NOT FOUND**: **FIND MISSING** searches the card for them, **FORGET** takes them off their pads. While a search runs (**FINDING**): **CANCEL**. See [Moved files](projects-and-files.md#moved-files). |
 | **SHIFT** + pad | Load the file onto the next empty pad. |
@@ -244,9 +254,9 @@ icon and its type at the right.
 
 | Type | Files |
 | --- | --- |
-| SFZ | `.sfz`, shown as **SFZ** |
+| SFZ | `.sfz`, shown as **SFZ**. Regions chosen by a controller (`locc`, `hicc`, for example a hi-hat on CC 4) follow it as you play. |
 | MPC keygroup program | `.xpm` (**XPM**), or `.xty` from MPC 3 (**XTY**) |
-| MPC drum program | `.xpm` or `.xty` with a pads icon: Push opens **LOAD KIT** (see [Loading banks of an MPC kit](#loading-banks-of-an-mpc-kit)) |
+| MPC drum program | `.xpm`, `.xty` or an MPC 3 drum kit's `.xtd` (**XTD**), with a pads icon: Push opens **LOAD KIT** (see [Loading banks of an MPC kit](#loading-banks-of-an-mpc-kit)) |
 | MPC expansion | `.xpn` with a down arrow: installs into `Melodee/Samples/Expansions` |
 | Logic EXS24 / Sampler | `.exs` (**EXS**), with its samples in the same folder |
 | SoundFont | `.sf2` (**SF2**): opens as a folder of presets |
@@ -678,10 +688,15 @@ the type:
 
 - **SCALE** and **CHORDS** choose that type and turn 16 Levels on, in one
   press.
-- **FILE** lists the progression files on the card. Turn the encoder to a
-  file and push it, or press **B3** (**PICK**). **B1** (**BACK**) leaves the
-  progression as it was. The file the track plays has a check. You can let
-  go of **16 LEVELS** while the list is open.
+- **FILE** lists the progression files on the card, one folder at a time:
+  its folders first, then its files. It opens on the folder of the file the
+  track plays. Turn the encoder to a folder and push it, or press **B3**
+  (**OPEN**), to see what is in it. **B1** (**BACK**) goes up one folder;
+  at the top it closes the list and leaves the progression as it was. Turn
+  the encoder to a file and push it, or press **B3** (**PICK**). The file
+  the track plays has a check. Your own progressions and their folders are
+  at the top, with **Progressions** (the card's `Progressions` folder) and
+  **Expansions**. You can let go of **16 LEVELS** while the list is open.
 - **SET** makes a chord of your own. Tap the pad the chord goes on. Then
   **K1** (**ROOT**), **K2** (**CHORD**: m7, maj9, 7sus4 and so on) and **K3**
   (**INVERSION**) set it; tap the pad to hear it. **B3** (**DONE**) saves the

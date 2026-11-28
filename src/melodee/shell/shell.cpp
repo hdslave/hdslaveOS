@@ -44,6 +44,7 @@
 #include "melodee/shell/progression_jobs.h"
 #include "melodee/shell/seq_layer.h"
 #include "melodee/shell/shift_pads.h"
+#include "melodee/shell/track_colours.h"
 #include "surface/controls.h"
 #include <algorithm>
 #include <cmath>
@@ -69,6 +70,7 @@ void let_go(Context& c, Button b) {
     case Button::Loop: ui.loop_held = ui.loop_grip = ui.loop_shift_held = false; break;
     case Button::SixteenLevels: ui.levels_held = ui.levels_used = false; break;
     case Button::NoteRepeat: repeat_button(c, false); break; // held, the repeat ends with it
+    case Button::TopMiddle: ui.tc_groove_held = false; break; // Time Correct's GROOVE: the pads play again
     default: break;
     }
 }
@@ -323,6 +325,7 @@ void Shell::button(Button b, bool pressed) {
 
 void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
+    if (b == Button::TopMiddle && !pressed) ui.tc_groove_held = false; // Time Correct's B2 GROOVE let go, wherever it went
     if (b == Button::Shift) {
         ui.shift = pressed;
         if (pressed) ui.shift_used = false;
@@ -352,6 +355,8 @@ void Shell::press(Button b, bool pressed) {
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     // 16 Levels' FILE or SET open (shell/levels_keys.h): B1 back, B3 or Push picks or is done; the other buttons wait.
     if (pressed && ui.levels_sheet && !ui.exit_open && !ui.name.open() && levels_sheet_button(context_, b)) return;
+    // TRACK COLOUR open (shell/track_colours.h): B1 back, B2 default, B3 or Push done; the other buttons wait.
+    if (pressed && ui.colour_sheet && !ui.exit_open && !ui.name.open() && track_colour_button(context_, b)) return;
     if (new_track_lock(context_, b, pressed)) return; // an empty track in hand: made or left first (shell/new_track.h)
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) { if (b == Button::TapTempo) tap.down = false; let_go(context_, b); return; }
@@ -705,6 +710,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    if (int initial = 0; ui_.erase && feel_reset_value(b, initial)) { // Time Correct's cards: back to as written
+        context_.apply(b, initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
     learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
     int value = 0;
     if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);
@@ -720,6 +730,7 @@ void Shell::wheel(int delta) {
     }
     if (ui_.menu) { menu_wheel(context_, delta); return; } // the MENU: the wheel walks its cards or tiles
     if (ui_.history) { history_wheel(context_, delta); return; } // the undo list: its rows
+    if (ui_.colour_sheet) { track_colour_wheel(context_, delta); return; } // TRACK COLOUR: the next colour
     if (ui_.levels_sheet) { levels_sheet_wheel(context_, delta); return; } // 16 Levels' FILE: its rows (SET: nothing)
     if (levels_held_cards(*project_, ui_) && LevelsKind(context_.track().levels_kind % unsigned(LevelsKind::Count)) == LevelsKind::Chords) {
         ui_.levels_used = true; // 16 Levels held, of type Chords: the encoder picks the progression from the card, as on Keys' Prog layout
@@ -786,7 +797,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down && ui_.erase) ui_.erase_used = true; // Erase + pad: its release deletes nothing
     if (!down) { // a release goes where its press went
         pad_let_go[pad % 16] = context_.now + 1; // its light fades from here
-        if (ui_.name.open()) return;
+        if (ui_.name.open() || ui_.colour_sheet) return;
         if (loop_held_pad(context_, pad, false)) return;
         if (seq_pad(context_, pad, false)) return;
         if (context_.record_keys() || context_.record_key_held(pad)) { context_.record_key(pad, velocity, false); return; }
@@ -799,6 +810,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     unsigned kit = context_.track().bank % sampler_banks * 16 + pad % 16;
     switch (pad_context(ui_, context_.track(), pad_facts(), pad)) {
     case PadContext::Sheet: return; // a sheet or a question over the page
+    case PadContext::ColourPick: track_colour_pad(context_, pad); return; // TRACK COLOUR: the pad's colour
     case PadContext::Tracks: track_pad(context_, pad); end_copy_away(); return; // Pad Bank + pad: that track (or a track copy's)
     case PadContext::Name: ui_.name.pad(pad, context_.now); return; // the pads type
     case PadContext::LoopHeld: loop_held_pad(context_, pad, true); return; // Loop held: the loop grid on any page
@@ -877,6 +889,7 @@ void Shell::end_copy_away() {
     case UiState::Copying::Steps: here = ui_.page == PageId::StepEdit && ui_.step_pads; break;
     case UiState::Copying::Notes: here = ui_.page == PageId::Roll; break;
     case UiState::Copying::Scenes: here = ui_.page == PageId::Scenes; break;
+    case UiState::Copying::Bars: here = ui_.page == PageId::Song; break; // issue 60
     default: break;
     }
     if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();
@@ -1258,8 +1271,8 @@ std::string Shell::midi_config_summary() const {
          + " melodee_midi_out_ch=" + std::to_string((m >> 6) & 31) + " melodee_pad_in=" + std::to_string((m >> 11) & 1)
          + " melodee_pad_out=" + std::to_string((m >> 12) & 3) + " melodee_sync_in=" + std::to_string((m >> 14) & 3)
          + " melodee_sync_out=" + std::to_string((m >> 16) & 3) + " melodee_thru=" + std::to_string((m >> 18) & 1)
-         + " melodee_program_change=" + std::to_string((m >> 19) & 1) + " melodee_cv_out=" + std::to_string((m >> 20) & 1)
-         + " melodee_cv_ppqn=" + std::to_string((m >> 21) & 255) + " melodee_track_ch=" + std::to_string(track_channel.load(std::memory_order_relaxed))
+         + " melodee_program_change=" + std::to_string((m >> 19) & 3) + " melodee_cv_out=" + std::to_string((m >> 21) & 1)
+         + " melodee_cv_ppqn=" + std::to_string((m >> 22) & 255) + " melodee_track_ch=" + std::to_string(track_channel.load(std::memory_order_relaxed))
          + " melodee_midi_row=" + std::to_string(midi_row.load(std::memory_order_relaxed));
 }
 

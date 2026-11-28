@@ -18,6 +18,13 @@ namespace melodee {
 using Type = Command::Type;
 
 namespace {
+// Issue 66: whether a kit or keygroup track records controller `cc` as a Motion lane: the foot controller's (CC 4,
+// a hi-hat's pedal, which SFZ drum kits' CC regions follow too), or one its pads' CC layers follow.
+bool cc_layers_follow(const Track& track, unsigned cc) {
+    if (cc == layer_cc_first) return true;
+    for (const auto& pad : track.pads) if (pad.used() && pad.layer_play == LayerPlay::Cc && pad.layer_cc == cc) return true;
+    return false;
+}
 int64_t ns_of(MidiIo::Clock::time_point t) {
     return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count());
 }
@@ -25,6 +32,12 @@ std::string last_text(unsigned bytes) {
     char text[16];
     std::snprintf(text, sizeof(text), "%06x", bytes);
     return text;
+}
+MidiPacket packet_bytes(const uint8_t* bytes, unsigned size) {
+    MidiPacket p;
+    p.size = std::min<unsigned>(size, unsigned(p.bytes.size()));
+    std::copy(bytes, bytes + p.size, p.bytes.begin());
+    return p;
 }
 MidiPacket packet_of(const juce::MidiMessage& m) {
     MidiPacket p;
@@ -96,6 +109,26 @@ void Context::set_midi(unsigned row, unsigned value) {
     settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
 }
 
+void Context::midi_learn(unsigned row) {
+    if (!midi_row_learns(row)) return;
+    if (midi_learning() && ui.midi_learn_row == row) { ui.midi_learn_until = 0; notice("Learn off"); return; }
+    ui.midi_learn_row = uint8_t(row);
+    ui.midi_learn_until = std::max<uint32_t>(now + learn_ms, 1);
+    notice(row == PresetCcRow ? "Turn a knob to the right" : row == PlayCcRow || row == RecordCcRow ? "Press a pedal or button" : "Move a control");
+}
+
+bool Context::midi_learning() const { return ui.midi_learn_until && now < ui.midi_learn_until && ui.page == PageId::MidiConfig; }
+
+void Context::learned_midi(unsigned row) {
+    const auto& m = ui.settings.midi;
+    const unsigned cc = row == TrackCcRow ? m.track_cc : row == PatternCcRow ? m.pattern_cc : row == SceneCcRow ? m.scene_cc
+                      : row == PlayCcRow ? m.play_cc : row == RecordCcRow ? m.record_cc : m.preset_cc;
+    std::string said = std::string(midi_row_name(row)) + " " + std::to_string(cc) + ", ch " + std::to_string(m.remote_channel);
+    if (row == PresetCcRow) said += ", " + std::string(knob_mode_name(m.preset_knob));
+    notice(said);
+    if (store) store->save_settings(ui.settings.text());
+}
+
 void Context::midi_panic() {
     midi_release_all();
     send({Type::AllNotesOff, 255}); // the engines, and the notes the engine host still owes an off
@@ -129,13 +162,21 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (own[t] && track_hears(c.project.tracks[t].midi_in, port.driver, port.surface)) heard = uint16_t(heard | 1u << t);
     }
     juce::MidiMessage m(packet.bytes.data(), int(packet.size));
+    // The preset knob and Learn (shell/program_in.h): heard from any port, as Remote is, and not passed on.
+    const bool knob = channel_message && m.isController() &&
+        (c.midi_learning() ? learnable_cc(unsigned(m.getControllerNumber()))
+                           : config.remote_channel && config.preset_cc && unsigned(m.getChannel()) == config.remote_channel &&
+                                 unsigned(m.getControllerNumber()) == config.preset_cc);
     const RemoteJob remote = channel_message && m.isController()
         ? remote_cc(config, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())) : RemoteJob {};
-    if (!config_port && remote.kind == RemoteJob::Kind::None &&
+    if (!config_port && remote.kind == RemoteJob::Kind::None && !knob &&
         !(channel_message && note_tracks(config, own, heard, c.ui.track, unsigned(m.getChannel()), false)))
         return; // not for anything here
     ins.fetch_add(1, std::memory_order_relaxed);
     c.ui.midi_in_at = c.now;
+    if (channel_message && m.isController() && learn.quiet(c.now, unsigned(m.getChannel()), unsigned(m.getControllerNumber())))
+        return; // the control just learned, still moving: nothing until it rests
+    if (knob) { remote_knob(c, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())); return; }
     if (remote.kind != RemoteJob::Kind::None) { do_remote(c, remote); return; }
     // Roadmap P4 (docs/MIDI_TRACKS.md M3): a channel message for a MIDI track goes out again on its own port and channel
     // (notes, pressure, bend; CCs as they came), unless it would come straight back in (the input is one of its
@@ -165,7 +206,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (last_pulse_ns && packet.timestamp_ns - last_pulse_ns < 2000000) bunched.fetch_add(1, std::memory_order_relaxed);
         last_pulse_ns = packet.timestamp_ns;
         follower.pulse(packet.timestamp_ns);
-        unsigned tempo = follower.tempo_tenths();
+        unsigned tempo = steady.take(follower.tempo_tenths());
         if (tempo && tempo != tempo_sent) { c.send({Type::ExtSync, 0, 0, 2, int16_t(tempo)}); tempo_sent = tempo; tempo_seen.store(tempo); }
         jitter_in.store(follower.jitter_us(), std::memory_order_relaxed);
         if (ext_running.load(std::memory_order_relaxed)) {
@@ -230,8 +271,14 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
 
     // Channel messages.
     int channel = m.getChannel();
+    if (m.isController()) banks.control(unsigned(channel), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue()));
     if (m.isProgramChange()) {
-        if (!config_port || !config.program_change || (config.in_channel && config.in_channel != channel)) return;
+        if (config.program_change == program_plugin) { // the plug-ins of the tracks a note on its channel would play
+            c.midi_program(note_tracks(config, own, heard, c.ui.track, unsigned(channel), config_port),
+                           banks.place(unsigned(channel), unsigned(m.getProgramChangeNumber())));
+            return;
+        }
+        if (!config_port || config.program_change != program_sequence || (config.in_channel && config.in_channel != channel)) return;
         int pattern = m.getProgramChangeNumber();
         if (pattern >= int(pattern_count)) return;
         c.launch_scene(unsigned(pattern), true); // sequence n, as a pad on Sequences
@@ -300,12 +347,43 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
                 for (int k = 0; k < 128; ++k) if (c.midi_held[t].test(size_t(k))) c.midi_key(t, k, 0, false);
             } else if (tr.engine == EngineKind::Plugin || tr.sampled()) { // the sustain pedal and the rest, as they came
                 c.send({Type::Control, uint8_t(t), 0, uint16_t(number), int16_t(value)}); // (a MIDI track's went out above)
+                // Issue 66: a controller a pad's CC layers follow, kept as its lane with Seq Record on, so the take
+                // plays the hi-hat's openness back.
+                if (t == c.ui.track % track_count && tr.sampled() && cc_layers_follow(tr, unsigned(number)))
+                    c.record_motion(motion_lane(motion_cc, unsigned(number)), value);
             }
         }
     }
 }
 
-// Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene.
+// The preset knob's turn, or a CC while Push learns a Remote CC row: the first CC takes a track, pattern or sequence
+// row; the preset row waits for learn_values of one control, to guess how it sends.
+void MidiIo::remote_knob(Context& c, unsigned channel, unsigned cc, unsigned value) {
+    auto& m = c.ui.settings.midi;
+    if (c.midi_learning()) {
+        const unsigned row = c.ui.midi_learn_row;
+        if (!learn.take(c.ui.midi_learn_until, channel, cc, value, row == PresetCcRow ? learn_values : 1, c.now)) return;
+        if (row == PresetCcRow) {
+            m.preset_cc = uint8_t(cc);
+            m.preset_knob = guess_knob(learn.values);
+            preset_last = -1;
+        } else if (row == TrackCcRow) m.track_cc = uint8_t(cc);
+        else if (row == PatternCcRow) m.pattern_cc = uint8_t(cc);
+        else if (row == PlayCcRow) m.play_cc = uint8_t(cc);
+        else if (row == RecordCcRow) m.record_cc = uint8_t(cc);
+        else m.scene_cc = uint8_t(cc);
+        m.remote_channel = uint8_t(channel);
+        c.ui.midi_learn_until = 0;
+        c.learned_midi(row);
+        return;
+    }
+    const int steps = knob_steps(m.preset_knob, value, preset_last);
+    preset_last = int(value);
+    if (steps) c.remote_preset(steps);
+}
+
+// Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene, or
+// presses Play (Stop while playing) or Seq Record (issue 7: a foot pedal, the hands on the keys).
 void MidiIo::do_remote(Context& c, const RemoteJob& job) {
     using K = RemoteJob::Kind;
     switch (job.kind) {
@@ -321,6 +399,11 @@ void MidiIo::do_remote(Context& c, const RemoteJob& job) {
         c.launch_scene(job.index);
         c.notice("Sequence " + print_pattern_name(job.index));
         break;
+    case K::Play:
+        if (c.host.playing()) c.stop();
+        else c.play();
+        break;
+    case K::Record: c.seq_record(); break; // as the button: arm, record now, or stop recording
     default: break;
     }
 }
@@ -423,7 +506,7 @@ void MidiIo::follow_mtc(Context& c, const MtcReader::Event& e) {
 void MidiIo::lost(Context& c) {
     c.midi_release_all();
     if (ext_running.exchange(false)) c.send({Type::ExtSync, 0, 0, 4});
-    follower.reset();
+    follower.reset(); steady.reset();
 }
 
 // --- Out ---
@@ -441,7 +524,7 @@ void MidiIo::configure(Context& c, bool force) {
         bool follow = config.sync_in == MidiSync::Clock;
         if (!configured || follow != (config_sent.sync_in == MidiSync::Clock)) {
             c.send({Type::ExtSync, 0, 0, 0, int16_t(follow)});
-            if (!follow) { ext_running.store(false); tempo_sent = 0; tempo_seen.store(0); follower.reset(); }
+            if (!follow) { ext_running.store(false); tempo_sent = 0; tempo_seen.store(0); follower.reset(); steady.reset(); }
         }
         if (config.sync_in != MidiSync::Mtc && configured && config_sent.sync_in == MidiSync::Mtc) { // MTC no longer leads
             mtc.reset();
@@ -591,6 +674,13 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     }
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
+    for (const auto& p : c.programs_out) { // Send program change (shell/program_in.h): Bank Select MSB, LSB, the program
+        const auto b = program_bytes(p.channel, p.place);
+        send_all(c, out, packet_bytes(b.data(), 3));
+        send_all(c, out, packet_bytes(b.data() + 3, 3));
+        send_all(c, out, packet_bytes(b.data() + 6, 2));
+    }
+    c.programs_out.clear();
     if (panics_done != c.midi_panics) { panics_done = c.midi_panics; panic(c, out); }
     { // the outputs there now, for Edit's DEVICE picture (a handful of ports: cheap every pass); USB devices by name (M4)
         uint32_t bits = 0, devices = 0;

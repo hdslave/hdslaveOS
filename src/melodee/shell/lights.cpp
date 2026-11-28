@@ -7,6 +7,7 @@
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/history_jobs.h"
 #include "melodee/shell/lesson_jobs.h"
+#include "melodee/shell/track_colours.h"
 #include "melodee/shell/features.h"
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
@@ -16,6 +17,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/model/slice_hits.h"
 #include "melodee/shell/autosave.h"
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
@@ -277,6 +279,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             PrintTable prints;
             if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states, &prints).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
+                samples_on_card_now(*project, loaded->card); // saved on another card: its files at the same place on this one
                 if (!context_.kit_from.empty() && context_.kit_from == loaded->path) { // Load Kit: only its kit, onto the selected track
                     moved_.kit(loaded->path); // hdslaveOS: find moved files: its samples looked for beside it too
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
@@ -402,6 +405,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     mixer_view_tick(mixer_view, ui_, now); // the mixer's Plus / Minus held: the card or the strips (shell/mixer_channels.h)
     lesson_tick(context_, now); // a lesson: its kit loaded, or its last step done (shell/lesson_jobs.h)
     if (ui_.levels_sheet && ui_.track != ui_.levels_sheet_track) ui_.levels_sheet = 0; // 16 Levels' FILE or SET (shell/levels_keys.h): another track selected closes it
+    if (ui_.colour_sheet && ui_.track != ui_.colour_track) track_colour_button(context_, SurfaceButton::TopRight); // TRACK COLOUR: kept as it is
+    show_track_colours(*project_); // issue 69: the colour each track shows, for the pads and the screen
+    ui_.tempo_locked = ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in(); // MIDI clock in leads the tempo
+    if (ui_.page == PageId::Song) { // issue 60: K2's list, the selected track's patterns that hold notes
+        ui_.song_used = {};
+        const unsigned t = ui_.track % track_count;
+        for (unsigned n = 0; n < pattern_count; ++n)
+            if (!context_.patterns.at[t][n].empty()) ui_.song_used[n / 64] |= uint64_t(1) << (n % 64);
+    }
     // Tap Tempo held half a second with nothing turned: the Tempo page; held on it, back to the page under it.
     switch (tap_tick(tap, now, ui_.page == PageId::Tempo)) {
     case TapDo::Open: context_.open(PageId::Tempo); break;
@@ -524,7 +536,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto& m = ui_.settings.midi;
             midi_bits.store(uint32_t(m.port) | uint32_t(m.in_channel) << 1 | uint32_t(m.out_channel) << 6 | uint32_t(m.pad_in) << 11
                             | uint32_t(m.pad_out) << 12 | uint32_t(m.sync_in) << 14 | uint32_t(m.sync_out) << 16 | uint32_t(m.thru) << 18
-                            | uint32_t(m.program_change) << 19 | uint32_t(m.cv_out) << 20 | uint32_t(m.cv_ppqn() & 255) << 21,
+                            | uint32_t(m.program_change & 3) << 19 | uint32_t(m.cv_out) << 21 | uint32_t(m.cv_ppqn() & 255) << 22,
                             std::memory_order_relaxed);
             track_channel.store(t.midi_channel, std::memory_order_relaxed);
             midi_row.store(ui_.midi_cursor, std::memory_order_relaxed);
@@ -595,12 +607,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                    && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
         lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : pad_light::track(ui.track, level).rgb);
     }
-    // Bank lights A-H: with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
+    // Bank lights A-H: Time Correct's B2 GROOVE held, the bank of patterns it shows; with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
     // pads' (A-D), or the Prog pads' (A-C); on Chop, the slices on the pads (A 1-16, B 17-32 ...): while Manual's take
     // plays, the bank of the red pad's slice (model/slice_banks.h).
     const unsigned chop_view = chop_bank_slice(project, ui, now); // shell/zoom_view.h
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
-        lights.bank(bank, ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes ? bank == ui.pattern_bank % pattern_banks
+        lights.bank(bank, ui.page == PageId::TimeCorrect && ui.tc_groove_held && !ui.seq_held ? bank == ui.tc_groove_bank % pattern_banks // B2 GROOVE held
+                                      : ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes ? bank == ui.pattern_bank % pattern_banks
                                       : ui.page == PageId::Chop ? bank == slice_bank(chop_view)
                                       : (track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks) || (drum_pads(track) && bank == drum_bank(track))
                                         || (prog_pads(track) && bank == prog_bank(track)));

@@ -210,7 +210,8 @@ void draw_levels_chords(ui::Paint& p, const Snapshot& s) {
 
 // 16 Levels' FILE and SET (shell/levels_keys.h), over the soft keys, the header and the picture; the knob strip
 // under them stays the page's (SET's cards: ROOT, CHORD, INVERSION).
-//   FILE  the card's progression files, six rows at a time, the row in hand raised, the track's own file checked
+//   FILE  the card's progression files a folder at a time (issue 65), its folders first, six rows at a time, the
+//         row in hand raised, the track's own file checked; the header names the folder (FILE at the top)
 //   SET   the chords as the pads sit: first the free pads ringed (tap the pad the chord goes on), then that pad
 //         ringed in white, its chord named in the header
 void draw_levels_sheet(ui::Paint& p, const Snapshot& s) {
@@ -221,25 +222,30 @@ void draw_levels_sheet(ui::Paint& p, const Snapshot& s) {
     Header h = header_of(s); // its first chip says CHORDS (shell/pad_job.h)
     h.right.push_back(tag_of(s, s.ui.track));
     if (s.ui.levels_sheet == levels_sheet_files) {
-        soft_keys(p, SoftKeys {{"BACK", "", "PICK"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
-        h.left.push_back(pill("FILE " + juce::String(s.ui.prog_cursor + 1) + " / " + juce::String(s.ui.prog_count)));
+        const bool folder_in_hand = s.ui.prog_cursor_folder;
+        soft_keys(p, SoftKeys {{"BACK", "", folder_in_hand ? "OPEN" : "PICK"}, 2, c,
+                               {KeyIcon::Back, KeyIcon::None, folder_in_hand ? KeyIcon::None : KeyIcon::Check}});
+        const juce::String where = s.ui.prog_folder_name[0] ? juce::String::fromUTF8(s.ui.prog_folder_name).toUpperCase().substring(0, 14) : juce::String("FILE");
+        h.left.push_back(pill(where + " " + juce::String(s.ui.prog_cursor + 1) + " / " + juce::String(s.ui.prog_view_count)));
         header(p, h);
         constexpr float row_h = 22, row_gap = 1.5f, x = zone::pad, w = zone::width - 2 * zone::pad;
         for (unsigned k = 0; k < s.ui.prog_rows_count; ++k) {
             const unsigned at = s.ui.prog_rows_first + k;
             float y = zone::picture_y + 2 + k * (row_h + row_gap);
-            bool cursor = at == s.ui.prog_cursor, own = int(at) == s.ui.prog_at;
+            bool cursor = at == s.ui.prog_cursor, own = int(at) == s.ui.prog_view_own, folder = (s.ui.prog_rows_folders >> k) & 1;
             if (cursor) { p.fill(x, y, w, row_h, colour::raised, 3); p.fill(x, y, 2.5f, row_h, c, 1); }
             juce::String name = juce::String::fromUTF8(s.ui.prog_rows[k].data());
-            float room = w - 20 - (own ? 20 : 0);
-            p.text(name, x + 10, y, room, row_h, p.fit(name, plain(cursor ? colour::text : colour::sec, type::body, cursor ? Weight::Medium : Weight::Regular), room, type::floor));
+            const float indent = folder ? 28 : 10;
+            if (folder) icon(p, Icon::Folder, x + 10, y + 5, 12, cursor ? colour::text : colour::sec, 1.4f);
+            float room = w - indent - 10 - (own ? 20 : 0);
+            p.text(name, x + indent, y, room, row_h, p.fit(name, plain(cursor ? colour::text : colour::sec, type::body, cursor ? Weight::Medium : Weight::Regular), room, type::floor));
             if (own) icon(p, Icon::Check, x + w - 20, y + 5, 12, c, 1.5f); // the file the track plays now
         }
-        if (s.ui.prog_count > s.ui.prog_rows_count) { // more than the screen holds: where the rows in view sit in the list
+        if (s.ui.prog_view_count > s.ui.prog_rows_count) { // more than the screen holds: where the rows in view sit in the folder
             float top = zone::picture_y + 4, height = zone::picture_h - 8, bx = zone::width - 3;
             p.fill(bx, top, 2, height, colour::line, 1);
-            p.fill(bx, top + height * float(s.ui.prog_rows_first) / float(s.ui.prog_count), 2,
-                   std::max(8.0f, height * float(s.ui.prog_rows_count) / float(s.ui.prog_count)), colour::text, 1);
+            p.fill(bx, top + height * float(s.ui.prog_rows_first) / float(s.ui.prog_view_count), 2,
+                   std::max(8.0f, height * float(s.ui.prog_rows_count) / float(s.ui.prog_view_count)), colour::text, 1);
         }
         return;
     }

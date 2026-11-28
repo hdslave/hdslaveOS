@@ -27,7 +27,7 @@ std::string owned_folder(const std::string& path) {
     const fs::path file(path);
     std::string kind = file.extension().string();
     for (auto& c : kind) c = char(std::tolower(static_cast<unsigned char>(c)));
-    const char* tail = kind == ".xty" ? "_[TrackData]" : kind == ".xpm" ? "_[ProgramData]" : kind == ".xpj" ? "_[ProjectData]" : nullptr;
+    const char* tail = kind == ".xty" || kind == ".xtd" ? "_[TrackData]" : kind == ".xpm" ? "_[ProgramData]" : kind == ".xpj" ? "_[ProjectData]" : nullptr;
     return tail ? (file.parent_path() / (file.stem().string() + tail)).string() : std::string();
 }
 

@@ -4,6 +4,7 @@
 #include "melodee/engine/midi_out.h"
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
+#include "melodee/shell/program_in.h"
 #include "runtime/app.h"
 #include <array>
 #include <atomic>
@@ -18,7 +19,8 @@
 // tracks their channel names, Song Position, Start, Continue and Stop run the
 // transport and the clock's pulses lead the sequencer while Sync In is MIDI
 // Clock (each with the kernel's receive stamp, so the tempo comes out steady);
-// Program Change launches patterns; Thru sends it all on as it came.
+// Program Change launches sequences or loads plug-in presets (shell/program_in.h);
+// Thru sends it all on as it came.
 // While Sync In is MTC (phase 9b), time code starts, places and stops the
 // song or the patterns (shell/mtc_in.h reads it; the engine host keeps the
 // sequencer on its time).
@@ -60,6 +62,9 @@ private:
     // recorded under Seq Record on the selected track), as the bend does BEND.
     void echo_raw(Context& c, const uint8_t* bytes, unsigned size, uint16_t tracks, uint64_t ns);
     void do_remote(Context& c, const RemoteJob& job); // MIDI Config's Remote rows: a track, a pattern or a scene
+    void remote_knob(Context& c, unsigned channel, unsigned cc, unsigned value); // the preset CC, or a CC Learn takes
+    LearnTake learn;                     // Learn on a Remote CC row: the control being moved, then quiet while it moves on
+    int preset_last = -1;                // the preset CC's last value (Absolute: where the knob was; -1 none yet)
     // Roadmap P4 (M4): the SysEx going out now (Context::sysex_queue's first): its track, bytes, how far, the next piece.
     struct SysexSending { bool active = false; uint8_t track = 0; std::vector<uint8_t> bytes; size_t at = 0; int64_t next_ns = 0; } sysex;
     std::atomic<unsigned> sysex_sent {0}, sysex_bytes {0};
@@ -69,6 +74,8 @@ private:
     std::array<MidiPacket, 32> thru {};  // Thru: what came in, sent on in the next pump
     unsigned thru_count = 0;
     ClockFollower follower;
+    TempoSteady steady;                  // its tempo, held through a tenth's wobble
+    ProgramBanks banks;                  // the Bank Select CCs heard, for Receive program change: Plug-in
     unsigned tempo_sent = 0;
     uint32_t song_position = 0; // ticks, from Song Position: where Continue carries on
     bool position_told = false; // a Song Position came since the last Start or Stop (else Continue resumes where it stopped)

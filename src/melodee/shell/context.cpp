@@ -65,7 +65,7 @@ void Context::send(const Command& command) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Bend: case Type::Pressure:
     case Type::Control: case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
-    case Type::Click: case Type::MuteMode: break;
+    case Type::Click: case Type::MuteMode: case Type::AuditionLevel: break;
     // Nor what only tells the engine how things stand or passes a gesture on: the input's route and level (Input
     // Config is a setting), a MIDI track's audio input (sent again every second), a keygroup's found root, MIDI
     // clock and MTC in, a Note Repeat or arp key, a Pad FX pressed or let go. A project left alone is not saved
@@ -842,6 +842,12 @@ void Context::apply(const Binding& b, int value) {
         set_region_value(b, value); // freeze plan F3 (shell/audio_jobs.cpp)
         break;
     case Kind::SongPattern:
+        if (b.kind == Kind::SongPattern) { // issue 60: K2 walks the list: its place to the pattern
+            const unsigned now = b.id >= 0 ? project.song.clips[size_t(b.id)].pattern : ui.song_pattern;
+            const auto list = song_pattern_list(ui.song_used, now);
+            value = list[size_t(std::clamp(value, 0, int(list.size()) - 1))];
+        }
+        [[fallthrough]];
     case Kind::SongLength:
         if (b.id >= 0) { // the clip under the cursor
             auto& clip = project.song.clips[size_t(b.id)];
@@ -953,7 +959,7 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::LayerPitch: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::LayerGain: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].gain = int16_t(value * 10); send_pad(ui.track, t.last_pad); break;
-    case Kind::LayerPlayMode: pad().layer_play = LayerPlay(std::clamp(value, 0, int(LayerPlay::Count) - 1)); send_pad(ui.track, t.last_pad); break;
+    case Kind::LayerPlayMode: set_layer_play_choice(pad(), value); send_pad(ui.track, t.last_pad); break; // issue 66: CC n past RANDOM HOLD
     case Kind::PadOffset: case Kind::PadVelSense: case Kind::PadCutoff: case Kind::PadResonance:
     case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: {
         // values Motion records as lanes of the pad
@@ -1060,6 +1066,11 @@ void Context::apply(const Binding& b, int value) {
         ui.settings.click_level = uint8_t(value);
         send_click();
         settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
+        break;
+    case Kind::PreviewLevel: // the fader on Samples: the preview sounding now glides there, the next starts there
+        ui.settings.preview_level = uint8_t(value);
+        if (previewing >= 0) send({Type::AuditionLevel, uint8_t(previewing), 0, 0, int16_t(value)});
+        settings_save_at = std::max<uint32_t>(now, 1) + 1000; // the fader moves in many steps: the file gets the last
         break;
     case Kind::ArpMode: t.arp_mode = uint8_t(value); send({Type::Arp, ui.track, 0, 1, int16_t(value)}); break;
     case Kind::ArpRate: t.arp_rate = uint8_t(value); send({Type::Arp, ui.track, 0, 2, int16_t(value)}); break;
@@ -1386,14 +1397,24 @@ void Context::pressure(unsigned pad, uint8_t value) {
     for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k & 0xff), int16_t(value)});
 }
 
+uint32_t Context::mute_grid(unsigned t) const {
+    t %= track_count;
+    if (!ui.settings.rec_quantize || !host.playing()) return 0;
+    const auto& p = patterns.at[t][host.pattern_of(t) % pattern_count];
+    return uint32_t(std::max<uint64_t>(played_ticks(p.q(), project.tracks[t].speed), 1));
+}
 void Context::set_mute(unsigned t, bool on) {
     project.tracks[t % track_count].mix.mute = on;
-    send({Type::Mute, uint8_t(t), 0, 0, int16_t(on)});
+    Command c {Type::Mute, uint8_t(t), 0, 0, int16_t(on)};
+    c.position = mute_grid(t); // issue 40: on the next step of Q while Rec quantize is on
+    send(c);
     keep_mute(t, on); // kept in the sequence in hand (model/scene_links.h)
 }
 void Context::set_solo(unsigned t, bool on) {
     project.tracks[t % track_count].mix.solo = on;
-    send({Type::Solo, uint8_t(t), 0, 0, int16_t(on)});
+    Command c {Type::Solo, uint8_t(t), 0, 0, int16_t(on)};
+    c.position = mute_grid(t);
+    send(c);
 }
 
 void Context::set_channel_mute(unsigned n, bool on) {
@@ -1459,13 +1480,15 @@ void Context::sync_pattern(unsigned t, unsigned p) {
 }
 
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
-void Context::record_motion(int lane, int value) {
+void Context::record_motion(int lane, int value, uint32_t snap) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
     if (freeze_protects_track(ui.track)) return; // freeze plan F2b
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
-    m.tick = uint32_t(std::max(host.position_of(ui.track), 0)) % std::max<uint32_t>(p.length, 1);
+    uint32_t at = uint32_t(std::max(host.position_of(ui.track), 0));
+    if (snap) at = (at / snap + 1) * snap; // where it is heard (issue 40: a quantized mute)
+    m.tick = at % std::max<uint32_t>(p.length, 1);
     m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
     // A point a 96th of a quarter at most on a lane, as recording kept them before the clock went to 960: a move
     // inside that replaces the one before, so a pot turned fast fills the pattern's Motion no faster than it did.
@@ -1860,6 +1883,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
     if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
     if (const auto& m = after ? e.name_after : e.name_before) { auto& tr = project.tracks[e.track % track_count]; tr.set_name(m->text); tr.named = m->named; }
+    if (e.colour_before >= 0) project.tracks[e.track % track_count].colour = uint8_t(after ? e.colour_after : e.colour_before); // issue 69
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
     if (e.pattern_was >= 0 && e.pattern >= 0) // the pattern it played before, or the one the edit made it play, kept
@@ -2591,6 +2615,7 @@ void Context::stop() {
 
 // The tempo in play: the global one, or with BPM per pattern the lead pattern's own.
 void Context::set_tempo(int tenths) {
+    if (ui.tempo_locked) { notice("Tempo locked to MIDI sync"); return; } // MIDI clock in plays its own (Sync In)
     tenths = std::clamp(tenths, 300, 3000);
     touch_tempo(*this);
     if (project.seq_tempo) {

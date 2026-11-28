@@ -11,7 +11,8 @@
 //                    starts as long as the one playing; pads tapped after the first in one hold chain the patterns
 //   Shift + pad      launches that sequence: its pattern on every used track (shell/sequences.h); Shift + pads
 //                    tapped after the first in one hold chain the sequences. With Shift held the pads and the
-//                    sheet show the sequences.
+//                    sheet show the sequences. Settings > SEQ > Seq + pad: Sequences turns the two round (issue 50):
+//                    pad a sequence, Shift + pad a pattern (shell/sequences.h pad_launches_sequence).
 //   pad held + pad   copies the selected track's first pattern onto the second
 //   Erase + pad      clears that pattern of the selected track, asked first
 //   Minus / Plus     the previous / next pattern
@@ -33,6 +34,9 @@ bool seq_pad(Context& c, unsigned pad, bool down);
 bool seq_button(Context& c, SurfaceButton button);
 // The wheel while Seq is held: the tempo. False when not held.
 bool seq_wheel(Context& c, int delta);
+// Minus / Plus with Seq held (and on Time Correct): the selected track's previous / next pattern, launched as a pad
+// launches it; at the first or last, a notice.
+void seq_step_pattern(Context& c, int way);
 // A pad while a pattern copy (Shift + Erase with Seq held) waits: the pattern to copy, then where.
 bool pattern_copy_pad(Context& c, unsigned pad);
 

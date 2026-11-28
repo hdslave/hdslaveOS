@@ -249,7 +249,16 @@ grammar (`shell/pad_light.h`):
   they reach the LEDs with each channel squared, as a level is, and the
   brightest raised to full (`pad_light::led()`), so a pad lights as vivid
   as the screen draws it (Coral drives FF3A21, not a pale FF7A5C). An MPC
-  kit's colours go to the LEDs as they came.
+  kit's colours go to the LEDs as they came. A track's colour is its
+  place's (track n the nth of the sixteen) until one is picked for it
+  (issue 69: `Track::colour`, 1-16, saved in TCOL; the mixer's MENU
+  TRACK COLOUR, shell/track_colours.h: the pads light the sixteen, a pad or
+  the wheel picks, B1 BACK, B2 DEFAULT, B3 DONE or Push keeps it, one undo
+  step). `ui::track_slot()` maps a track to its colour for the screen
+  (`track_colour`, `knob_shade`), the LEDs (`pad_light::track`) and the Live
+  Set export; a sequence's colour and the MENU's groups are the sixteen
+  themselves (`slot_colour`, `pad_light::colour_slot`). Moved, copied or
+  cleared, a track keeps its colour.
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2
   a colour falls apart; Faint is the lowest rung at which all sixteen track
@@ -276,7 +285,6 @@ grammar (`shell/pad_light.h`):
 | Step Edit, STEPS mode | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end Faint while a step there would make it longer (else dark), the playhead white (red while recording); on a kit the last pad's lane |
 | Step Edit, PLAY mode | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
-| Time Correct | Whose notes move Full, with notes Dim |
 | Motion on a kit | The last pad Full, pads with recorded motion Mid |
 | Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: the slices so far (the newest Full) and the next slice's pad flashing red, in its bank; + Erase the slices that would go Faint red |
 | Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
@@ -332,7 +340,8 @@ beat; the meters show the mix.
   moves to the next card (PRESETS: the whole list), Shift +
   Push is Back, −/+ the octave (a kit's bank; EDIT: the rows).
   - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
-    below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
+    below, "Synths"): B1 **PRESETS → EDIT** (**PANEL → PRESETS → EDIT** for a plug-in that draws its own screen:
+    its page first, docs/PLUGIN_SCREENS.md), B2 **ARP → CHORD**, B3 **FX**. PRESETS: the plug-in's presets as a poster, the one
     playing large with the plug-in and its format under it and the ones
     before and after small in the corners, the header n / count; the wheel
     walks them, the one turned to loading 250 ms after the last turn
@@ -350,8 +359,8 @@ beat; the meters show the mix.
     is turned back. They are saved with the track and record as motion; Erase
     + pot sets one back to off. A plug-in with no presets: B1 says
     **PLUG-IN**, its face (name, format, the share of each block it takes).
-    EDIT: its own values as a list (the wheel and −/+ the rows); on these
-    three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. (MIX and
+    EDIT: its own values as a list (the wheel and −/+ the rows); picking a plug-in opens EDIT, then PANEL once it is
+    open when it draws its own screen. On these three B1 pages Shift + B1-B3 are PLUG-INS, PRESETS and TRANSPORT. (MIX and
     SENDS are passed over since the mixer, docs/MIXER_PLAN.md step 6: the track's
     level, pan and sends are the mixer's.) ARP: mode (Up,
     Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift + K1
@@ -464,8 +473,13 @@ beat; the meters show the mix.
   (Pad Bank, bank lights). Pads show the chord's short name (C#m9; a slash
   bass on a second line), the file's Root chord in the track's colour, a pad
   with no chord dark. The encoder walks the card's progressions
-  (Melodee/Progressions, Progressions, Melodee/Samples/Expansions, Samples/Expansions) and shows the
-  name large for 1.5 s; K1 KEY moves every chord (−6..+5 semitones, names
+  (Melodee/Progressions, Progressions, Melodee/Samples/Expansions, Samples/Expansions, each with its
+  subfolders four deep, issue 65) and shows the
+  name large for 1.5 s; 16 Levels FILE shows them a folder at a time
+  (shell/progression_tree.h): the folder's folders first, then its files;
+  B3 OPEN or Push opens a folder, B1 BACK goes up one (at the top it
+  closes), B3 PICK or Push puts a file on the track; Melodee/Progressions'
+  own files and folders sit at the top, beside Progressions and Expansions; K1 KEY moves every chord (−6..+5 semitones, names
   follow), K2 VOICING File / Close / Open / Spread, −/+ the octave (OCT 2
   plays the file's notes). A chord holds up to eight notes
   (`notes_per_step`). Storing: on Scale, Chromatic or Chords with pads held,
@@ -700,7 +714,7 @@ hold to steer, Shift + Seq to zoom in**.
     copy: the pattern, then where (on this or another track; the pads stay
     patterns until it ends).
   - Pad Bank the next bank of patterns (Shift: the previous); the pads,
-    the sheet, Patterns and Time Correct's groove row show it. It
+    the sheet and Patterns show it. It
     follows the selected track's pattern again whenever that changes. Hold
     a pad, step the bank, tap a pad: a copy across banks.
   - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
@@ -898,6 +912,16 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
+- **Quantized mutes** (issue 40): with Rec quantize on and the transport
+  running, a track's mute or solo and a kit pad's mute (mute mode, Shift +
+  Mute's unmute all, the mixer) wait for the next step of the track's
+  pattern Q: `Context::mute_grid()` puts that step's ticks (as the track
+  plays them) in the command's position, and the engine sets it on that
+  tick before its notes (`EngineHost::mutes_due`); pressed back first,
+  nothing waits; Stop sets what waits; the model and the pads say the new
+  state at once, the pad blinks until heard (`mutes_waiting()`,
+  `pad_mutes_waiting()`). With Seq Record on, a pad's mute point is written
+  on that step. Rec quantize off: at once.
 - **Mute** (Settings > SEQ, issue 27; `Settings::note_mutes`, Command
   MuteMode): Audio (first) silences a muted track or kit pad at once;
   Notes stops its new notes (pattern, pads, MIDI in, arp, Note Repeat, MIDI
@@ -905,6 +929,13 @@ hold to steer, Shift + Seq to zoom in**.
   play on, a MIDI track's Note Offs go when due (no All Notes Off). AUDIO
   tracks and frozen tracks play audio: muted, they are silent either way.
   Back to Audio, what muted tracks and pads still play goes.
+- **Seq + pad** (Settings > SEQ, issue 50; `Settings::seq_pads_sequences`,
+  shell/sequences.h `pad_launches_sequence`): Patterns (first), Seq held's
+  pads launch the selected track's patterns and Shift + pad a sequence;
+  Sequences turns the two round for live play: Seq + pad a sequence (a
+  chain of them in one hold), Seq + Shift + pad a pattern, and a pattern
+  copy is Seq + Shift + held pad + pad. The pads, the sheet and the pads
+  chip follow. The Patterns page's pads without Seq are as they are.
 - **Note preview** (Settings > SEQ, On by first; `Settings::note_preview`,
   shell/note_preview.h): a note written or moved on Step Edit or Roll
   without a pad or key playing it is heard once on the track, as long as the
@@ -972,17 +1003,32 @@ hold to steer, Shift + Seq to zoom in**.
   thread plays the pattern with its feel laid on (`feel_pattern`); Step Edit,
   Roll and the file keep the notes as written. Time Correct's page holds
   the cards (`feel_cards`).
-- **Time Correct** (Shift + Pad 14): heard live, no commit. The selected
+- **Time Correct** (Shift + Pad 14): heard live, no commit until APPLY. The selected
   pattern plays as close to its Q as K2 STRENGTH says, the second of each
-  pair late by K3 SWING, as they turn; turning down takes it back (the
-  notes stay as written: the pattern's feel). K1 Q; Shift + K1 HUMANIZE,
-  Shift + K2 its velocity, Shift + K3 the groove's amount; a pad takes the
-  groove from that pattern of the track (again: none). B3 QUANTIZE, lit
-  while the feel is heard, takes it off to compare by ear and puts it
-  back; B2 ALL lays this feel on the track's other patterns (each one
-  undo); Shift + Pad 14 again closes it. Two beats drawn over the grid of Q: each note where it is
-  written (a ring) and where it plays (a dot), the swung steps where they
-  land; under it the track's patterns, the groove's lit.
+  pair late by K3 SWING (dim at STRENGTH 0, where it does nothing), as they
+  turn; turning down takes it back (the notes stay as written: the
+  pattern's feel). K1 Q; Shift + K1 HUMANIZE, Shift + K2 its velocity,
+  Shift + K3 the groove's amount; Erase + pot a feel card back to plain
+  (`feel_reset_value`). B2 GROOVE held (shell/time_correct.h): the pads
+  and the screen are one track's patterns, a bank at a time (the groove's
+  own, else the pattern in hand's; Pad Bank steps the bank, the bank
+  lights show it; Minus / Plus the next track with notes); a pad takes the
+  groove from that pattern, the same pad again none; the pattern in hand
+  and an empty one only say so. Its release (shell/shell.cpp) gives the
+  pads back. Otherwise the pads play the track's sounds, lit as anywhere,
+  and Minus / Plus step the pattern in hand as with Seq held
+  (`seq_step_pattern`). B3 QUANTIZE, lit while the feel is heard, takes it
+  off to compare by ear and puts it back; Shift + B2 ALL lays this feel on
+  the track's other patterns (each one undo); B1 APPLY (issue 55, shown
+  while a feel is heard) writes the feel into the notes (model/pattern.h
+  `apply_feel`: each note moved to where it plays and its velocity as
+  heard, notes hidden past the end as written, the feel back to plain; one
+  undo), so Roll and Step Edit show the notes on the grid; Shift + Pad 14
+  again closes it. Two beats drawn over the grid of Q: each note where it
+  is written (a ring) and where it plays (a dot: `FeltTicks`, each note
+  through `feel_pattern`, so the groove and humanize move it too), the
+  swung steps where they land; under it GROOVE and the groove's pattern
+  (A3; T2 A3 from another track).
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
   each one undo; the length stays for the speeds. Settings' Double Seq row
   picks what the new half holds: Copy notes (the MPC's way, motion too) or
@@ -1018,7 +1064,7 @@ hold to steer, Shift + Seq to zoom in**.
   **Shift + B2** its Motion, **Shift + B3** its Own Pattern, **Push** opens
   its notes (Roll, or Step Edit on a kit; on empty time Places), **Chop**
   splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
-  next marker, **Loop** loops its bars (again, or on empty time, off): when
+  next marker, **Loop** sets the loop (below): when
   the loop comes round, every track's clip plays its pattern from where
   the song is, a longer clip on another track too. The loop goes round
   for a song that comes to its end from inside it (or from before it);
@@ -1029,7 +1075,21 @@ hold to steer, Shift + Seq to zoom in**.
   clip changed while
   it plays is heard from the next bar. Each
   is one undo. Shift + Push adds a marker
-  (on a marker, names it). Play here plays the song from the cursor.
+  (on a marker, names it). Play here plays the song from the cursor (from
+  past the loop's end it plays on to the song's end and stops). Issue 60
+  (shell/song_range.h): **Pad Bank** tap shows all sixteen lanes at once in
+  the six's room (header ALL, every clip bright, no names); **Loop**, on a
+  clip or not, sets the loop's first bar at the cursor, a second tap its
+  last (either way round; twice on one bar of a clip, the cursor not
+  moved, the clip's bars); with a loop on, a tap turns it off; with a loop range **Shift + Erase**
+  copies its bars (the lane's, or with ALL every lane's; header COPY) and
+  **Push** pastes them at the cursor as an insert (what is there on moves
+  on, a clip across the cursor cut there; again for the next copy), and
+  **Erase** takes the range's bars out and closes the gap (with ALL the
+  markers and tempo points move too); each one undo. K2 PATTERN steps
+  through the track's patterns that hold notes and the next empty one,
+  named A1-H16 as on the pads (clips too). A clip keeps a length past 128
+  bars when the project is opened again.
   **Tempo lane** (roadmap P5): Shift + K1 BAR TEMPO sets the tempo from
   the cursor's bar (with no point there the card shows the lane's tempo
   and a turn adds one; under 30 BPM, Off, takes it away), Shift + K2 SHAPE
@@ -1532,7 +1592,9 @@ the file holds, to the bit.
   by its path), B2 the drive (CARD from `Melodee/Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
   only; each drive keeps its folder and row, so B2 there and back lands
-  where it was), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
+  where it was), the fader the preview's level (Settings' `preview_level`, 100 as
+  the file is; a move glides the one playing too: core `AuditionLevel`), B3
+  PREVIEW (its LED) plays each file as the cursor lands (its row
   fills in the track colour as it plays, with the seconds heard of its
   length on the right). A preview starts once its first eighth of a second
   is read, however long the file: the sample is laid out at its full length
@@ -1664,7 +1726,8 @@ the file holds, to the bit.
   the amp envelope, sample start, end and loop, groups and tags on or off),
   so a start set past a file's silence plays from there; a layer at volume
   0 is left out.
-- **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push reads the
+- **MPC drum programs** (`.xpm` or `.xty` of type Drum, or an MPC 3 kit's `.xtd`,
+  issue 62, the same JSON as an .xty; tagged KIT, the format chip XTD): Push reads the
   program, then opens the LOAD KIT sheet (cards: LOAD, WHOLE KIT, BANK A-H). Each bank card
   steps through the program's filled banks, then none; the bank in view starts with the first.
   LOAD puts only those banks' filled pads into the kit's banks picked, with their chains and
@@ -1677,7 +1740,12 @@ the file holds, to the bit.
   velocities, tune, volume and pan) while the project's free sample slots
   hold every layer's file; one of more, or one the slots no longer hold,
   plays its layers as an instrument named `<program>.xpm#<pad>`, streamed
-  from the card as an SFZ is, as before. MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
+  from the card as an SFZ is, as before. An MPC 3 kit's layers may name a
+  file one up from its data folder (`../Samples/Hats.wav`: the kit's
+  folder's `Samples/`) and play one slice of it, its `sliceIndex` in the
+  WAV's own slices (the atem chunk, `mpc_file_slices()`), unless the layer
+  gives a region inside the file; a layer naming only a folder plays
+  nothing (shell/mpc_program.cpp `slice_layers`). MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
   Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
   the two-pole kind) and filter envelope; each layer's tune, volume, pan,
   region and loop; the pads' colours (the program's ProgramPads: each pad's
@@ -1743,7 +1811,21 @@ the file holds, to the bit.
     LAYERS there (a track left on it shows ZONES, and LAYERS again on a
     sample pad), and loading an instrument onto a pad takes the pad's layers
     off (one undo with the load). Kept in the file's `LAYR` section and
-    bank files' `BLSM` / `BLYR`.
+    bank files' `BLSM` / `BLYR`. Issue 66: past Random hold, Shift + K1
+    turns on to **CC 1**..**CC 127** (`LayerPlay::Cc`, `PadSound::layer_cc`,
+    4 first; LYCC / BLCC keep one that is not 4): the layers whose range
+    (K2 CC LOW, K3 CC HIGH; 0 counts as 1) holds the controller's value now
+    play, whatever the velocity, the first while none has come. Picked
+    first with every used layer on the whole range, the range is split
+    evenly between them (four: 0-31, 32-63, 64-95, 96-127). The kit's
+    sampler keeps every controller from MIDI in on its channel (and the mod
+    wheel as CC 1); with Seq Record on, CC 4 and the CCs its pads follow are
+    recorded as the selected track's **CC n** Motion lane (`motion_cc`, the
+    point's pad the CC number) and played back in order with the notes.
+    SFZ `locc`/`hicc` (and `lohdcc`/`hihdcc`) of one controller other than
+    the sustain pedal's are followed as it plays (`SampleZone::cc`, from
+    `set_cc` until one comes); `on_locc` / `on_hicc` regions are left out.
+    An older build reads a CC pad as Random hold.
   - Mix: K1 volume in dB (−inf, −74..+6) with its meter, K3 pan, Shift + K2
     kit volume.
   - Amp Env: attack, decay (One shot) or release (Note On), velocity
@@ -2360,7 +2442,12 @@ while following.
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
   Display refresh (a 20, 30 or 60 fps cap for built-in display updates),
-  where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
+  Screensaver (Off, 1, 2, 5, 10, 30 min; Off by default: the hdslaveOS name,
+  bouncing off the edges in a new track colour each time, once the
+  controls and MIDI notes have rested that long while nothing plays, records
+  or renders; the backlight drops to its second of six steps meanwhile, if
+  that is lower, and comes back after; any control ends it and still acts, `shell/screensaver.h`,
+  `ui/screensaver.cpp`), where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
   (Off, On), Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960: the
   screen times 1, 2, 3 with black at the sides, 4; 1280 x 960 by default)
   and Mirror frame rate (30 or 60 fps, 30 by default): the screen as a USB webcam over

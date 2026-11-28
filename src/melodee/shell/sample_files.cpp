@@ -20,6 +20,7 @@
 // held for them; files_landed() puts them on their pads once they are in.
 // Melodee writes only to the card: Trim and Extract go to Samples/Edits;
 // without a card they stay in memory for the session.
+#include "melodee/shell/card_paths.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/files_view.h"
 #include "melodee/shell/new_track.h"
@@ -210,7 +211,7 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
         sound.loop = false; sound.warp = warp_off; sound.beats = 0;
         const PadSound fresh; // its zones are its layers: the pad's own layers go
         sound.layers = fresh.layers; sound.low_velocity = fresh.low_velocity; sound.high_velocity = fresh.high_velocity;
-        sound.layer_play = fresh.layer_play;
+        sound.layer_play = fresh.layer_play; sound.layer_cc = fresh.layer_cc;
         landing_pads.push_back({ui.track, uint8_t(kit), uint16_t(slot)});
     }
     if (keyed && !keep) { sound.mono = false; sound.play = PadPlay::Gate; } // a keygroup's WAV across the keys: held, chords
@@ -275,7 +276,7 @@ void Context::files_landed() {
         BankFile bank;
         if (!bank_bytes.error.empty()) notice("Load Bank: " + bank_bytes.error);
         else if (!melodee::load_bank(bank_bytes.bytes, bank)) notice("Load Bank: not a bank file");
-        else load_bank(bank, name);
+        else { samples_on_card_now(bank, library->card()); load_bank(bank, name); } // saved on another card: this one's files
     }
     stems_landed(); // a sample's four stems together (shell/stems_jobs.cpp)
     for (auto& p : pending_files) {
@@ -504,6 +505,7 @@ void Context::browse_tick(uint32_t ms) {
     const auto [from, to] = browse_heard(h, b.focus);
     Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
     a.pad.sample = uint16_t(b.slot); a.pad.start = from; a.pad.end = to;
+    a.pad.level = ui.settings.preview_level; // the fader's, on Samples
     send(a);
     previewing = ui.track;
 }
@@ -545,6 +547,7 @@ void Context::browser_tick() {
     if (!here || !ui.settings.preview || ui.files_cursor >= files.size() || files[ui.files_cursor].path != library->previewed()) return;
     Command a {Command::Type::Audition, ui.track, 0, 0, int16_t(ui.audition_velocity)};
     a.pad.sample = uint16_t(preview_slot); a.pad.start = 0; a.pad.end = 0;
+    a.pad.level = ui.settings.preview_level; // the fader's, on Samples
     send(a);
     previewing = ui.track;
 }

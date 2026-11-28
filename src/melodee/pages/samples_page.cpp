@@ -125,7 +125,7 @@ void draw_list(Paint& p, const Snapshot& s) {
         ListRow r;
         r.name = name_case(juce::String(file.name)); r.accent = c; r.current = first + row == cursor;
         const juce::String path(file.path);
-        juce::String format = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS"
+        juce::String format = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".xtd") ? "XTD" : path.endsWithIgnoreCase(".exs") ? "EXS"
                             : path.endsWithIgnoreCase(".xpn") ? "XPN" : path.endsWithIgnoreCase(".sf2") || path.contains(".sf2#") || path.contains(".SF2#") ? "SF2"
                             : path.endsWithIgnoreCase(".dspreset") ? "DS" : "SFZ";
         r.starred = file.starred && s.files_folder != starred_list; // on STARRED every row is

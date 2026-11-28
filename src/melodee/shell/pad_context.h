@@ -15,6 +15,7 @@ namespace melodee {
 
 enum class PadContext : uint8_t {
     Sheet,        // a question or the Exit sheet over the page: the pads do nothing
+    ColourPick,   // TRACK COLOUR (shell/track_colours.h): the sixteen colours, a pad picks one
     Tracks,       // Pad Bank held, or a track copy: a pad picks a track (shell/pad_bank.h)
     Name,         // the Name sheet: the pads type (shell/name_entry.h)
     LoopHeld,     // Loop held off the Looper: the loop grid (shell/looper_jobs.h)
@@ -45,6 +46,7 @@ inline PadContext pad_context(const UiState& ui, const Track& track, const PadFa
     using C = PadContext;
     if (facts.card) return C::Page;
     if (ui.exit_open || ui.ask != UiState::Ask::None || ui.menu) return C::Sheet; // the MENU too (shell/menu.h)
+    if (ui.colour_sheet) return C::ColourPick;
     if (tracks_on_pads(ui)) return C::Tracks;
     if (ui.name.open()) return C::Name;
     if (loop_grid_held(ui)) return C::LoopHeld; // Full's (shell/features.h)

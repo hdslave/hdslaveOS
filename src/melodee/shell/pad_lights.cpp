@@ -382,7 +382,7 @@ Look mixer_look(const PadScene& s, unsigned pad, bool muting) {
 Look scenes_look(const PadScene& s, unsigned pad) {
     unsigned n = s.ui.pad_pattern(pad), with = 0, waiting = 0; // the bank in view's
     const unsigned hue = s.project.scenes[n].colour;
-    auto lit = [hue](float level) { return hue ? track(hue - 1, level) : white(level); };
+    auto lit = [hue](float level) { return hue ? colour_slot(hue - 1, level) : white(level); };
     const bool rolling = s.host.playing(), hand = n == s.project.scene % pattern_count;
     bool kept = false;
     for (unsigned t = 0; t < track_count; ++t) {
@@ -588,13 +588,15 @@ Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std:
     Look base = track(selected_index(s), at.here[unsigned(key) % 192] ? full : rows[unsigned(key) % 192] ? dim : faint);
     return playing(s, snd, base, pad);
 }
-Look time_correct_look(const PadScene& s, const std::array<bool, 192>& keys, unsigned pad) {
-    int key = pad_key(s.project, selected(s), pad);
-    if (key < 0) return {};
-    bool notes = keys[unsigned(key) % 192];
-    if (s.ui.tc_all) return notes ? track(selected_index(s), full) : Look {}; // every note moves
-    if (s.ui.tc_key(unsigned(key))) return track(selected_index(s), full);
-    return notes ? track(selected_index(s), dim) : Look {};
+// Time Correct with B2 GROOVE held (shell/time_correct.h): the patterns of the track and bank it shows, as its
+// screen: the groove's source Full, the pattern in hand White (no groove of its own), those with notes Dim (a
+// groove to take), empty ones dark.
+Look time_correct_look(const PadScene& s, unsigned pad) {
+    const unsigned t = selected_index(s), view = s.ui.tc_groove_track % track_count;
+    const unsigned n = (s.ui.tc_groove_bank % pattern_banks) * pattern_pads + pad % pattern_pads;
+    if (const uint16_t from = shown(s).feel.groove_from; from && from == groove_source(view, n)) return track(t, full);
+    if (view == t && n == selected(s).pattern % pattern_count) return white(mid);
+    return s.patterns.at[view][n].empty() ? Look {} : track(view, dim);
 }
 // Motion on a kit: the pads with recorded motion in this pattern.
 std::array<bool, 192> pads_moving(const PadScene& s) {
@@ -834,7 +836,7 @@ Look sheet_look(const PadScene& s, unsigned pad) {
         if (ui.lesson) return pad == 15 ? (blink(s.now, flash_ms) ? white(full) : white(faint)) : Look {}; // a lesson: LEAVE only
         static const unsigned group_track[4] {0, 2, 4, 1}; // sound, sequence, mix, project: as the screen colours them
         if (!menu_tile_shown(ui, pad)) return {}; // a place Basic leaves out
-        return track(group_track[menu_places()[pad % 16].group % 4], pad == ui.menu_tile % 16u ? full : mid);
+        return colour_slot(group_track[menu_places()[pad % 16].group % 4], pad == ui.menu_tile % 16u ? full : mid);
     }
     bool about = false; // the pad the question is about
     switch (ui.ask) {
@@ -867,6 +869,9 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         }
         switch (pad_context(ui, t, s.facts, pad)) {
         case PadContext::Sheet: look = sheet_look(s, pad); break;
+        case PadContext::ColourPick: // TRACK COLOUR: the sixteen as the pads sit, the track's bright
+            look = colour_slot(pad, pad == track_colour_slot(s.project.tracks[ui.colour_track % track_count], ui.colour_track) ? full : dim);
+            break;
         case PadContext::Tracks: look = tracks_look(s, pad); break;
         case PadContext::Name: look = name_look(s, pad); break;
         case PadContext::LoopHeld:
@@ -881,12 +886,15 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
                 unsigned kit = kit_of(t, pad);
                 if (!t.pads[kit].used()) break;
                 look = muted_now(s, kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : kit_hue(s, kit, mid), snd.level[pad]);
+                // Issue 40: a mute waiting for its step of Q (Rec quantize) blinks until it is heard
+                if ((s.host.pad_mutes_waiting(selected_index(s), kit / 64) >> (kit % 64) & 1) && !blink(s.now, blink_ms)) look = kit_hue(s, kit, faint);
                 break;
             }
             if (const auto& tr = s.project.tracks[pad]; tr.used()) {
                 float m = meter(s, pad);
                 look = tr.mix.mute ? red(dim) : tr.mix.solo ? white(between(mid, full, m))
                      : any_solo(s.project) ? track(pad, faint) : track(pad, between(mid, full, m));
+                if ((s.host.mutes_waiting() >> pad & 1) && !blink(s.now, blink_ms)) look = track(pad, faint); // issue 40, as a pad's
             }
             break;
         case PadContext::SamplePick: look = play_look(s, snd, pad); break; // the pad hit becomes the last pad
@@ -905,7 +913,6 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5
             case PageId::StepEdit: look = sounds_open(s.ui) ? sounds_look(s, pad) : s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, snd, pad); break; // the sounds, the bar's steps, or the keys
             case PageId::Roll: look = roll_look(s, snd, roll, keys, pad); break;
-            case PageId::TimeCorrect: look = time_correct_look(s, keys, pad); break;
             case PageId::Motion: look = motion_look(s, snd, moving, pad); break;
             case PageId::Chop: look = chop_look(s, slices, pad); break;
             case PageId::Record: look = record_look(s, pad); break;
@@ -914,6 +921,9 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::KnobFx: look = knob_fx_look(s, pad); break;
             case PageId::Punch: look = punch_look(s, pad); break;
             case PageId::FlexBeat: look = flex_look(s, pad); break;
+            case PageId::TimeCorrect: // B2 GROOVE held: the patterns it shows; else the track's own pads, as below
+                if (ui.tc_groove_held) { look = time_correct_look(s, pad); break; }
+                [[fallthrough]];
             default: // the track's own pads (freeze plan F2d: dark on a deep-frozen track, they play nothing)
                 if (s.freeze && (*s.freeze)[selected_index(s) % track_count].state == FreezeState::Deep) break;
                 look = sends_lit(s) ? sends_look(s, snd, pad) : play_look(s, snd, pad);

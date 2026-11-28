@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/pad_bank.h"
+#include "melodee/pages/pages.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
@@ -31,6 +32,16 @@ void step_pattern_bank(Context& c, int way) {
     unsigned first = ui.pattern_bank * pattern_pads + 1;
     c.notice(std::string("Patterns ") + char('A' + ui.pattern_bank) + ": P" + std::to_string(first) + "-" + std::to_string(first + 15) +
              (with ? "" : ", empty"));
+}
+
+// Time Correct with B2 GROOVE held: the bank of patterns the pads show, A-H round, and whether it holds any notes.
+void step_groove_bank(Context& c, int way) {
+    auto& ui = c.ui;
+    int banks = int(pattern_banks);
+    ui.tc_groove_bank = uint8_t((int(ui.tc_groove_bank % banks) + way % banks + banks) % banks);
+    unsigned t = ui.tc_groove_track % track_count, with = 0;
+    for (unsigned n = 0; n < pattern_pads; ++n) with += !c.patterns.at[t][ui.tc_groove_bank * pattern_pads + n].empty();
+    c.notice(std::string("Patterns ") + char('A' + ui.tc_groove_bank) + (with ? "" : ", empty"));
 }
 
 // Chop: the next sixteen slices on the pads, round (A 1-16, B 17-32 ...), the bank's first slice in hand. The
@@ -68,9 +79,11 @@ void pad_bank_button(Context& c, bool pressed) {
     ui.pad_bank = false;
     if (!pad_bank_tap(ui, c.now)) return; // held (for a track, a jump, a copy, or just long): no step; only a tap steps
     if (ui.shift) ui.shift_used = true;
+    if (ui.page == PageId::TimeCorrect && ui.tc_groove_held && !ui.seq_held) { step_groove_bank(c, ui.shift ? -1 : 1); return; } // B2 GROOVE held
     if (ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes) { step_pattern_bank(c, ui.shift ? -1 : 1); return; } // the patterns' bank (Seq's layer)
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (ui.page == PageId::Mixer) { ui.mixer_bank = ui.mixer_bank ? 0 : 1; return; } // the tracks, or the submixes, buses, input and master
+    if (ui.page == PageId::Song && !ui.song_export && !ui.jam_sheet) { song_view_all(c); return; } // issue 60: every lane, or the track's
     if (ui.page == PageId::Chop) { step_slice_bank(c, ui.shift ? -1 : 1); return; } // the next sixteen slices
     if (sounds_open(ui)) { sounds_bank_step(c, ui.shift ? -1 : 1); return; } // Step Edit's sounds on the pads: their bank
     if (c.track().engine == EngineKind::Sampler || drum_pads(c.track()) || prog_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
@@ -81,7 +94,8 @@ bool pad_bank_move(Context& c, int way) {
     auto& ui = c.ui;
     if (!ui.pad_bank || !way) return false;
     ui.pad_bank_used = true;
-    if (ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes) step_pattern_bank(c, way);
+    if (ui.page == PageId::TimeCorrect && ui.tc_groove_held && !ui.seq_held) step_groove_bank(c, way); // B2 GROOVE held
+    else if (ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes) step_pattern_bank(c, way);
     else if (ui.page == PageId::Punch) c.step_punch_bank(way);
     else if (ui.page == PageId::Mixer) ui.mixer_bank = way > 0 ? 1 : 0;
     else if (ui.page == PageId::Chop) step_slice_bank(c, way);

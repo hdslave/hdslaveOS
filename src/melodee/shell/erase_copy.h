@@ -32,7 +32,7 @@ class Context;
 
 // What Shift + Erase copies here. The first six arm a copy (the source, then
 // where); the rest copy at once.
-enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Scenes, Clip, Project, Effect, Slice };
+enum class CopyHere : uint8_t { None, Pads, Patterns, Tracks, Keys, Steps, Scenes, Clip, Project, Effect, Slice, Bars };
 
 // `kit_pads`: the pads play the selected kit (Shell::kit_pads); `key_pads`: they play a synth's keys (Shell::key_pads).
 inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pads, bool key_pads) {
@@ -46,6 +46,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
     case PageId::Roll: return t.used() ? CopyHere::Keys : CopyHere::None;
     case PageId::Song:
         if (ui.song_export) return CopyHere::None;
+        if (project.song.looping()) return CopyHere::Bars; // issue 60: the loop range's bars, on the lane or every lane
         return project.song.clip_at(ui.track % track_count, ui.song_cursor) >= 0 ? CopyHere::Clip : CopyHere::None;
     case PageId::Project: return ui.project_list && !ui.move_open ? CopyHere::Project : CopyHere::None;
     case PageId::Mixer: // its FX block: the lit effect, as on its FX page

@@ -410,7 +410,8 @@ hits along the bottom.
 The fader controls the last knob you turned on the selected track: an
 engine parameter, an effect, a pad value, the level, pan or a send. Some
 pages give it their own job: the selected channel's level on the mixer, A
-to B on Knob FX, the amount on the Compressor and the mix on Flex Beat.
+to B on Knob FX, the amount on the Compressor, the mix on Flex Beat and the
+preview level in the sample browser.
 
 Press **SHIFT** + **Pad 9** to open the **Fader** page. It shows the value
 the fader follows, its name and the fader. Press **SHIFT** + **Pad 9** again

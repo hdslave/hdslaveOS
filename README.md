@@ -1,7 +1,7 @@
 <h1 align="center">hdslaveOS</h1>
 
 <p align="center"><strong>A techno OS for the Akai MPC Sample</strong><br>
-Drum machines, acid bass and kick synths with their own screens, on a 16-track groovebox OS built on <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio). Currently on Melodee v0.9.1.</p>
+Drum machines, acid bass and kick synths with their own screens, on a 16-track groovebox OS built on <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio). Currently on Melodee v0.10.0.</p>
 
 <p align="center">
   <a href="https://github.com/hdslave/hdslaveOS/releases/latest"><b>Download</b></a> ·
@@ -353,10 +353,10 @@ strip as `release.sh` does, and package (`release.sh` itself makes Melodee's
 signed releases and needs its author's key):
 
 ```sh
-MELODEE_VERSION=v0.9.1-hdslave.1 ./build.sh
+MELODEE_VERSION=v0.10.0-hdslave.1 ./build.sh
 docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
     sh -c 'strip -o build/melodee.release build/melodee && build/melodee.release --self-test build/release-test.wav'
-python3 tools/package_unsigned.py v0.9.1-hdslave.1
+python3 tools/package_unsigned.py v0.10.0-hdslave.1
 ```
 
 This writes `dist/hdslaveOS-MPC-Sample-<version>-unsigned.zip`.
