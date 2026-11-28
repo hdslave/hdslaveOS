@@ -16,7 +16,7 @@ hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</
 - **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black with dark violet contours on selected list rows, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
 - **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
 - On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time.
-- In the **hdslave intro**, the purple badge starts forming as the camera slides into place, then holds for a beat. A VHS tracking band pulls its edges sideways, briefly settles, then dissolves into static.
+- In the **hdslave intro**, the purple badge starts forming as the camera slides into place, then holds for a beat. The lower edge tears, tracking briefly settles, and the picture rolls once before the last flecks of static fade to black.
 
 ### Mixer
 

@@ -15,8 +15,8 @@ gently). The film is resampled to FPS frames a second; nothing of the sound is k
 with none of the source's own hues. --outro SECONDS ends the film on a VHS tape failing over its last SECONDS:
 a mistracking band sweeps through the badge, bending the two fields and exposing streaks of RF noise.
 Short RF dropouts borrow the last intact line. Purple bleeds behind the bright detail, wavers as the heads
-briefly regain tracking, then loses lock before the luma does. The bottom edge frays
-at the head switch and a last trace of snow fades to black. All of this is baked into the JPEGs.
+briefly regain tracking, then loses lock before the luma does. The head switch tears partway across a lower
+scanline. The picture rolls through vertical blanking once, and a trace of monochrome snow fades to black. All of this is baked into the JPEGs.
 
 The default is the hdslave intro's cut: its wide shot (4 to 5.25 s) at 1.25 times with the camera easing back
 from 1.8 times closer, so one short shot stands for the film's two close-ups and lands where the badge starts to
@@ -108,17 +108,20 @@ def ease(start, end, t):
 
 
 def luma_line(line, dx, gain, wear, noise, rng):
-    """A little edge smear, with the RF snow stretched along the scanline."""
+    """Sample the time-base error between pixels and pass the luma and RF noise through the deck."""
     width = len(line)
+    start = math.floor(-dx)
+    fraction = -dx - start
     result = bytearray(width)
-    previous = filtered = grain = 0
+    previous = filtered = grain = 0.0
     for x in range(width):
-        sx = x - dx
-        value = line[sx] if 0 <= sx < width else 0
-        # Limited luma bandwidth leaves a short shoulder after a highlight. RF noise has both polarities.
-        filtered = value + 0.47 * wear * (filtered - value)
-        sample = (filtered + 0.12 * wear * (value - previous)) * gain
-        grain = 0.39 * grain + 0.61 * (rng.random() - 0.43)
+        sx = x + start
+        left = line[sx] if 0 <= sx < width else 0
+        right = line[sx + 1] if 0 <= sx + 1 < width else 0
+        value = left + fraction * (right - left)
+        filtered = value + 0.46 * wear * (filtered - value)
+        sample = (filtered + 0.15 * wear * (value - previous)) * gain
+        grain = 0.32 * grain + 0.68 * (rng.random() - 0.45)
         result[x] = min(255, max(0, round(sample + grain * noise)))
         previous = value
     return result
@@ -153,71 +156,90 @@ def dropout(line, previous, start, length, strength, rng):
         line[x] = round(line[x] + mix * (replacement - line[x]))
 
 
-def tape_frame(source, t, clock, rng, width=WIDTH, height=HEIGHT):
-    """A field pair from full-range planar 4:2:0, sampled on the output's tape raster."""
+def tape_frame(source, t, clock, rng, width=WIDTH, height=HEIGHT, *, field_step=1/58, field_seconds=1/60):
+    """Record two successive head passes into one full-range 4:2:0 picture."""
     area = width * height
     result = bytearray(area) + bytearray([128]) * (area // 2)
+    if t <= 0:
+        return source
     if t >= 1:
         return result
 
-    wear = ease(0.0, 0.36, t)
-    picture = 1 - ease(0.51, 0.97, t)
-    hiss = (1 - ease(0.83, 1.0, t)) * wear
-    # The heads briefly find the track again. The chroma and horizontal timing recover together.
-    catch = ease(0.49, 0.55, t) * (1 - ease(0.58, 0.67, t))
-    colour = picture * (1 - ease(0.48, 0.79, t)) * (1 - 0.37 * wear + 0.37 * catch)
-    slip = ease(0.56, 0.61, t) * (1 - ease(0.63, 0.73, t))
-    travel = ease(0.06, 0.93, t) - 0.085 * catch
-    xscale, yscale = width / WIDTH, height / HEIGHT
-    blanking = 2 * round(4 * yscale)
     source = memoryview(source)
-    last_line = [bytes(width), bytes(width)]
-    for y in range(height):
-        field = y % 2
-        sy = (y - 2 * round(slip * (14 + 2 * field) * yscale)) % (height + blanking)
-        if sy >= height:
-            continue
-        phase = clock + field / 60
-        scan = y / yscale
-        centre = HEIGHT * (1.15 - 1.33 * travel) - 4 * field + 2 * math.sin(phase * 41)
-        distance = scan - centre
-        band = max(0.0, 1 - abs(distance) / (5 + 13 * wear))
-        # Horizontal sync snaps at the track crossing, then eases back over the following lines.
-        hook = math.exp(-distance / 18) if distance >= 0 else 0
-        weak = (0.58 + 0.34 * field + 0.19 * math.sin(scan * 0.70 + phase * 44))
-        head = max(0.0, 1 - (height - 1 - sy) / (yscale * (3 + wear * (7 + 3 * math.sin(phase * 27)))))
-        damage = max(band * weak * (1 - 0.65 * catch), head)
-        bend = 2 * math.sin(scan * 0.046 + phase * 17) + 23 * math.exp(-scan / 34) * math.sin(phase * 27)
-        bend += hook * (39 + 13 * field) * (1 - 0.7 * catch) - 28 * head
-        bend += rng.uniform(-1, 1) * (0.7 + 8 * damage)
-        dx = round(wear * xscale * bend)
-        gain = picture * (1 - wear * (0.56 * damage + 0.035 * field))
-        noise = hiss * (3 + 244 * damage**2 + 47 * ease(0.68, 0.85, t))
-        line = source[sy * width:(sy + 1) * width]
-        luma = luma_line(line, dx, gain, wear, noise, rng)
+    xs, ys = width / WIDTH, height / HEIGHT
+    half, quarter = width // 2, area // 4
+    raster = height + 2 * round(8 * ys)  # vertical blanking travels with the recorded picture
+    for field in (0, 1):
+        phase = clock + field * field_seconds
+        at = min(1.0, t + field * field_step)
+        wear = ease(0.0, 0.31, at)
+        # A brief return of tracking restores the colour before the vertical sync drops out.
+        catch = ease(0.42, 0.48, at) * (1 - ease(0.52, 0.58, at))
+        roll = ease(0.55, 0.86, at)
+        roll_motion = 4 * roll * (1 - roll)
+        top = 2 * round(roll * raster / 2)
+        picture = 1 - ease(0.57, 0.96, at)
+        mute = 1 - ease(0.81, 1.0, at)
+        burst_lock = (1 - ease(0.46, 0.73, at)) * (1 - 0.30 * wear + 0.30 * catch)
+        # The weaker head loses contact first. Its companion can still read the other field.
+        weak_head = field * ease(0.25, 0.42, at) * (1 - 0.92 * catch)
+        travel = ease(0.08, 0.80, at) - 0.10 * catch
+        centre = HEIGHT * (1.17 - 1.33 * travel) + 3 * math.sin(phase * 27)
+        switch_y = HEIGHT - 3 - wear * (5.5 + 2.8 * math.sin(phase * 23) + field)
+        switch_x = round(width * (0.50 + 0.34 * math.sin(phase * 19 + 1.3 * field)))
+        previous_good = bytes(width)
+        flutter = 0.0
+        for y in range(field, height, 2):
+            sy = (y - top) % raster
+            if sy >= height:
+                continue
+            # Read faults belong to the tape scanline, so they also roll across the display.
+            scan = sy / ys
+            distance = scan - centre
+            band = max(0.0, 1 - abs(distance) / (5 + wear * (14 + 6 * field)))
+            hook = math.exp(-distance / 17) if distance >= 0 else 0
+            switch = scan - switch_y
+            switched = switch >= 0
+            head_noise = math.exp(-switch / 3.4) if switched else 0.0
+            loss = min(1.0, band * (0.70 + 0.37 * field) * (1 - 0.85 * catch) + 0.88 * head_noise)
+            flutter = 0.70 * flutter + rng.uniform(-1, 1) * (0.8 + 7 * loss)
+            bend = 1.6 * math.sin(scan * 0.04 + phase * 14) + flutter
+            bend += 25 * math.exp(-scan / 30) * math.sin(phase * 26)
+            bend += hook * (38 + 15 * field) * (1 - 0.8 * catch)
+            # RF falls sharply inside a mistracked field. The noise gate closes after the picture goes.
+            gain = picture * (1 - 0.72 * wear * loss) * (1 - weak_head * (0.23 + 0.56 * roll_motion))
+            noise = wear * mute * (3 + 260 * loss**2 + 68 * weak_head + 88 * ease(0.69, 0.84, at))
+            line = source[sy * width:(sy + 1) * width]
+            dx = xs * wear * bend
+            luma = luma_line(line, dx, gain, wear, noise, rng)
 
-        # A diagonal scar crosses neighbouring lines and fields. Its broken segments follow the band.
-        if abs(distance) < 8 and rng.random() < 0.76 * wear:
-            start = round(width * (0.43 + 0.25 * math.sin(phase * 17)) + xscale * (distance * 8 + rng.uniform(-6, 6)))
-            dropout(luma, last_line[field], start, round(xscale * rng.randint(22, 68)), hiss, rng)
-        elif rng.random() < wear * (0.008 + 0.19 * damage):
-            dropout(luma, last_line[field], rng.randrange(width), round(xscale * rng.randint(8, 47)), hiss, rng)
-        result[y * width:(y + 1) * width] = luma
-        # Inside the weak band the delay line holds its last readable scan instead of feeding back snow.
-        if damage < 0.42:
-            last_line[field] = luma
+            if switched:
+                # A head change can occur partway across a line. Read the suffix with the next head's timing.
+                begin = switch_x if switch < 2 / ys else 0
+                skew = dx - xs * wear * (12 + 44 * head_noise)
+                switched_line = luma_line(line, skew, gain, wear, noise + 95 * wear * mute * head_noise, rng)
+                luma[begin:] = switched_line[begin:]
+            if loss > 0.18 and rng.random() < loss * 0.84:
+                scar = width * (0.40 + 0.31 * math.sin(phase * 17))
+                start = round(scar + xs * (distance * 7.1 + rng.uniform(-9, 9)))
+                dropout(luma, previous_good, start, round(xs * rng.randint(25, 99)), mute * wear, rng)
+            elif rng.random() < wear * (0.009 + 0.08 * weak_head):
+                dropout(luma, previous_good, rng.randrange(width), round(xs * rng.randint(8, 41)), mute * wear, rng)
+            result[y * width:(y + 1) * width] = luma
+            if loss < 0.38:
+                previous_good = luma
 
-        if field == 0:
-            half = width // 2
-            src = area + sy // 2 * half
-            dest = area + y // 2 * half
-            quarter = area // 4
-            delay = round(dx / 2 + xscale * wear * (2.7 + 3 * band))
-            angle = wear * (0.14 * math.sin(phase * 31 + scan * 0.027) + 0.85 * hook) * (1 - catch)
-            u, v = chroma_lines(source[src:src + half], source[src + quarter:src + quarter + half],
-                                delay, 0.78 * wear, colour * max(0, 1 - damage * wear), angle)
-            result[dest:dest + half] = u
-            result[dest + quarter:dest + quarter + half] = v
+            # The even head supplies the shared 4:2:0 colour row. Chroma trails the luma, briefly swings
+            # in hue at the edge of a tear, and falls back to neutral when the burst reference disappears.
+            if field == 0:
+                src = area + sy // 2 * half
+                dest = area + y // 2 * half
+                delay = round(dx / 2 + xs * wear * (2.8 + 4.2 * band + 2 * head_noise))
+                angle = wear * (0.20 * math.sin(phase * 29 + scan * 0.023) + 1.26 * hook) * (1 - catch)
+                u, v = chroma_lines(source[src:src + half], source[src + quarter:src + quarter + half],
+                                    delay, 0.80 * wear, picture * burst_lock * (1 - loss * wear), angle)
+                result[dest:dest + half] = u
+                result[dest + quarter:dest + quarter + half] = v
     return result
 
 
@@ -236,7 +258,8 @@ def record_outro(path, seconds, fps):
             spool.seek(offset)
             frame = spool.read(frame_bytes)
             t = i / (affected - 1) if affected > 1 else 1.0
-            recorded = tape_frame(frame, t, i / fps, random.Random(0x564853 + i))
+            recorded = tape_frame(frame, t, i / fps, random.Random(0x564853 + i),
+                                  field_step=0.5 / max(1, affected - 1), field_seconds=0.5 / fps)
             spool.seek(offset)
             spool.write(recorded)
 
