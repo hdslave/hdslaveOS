@@ -475,11 +475,11 @@ void Context::presets_follow() {
     open(ui.presets_back);
 }
 
-void Context::choose_plugin_program(int index) {
-    if (!plugins) return;
-    auto programs = plugins->programs(ui.presets_entry);
+void Context::choose_plugin_program(unsigned entry, int index) {
+    if (!plugins || entry >= max_plugins) return;
+    auto programs = plugins->programs(entry);
     if (index < 0 || size_t(index) >= programs.list.size()) return;
-    take_program(*this, ui.presets_entry, programs.list[size_t(index)], unsigned(index), true);
+    take_program(*this, entry, programs.list[size_t(index)], unsigned(index), true);
 }
 
 void Context::push_plugin_preset() {
@@ -492,7 +492,7 @@ void Context::push_plugin_preset() {
     if (!row.folder) {
         // A frozen track's sound, or an effect on its chain, asks first, as a turn on Stage does (freeze plan F2c).
         if (frozen_plugin_edit(ui.presets_entry)) return;
-        choose_plugin_program(int(row.at));
+        choose_plugin_program(ui.presets_entry, int(row.at));
         return;
     }
     std::string into = inside.empty() ? row.name : inside + "/" + row.name;

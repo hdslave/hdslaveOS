@@ -1033,7 +1033,7 @@ bool plugin_presets(const Snapshot& s) { return plugin_has_presets(s) && !s.pres
 // PRESETS: the preset in view, while turning the one under the cursor, else the one it plays (-1: none yet).
 int plugin_preset_at(const Snapshot& s) {
     const auto& list = s.presets.list;
-    if (s.ui.preset_due && s.ui.presets_entry == s.track().plugin) return std::min<int>(s.ui.presets_cursor, int(list.size()) - 1);
+    if (s.ui.preset_due && s.ui.turn_entry == s.track().plugin) return std::min<int>(s.ui.turn_at, int(list.size()) - 1);
     for (size_t n = 0; n < list.size(); ++n) if (list[n].index == s.presets.current) return int(n);
     return -1;
 }

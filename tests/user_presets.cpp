@@ -1869,7 +1869,7 @@ int main(int argc, char** argv) {
         const auto list = rack->programs(entry).list;
         CHECK(rack->programs(entry).current < 0);
         turn(1); // none yet: the first
-        CHECK(ui.preset_due && ui.presets_entry == entry && ui.presets_cursor == 0);
+        CHECK(ui.preset_due && ui.turn_entry == entry && ui.turn_at == 0);
         c.open(PageId::Rack);
         c.open_plugin_presets(gain);
         CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == gain);
@@ -2745,7 +2745,7 @@ int main(int argc, char** argv) {
         shell->snapshot(*frame, ++now);
         CHECK(frame->presets.list.size() == 3);
         turn(1); // and the wheel walks the list it shows
-        CHECK(ui.preset_due && ui.presets_cursor == 0);
+        CHECK(ui.preset_due && ui.turn_at == 0);
         shell->set_plugins(nullptr);
         return 0;
     }
@@ -2836,7 +2836,7 @@ int main(int argc, char** argv) {
         auto level = [&](unsigned n) { return list[n].name == "Low" ? 0.25 : list[n].name == "Mid" ? 0.5 : 0.75; };
         auto rest = [&] { c.stage_tick(now += stage_preset_ms); }; // the turning stopped: the lights' tick loads it
         auto lands = [&](unsigned n) {
-            CHECK(ui.preset_due && ui.presets_cursor == n);
+            CHECK(ui.preset_due && ui.turn_at == n);
             rest();
             wait([&] { return rack->programs(entry).current == list[n].index && state()[0] == level(n); });
         };
@@ -2851,7 +2851,7 @@ int main(int argc, char** argv) {
         keys_move_octave(); // presets listed: the keys are the octave still
         CHECK(rack->programs(entry).current < 0);
         wheel(-1); // none yet: the first, whichever way
-        CHECK(ui.preset_due && ui.presets_cursor == 0);
+        CHECK(ui.preset_due && ui.turn_at == 0);
         ui.preset_due = 0; // let go before it landed: none still
         wheel(1);
         lands(0);
@@ -2895,7 +2895,7 @@ int main(int argc, char** argv) {
         edit();
         wheel(1); // a turn taken back before it lands
         wheel(-1);
-        CHECK(ui.preset_due && ui.presets_cursor == 1);
+        CHECK(ui.preset_due && ui.turn_at == 1);
         kept(1);
         wheel(1);
         lands(2);
@@ -2942,12 +2942,12 @@ int main(int argc, char** argv) {
             while (playing() != all[2].index) {
                 wheel(-1);
                 rest();
-                wait([&] { return whole() && playing() == all[ui.presets_cursor].index; });
+                wait([&] { return whole() && playing() == all[ui.turn_at].index; });
             }
         };
         to_factory();
         wheel(1);
-        CHECK(ui.preset_due && ui.presets_cursor == 3);
+        CHECK(ui.preset_due && ui.turn_at == 3);
         rest(); // My Patch: read from the card, then the plug-in opens again
         wait(opening);
         wheel(1); // nothing moves while it opens
@@ -2968,13 +2968,33 @@ int main(int argc, char** argv) {
         wheel(1);
         rest(); // My Patch again
         wheel(-1); // before the plug-in has it: from Mid to Low, the second of the whole list
-        CHECK(ui.preset_due && ui.presets_cursor == 1);
+        CHECK(ui.preset_due && ui.turn_at == 1);
         wait(looking); // only the user presets are listed: the second is Other
         rest();
         CHECK(!ui.preset_due);
         bool again = false;
         for (int k = 0; k < 120; ++k) { tick(); again |= opening() || std::string(ref.preset) != "/user/My Patch"; }
         CHECK(!again && whole() && playing() == all[3].index);
+
+        // The Remote preset CC with the whole PRESETS list open (its cursor a row of the folder in view, the User
+        // Presets folder among them): the turn keeps its own place in the whole list and loads that once it rests; the
+        // list's row is the list's, and its wheel turned meanwhile loads nothing of its own.
+        to_factory(); // Mid
+        c.open_plugin_presets(entry);
+        CHECK(ui.page == PageId::PluginPresets && ui.presets_entry == entry);
+        const uint16_t row = ui.presets_cursor;
+        CHECK(row != 1);
+        c.remote_preset(-1); // Low, the second of the whole list
+        CHECK(ui.preset_due && ui.turn_entry == entry && ui.turn_at == 1 && ui.presets_cursor == row && ui.page == PageId::PluginPresets);
+        CHECK(std::string(ui.notice) == all[1].name);
+        wheel(-1); // the list's cursor a row back (Mid is its last row)
+        CHECK(ui.presets_cursor != row && ui.turn_at == 1);
+        rest();
+        wait([&] { return whole() && playing() == all[1].index; });
+        CHECK(std::string(ref.preset) == program_key(all[1]) && ui.page == PageId::PluginPresets);
+        tap(SurfaceButton::TopLeft); // B1: back to Stage
+        c.midi_program(1, 4); // Other, so the walks below start past Mid
+        wait([&] { return whole() && playing() == all[4].index; });
 
         // Receive program change while the plug-in opens again (a user preset) or looks for its presets: held, and
         // the place asked last taken from the whole list, not from the user presets listed alone meanwhile.
@@ -2998,7 +3018,7 @@ int main(int argc, char** argv) {
         // the octave, ask nothing.
         to_factory();
         for (int n = 0; n < 2; ++n) wheel(1);
-        CHECK(ui.preset_due && ui.presets_cursor == 4);
+        CHECK(ui.preset_due && ui.turn_at == 4);
         rest();
         wait([&] { return whole() && playing() == all[4].index; });
         c.freeze_requested[0].state = FreezeState::Frozen;

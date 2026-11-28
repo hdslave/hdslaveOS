@@ -336,6 +336,11 @@ struct UiState {
     uint16_t presets_cursor = 0;
     PageId presets_back = PageId::Stage;
     std::array<char, 192> presets_folder {}; // PRESETS: the folder in view, "" the top (plugin/preset_rows.h)
+    // A turn of the track's plug-in's presets (Stage's PRESETS, the Remote preset CC) loading once it rests
+    // (preset_due): its plug-in and its place in the whole list. Its own, not the PRESETS list page's entry and row
+    // (a row of the folder in view, folders first), which the Remote preset CC may turn under.
+    uint8_t turn_entry = no_plugin;
+    uint16_t turn_at = 0;
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)

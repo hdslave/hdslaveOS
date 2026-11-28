@@ -158,6 +158,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     freeze_waiting = freeze_restoring = unfreeze_waiting = 0;
     deep_hold = thawing = clock_thawing = clock_live_waiting = 0; // saved deep freezes stay asleep while checked
     deep_serial.fill(0);
+    program_waiting.fill(-1);
     deep_active_at.fill(0);
     clock_thaw_seen.fill(0);
     for (unsigned t = 0; t < track_count; ++t) {

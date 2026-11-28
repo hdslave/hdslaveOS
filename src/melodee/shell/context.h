@@ -392,7 +392,7 @@ public:
     int8_t presets_track = -1;                // whose list PRESETS shows: a track's (its instrument's, or an effect's on its chain); -1 no track's
     bool presets_instrument = false;          // the track's instrument's
     void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
-    void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
+    void choose_plugin_program(unsigned entry, int index); // that program of `entry`, by its place in its whole list
     void pick_plugin_program(unsigned entry, int program); // a program by its number in the plug-in (a companion's pick)
     // Receive program change: Plug-in (shell/program_in.h): the plug-in of each PLUGIN track in `tracks` (a bit a
     // track) to the preset at `place` in its list; the header says which.

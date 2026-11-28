@@ -44,13 +44,13 @@ bool Context::plugin_preset_turn(int delta) {
     if (programs.finding) { notice("Looking for presets"); return true; }
     if (programs.list.empty()) return false;
     int at = -1;
-    if (ui.preset_due && ui.presets_entry == t.plugin) at = ui.presets_cursor; // still turning
+    if (ui.preset_due && ui.turn_entry == t.plugin) at = ui.turn_at; // still turning
     else for (size_t n = 0; n < programs.list.size(); ++n) if (programs.list[n].index == programs.current) at = int(n);
     const int to = std::clamp(at + delta, 0, int(programs.list.size()) - 1);
     if (to == at) return true;
     if (frozen_edit(sound) || frozen_plugin_edit(t.plugin)) return true; // the track in hand first, then any it shares with
-    ui.presets_entry = t.plugin;
-    ui.presets_cursor = uint16_t(to);
+    ui.turn_entry = t.plugin;
+    ui.turn_at = uint16_t(to);
     ui.preset_due = std::max<uint32_t>(now + stage_preset_ms, 1);
     return true;
 }
@@ -62,8 +62,8 @@ void Context::remote_preset(int steps) {
         plugin_preset_turn(steps);
         if (still) return;
         const auto programs = plugins->programs(t.plugin);
-        if (ui.preset_due && ui.presets_entry == t.plugin && ui.presets_cursor < programs.list.size())
-            notice(programs.list[ui.presets_cursor].name); // its name now, wherever you are; it loads once the knob rests
+        if (ui.preset_due && ui.turn_entry == t.plugin && ui.turn_at < programs.list.size())
+            notice(programs.list[ui.turn_at].name); // its name now, wherever you are; it loads once the knob rests
         else if (programs.list.empty())
             notice(programs.finding ? "Looking for presets" : "No presets in this plug-in");
         return;
@@ -82,13 +82,13 @@ void Context::stage_tick(uint32_t at) {
     if (!ui.preset_due || at < ui.preset_due) return;
     ui.preset_due = 0;
     if (track().engine == EngineKind::Plugin) { // PRESETS: the plug-in's own
-        if (!plugins || track().plugin != ui.presets_entry) return;
-        const auto programs = plugins->programs(ui.presets_entry);
+        if (!plugins || track().plugin != ui.turn_entry) return;
+        const auto programs = plugins->programs(ui.turn_entry);
         if (programs.finding) return; // opened again since the turn: the place is in the list as it was whole
-        const size_t to = ui.presets_cursor;
+        const size_t to = ui.turn_at;
         // Turned away and back to the one it plays: it stays as it was edited, as a synth's sound below.
         if (to < programs.list.size() && programs.list[to].index == programs.current) return;
-        choose_plugin_program(int(to));
+        choose_plugin_program(ui.turn_entry, int(to));
         return;
     }
     std::array<uint16_t, max_listed> list {};
