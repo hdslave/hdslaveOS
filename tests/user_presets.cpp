@@ -51,6 +51,45 @@ static SampleData print_wav(PrintEngine& printer, PrintJob job) {
 
 // The last step feeds a fully wet quarter-note Echo. Empty bars let the same note and its
 // effects decay inside the pattern, independently of the shorter print's Ring cutoff.
+// An MPC plug-in folder (a library and a folder of skins beside it) whose copies an earlier process left in the stage
+// under the names this one gives them (it ended without removing them: killed, or gone with _Exit), the skins linked
+// as the rack links them: the rack copies over them and the plug-in opens.
+static void stale_stage(const std::string& card, const std::string& plugin) {
+    const fs::path folder(plugin), stage(plugin_stage_folder());
+    CHECK(fs::is_directory(folder / "Skins"));
+    for (int n = 1; n <= 4; ++n)
+        for (const std::string tag : {"e0-", "probe-"}) {
+            const auto left = stage / (tag + std::to_string(n)) / folder.filename();
+            fs::create_directories(left);
+            for (const auto& file : fs::directory_iterator(folder))
+                if (file.is_regular_file()) fs::copy_file(file.path(), left / file.path().filename(), fs::copy_options::overwrite_existing);
+            fs::create_directory_symlink(folder / "Skins", left / "Skins");
+        }
+    auto host = std::make_unique<EngineHost>();
+    host->set_render_threads(0);
+    auto rack = std::make_unique<PluginRack>(*host, "", false);
+    auto shell = std::make_unique<Shell>(*host);
+    auto& c = shell->context();
+    auto& project = shell->project();
+    rack->set_card(card);
+    shell->set_plugins(rack.get());
+    std::snprintf(project.plugins[0].path, sizeof(project.plugins[0].path), "%s", plugin.c_str());
+    load_sound(project.tracks[0], EngineKind::Plugin, 0);
+    project.tracks[0].plugin = 0;
+    for (unsigned i = 0; i < 1500 && (i < 30 || (rack->status(0) != PluginStatus::Ready && rack->status(0) != PluginStatus::Failed)); ++i) {
+        c.plugins_tick(++c.now);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    if (rack->status(0) != PluginStatus::Ready) {
+        PluginPanel panel;
+        rack->panel(0, 0, panel);
+        std::fprintf(stderr, "stale-stage: status %d: %s\n", int(rack->status(0)), panel.error);
+    }
+    CHECK(rack->status(0) == PluginStatus::Ready);
+    shell->set_plugins(nullptr);
+    std::printf("stale-stage ok\n");
+}
+
 static void native_ring_wav(const std::string& card, const std::string& plugin) {
     PrintEngine printer(nullptr);
     auto print = [&](unsigned bars, EffectKind kind) {
@@ -714,6 +753,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (mode == "native-ring") { native_ring_wav(card, plugin); return 0; }
+    if (mode == "stale-stage") { stale_stage(card, plugin); return 0; }
     bool saving = mode == "save" || mode == "fxsave";
     bool fx = mode == "fxsave" || mode == "fxload"; // the fixture's effect in a chain, not a track's synth
     // Rack-level modes beside the preset ones: a failed save keeping the rack's state, a sleeping LV2 woken by
