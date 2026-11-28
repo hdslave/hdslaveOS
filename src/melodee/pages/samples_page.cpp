@@ -349,16 +349,17 @@ void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (ui.sheet_open) { if (key == 0) { c.kit_held.reset(); c.back(); } return; } // LOAD KIT's cards: B1 BACK
     if (!c.library) return;
-    if (ui.browse.up() && !(ui.shift && key == 2)) { // the trim sheet: B1 lowers it, B2 waits, B3 PREVIEW (Shift + B3: STAR)
-        if (!ui.shift && key == 0) c.browse_close();
-        if (!ui.shift && key == 2) soft_preview(c);
-        return;
-    }
-    if (ui.shift && key < 2 && c.moved && (c.moved->searching() || c.moved->missing_count())) { // hdslaveOS: find moved files
+    // hdslaveOS: find moved files: Shift + B1 FIND MISSING (or CANCEL), B2 FORGET, as drawn, the trim sheet up or not.
+    if (ui.shift && key < 2 && c.moved && (c.moved->searching() || c.moved->missing_count())) {
         ui.shift_used = true;
         if (c.moved->searching()) { if (key == 0) c.moved->cancel(c); }
         else if (key == 0) c.moved->search(c, true); // FIND MISSING: the card walked anew (files may have come back)
         else c.moved->forget(c);                     // FORGET
+        return;
+    }
+    if (ui.browse.up() && !(ui.shift && key == 2)) { // the trim sheet: B1 lowers it, B2 waits, B3 PREVIEW (Shift + B3: STAR)
+        if (!ui.shift && key == 0) c.browse_close();
+        if (!ui.shift && key == 2) soft_preview(c);
         return;
     }
     if (key == 0) { // at the top (as shown): CANCEL; else up, the cursor to land on the folder left

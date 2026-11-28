@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // hdslaveOS: find moved files on a card made in a temporary folder (src/melodee/shell/file_finder.h, moved_files.h):
-// each step of finding a sample, the index's walk and its limits, a plug-in moved, and the finder's thread (checks,
-// searches, CANCEL, a project opened mid-search, the index kept for the session).
+// each step of finding a sample, the index's walk, its limits and its memory, a plug-in moved, and the finder's thread
+// (checks, searches, CANCEL, a project opened mid-search, the index kept for the session, the card lent, its priority).
 #include "melodee/shell/file_finder.h"
 #include "melodee/shell/moved_files.h"
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <unistd.h>
+#if defined(__linux__)
+#include <sched.h>
+#endif
 
 using namespace melodee;
 namespace fs = std::filesystem;
@@ -19,10 +24,18 @@ namespace fs = std::filesystem;
 
 namespace {
 fs::path root;
-void file(const fs::path& path, size_t bytes = 16) {
+void file(const fs::path& path, size_t bytes = 16, char fill = 'x') {
     fs::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary);
-    out << std::string(bytes, 'x');
+    out << std::string(bytes, fill);
+}
+bool wait_until(std::function<bool()> done, int seconds = 20) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() > until) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return true;
 }
 std::string at(const std::string& rel) { return (root / rel).string(); }
 void fresh(const std::string& name) {
@@ -92,12 +105,22 @@ void steps() {
     file(card + "/Stock/Song_[ProjectData]/GS_KICK_06.WAV");
     r = find_moved_sample(card + "/Stock/Song_[ProjectData]/GS_KICK_06", card, card + "/Stock/Song.xpj", {}, nullptr);
     CHECK(fold_case(r.path) == fold_case(card + "/Stock/Song_[ProjectData]/GS_KICK_06.WAV")); // as is, on a card that ignores case
-    // 4. With the rest of the kit: the folder another sample of the project was found in.
+    // 4. With the rest of the kit: where its own folder went, as another sample of the project found says.
     file(card + "/Kits/Mine/Perc.wav");
     r = find_moved_sample(at("media/X/Gone/Perc.wav"), card, "", {}, nullptr);
     CHECK(r.path.empty());
-    r = find_moved_sample(at("media/X/Gone/Perc.wav"), card, "", {card + "/Kits/Mine"}, nullptr);
+    r = find_moved_sample(at("media/X/Gone/Perc.wav"), card, "", {folder_move(at("media/X/Gone/Tom.wav"), card + "/Kits/Mine/Tom.wav")}, nullptr);
     CHECK(r.path == card + "/Kits/Mine/Perc.wav" && r.step == 4);
+    // Two kits of the same names moved together: KitA's sample found says where Lib went, so KitB's Kick is KitB's
+    // (never KitA's Kick, of the same name); with KitB not there, missing.
+    file(card + "/New/KitA/Kick.wav", 10);
+    file(card + "/New/KitA/Snare.wav", 10);
+    const auto moved_a = folder_move(at("media/X/Lib/KitA/Snare.wav"), card + "/New/KitA/Snare.wav");
+    CHECK(moved_a.from == at("media/X/Lib") && moved_a.to == card + "/New");
+    CHECK(find_moved_sample(at("media/X/Lib/KitB/Kick.wav"), card, "", {moved_a}, nullptr).path.empty());
+    file(card + "/New/KitB/Kick.wav", 20);
+    r = find_moved_sample(at("media/X/Lib/KitB/Kick.wav"), card, "", {moved_a}, nullptr);
+    CHECK(r.path == card + "/New/KitB/Kick.wav" && r.step == 4);
     // A pad of a program keeps its "#..." on the file found.
     file(card + "/Moved/Proj_[ProjectData]/Kit.xpm");
     r = find_moved_sample(at("media/F2EC-CC50/Projects/Proj_[ProjectData]/Kit.xpm#3.1"), card, card + "/Moved/Proj.mldp", {}, nullptr);
@@ -116,11 +139,16 @@ void index_and_ties() {
     // The same name in two kits: the one sharing the most trailing folders with the saved path.
     file(card + "/Moved/KitA/Kick.wav", 10);
     file(card + "/Moved/KitB/Kick.wav", 20);
-    // A same-size tie (copies of one file): the first by path. A different-size tie: left missing.
-    file(card + "/Copies/One/Ride.wav", 30);
-    file(card + "/Copies/Two/Ride.wav", 30);
+    // A tie of copies of one file (one size, the same first and last 4 KB): the first by path. Of different sizes, or
+    // of one size but different, left missing.
+    file(card + "/Copies/One/Ride.wav", 9000);
+    file(card + "/Copies/Two/Ride.wav", 9000);
     file(card + "/Diff/One/Crash.wav", 30);
     file(card + "/Diff/Two/Crash.wav", 31);
+    file(card + "/Same/One/China.wav", 9000, 'a');
+    file(card + "/Same/Two/China.wav", 9000, 'b');
+    // An MPC project is indexed too: a pad of one ("<x>.xpj#...") is found by its file.
+    file(card + "/Stock/Song.xpj", 40);
     // A ._ twin, hidden folders, the boot folder and Melodee's own are left out.
     file(card + "/Moved/KitA/._Kick.wav", 4);
     file(card + "/.Trashes/Kick.wav", 4);
@@ -145,6 +173,9 @@ void index_and_ties() {
     CHECK(find_moved_sample(at("media/OLD/Ride.wav"), card, "", {}, &index).path == card + "/Copies/One/Ride.wav");
     r = find_moved_sample(at("media/OLD/Crash.wav"), card, "", {}, &index);
     CHECK(r.path.empty() && r.tie);
+    r = find_moved_sample(at("media/OLD/China.wav"), card, "", {}, &index);
+    CHECK(r.path.empty() && r.tie);
+    CHECK(find_moved_sample(at("media/OLD/Song.xpj#2.1"), card, "", {}, &index).path == card + "/Stock/Song.xpj#2.1");
     CHECK(find_moved_sample(at("media/OLD/Factory/Bell.wav"), card, "", {}, &index).path == at("internal/Samples/Factory/Bell.wav"));
     CHECK(find_moved_sample(at("media/OLD/LONG.WAV"), card, "", {}, &index).path == card + "/Links/Long.wav"); // any case
     // Among ties, one in the project's folder, then one in Melodee/Samples.
@@ -156,18 +187,38 @@ void index_and_ties() {
     CHECK(find_moved_sample(at("media/OLD/Snare.wav"), card, card + "/Other/P.mldp", {}, &index).path == card + "/Melodee/Samples/Snare.wav");
     // A name saved without its extension, by name with one.
     CHECK(find_moved_sample(at("media/OLD/x_[ProjectData]/KICK_06"), card, "", {}, &index).path == card + "/Melodee/Samples/KICK_06.wav");
-    // The limits: past them it stops, the index cleared (as a cancel).
+    // Part of a card (a search stopped): only a file that is plainly it, sharing a folder with the saved path or in the
+    // project's folder, is taken.
+    {
+        std::vector<CardIndex::File> one {{card + "/Else/Snare.wav", 7}};
+        CHECK(pick_by_name(at("media/OLD/Snare.wav"), card, "", one).path == card + "/Else/Snare.wav");
+        CHECK(pick_by_name(at("media/OLD/Snare.wav"), card, "", one, true).path.empty());
+        CHECK(pick_by_name(at("media/OLD/Else/Snare.wav"), card, "", one, true).path == card + "/Else/Snare.wav");
+        CHECK(pick_by_name(at("media/OLD/Snare.wav"), card, card + "/Else/P.mldp", one, true).path == card + "/Else/Snare.wav");
+    }
+    // The limits. Past the files it may hold it stops, what it holds kept (TooBig); only the files indexed count.
     CardIndex small;
-    small.entry_limit = 5;
+    small.file_limit = 5;
     small.begin(card, {});
     CardIndex::Step s;
     while ((s = small.step()) == CardIndex::Step::More) {}
-    CHECK(s == CardIndex::Step::TooBig && !small.complete() && small.files("snare.wav").empty());
-    CardIndex shallow; // deeper than its limit: stopped too, rather than say what it did not reach is missing
+    CHECK(s == CardIndex::Step::TooBig && small.too_big() && !small.complete() && small.indexed() == 5 && small.looked() > 5);
+    // A folder deeper than the limit is left out; the rest is walked.
+    CardIndex shallow;
     shallow.depth_limit = 1;
     shallow.begin(card, {});
     while ((s = shallow.step()) == CardIndex::Step::More) {}
-    CHECK(s == CardIndex::Step::TooBig && !shallow.complete() && shallow.files("snare.wav").empty());
+    CHECK(s == CardIndex::Step::Done && shallow.complete() && shallow.files("snare.wav").size() == 2); // not Melodee/Samples'
+    // A folder that cannot be read (the card pulled out) fails the walk: nothing kept.
+    {
+        CardIndex pulled;
+        pulled.begin(card, {});
+        CHECK(pulled.step() == CardIndex::Step::More); // the top listed, its folders to come
+        fs::remove_all(card + "/Proj");
+        while ((s = pulled.step()) == CardIndex::Step::More) {}
+        CHECK(s == CardIndex::Step::Failed && !pulled.complete() && pulled.indexed() == 0);
+        file(card + "/Proj/Snare.wav", 5);
+    }
     // A file gone since the index was made is not named: the slot stays missing.
     fs::remove(card + "/Else/Snare.wav");
     fs::remove(card + "/Proj/Snare.wav");
@@ -175,30 +226,36 @@ void index_and_ties() {
     CHECK(find_moved_sample(at("media/OLD/Snare.wav"), card, card + "/Proj/P.mldp", {}, &index).path.empty());
 }
 
+std::string first_plugin(const std::string& saved, const std::string& card) {
+    const auto found = find_moved_plugins(saved, card);
+    return found.empty() ? std::string() : found.front();
+}
+
 void plugins() {
     fresh("plugins");
     const std::string card = at("media/CARD");
     // The hdslave plug-ins moved into Melodee/Plugins/hdslave/: by name, any case.
     file(card + "/Melodee/Plugins/hdslave/Anvil.clap");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/Anvil.clap", card) == card + "/Melodee/Plugins/hdslave/Anvil.clap");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/ANVIL.CLAP", card) == card + "/Melodee/Plugins/hdslave/Anvil.clap");
+    CHECK(first_plugin(card + "/Melodee/Plugins/Anvil.clap", card) == card + "/Melodee/Plugins/hdslave/Anvil.clap");
+    CHECK(first_plugin(card + "/Melodee/Plugins/ANVIL.CLAP", card) == card + "/Melodee/Plugins/hdslave/Anvil.clap");
     // A VST2 folder; a bundle is not looked into.
     fs::create_directories(card + "/Melodee/Plugins/Vendor/Synth VST");
     file(card + "/Melodee/Plugins/Vendor/Synth VST/synth.so");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/Synth VST", card) == card + "/Melodee/Plugins/Vendor/Synth VST");
+    CHECK(first_plugin(card + "/Melodee/Plugins/Synth VST", card) == card + "/Melodee/Plugins/Vendor/Synth VST");
     // Several: the most trailing folders in common, then the shortest path.
     file(card + "/Melodee/Plugins/a/b/Dup.clap");
     file(card + "/Melodee/Plugins/c/Dup.clap");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/x/Dup.clap", card) == card + "/Melodee/Plugins/c/Dup.clap");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/b/Dup.clap", card) == card + "/Melodee/Plugins/a/b/Dup.clap");
+    CHECK(first_plugin(card + "/Melodee/Plugins/x/Dup.clap", card) == card + "/Melodee/Plugins/c/Dup.clap");
+    CHECK(first_plugin(card + "/Melodee/Plugins/b/Dup.clap", card) == card + "/Melodee/Plugins/a/b/Dup.clap");
+    CHECK(find_moved_plugins(card + "/Melodee/Plugins/x/Dup.clap", card).size() == 2); // both, for the rack to try in turn
     // Four folders down at most.
     file(card + "/Melodee/Plugins/1/2/3/4/Deep.clap");
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/Deep.clap", card).empty());
+    CHECK(first_plugin(card + "/Melodee/Plugins/Deep.clap", card).empty());
     // The card renamed.
     file(card + "/Melodee/Plugins/Own/Lead.clap");
-    CHECK(find_moved_plugin(at("media/OLD/Melodee/Plugins/Own/Lead.clap"), card) == card + "/Melodee/Plugins/Own/Lead.clap");
+    CHECK(first_plugin(at("media/OLD/Melodee/Plugins/Own/Lead.clap"), card) == card + "/Melodee/Plugins/Own/Lead.clap");
     // A plug-in replaced by another one is not guessed.
-    CHECK(find_moved_plugin(card + "/Melodee/Plugins/Gone.clap", card).empty());
+    CHECK(first_plugin(card + "/Melodee/Plugins/Gone.clap", card).empty());
 }
 
 void worker() {
@@ -207,6 +264,7 @@ void worker() {
     for (int n = 0; n < 4; ++n) file(card + "/Kit/S" + std::to_string(n) + ".wav", 10);
     file(card + "/Melodee/Samples/Far.wav", 10);
     for (int d = 0; d < 40; ++d) file(card + "/Noise/D" + std::to_string(d) + "/n.txt");
+    const std::string far = at("media/OLD/Lib/Samples/Far.wav"); // only the index finds it (sharing "Samples")
     MovedFiles f;
     // Every file in place: a Done and nothing else, and no walk.
     MovedFiles::Job job;
@@ -215,9 +273,29 @@ void worker() {
     f.current(1);
     f.post(job);
     auto got = answers(f);
-    CHECK(got.size() == 1 && done(got).found_count == 0 && done(got).missing_count == 0 && f.walks() == 0);
+    CHECK(got.size() == 1 && done(got).found_count == 0 && done(got).missing_count == 0 && f.walks() == 0 && f.looked_for() == 0);
+#if defined(__linux__)
+    { // The thread runs at the usual policy and the lowest priority, whatever its starter's (the MIDI thread is SCHED_FIFO;
+      // here a SCHED_BATCH one, which any user may set).
+        MovedFiles g;
+        g.current(1);
+        sched_param none {};
+        CHECK(sched_setscheduler(0, SCHED_BATCH, &none) == 0);
+        g.post(job);
+        CHECK(wait_until([&] { return g.thread_id() != 0; }));
+        sched_setscheduler(0, SCHED_OTHER, &none);
+        std::ifstream in("/proc/self/task/" + std::to_string(g.thread_id()) + "/stat");
+        std::string line;
+        std::getline(in, line);
+        std::istringstream fields(line.substr(line.rfind(')') + 2)); // field 3 on
+        std::vector<std::string> v;
+        for (std::string w; fields >> w;) v.push_back(w);
+        CHECK(v.size() > 38 && v[38] == "0" && v[16] == "19"); // policy (field 41) SCHED_OTHER, nice (field 19) 19
+        answers(g);
+    }
+#endif
     // A renamed card (steps 1-4 at once), one sample only the index knows, one gone.
-    job.slots = {{0, at("media/OLD/Kit/S0.wav")}, {1, at("media/OLD/Kit/S1.wav")}, {2, at("media/OLD/Lib/Far.wav")}, {3, at("media/OLD/Gone.wav")}};
+    job.slots = {{0, at("media/OLD/Kit/S0.wav")}, {1, at("media/OLD/Kit/S1.wav")}, {2, far}, {3, at("media/OLD/Gone.wav")}};
     f.post(job);
     got = answers(f);
     CHECK(of(got, 0, MovedFiles::Answer::Kind::Found) && of(got, 0, MovedFiles::Answer::Kind::Found)->found == card + "/Kit/S0.wav");
@@ -227,7 +305,7 @@ void worker() {
     // CANCEL of a search not begun yet: it ends at once, with no walk.
     MovedFiles::Job search = job;
     search.search = true;
-    search.slots = {{2, at("media/OLD/Lib/Far.wav")}, {3, at("media/OLD/Gone.wav")}};
+    search.slots = {{2, far}, {3, at("media/OLD/Gone.wav")}};
     f.folder_pause_us = 20000; // a slow card
     {
         MovedFiles::Job busy = job; // a check first, so the search waits behind it
@@ -239,26 +317,41 @@ void worker() {
         got = answers(f, 2);
         unsigned cancelled = 0;
         for (const auto& a : got) cancelled += a.kind == MovedFiles::Answer::Kind::Done && a.cancelled;
-        CHECK(cancelled == 1 && !f.progress().walking);
+        CHECK(cancelled == 1 && !f.progress().walking && f.walks() == 0);
     }
-    const unsigned walks_before = f.walks();
-    // SEARCH, then CANCEL within a folder, once the part walked has found one: that one stays (Found), and nothing is
-    // said missing (the rest of the card was never walked).
+    // SEARCH, then CANCEL within a folder, once the part walked has met it: taken (it shares a folder with its saved
+    // path), and nothing is said missing (the rest of the card was never walked). "found" counts slots, not names.
     f.post(search);
-    const auto began = std::chrono::steady_clock::now();
-    while (f.progress().matched < 1 && std::chrono::steady_clock::now() - began < std::chrono::seconds(10)) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(wait_until([&] { return f.progress().matched >= 1; }, 10));
     CHECK(f.progress().walking && f.progress().matched == 1);
     f.cancel();
-    const auto asked = std::chrono::steady_clock::now();
+    auto asked = std::chrono::steady_clock::now();
     got = answers(f);
-    CHECK(done(got).cancelled && !f.indexed() && f.walks() == walks_before + 1);
+    CHECK(done(got).cancelled && !f.indexed() && f.walks() == 1);
     CHECK(std::chrono::steady_clock::now() - asked < std::chrono::milliseconds(500)); // within a folder or so
     CHECK(of(got, 2, MovedFiles::Answer::Kind::Found) && !of(got, 3, MovedFiles::Answer::Kind::Missing) && done(got).found_count == 1);
+    // The card lent mid-walk (hold): the search stops with nothing found or said missing, nothing more is read; a check
+    // posted meanwhile waits, then is done once the card is back.
+    f.post(search);
+    CHECK(wait_until([&] { return f.progress().walking; }));
+    f.hold(true);
+    got = answers(f);
+    CHECK(done(got).cancelled && done(got).found_count == 0 && got.size() == 1);
+    CHECK(wait_until([&] { return f.parked(); }, 2));
+    f.post(job);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    MovedFiles::Answer none;
+    CHECK(!f.take(none) && f.parked()); // nothing while lent
+    f.hold(false);
+    got = answers(f);
+    CHECK(of(got, 0, MovedFiles::Answer::Kind::Found) && of(got, 3, MovedFiles::Answer::Kind::Missing));
+    CHECK(of(got, 2, MovedFiles::Answer::Kind::Found)); // by step 4 now: where the search found its folder went
     // SEARCH again: walked again from the start, then found by the index.
     f.folder_pause_us = 0;
+    const unsigned walks_before = f.walks();
     f.post(search);
     got = answers(f);
-    CHECK(f.walks() == walks_before + 2 && f.indexed() && !done(got).cancelled);
+    CHECK(f.walks() == walks_before + 1 && f.indexed() && !done(got).cancelled);
     CHECK(of(got, 2, MovedFiles::Answer::Kind::Found) && of(got, 2, MovedFiles::Answer::Kind::Found)->found == card + "/Melodee/Samples/Far.wav");
     CHECK(of(got, 3, MovedFiles::Answer::Kind::Missing) && done(got).found_count == 1 && done(got).missing_count == 1);
     // A second project: its check answered from the index at once, no walk.
@@ -267,7 +360,7 @@ void worker() {
     job.slots = {{7, at("media/OTHER/X/Far.wav")}, {8, at("media/OTHER/Gone.wav")}};
     f.post(job);
     got = answers(f);
-    CHECK(of(got, 7, MovedFiles::Answer::Kind::Found) && of(got, 8, MovedFiles::Answer::Kind::Missing) && done(got).indexed && f.walks() == walks_before + 2);
+    CHECK(of(got, 7, MovedFiles::Answer::Kind::Found) && of(got, 8, MovedFiles::Answer::Kind::Missing) && done(got).indexed && f.walks() == walks_before + 1);
     // A file copied back where it was, after the index dropped (FIND MISSING: fresh): found where it was saved.
     file(at("media/OTHER/Gone.wav"), 3);
     search.generation = 2;
@@ -275,21 +368,113 @@ void worker() {
     search.slots = {{8, at("media/OTHER/Gone.wav")}};
     f.post(search);
     got = answers(f);
-    CHECK(of(got, 8, MovedFiles::Answer::Kind::Found) && of(got, 8, MovedFiles::Answer::Kind::Found)->found == at("media/OTHER/Gone.wav") && f.walks() == walks_before + 3);
+    CHECK(of(got, 8, MovedFiles::Answer::Kind::Found) && of(got, 8, MovedFiles::Answer::Kind::Found)->found == at("media/OTHER/Gone.wav") && f.walks() == walks_before + 2);
+    // A path a slot cannot hold (256 characters or more): not found.
+    {
+        std::string deep = card + "/Long";
+        while (deep.size() < 300) deep += "/" + std::string(40, 'd');
+        file(deep + "/Far2.wav", 10);
+        f.drop_index();
+        job.slots = {{9, at("media/OLD/Far2.wav")}};
+        search.fresh = false;
+        search.slots = job.slots;
+        f.post(search);
+        got = answers(f);
+        CHECK(of(got, 9, MovedFiles::Answer::Kind::Missing) && done(got).found_count == 0);
+        fs::remove_all(card + "/Long");
+    }
     // Another project opened mid-search: nothing of the old one's comes, and the walk goes on for the index.
     f.drop_index();
     f.folder_pause_us = 5000;
     search.generation = 3; search.fresh = false;
-    search.slots = {{2, at("media/OLD/Lib/Far.wav")}};
+    search.slots = {{2, far}};
     f.current(3);
     f.post(search);
-    while (!f.progress().walking) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(wait_until([&] { return f.progress().walking; }));
     f.current(4); // switched
-    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    while (!f.idle() && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    CHECK(wait_until([&] { return f.idle(); }));
     MovedFiles::Answer stale;
     CHECK(f.idle() && !f.take(stale) && f.indexed()); // the walk finished, its answers dropped
     CHECK(f.progress().looked > 40);
+}
+
+void too_big_and_end() {
+    fresh("big");
+    const std::string card = at("media/CARD");
+    for (int n = 0; n < 30; ++n) file(card + "/A/F" + std::to_string(n) + ".wav", 10);
+    file(card + "/A/Mine/Hit.wav", 10);
+    file(card + "/Z/Hit.wav", 11);
+    // Past the files it may hold: a search stops as a cancel does (what it plainly found taken, nothing said missing),
+    // says so, and the card is not walked again this session.
+    MovedFiles f;
+    f.file_limit = 20;
+    f.current(1);
+    MovedFiles::Job search;
+    search.search = true; search.generation = 1; search.card = card;
+    search.slots = {{0, at("media/OLD/Mine/Hit.wav")}, {1, at("media/OLD/Nowhere.wav")}};
+    f.post(search);
+    auto got = answers(f);
+    CHECK(done(got).too_big && !done(got).cancelled && f.walks() == 1);
+    CHECK(!of(got, 1, MovedFiles::Answer::Kind::Missing));
+    search.fresh = true; // FIND MISSING too
+    f.post(search);
+    got = answers(f);
+    CHECK(done(got).too_big && f.walks() == 1);
+    f.drop_index(); // another card, one back from a computer: walked again
+    search.fresh = false;
+    f.post(search);
+    got = answers(f);
+    CHECK(done(got).too_big && f.walks() == 2);
+    // A folder that cannot be read mid-walk (the card pulled out): the search says so, finds nothing, says nothing
+    // missing, and keeps no index.
+    {
+        for (int d = 0; d < 20; ++d) file(card + "/W/D" + std::to_string(d) + "/x.txt");
+        MovedFiles h;
+        h.folder_pause_us = 20000;
+        h.current(1);
+        MovedFiles::Job job = search;
+        job.slots = {{0, at("media/OLD/W/Nowhere.wav")}};
+        h.post(job);
+        CHECK(wait_until([&] { return h.progress().looked >= 55; })); // W listed, its last folder not walked yet
+        fs::remove_all(card + "/W/D9");
+        h.folder_pause_us = 0;
+        got = answers(h);
+        CHECK(done(got).failed && got.size() == 1 && !h.indexed());
+        fs::remove_all(card + "/W");
+    }
+    // The end comes within a folder, however slow the card.
+    auto g = std::make_unique<MovedFiles>();
+    g->folder_pause_us = 3000000;
+    g->current(1);
+    g->post(search);
+    CHECK(wait_until([&] { return g->progress().walking; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto ending = std::chrono::steady_clock::now();
+    g.reset();
+    CHECK(std::chrono::steady_clock::now() - ending < std::chrono::milliseconds(500));
+}
+
+void fold_and_memory() {
+    // exFAT ignores case in Latin-1 and Latin Extended-A too.
+    CHECK(fold_case("\xc3\x80" "BC\xc3\x89") == "\xc3\xa0" "bc\xc3\xa9");  // ÀBCÉ
+    CHECK(fold_case("\xc3\x97") == "\xc3\x97");                          // × stays
+    CHECK(fold_case("\xc4\x80\xc5\x81") == "\xc4\x81\xc5\x82");          // ĀŁ
+    CHECK(fold_case("\xc5\xb8") == "\xc3\xbf");                          // Ÿ
+    CHECK(fold_case("\xc5\xbd") == "\xc5\xbe");                          // Ž
+    // At the limit, the index holds its names in some 10 MB or less (names of 24 characters, 100 files a folder).
+    CardIndex index;
+    const uint32_t top = index.add_folder(CardIndex::none, "/media/CARD");
+    for (unsigned d = 0; d < CardIndex::max_files / 100; ++d) {
+        const uint32_t folder = index.add_folder(top, "Folder " + std::to_string(d));
+        for (unsigned n = 0; n < 100; ++n) {
+            char name[32];
+            std::snprintf(name, sizeof(name), "Sample_%06u_%05u.wav", d, n);
+            index.add_file(folder, name);
+        }
+    }
+    const size_t bytes = index.bytes_used();
+    std::printf("index at the limit: %zu files, %.1f MB\n", index.indexed(), bytes / 1048576.0);
+    CHECK(index.indexed() == CardIndex::max_files && bytes < size_t(10) << 20);
 }
 } // namespace
 
@@ -299,6 +484,8 @@ int main() {
         index_and_ties();
         plugins();
         worker();
+        too_big_and_end();
+        fold_and_memory();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FAILED %s\n", e.what());
         fs::remove_all(fs::temp_directory_path() / ("finder-" + std::to_string(::getpid())));

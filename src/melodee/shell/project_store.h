@@ -45,6 +45,10 @@ inline bool on_card_top(const std::string& folder) { return folder.compare(0, 5,
 // A folder on the card ("" the list's top) as the list names it: under Melodee/Projects relative, the stock
 // projects as "MPC Sample...", anything else ":card/...". `card` is the card's path, `root` Melodee/Projects.
 std::string card_folder_of(const std::string& card, const std::string& root, const std::string& dir);
+// hdslaveOS: find moved files. An MPC import's note: what it opened, else what of it is missing (the import's `missing`
+// pads and Audio track takes; `pads_gone` of them pads whose sample is not there, `samples_gone` such samples). Its
+// samples alone are said by the finder once it has looked (shell/find_moved.h).
+std::string import_note(const std::string& stem, unsigned missing, unsigned pads_gone, unsigned samples_gone, bool left_out);
 
 struct LoadedProject {
     std::string path, error;

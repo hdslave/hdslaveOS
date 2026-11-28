@@ -17,6 +17,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
+#include "melodee/shell/find_moved.h" // hdslaveOS: find moved files
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
@@ -593,7 +594,7 @@ void Context::plugins_tick(uint32_t at) {
                 continue;
             }
             const std::string name = ref.name[0] ? std::string(ref.name) : std::filesystem::path(note.from).stem().string();
-            notice("Plug-in missing: " + name);
+            if (moved) moved->plugin_missing(name, at); // said once the rack has had its say: one name, or how many
         }
     }
     PluginRack::PresetResult result;

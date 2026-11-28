@@ -203,7 +203,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         sheet.icon = Icon::Warn;
         sheet.accent = colour::amber;
         sheet.title = count_of(n, "sample missing", "samples missing");
-        sheet.lines = {"Search the card for them?", "Play and Stop work meanwhile."};
+        sheet.lines = {n == 1 ? "Search the card for it?" : "Search the card for them?", "Play and Stop work meanwhile."};
         cancel = "NOT NOW"; middle = "FORGET"; verb = "SEARCH"; verb_glyph = Icon::Card; accent = colour::amber;
         break;
     }

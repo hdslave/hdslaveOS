@@ -2,14 +2,16 @@
 // hdslaveOS: find moved files through the whole shell (src/melodee/shell/find_moved.h): projects opened from a card
 // made in a temporary folder, the shell, the sample library, the project store and the plug-in rack driven pass by
 // pass as the MIDI and service threads drive them, and the engine rendered. Modes (argv): session (the question and
-// its answers, the sheets, the index kept, FIND MISSING, Load Kit, a project that cannot be read), always, off,
-// plugin (with the CLAP fixture as argv[3]).
-//   test-find-moved TOP MODE [PLUGIN]
+// its answers, the sheets, the index kept, FIND MISSING, Load Kit, Load Bank, a project that cannot be read), always,
+// off, plugin (with the CLAP fixture as argv[3]), xpj-rate (an MPC project made by tests/test_find_moved.py, argv[3]).
+//   test-find-moved TOP MODE [PLUGIN|XPJ]
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/model/project_file.h"
+#include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
+#include "melodee/shell/ask.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
@@ -41,7 +43,8 @@ void touch(const std::string& path) {
     std::ofstream(path) << "x";
 }
 // A project of one kit, its pads 1.. on the slots in turn, and a plug-in track for each plug-in path.
-void write_project(const std::string& path, const std::vector<std::string>& samples, const std::vector<std::string>& plugins = {}) {
+void write_project(const std::string& path, const std::vector<std::string>& samples, const std::vector<std::string>& plugins = {},
+                   const std::vector<int32_t>& ids = {}) {
     auto p = std::make_unique<Project>();
     auto b = std::make_unique<PatternBank>();
     load_sound(p->tracks[0], EngineKind::Sampler, 0);
@@ -54,6 +57,7 @@ void write_project(const std::string& path, const std::vector<std::string>& samp
     for (size_t k = 0; k < plugins.size(); ++k) {
         std::snprintf(p->plugins[k].path, sizeof(p->plugins[k].path), "%s", plugins[k].c_str());
         std::snprintf(p->plugins[k].name, sizeof(p->plugins[k].name), "%s", fs::path(plugins[k]).stem().string().c_str());
+        if (k < ids.size()) p->plugins[k].id = ids[k];
         load_sound(p->tracks[1 + k], EngineKind::Plugin, 0);
         p->tracks[1 + k].plugin = uint8_t(k);
     }
@@ -167,25 +171,47 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
         return 0;
     }
 
-    if (mode == "plugin") { // the hdslave plug-ins moved into Melodee/Plugins/hdslave/, and one gone
+    if (mode == "plugin") { // the hdslave plug-ins moved into Melodee/Plugins/hdslave/, and others gone
         CHECK(fs::exists(plugin));
         const std::string moved_to = card + "/Melodee/Plugins/hdslave/Test.clap", saved = card + "/Melodee/Plugins/Test.clap";
         fs::create_directories(fs::path(moved_to).parent_path());
         fs::copy_file(plugin, moved_to, fs::copy_options::overwrite_existing);
-        write_project(projects + "/Synth.mldp", {}, {saved, card + "/Melodee/Plugins/Gone.clap"});
+        touch(card + "/Melodee/Plugins/A/Test.clap"); // the same name, nearer, but not the plug-in saved (its id is known)
+        write_project(projects + "/Synth.mldp", {}, {saved, card + "/Melodee/Plugins/Gone.clap", card + "/Melodee/Plugins/Also gone.clap"},
+                      {clap_id_hash("org.melodee.test.sine")});
         open(projects + "/Synth.mldp");
         until("the plug-in open", [&] { return rack->status(0) == PluginStatus::Ready; }, 60);
-        until("the other's notice", [&] { return notice() == "Plug-in missing: Gone"; }, 60);
+        until("the others' notice", [&] { return notice() == "2 plug-ins missing"; }, 60); // two in one pass: one notice
         until("its path", [&] { return std::string(c.project.plugins[0].path) == moved_to; });
-        CHECK(rack->status(1) == PluginStatus::Failed && !c.dirty); // opening writes nothing
+        CHECK(rack->status(1) == PluginStatus::Failed && rack->status(2) == PluginStatus::Failed && !c.dirty); // opening writes nothing
         for (int k = 0; k < 100; ++k) pass(); // and nothing opens again once the project names where it is
         CHECK(rack->status(0) == PluginStatus::Ready);
         // Opened again (nothing saved: the file names the old path): found and followed again, the notice again.
         ui.notice[0] = 0;
         open(projects + "/Synth.mldp");
         until("its path again", [&] { return std::string(c.project.plugins[0].path) == moved_to && rack->status(0) == PluginStatus::Ready; }, 60);
-        until("the other's notice again", [&] { return notice() == "Plug-in missing: Gone"; }, 60);
+        until("the others' notice again", [&] { return notice() == "2 plug-ins missing"; }, 60);
+        // One plug-in of a long name: its name cut to fit the notice's 31 characters.
+        write_project(projects + "/Long.mldp", {}, {card + "/Melodee/Plugins/Missing plug-in of a long name.clap"});
+        ui.notice[0] = 0;
+        open(projects + "/Long.mldp");
+        until("its notice", [&] { return notice().rfind("Plug-in missing: Missing plu", 0) == 0; }, 60);
+        CHECK(notice() == "Plug-in missing: Missing plu\xe2\x80\xa6" && notice().size() == 31);
         shell->set_plugins(nullptr);
+        std::puts("find moved ok");
+        return 0;
+    }
+
+    if (mode == "xpj-rate") { // a stock project's sample missing at import (read at 44.1 kHz), found beside it at 48 kHz
+        CHECK(fs::exists(plugin));
+        c.project_path.clear();
+        store->load(plugin);
+        until("imported", [&] { return c.import_unsaved && !ui.loading; });
+        until("looked for", [&] { return moved.idle(); });
+        const PadSound* pad = nullptr;
+        for (const auto& t : c.project.tracks) if (t.engine == EngineKind::Sampler && t.pads[0].used()) { pad = &t.pads[0]; break; }
+        CHECK(pad && fs::path(path(pad->sample)).filename() == "Chop.wav" && fs::exists(path(pad->sample)));
+        CHECK(pad->start == 22050 && pad->loop_start == 22050 && pad->end == 44100);
         std::puts("find moved ok");
         return 0;
     }
@@ -223,6 +249,21 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     until("asked", [&] { return ui.ask == UiState::Ask::FindMissing; });
     CHECK(ui.ask_target == 2 && ui.find.missing == 2 && moved.files().walks() == 0);
     play_stop();
+    { // Power's Exit sheet over the question: its keys are the sheet's (B2 POWER OFF), not the question's (FORGET).
+        shell->power_pressed();
+        pass();
+        CHECK(ui.exit_open);
+        press(SurfaceButton::TopMiddle);
+        CHECK(ui.exit_off && moved.missing_count() == 2 && c.project.tracks[0].pads[1].used() && ui.ask == UiState::Ask::FindMissing);
+        press(SurfaceButton::TopLeft); // STAY
+        CHECK(!ui.exit_open && ui.ask == UiState::Ask::FindMissing);
+    }
+    { // One sample: "it", not "them".
+        UiState one = ui;
+        one.ask_target = 1;
+        CHECK(ask_detail(c.project, one, c.pattern()).rfind("Search the card for it?", 0) == 0);
+        CHECK(ask_detail(c.project, ui, c.pattern()).rfind("Search the card for them?", 0) == 0);
+    }
     press(SurfaceButton::TopLeft); // NOT NOW
     for (int k = 0; k < 50; ++k) pass();
     CHECK(ui.ask == UiState::Ask::None && ui.find.missing == 2 && moved.files().walks() == 0 && path(1) == card + "/Gone/X.wav");
@@ -263,7 +304,7 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     // SEARCH, then CANCEL within a folder: what the quick checks found stays; the next SEARCH walks from the start.
     for (int d = 0; d < 80; ++d) touch(card + "/Noise/D" + std::to_string(d) + "/n.txt");
     wav(card + "/Deep/Down/M1.wav");
-    write_project(projects + "/P4.mldp", {old + "/Kit/A.wav", card + "/Old/M1.wav", card + "/Old/Z.wav"});
+    write_project(projects + "/P4.mldp", {old + "/Kit/A.wav", card + "/Old/Down/M1.wav", card + "/Old/Z.wav"});
     moved.files().folder_pause_us = 20000; // a slow card
     moved.files().drop_index(); // the files were added after FIND MISSING's walk (as the web page or SD card access would)
     open(projects + "/P4.mldp");
@@ -274,6 +315,8 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     until("walking", [&] { return moved.files().progress().walking; });
     play_stop();
     until("one found by the part walked", [&] { return moved.files().progress().matched >= 1; }); // Deep/ comes first
+    pass();
+    CHECK(ui.find.found == 1); // slots matched, not names (M1.wav and its extension's other cases count once)
     CHECK(moved.files().progress().walking);
     const auto cancelled_at = std::chrono::steady_clock::now();
     press(SurfaceButton::TopLeft); // CANCEL: the sheet goes at once
@@ -281,7 +324,8 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     until("stopped", [&] { return moved.idle(); }, 5);
     CHECK(std::chrono::steady_clock::now() - cancelled_at < std::chrono::seconds(1)); // within a folder (20 ms) or so
     CHECK(notice() == "Search stopped, found 1" && moved.files().walks() == walks_now + 1 && !moved.files().indexed());
-    CHECK(path(0) == card + "/Kit/A.wav" && ready(0) && path(1) == card + "/Deep/Down/M1.wav" && ui.find.missing == 1); // what it found stays
+    // What it found that is plainly it (it shares Down/ with its saved path) stays; Z is not said missing, only not found yet.
+    CHECK(path(0) == card + "/Kit/A.wav" && ready(0) && path(1) == card + "/Deep/Down/M1.wav" && ui.find.missing == 1);
     moved.files().folder_pause_us = 0;
     open(projects + "/P4.mldp");
     until("asked", [&] { return ui.ask == UiState::Ask::FindMissing; });
@@ -304,21 +348,64 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     until("walking", [&] { return moved.files().progress().walking; });
     press(SurfaceButton::TopRight); // HIDE
     CHECK(ui.ask == UiState::Ask::None && ui.find.searching && ui.find.hidden && moved.searching());
+    { // A kit loaded meanwhile with a sample missing: its question waits for the search, then comes.
+        moved.files().folder_pause_us = 20000;
+        write_project(card + "/Kits/Kit2.mldp", {card + "/Gone/KitMiss.wav"});
+        c.select_track(1);
+        c.load_kit_file(card + "/Kits/Kit2.mldp", "Kit2");
+        until("the kit in", [&] { return c.kit_from.empty() && moved.missing_count() == 2; });
+        for (int k = 0; k < 20; ++k) pass();
+        CHECK(moved.searching() && ui.ask == UiState::Ask::None);
+        c.select_track(0);
+    }
     moved.files().folder_pause_us = 0;
-    until("found", [&] { return moved.idle(); });
-    CHECK(notice() == "Found 1 sample" && path(0) == card + "/Deep/Other/M5.wav" && moved.files().walks() == walks_now + 3 && ui.ask == UiState::Ask::None);
+    until("found", [&] { return !moved.searching(); });
+    CHECK(notice() == "Found 1 sample" && path(0) == card + "/Deep/Other/M5.wav" && moved.files().walks() == walks_now + 3);
+    until("the kit's question", [&] { return ui.ask == UiState::Ask::FindMissing; });
+    CHECK(ui.ask_target == 1);
+    press(SurfaceButton::TopLeft); // NOT NOW
+    // Another sheet over the search's (a frozen track's question): the search's comes back once it goes, and its result
+    // too, rather than a notice as after HIDE.
+    moved.files().drop_index();
+    wav(card + "/Deep/Fifth/M6.wav");
+    write_project(projects + "/P5b.mldp", {card + "/Old/M6.wav", card + "/Gone/G6.wav"});
+    moved.files().folder_pause_us = 20000;
+    open(projects + "/P5b.mldp");
+    until("asked", [&] { return ui.ask == UiState::Ask::FindMissing; });
+    press(SurfaceButton::TopRight);
+    until("walking", [&] { return moved.files().progress().walking; });
+    ui.ask = UiState::Ask::Unfreeze; ui.ask_target = 2; // over it
+    for (int k = 0; k < 10; ++k) pass();
+    CHECK(ui.ask == UiState::Ask::Unfreeze);
+    press(SurfaceButton::TopLeft); // that one's CANCEL
+    until("the search's sheet back", [&] { return ui.ask == UiState::Ask::FindSearching; }, 5);
+    ui.ask = UiState::Ask::Unfreeze; // over it again, till it ends
+    moved.files().folder_pause_us = 0;
+    until("ended", [&] { return !moved.searching(); });
+    for (int k = 0; k < 10; ++k) pass();
+    CHECK(ui.ask == UiState::Ask::Unfreeze);
+    press(SurfaceButton::TopLeft);
+    until("its result", [&] { return ui.ask == UiState::Ask::FindResult; }, 5);
+    CHECK(ui.ask_target == 1 && path(0) == card + "/Deep/Fifth/M6.wav");
+    press(SurfaceButton::TopLeft); // KEEP
     // A second project after a search: answered from the index, no question, no walk.
-    write_project(projects + "/P6.mldp", {card + "/Old/M1.wav", card + "/Gone/Back.wav"});
+    write_project(projects + "/P6.mldp", {card + "/Old/Down/M1.wav", card + "/Gone/Back.wav"});
     open(projects + "/P6.mldp");
     for (int k = 0; k < 50; ++k) pass();
-    CHECK(ui.ask == UiState::Ask::None && moved.files().walks() == walks_now + 3 && path(0) == card + "/Deep/Down/M1.wav" && moved.missing_count() == 1);
+    CHECK(ui.ask == UiState::Ask::None && moved.files().walks() == walks_now + 4 && path(0) == card + "/Deep/Down/M1.wav" && moved.missing_count() == 1);
     CHECK(notice() == "1 sample not found");
-    // FIND MISSING (the Samples page, Shift + B1) finds a file copied back: the card walked anew.
+    // FIND MISSING (the Samples page, Shift + B1) finds a file copied back: the card walked anew. With the trim sheet up
+    // too, as its keys are drawn.
     wav(card + "/Gone/Back.wav");
     c.open(PageId::Samples);
+    for (int k = 0; k < 5; ++k) pass();
+    ui.browse.slot = 7; // the trim sheet up, on the row in view
+    c.browse_cursor = ui.files_cursor; c.browse_generation = c.files_view_generation;
     press(SurfaceButton::TopLeft, true);
+    CHECK(ui.browse.up());
     until("found", [&] { return moved.idle() && ui.ask == UiState::Ask::None; });
-    CHECK(moved.files().walks() == walks_now + 4 && path(1) == card + "/Gone/Back.wav" && moved.missing_count() == 0 && notice() == "Found 1 sample");
+    ui.browse.slot = -1;
+    CHECK(moved.files().walks() == walks_now + 5 && path(1) == card + "/Gone/Back.wav" && moved.missing_count() == 0 && notice() == "Found 1 sample");
     until("loaded", [&] { return ready(1); });
     // Another project opened mid-search: nothing of the old one's lands in it.
     moved.files().drop_index();
@@ -354,14 +441,37 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
     open(projects + "/P8.mldp");
     // Load Kit: the kit's slots through the same check (a renamed card), beside the kit's own file.
     if (ui.ask != UiState::Ask::None) press(SurfaceButton::TopLeft);
-    write_project(projects + "/Kit.mldp", {old + "/Kit/B.wav"});
+    write_project(card + "/Kits/Kit.mldp", {old + "/Kit/B.wav"});
     c.select_track(0);
-    c.load_kit_file(projects + "/Kit.mldp", "Kit");
+    c.load_kit_file(card + "/Kits/Kit.mldp", "Kit");
     until("the kit", [&] { return c.kit_from.empty() && moved.idle(); });
     int kit = -1;
     for (unsigned n = 0; n < 8; ++n) if (path(n) == card + "/Kit/B.wav") kit = int(n);
     CHECK(kit > 0);
     until("loaded", [&] { return ready(unsigned(kit)); });
+    { // Load Bank after it: its samples looked for beside the project, not beside the kit loaded before.
+        auto from = std::make_unique<Project>();
+        load_sound(from->tracks[0], EngineKind::Sampler, 0);
+        std::snprintf(from->samples.edit(0).path, sizeof(SampleRef::path), "%s", (card + "/Elsewhere/BankHit.wav").c_str());
+        std::snprintf(from->samples.edit(0).name, sizeof(SampleRef::name), "BankHit");
+        from->tracks[0].pads[0].sample = 0;
+        const auto bank = save_bank(bank_of(*from, 0, 0, "B"));
+        const std::string file = card + "/Melodee/Samples/Banks/B.mldb";
+        fs::create_directories(fs::path(file).parent_path());
+        std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char*>(bank.data()), std::streamsize(bank.size()));
+        wav(projects + "/BankHit.wav");
+        wav(card + "/Kits/BankHit.wav"); // beside the kit loaded before: not where the project's bank looks
+        c.project.tracks[0].bank = 1;
+        c.load_bank_file(file, "B");
+        until("the bank", [&] { return c.bank_from.empty() && moved.idle(); });
+        int hit = -1;
+        for (unsigned n = 0; n < 16; ++n) if (fs::path(path(n)).filename() == "BankHit.wav") hit = int(n);
+        CHECK(hit >= 0 && path(unsigned(hit)) == projects + "/BankHit.wav");
+    }
+    // An MPC import's note: its Audio tracks' takes missing are said with its samples missing.
+    CHECK(import_note("Song", 5, 3, 2, false) == "2 samples, 2 takes missing");
+    CHECK(import_note("Song", 1, 0, 0, true) == "1 take missing");
+    CHECK(import_note("Song", 3, 3, 2, true) == "Opened a copy of Song, some left out");
     // A project file that cannot be read: said.
     touch(projects + "/Bad.mldp");
     std::ofstream(projects + "/Bad.mldp", std::ios::trunc).close();

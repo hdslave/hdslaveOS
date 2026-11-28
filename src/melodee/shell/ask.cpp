@@ -42,6 +42,7 @@ bool ask_button(Context& c, SurfaceButton button) {
     using B = SurfaceButton;
     auto& ui = c.ui;
     if (ui.ask == UiState::Ask::None) return false;
+    if (ui.exit_open) return false; // hdslaveOS: Power's Exit sheet is over it: B1-B3 are that sheet's
     if (button == B::Play || button == B::Stop) return false; // the transport still answers
     if (button == B::WheelPush) button = ui.ask_pick == 2 ? B::TopRight : B::TopLeft; // the key the wheel highlights
     if (button == B::TopLeft) { // Cancel (LATER on the update question: asked again when the card is returned)
@@ -164,7 +165,8 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::ReplacePlugin) return "Its sound and settings go. Undo brings them back.";
     if (ui.ask == UiState::Ask::Rechop)
         return std::to_string(ui.ask_target) + (ui.ask_target == 1 ? " slice hit changes" : " slice hits change") + " sound. Undo brings them back.";
-    if (ui.ask == UiState::Ask::FindMissing) return "Search the card for them? Play and Stop work meanwhile.";
+    if (ui.ask == UiState::Ask::FindMissing)
+        return ui.ask_target == 1 ? "Search the card for it? Play and Stop work meanwhile." : "Search the card for them? Play and Stop work meanwhile.";
     if (ui.ask == UiState::Ask::FindSearching) return std::to_string(ui.find.found) + " found, " + std::to_string(ui.find.looked) + " files looked at.";
     if (ui.ask == UiState::Ask::FindResult) return "Found " + std::to_string(ui.find.found) + " of " + std::to_string(ui.find.asked) + ". Forget the rest?";
     if (ui.ask == UiState::Ask::NewProject)

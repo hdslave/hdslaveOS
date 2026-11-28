@@ -644,10 +644,10 @@ void MelodeeApp::card_access(Hardware& hardware) {
     case CardRequest::Lend:
         card_note = CardNote::None;
         card_warm.stop(); // nothing of Melodee's reads the card's device while it is lent
-        { // hdslaveOS: find moved files: nor the finder's walk, stopped within a folder (its checks wait, shell/find_moved.h)
+        { // hdslaveOS: find moved files: nor the finder (shell/moved_files.h): a search ends, a check waits for the card
             auto& finder = shell.moved_files().files();
-            finder.cancel();
-            for (int k = 0; k < 50 && finder.progress().walking; ++k) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            finder.hold(true);
+            for (int k = 0; k < 200 && !finder.parked(); ++k) std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         if (gadget_mirror_live()) card_note = CardNote::Camera; // nothing let go: the camera would be unplugged under the computer
         else if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
@@ -661,6 +661,7 @@ void MelodeeApp::card_access(Hardware& hardware) {
     }
     const auto& now = card.status();
     if (now.state == CardShareState::Home && library.instruments_away()) library.restore_instruments(); // back, or never lent
+    if (now.state == CardShareState::Home) shell.moved_files().files().hold(false); // hdslaveOS: find moved files: the card is home
     if (now.returns != card_returns) { // back: its projects and samples read again
         card_returns = now.returns;
         card_warmed.clear(); // and its folders read ahead again: the cache went with the mount

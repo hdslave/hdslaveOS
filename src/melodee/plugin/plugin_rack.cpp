@@ -1761,7 +1761,16 @@ void PluginRack::load(const Job& job) {
     std::string moved; // hdslaveOS: find moved files: not there, it is looked for (the card renamed, Melodee/Plugins)
     bool absent = false;
     if (std::error_code gone; !fs::exists(path, gone)) {
-        moved = find_moved_plugin(job.path, top);
+        // The first that holds the plug-in saved: with its id known (one of a bundle's several, a CLAP's), only a file
+        // that has it; a file of the same name that is another plug-in is not taken.
+        for (const auto& candidate : find_moved_plugins(job.path, top)) {
+            if (job.id != 0) {
+                const Known k = probe(describe_plugin(candidate));
+                if (std::none_of(k.classes.begin(), k.classes.end(), [&](const Class& c) { return c.id == job.id; })) continue;
+            }
+            moved = candidate;
+            break;
+        }
         if (!moved.empty()) path = moved;
         else absent = true;
     }
