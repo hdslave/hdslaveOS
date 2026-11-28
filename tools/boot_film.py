@@ -16,7 +16,8 @@ with none of the source's own hues. --outro SECONDS ends the film on a VHS tape 
 a mistracking band sweeps through the badge, bending the two fields and exposing streaks of RF noise.
 Short RF dropouts borrow the last intact line. Purple bleeds behind the bright detail, wavers as the heads
 briefly regain tracking, then loses lock before the luma does. The head switch tears partway across a lower
-scanline. The picture rolls through vertical blanking once, and a trace of monochrome snow fades to black. All of this is baked into the JPEGs.
+scanline. The tracking band splits when the head slips. After one vertical roll the badge drops out,
+leaving moving monochrome snow for a beat before it fades to black. All of this is baked into the JPEGs.
 
 The default is the hdslave intro's cut: its wide shot (4 to 5.25 s) at 1.25 times with the camera easing back
 from 1.8 times closer, so one short shot stands for the film's two close-ups and lands where the badge starts to
@@ -174,17 +175,24 @@ def tape_frame(source, t, clock, rng, width=WIDTH, height=HEIGHT, *, field_step=
         at = min(1.0, t + field * field_step)
         wear = ease(0.0, 0.31, at)
         # A brief return of tracking restores the colour before the vertical sync drops out.
-        catch = ease(0.42, 0.48, at) * (1 - ease(0.52, 0.58, at))
-        roll = ease(0.55, 0.86, at)
+        catch = ease(0.37, 0.42, at) * (1 - ease(0.45, 0.50, at))
+        # On two short stretches the head wanders far enough to pick up the edge of the adjacent track.
+        slip = (ease(0.23, 0.26, at) * (1 - ease(0.32, 0.39, at))
+                + ease(0.46, 0.49, at) * (1 - ease(0.57, 0.65, at)))
+        roll = ease(0.47, 0.73, at)
         roll_motion = 4 * roll * (1 - roll)
         top = 2 * round(roll * raster / 2)
-        picture = 1 - ease(0.57, 0.96, at)
-        mute = 1 - ease(0.81, 1.0, at)
-        burst_lock = (1 - ease(0.46, 0.73, at)) * (1 - 0.30 * wear + 0.30 * catch)
+        picture = 1 - ease(0.55, 0.73, at)
+        # Snow takes over as the picture disappears. The gate stays open briefly before it closes.
+        snow = ease(0.58, 0.72, at)
+        mute = 1 - ease(0.875, 1.0, at)
+        burst_lock = (1 - ease(0.45, 0.67, at)) * (1 - 0.30 * wear + 0.30 * catch)
         # The weaker head loses contact first. Its companion can still read the other field.
         weak_head = field * ease(0.25, 0.42, at) * (1 - 0.92 * catch)
         travel = ease(0.08, 0.80, at) - 0.10 * catch
         centre = HEIGHT * (1.17 - 1.33 * travel) + 3 * math.sin(phase * 27)
+        centre += slip * (8 * math.sin(phase * 43) + 5 * field)
+        fringe_offset = 18 + 5 * math.sin(phase * 31 + field)
         switch_y = HEIGHT - 3 - wear * (5.5 + 2.8 * math.sin(phase * 23) + field)
         switch_x = round(width * (0.50 + 0.34 * math.sin(phase * 19 + 1.3 * field)))
         previous_good = bytes(width)
@@ -197,18 +205,21 @@ def tape_frame(source, t, clock, rng, width=WIDTH, height=HEIGHT, *, field_step=
             scan = sy / ys
             distance = scan - centre
             band = max(0.0, 1 - abs(distance) / (5 + wear * (14 + 6 * field)))
+            fringe = slip * max(0.0, 1 - abs(distance + fringe_offset) / (4 + 2 * field))
             hook = math.exp(-distance / 17) if distance >= 0 else 0
             switch = scan - switch_y
             switched = switch >= 0
             head_noise = math.exp(-switch / 3.4) if switched else 0.0
-            loss = min(1.0, band * (0.70 + 0.37 * field) * (1 - 0.85 * catch) + 0.88 * head_noise)
-            flutter = 0.70 * flutter + rng.uniform(-1, 1) * (0.8 + 7 * loss)
+            loss = min(1.0, band * (0.70 + 0.37 * field) * (1 - 0.85 * catch)
+                       + 0.84 * fringe + 0.88 * head_noise)
+            flutter = 0.70 * flutter + rng.uniform(-1, 1) * (0.8 + (7 + 4 * slip) * loss)
             bend = 1.6 * math.sin(scan * 0.04 + phase * 14) + flutter
             bend += 25 * math.exp(-scan / 30) * math.sin(phase * 26)
             bend += hook * (38 + 15 * field) * (1 - 0.8 * catch)
+            bend += slip * hook * (22 + 10 * field) - fringe * (27 + 9 * field)
             # RF falls sharply inside a mistracked field. The noise gate closes after the picture goes.
             gain = picture * (1 - 0.72 * wear * loss) * (1 - weak_head * (0.23 + 0.56 * roll_motion))
-            noise = wear * mute * (3 + 260 * loss**2 + 68 * weak_head + 88 * ease(0.69, 0.84, at))
+            noise = wear * mute * (3 + 260 * loss**2 + 68 * weak_head + 146 * snow)
             line = source[sy * width:(sy + 1) * width]
             dx = xs * wear * bend
             luma = luma_line(line, dx, gain, wear, noise, rng)
