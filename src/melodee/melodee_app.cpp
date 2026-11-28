@@ -661,7 +661,6 @@ void MelodeeApp::card_access(Hardware& hardware) {
     }
     const auto& now = card.status();
     if (now.state == CardShareState::Home && library.instruments_away()) library.restore_instruments(); // back, or never lent
-    if (now.state == CardShareState::Home) shell.moved_files().files().hold(false); // hdslaveOS: find moved files: the card is home
     if (now.returns != card_returns) { // back: its projects and samples read again
         card_returns = now.returns;
         card_warmed.clear(); // and its folders read ahead again: the cache went with the mount
@@ -670,6 +669,8 @@ void MelodeeApp::card_access(Hardware& hardware) {
         store.rescan();
         shell.moved_files().files().drop_index(); // hdslaveOS: find moved files: its files may have moved on the computer
     }
+    // hdslaveOS: find moved files: the card is home; the checks it paused run again, after the index above is dropped
+    if (now.state == CardShareState::Home) shell.moved_files().files().hold(false);
     CardNote note = card_note;
     if (note == CardNote::None && !now.message.empty()) {
         const auto& m = now.message;

@@ -212,6 +212,17 @@ int run(const std::string& top, const std::string& mode, const std::string& plug
         for (const auto& t : c.project.tracks) if (t.engine == EngineKind::Sampler && t.pads[0].used()) { pad = &t.pads[0]; break; }
         CHECK(pad && fs::path(path(pad->sample)).filename() == "Chop.wav" && fs::exists(path(pad->sample)));
         CHECK(pad->start == 22050 && pad->loop_start == 22050 && pad->end == 44100);
+        // A slot of the import's that was in place (pad 2's) stays one whose found file would be put at its rate,
+        // until something else is looked for in it (Load Kit of a kit into it once freed): then its frames are its own.
+        const PadSound* here = nullptr;
+        for (const auto& t : c.project.tracks) if (t.engine == EngineKind::Sampler && t.pads[1].used()) { here = &t.pads[1]; break; }
+        CHECK(here && fs::path(path(here->sample)).filename() == "Here.wav");
+        const unsigned slot = here->sample;
+        CHECK(moved.rescale_pending(slot));
+        moved.kit(fs::path(plugin).parent_path().string() + "/Kit.mldp");
+        moved.added(slot);
+        until("looked at again", [&] { return moved.idle(); });
+        CHECK(!moved.rescale_pending(slot));
         std::puts("find moved ok");
         return 0;
     }

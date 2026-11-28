@@ -116,7 +116,10 @@ bool MovedFiles::take(Answer& out) {
     if (taken_at_ >= taken_.size()) {
         taken_.clear(); // its room kept: what the thread fills next
         taken_at_ = 0;
-        std::lock_guard<std::mutex> guard(lock);
+        // The finder runs at the lowest priority: the MIDI thread never waits for it to let go of the lock. Held now,
+        // the answers come at the next pass.
+        std::unique_lock<std::mutex> guard(lock, std::try_to_lock);
+        if (!guard.owns_lock()) return false;
         taken_.swap(mailbox_);
     }
     if (taken_at_ >= taken_.size()) return false;
@@ -154,8 +157,11 @@ MovedFiles::Answer MovedFiles::found(const Job& job, const Slot& s, const std::s
     const std::string file = split_saved(path).file;
     if (read_chop) a.chop = read_chop(file);
     if (read_rate) a.rate = read_rate(file);
-    if (path != s.saved) {
-        auto move = folder_move(s.saved, path);
+    // Where its folder went, for the rest of its kit (step 4): only when the file was found in a folder of the same name
+    // as the one it was saved in. A file found by name alone, in a folder of another name, says nothing of where its
+    // neighbours went (Drums/808/Kick.wav found only as 909/Kick.wav: 808's Snare is not 909's).
+    auto move = folder_move(s.saved, path);
+    if (path != s.saved && move.from != fs::path(split_saved(s.saved).file).parent_path().string()) {
         if (std::none_of(moves_.begin(), moves_.end(), [&](const FolderMove& m) { return m.from == move.from && m.to == move.to; }))
             moves_.push_back(std::move(move));
     }

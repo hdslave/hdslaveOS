@@ -126,6 +126,7 @@ void FindMoved::post_check(Context& c, const std::vector<uint16_t>& slots, const
         if (!ref.used() || ref.path[0] != '/' || !played[n % sample_slots]) continue;
         job.slots.push_back({uint16_t(n % sample_slots), ref.path});
         if (mpc) add_sorted(mpc_slots, uint16_t(n % sample_slots));
+        else take_sorted(mpc_slots, uint16_t(n % sample_slots)); // reused (Load Kit of a .mldp kit): its frames are its own
     }
     if (job.slots.empty()) return;
     worker.post(std::move(job));

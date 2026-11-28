@@ -57,7 +57,10 @@ class FindMovedTests(unittest.TestCase):
             folder = card / "MPC-Sample" / "Projects"
             folder.mkdir(parents=True)
             (folder / "Chop.wav").write_bytes(wav(48000))
-            return write(folder, "Rate", project([instrument("Chop.wav", 24000, 48000)]))
+            data = folder / "Rate_[ProjectData]"
+            data.mkdir()
+            (data / "Here.wav").write_bytes(wav(48000))
+            return write(folder, "Rate", project([instrument("Chop.wav", 24000, 48000), instrument("Here.wav", 24000, 48000)]))
         self.run_mode("xpj-rate", xpj=make)
 
 
