@@ -185,6 +185,14 @@ void index_and_ties() {
     index = walked(card);
     CHECK(find_moved_sample(at("media/OLD/Snare.wav"), card, card + "/Proj/P.mldp", {}, &index).path == card + "/Proj/Snare.wav");
     CHECK(find_moved_sample(at("media/OLD/Snare.wav"), card, card + "/Other/P.mldp", {}, &index).path == card + "/Melodee/Samples/Snare.wav");
+    // A search's "found" counts its slots, not the names met: two slots of one name are two; one slot of a name saved
+    // without its extension, met as .wav and as .aif, is one.
+    file(card + "/Ext/Tom.wav", 5);
+    file(card + "/Ext/Tom.aif", 5);
+    index = walked(card);
+    index.watch({at("media/OLD/A/Snare.wav"), at("media/OLD/B/Snare.wav"), at("media/OLD/C/Snare.wav"), at("media/OLD/D/Tom"),
+                 at("media/OLD/Nowhere.wav")});
+    CHECK(index.matched() == 4); // (names met: snare.wav, tom.wav, tom.aif)
     // A name saved without its extension, by name with one.
     CHECK(find_moved_sample(at("media/OLD/x_[ProjectData]/KICK_06"), card, "", {}, &index).path == card + "/Melodee/Samples/KICK_06.wav");
     // Part of a card (a search stopped): only a file that is plainly it, sharing a folder with the saved path or in the
