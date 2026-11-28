@@ -1,21 +1,153 @@
 <h1 align="center">hdslaveOS</h1>
 
-<p align="center"><strong>A performance-tuned 16-track groovebox OS for the Akai MPC Sample</strong><br>
-hdslave's fork of <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio), currently tracking Melodee v0.9.1.</p>
+<p align="center"><strong>A techno OS for the Akai MPC Sample</strong><br>
+Drum machines, acid bass and kick synths with their own screens, on a 16-track groovebox OS built on <a href="https://github.com/keremimo/melodee-sample">Melodee</a> by Kerem Kiliç (Ellic Studio). Currently on Melodee v0.9.1.</p>
+
+<p align="center">
+  <a href="https://github.com/hdslave/hdslaveOS/releases/latest"><b>Download</b></a> ·
+  <a href="docs/QUICKSTART.md">Quickstart</a> ·
+  <a href="docs/GUIDE.md">User guide</a> ·
+  <a href="#the-instruments">The instruments</a>
+</p>
 
 <p align="center">
   <img src="docs/images/hdslave-theme.png" alt="hdslaveOS HDSLAVE purple flare theme on the Palette, Mixer, Step Edit, and Deep Freeze screens" width="760">
-  <br><sub>hdslaveOS 0.8.1 screenshots.</sub>
+  <br><sub>The HDSLAVE palette on Palette, Mixer, Step Edit and Deep Freeze (hdslaveOS 0.8.1).</sub>
 </p>
 
-## What hdslaveOS adds over stock Melodee
+hdslaveOS runs on the MPC Sample in place of the stock app, started from the
+microSD card. It does not change anything on the MPC itself: choose
+**MPC APP** on its Exit screen, or remove its `autorun` folder from the card,
+and the stock app runs as before.
 
-**hdslaveOS** (originally `melodee-hdslave`) cuts wasted CPU and display work on the Akai MPC Sample so more headroom goes to your synths and effects and the battery lasts longer — while playing back bit-identical audio to stock Melodee.
+It keeps everything Melodee does: 16 tracks, kits, sampling, plug-ins,
+sequencing, Song, the looper and 41 effects
+([the full list](#everything-melodee-does)). On top of that, hdslaveOS is set
+up for making and playing techno.
 
-- **Performance & power controls**: Removes idle and redundant work across the engine and UI. Settings include **CPU speed** (Full by default), **Display refresh** (a 20, 30 or 60 fps cap for built-in display updates), **Dim after**, and **Pad brightness**. See [optimization.md](optimization.md) for the full breakdown.
-- **Custom themes (`HDSLAVE` & `MONO`)**: Settings › **SCREEN** › **Palette** adds **HDSLAVE** (a static purple flare on black with dark violet contours on selected list rows, the default on new cards and legacy `NIGHT` cards) and **MONO** (a crisp black-and-white dark mode), both with sharp square corners.
-- **Sidechain keying from plug-in outputs**: The master compressor's **Sidechain** can be keyed directly by a CLAP plug-in's second output (such as [Foundry](https://github.com/hdslave/hdslave-Foundry-Drum-Machine)'s **SC Key** kick-only bus).
-- **Hands-on ergonomics**: On **Step Edit**, **SHIFT + encoder** steps the caret a full bar at a time, and a custom **hdslave intro** boot film replaces the default splash.
+## Built for techno
+
+- **Eleven instruments and effects of its own.** The Complete SD Card Install
+  comes with the hdslave plug-ins: a drum machine in the style of the
+  808, 909 and 606, a kick synth, a 303-style acid bass with a generative
+  sequencer, a percussion synth and a hand drum with step sequencers, a 3D
+  morphing filter, and more. Each one draws its own hardware-style page on
+  the MPC's screen. [The instruments](#the-instruments)
+- **The kick drives the sidechain.** The master compressor's **Sidechain**
+  can listen to a plug-in's second output. Foundry's **SC Key** bus carries
+  its kick alone, so the mix ducks to the kick and nothing else.
+- **Plug-in sequencers stay in time.** A plug-in that runs its own sequencer
+  is woken when the transport starts or stops, is told when a song loops,
+  and keeps its place while it sleeps or while its frozen track plays the
+  print.
+- **Headroom for stacked synths.** hdslaveOS removes idle and background work
+  from the engine and the screen, and its audio stays bit-identical to
+  Melodee's. **CPU speed** runs at Full unless you choose otherwise.
+  **Display refresh** (a 20, 30 or 60 fps cap for built-in display updates),
+  **Dim after** and **Pad brightness** save battery on a long set.
+  [optimization.md](optimization.md) has the details.
+- **Freeze keeps the tails.** A printed track keeps its delay repeats, reverb
+  tails and kit pad sends. Deep Freeze unloads the plug-ins too, and after a
+  tempo change reloads them while the print plays.
+- **Long patterns, quickly.** On **Step Edit**, **SHIFT + encoder** moves the
+  caret a bar at a time, on the same step of the bar.
+- **Your own synth presets.** **SHIFT + SAMPLE SELECT** saves a plug-in
+  synth's sound as a user preset, and **PRESETS › User Presets** loads it in
+  any project.
+- **One channel per pad.** A MIDI track's **CHANNEL** can be **Multi**: each
+  pad plays middle C on its own channel (pad 1 on channel 1, up to pad 16 on
+  channel 16), with a step lane per pad. Use it for an external drum machine or a
+  modular rig that takes one voice per channel.
+- **A screen for a dark room.** Settings › **SCREEN** › **Palette** adds
+  **HDSLAVE** (a static purple flare on black with dark violet contours on
+  selected list rows, the default on new cards and on cards that used
+  `NIGHT`) and **MONO** (high-contrast black and white), both with square
+  corners. Kit pads light as vividly as the screen shows their colours.
+- **Its own boot film**, the **hdslave intro**, in place of the default
+  splash.
+
+## The instruments
+
+Eleven hdslave CLAP plug-ins come with the Complete SD Card Install, or on
+their own from the
+[hdslave MPC Sample Synths & Drum Machines](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines)
+collection. Each one draws its own interface on the MPC Sample through
+Melodee's official `melodee.screen/1` extension.
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine"><img src="docs/images/plugins/foundry.gif" alt="Foundry drum machine interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine">Foundry</a></b> — 16-voice 808/909/606-style drum machine
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-MoonBass-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/moonbass.gif" alt="MoonBass kick synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-MoonBass-Synth">MoonBass</a></b> — kick drum synth
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Slink-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/slink.gif" alt="Slink acid bass interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Slink-Synth">Slink</a></b> — 303-style acid bass with a generative sequencer
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Anvil-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/anvil.gif" alt="Anvil percussion synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Anvil-Synth">Anvil</a></b> — percussion synth with an 8-step sequencer
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Mystik-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/mystik.gif" alt="Mystik hand drum interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Mystik-Synth">Mystik</a></b> — West Coast hand drum with a low-pass gate and a sequencer
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Cortex-Filter"><img src="docs/images/plugins/cortex-filter.gif" alt="Cortex Filter 3D morphing filter interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Cortex-Filter">Cortex Filter</a></b> — stereo 3D morphing filter with a filter sequencer
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Machine"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/machine.gif" alt="Machine multi-machine synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Machine">Machine</a></b> — multi-machine synth: FM, drums and kits
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Psychic-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/psychic.gif" alt="Psychic generative synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Psychic-Synth">Psychic</a></b> — generative synth with two corruptible sequencers
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Necronomicon-Synth"><img src="docs/images/plugins/necronomicon.gif" alt="Necronomicon polyrhythmic subharmonic synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Necronomicon-Synth">Necronomicon</a></b> — polyrhythmic subharmonic synth
+    </td>
+    <td align="center" width="50%">
+      <a href="https://github.com/hdslave/hdslave-Nexus-Synth"><img src="https://raw.githubusercontent.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/a846ca5/docs/previews/nexus.gif" alt="Nexus macro oscillator synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Nexus-Synth">Nexus</a></b> — multi-model macro oscillator synth
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
+      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — pad and chord synth: the pads play chord progressions
+    </td>
+  </tr>
+</table>
+
+<p align="center">The <a href="https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines"><b>hdslave MPC Sample Synths &amp; Drum Machines</b></a> hub collects all eleven, with one download for the set.</p>
+
+> **Desktop CLAP versions (macOS & Windows):** Each plug-in repository also includes a separate desktop CLAP build in its `mac-clap/` folder (for FL Studio and other desktop CLAP hosts) with all MPC screens on one interactive panel and MIDI Learn.
+
+### Opening a plug-in screen
+
+On an instrument track, press **B1** on Stage to move from **PRESETS** to **PANEL** and open the plug-in’s custom screen. **EDIT** shows Melodee’s parameter pages. In an FX chain, select Cortex Filter to see its compact view. Push the encoder to open the full panel. **B3** or **Shift + Push** returns to the chain, and **Shift + B3** opens the slot sheet.
+
+On a plug-in panel, K1–K3 follow the knob takeover setting when you select another step or change which parameters a row controls.
+
+<p align="center">
+  <img src="docs/images/plugins/cortex-filter-panel.png" alt="Cortex Filter below the selected Track FX slot, showing the morph cube, filter response and three knobs" width="400">
+</p>
+
+## On the screen
 
 ### Mixer
 
@@ -26,71 +158,28 @@ Mixer opens on the channel strips. Hold **+** to open the selected channel’s c
   <br><sub>Submix sends, insert effects, channel EQ, and compression.</sub>
 </p>
 
-### Palettes & Custom Plug-in Screens
+### The MONO palette
 
 <p align="center">
   <img src="docs/images/hdslave-mono-theme.png" alt="hdslaveOS MONO black-and-white palette across 16 screens, including the Mixer" width="760">
   <br><sub><b>MONO</b> — high-contrast black-and-white dark palette across 16 pages.</sub>
 </p>
 
-All eleven plug-ins in the [hdslave MPC Sample Synths & Drum Machines](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines) collection use Melodee’s official `melodee.screen/1` extension to render bespoke hardware-inspired interfaces right on the MPC Sample:
+## Everything Melodee does
 
-> **Desktop CLAP versions (macOS & Windows):** Each plug-in repository below also includes a separate desktop CLAP build in its `mac-clap/` folder (for FL Studio and other desktop CLAP hosts) with all MPC screens on one interactive panel and MIDI Learn.
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine"><img src="docs/images/plugins/foundry.gif" alt="Foundry drum machine interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Foundry-Drum-Machine">Foundry</a></b> — 16-voice 808/909/606 drum machine
-    </td>
-    <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Cortex-Filter"><img src="docs/images/plugins/cortex-filter.gif" alt="Cortex Filter 3D morphing filter interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Cortex-Filter">Cortex Filter</a></b> — 3D Z-plane morphing filter cube
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Reverie-Synth"><img src="docs/images/plugins/reverie.gif" alt="Reverie chord and pad synth interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Reverie-Synth">Reverie</a></b> — chord-progression &amp; Motion pad synth
-    </td>
-    <td align="center" width="50%">
-      <a href="https://github.com/hdslave/hdslave-Necronomicon-Synth"><img src="docs/images/plugins/necronomicon.gif" alt="Necronomicon polyrhythmic subharmonic synth interface on hdslaveOS" width="320"></a><br>
-      <b><a href="https://github.com/hdslave/hdslave-Necronomicon-Synth">Necronomicon</a></b> — polyrhythmic subharmonic synth
-    </td>
-  </tr>
-</table>
-
-<p align="center">See all 11 animated plug-in interfaces in the <a href="https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines"><b>hdslave MPC Sample Synths &amp; Drum Machines</b></a> hub.</p>
-
-#### Opening a plug-in screen
-
-On an instrument track, press **B1** on Stage to move from **PRESETS** to **PANEL** and open the plug-in’s custom screen. **EDIT** shows Melodee’s parameter pages. In an FX chain, select Cortex Filter to see its compact view. Push the encoder to open the full panel. **B3** or **Shift + Push** returns to the chain, and **Shift + B3** opens the slot sheet.
-
-On a plug-in panel, K1–K3 follow the knob takeover setting when you select another step or change which parameters a row controls.
-
-<p align="center">
-  <img src="docs/images/plugins/cortex-filter-panel.png" alt="Cortex Filter below the selected Track FX slot, showing the morph cube, filter response and three knobs" width="400">
-</p>
-
-## About Melodee
-
-Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
-MPC in place of the stock app, started from the microSD card. Each pad is a
+hdslaveOS keeps all of Melodee, the 16-track groovebox for the
+**Akai MPC Sample** by Kerem Kiliç (Ellic Studio). Each pad is a
 track: a drum kit, a keygroup (a sampled instrument), a plug-in instrument,
 a MIDI track for external gear, or an audio track. Tracks play patterns,
 patterns make sequences and a song, and every track has a mixer strip and an
 effect chain that takes plug-in effects.
 
-Melodee does not change anything on the MPC itself. It runs from files on
-the card. Choose **MPC APP** on its Exit screen, or remove its `autorun`
-folder from the card, and the stock app runs as before.
+Back up your card before you install hdslaveOS.
 
-Back up your card before you install Melodee.
-
-New to Melodee? Start with the [quickstart](docs/QUICKSTART.md). For every
+New to hdslaveOS? Start with the [quickstart](docs/QUICKSTART.md). For every
 page and control, read the [user guide](docs/GUIDE.md).
 
-## Features
+### Features
 
 - **16 tracks**, one per pad. Hold **PAD BANK** and press a pad to select a
   track from any page.
@@ -161,7 +250,7 @@ page and control, read the [user guide](docs/GUIDE.md).
 ## Requirements
 
 - Akai MPC Sample with firmware **1.3.0.12**, **1.4.0.7** or **1.4.0.8**. On any other
-  firmware Melodee does not start and the stock app keeps running.
+  firmware hdslaveOS does not start and the stock app keeps running.
 - On firmware 1.4: **Developer Mode** on, in the stock app's Settings on the
   **DEV ENHANCEMENTS (BETA)** page.
 - A microSD card.
@@ -200,7 +289,7 @@ The [quickstart](docs/QUICKSTART.md) has the full steps, with screenshots.
 ### Plug-ins
 
 Put plug-ins in `Melodee/Plugins` on the card (the `Plugins` folder inside
-the `Melodee` folder at the top level), in any subfolders. Melodee loads:
+the `Melodee` folder at the top level), in any subfolders. hdslaveOS loads:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build
 - LV2 bundles (`.lv2` folders) built for 64-bit ARM Linux (aarch64)
@@ -215,10 +304,10 @@ The latest complete installer and the standalone collection contain the same
 eleven MPC plug-ins. The included `MPC-PLUGINS.tsv` lists the exact source
 revisions and file hashes. [Complete installer](https://github.com/hdslave/hdslaveOS/releases/latest) · [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/latest)
 
-The installer includes **hdslave Slink 0.8.1**. Select Slink and open **Stage → Panel** to see its silver panel. [Standalone MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.1) · [Slink 0.9.10 for freesp16, macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10)
+The installer includes **hdslave Slink 0.9.0**. Select Slink and open **Stage → Panel** to see its silver panel. [Standalone MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.0) · [Slink 0.9.10 for freesp16, macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10)
 Keep the supplied `hdslave TB-MPC-3-P-0.clap` filename for saved projects.
 
-<a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.8.1/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.8.1/docs/slink-mpc-pattern.png" width="320" alt="Slink silver MPC panel in Stage"></a>
+<a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.9.0/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.9.0/docs/slink-mpc-pattern.png" width="320" alt="Slink silver MPC panel in Stage"></a>
 
 The Melodee synths are free downloads:
 [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
@@ -272,7 +361,7 @@ self-test, a monkey test and the page previews (`build/melodee-preview/`).
 | `src/melodee/` | The app: pages, shell, plug-in hosts, design system |
 | `src/main.cpp` | Connects Melodee to the sample-base runtime |
 | `base/` | [sample-base](https://github.com/keremimo/sample-base) (git submodule): drivers, runtime, build, install scripts |
-| `core/` | [ellic-core](https://github.com/keremimo/ellic-core) (git submodule): the engine, model and shared files, with this fork's engine changes |
+| `core/` | [ellic-core](https://github.com/keremimo/ellic-core) (git submodule): the engine, model and shared files, with hdslaveOS's engine changes |
 | `tests/` | Engine, sequencer and shell tests, layout and release checks |
 | `tools/make_release.py`, `release/` | The SD card release zip |
 
@@ -287,14 +376,14 @@ python3 device.py start
 every boot.
 
 Melodee's signed release zip (`./release.sh VERSION`,
-`dist/Melodee-MPC-Sample-<version>.zip`) needs its author's key; this fork
+`dist/Melodee-MPC-Sample-<version>.zip`) needs its author's key; hdslaveOS
 makes the unsigned package above instead.
 
-To move the base and the core to their latest commits (this fork's are the
+To move the base and the core to their latest commits (hdslaveOS uses the
 `hdslave` branches of [hdslave/sample-base](https://github.com/hdslave/sample-base),
-whose `main` lacks the fork's CPU-speed commits, and of
-[hdslave/ellic-core](https://github.com/hdslave/ellic-core), which carries the
-fork's engine changes):
+whose `main` lacks hdslaveOS's CPU-speed commits, and of
+[hdslave/ellic-core](https://github.com/hdslave/ellic-core), which carries
+hdslaveOS's engine changes):
 
 ```sh
 git -C base pull origin hdslave
@@ -304,17 +393,25 @@ git add base core
 
 ## Support
 
-Melodee is free. If you use it, you can support it on
+Report a problem with hdslaveOS in this repository's
+[issues](https://github.com/hdslave/hdslaveOS/issues), and a problem with an
+hdslave plug-in in that plug-in's repository. Please don't report them to
+Melodee.
+
+Melodee is free. If you use hdslaveOS, you can support Melodee's author on
 [Ko-fi](https://ko-fi.com/keremimo).
 
 ## Credits and licence
 
-Melodee is made by Kerem Kiliç (Ellic Studio).
+hdslaveOS is made by hdslave. It is built on Melodee, which is made by
+Kerem Kiliç (Ellic Studio). hdslaveOS is an independent project: Ellic Studio
+does not make or support it.
 
-Melodee is licensed under AGPL-3.0-only ([LICENSE](LICENSE)). It uses JUCE
-under the AGPLv3, and the Rubik typeface and the other screen fonts under the
-SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)). hdslaveOS's boot film, the
-hdslave intro, is not covered by the AGPL (all rights reserved); it replaces Melodee's own boot art.
+Melodee and hdslaveOS are licensed under AGPL-3.0-only ([LICENSE](LICENSE)).
+They use JUCE under the AGPLv3, and the Rubik typeface and the other screen
+fonts under the SIL Open Font License 1.1 ([THIRD_PARTY.md](THIRD_PARTY.md)).
+hdslaveOS's boot film, the hdslave intro, is not covered by the AGPL (all
+rights reserved); it replaces Melodee's own boot art.
 
-Melodee is not affiliated with or endorsed by inMusic or Akai Professional.
-MPC and MPC Sample are trademarks of inMusic Brands.
+Neither Melodee nor hdslaveOS is affiliated with or endorsed by inMusic or
+Akai Professional. MPC and MPC Sample are trademarks of inMusic Brands.
