@@ -307,7 +307,7 @@ The latest complete installer and the standalone collection contain the same
 eleven MPC plug-ins. The included `MPC-PLUGINS.tsv` lists the exact source
 revisions and file hashes. [Complete installer](https://github.com/hdslave/hdslaveOS/releases/latest) · [11-plug-in collection](https://github.com/hdslave/hdslave-MPCSample-Synths-and-Drum-Machines/releases/latest)
 
-The installer includes **hdslave Slink 0.9.0**. Select Slink and open **Stage → Panel** to see its silver panel. [Standalone MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.0) · [Slink 0.9.10 for freesp16, macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10)
+The installer includes **hdslave Slink 0.9.0**. Select Slink and open **Stage → Panel** to see its silver panel. [Standalone MPC download](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.0) · [Slink 0.9.11 for freesp16, macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.11)
 Keep the supplied `hdslave TB-MPC-3-P-0.clap` filename for saved projects.
 
 <a href="https://github.com/hdslave/hdslave-Slink-Synth/blob/v0.9.0/docs/screen.md#silver-panel-on-mpc"><img src="https://raw.githubusercontent.com/hdslave/hdslave-Slink-Synth/v0.9.0/docs/slink-mpc-pattern.png" width="320" alt="Slink silver MPC panel in Stage"></a>
