@@ -203,7 +203,8 @@ the new place.
 
 A project remembers where each of its samples and plug-ins was. When a file
 is no longer there, hdslaveOS looks for it. The project opens and plays at
-once with every file that is in place.
+once with every file that is in place. A kit you load with Load Kit or a
+bank you load with Load Bank is looked for the same way.
 
 It finds these by itself, without asking:
 
@@ -211,7 +212,8 @@ It finds these by itself, without asking:
 - a project folder moved with its samples;
 - a stock project's sample whose name has no extension;
 - the rest of a kit, once one of its samples was found in a new folder;
-- a plug-in moved to another folder in `Melodee/Plugins`.
+- a plug-in moved to another folder in `Melodee/Plugins` (when the project
+  knows which plug-in of a file it used, only a file that holds it).
 
 When samples are still missing, it asks:
 
@@ -225,28 +227,45 @@ When samples are still missing, it asks:
   sample folders, by name.
 
 While it searches, the project keeps playing. The samples it finds load
-when it has looked everywhere. **B1** (**CANCEL**) stops the search; what it
-found by then loads, and the rest stay missing. **B3** (**HIDE**) puts the
-sheet away: the search goes on and a message says what it found.
+when it has looked everywhere. **B3** (**HIDE**) puts the sheet away: the
+search goes on and a message says what it found. If another question comes
+up over it, the search's sheet comes back when that one closes.
 
 ![Searching](../images/screens/findsearching.png)
 
+**B1** (**CANCEL**) stops the search, and the message says **Search
+stopped**. A file it found by then loads only when it is plainly the one:
+in a folder of the same name as before, or in the project's own folder. The
+rest stay missing, not searched: **FIND MISSING** searches again.
+
 - When several files have the same name, the one in the folders most like
-  the saved path wins. Files of the same name and different sizes are not
-  guessed: the sample stays missing.
+  the saved path wins. Files of the same name are taken only when they are
+  copies of one file; when they differ, the sample stays missing.
 - The first search takes a while on a full card. Later searches, in this
   project or another, answer at once until you turn the MPC off, take the
   card out, use SD card access or send a file from the web page.
+- A card with more than 200,000 samples is searched only that far, as a
+  cancelled search is, and the message says **Card too big to search** (or
+  how many it found). It is not searched again until the card changes.
+  Folders more than twelve deep are left out.
+- If the card cannot be read during a search (it was taken out), the
+  message says **Card could not be read**, and nothing is called missing.
 - Found files are saved with the project the next time it is saved.
-  Opening a project changes nothing on the card.
+  Opening a project changes nothing on the card. A stock project's sample
+  found later plays its pads' regions at that file's own sample rate.
 - On **SAMPLES**, **SHIFT** + **B1** (**FIND MISSING**) searches again, for
   example after you copied files back. **SHIFT** + **B2** (**FORGET**)
-  forgets what is still missing.
+  forgets what is still missing. While a search runs, **SHIFT** + **B1** is
+  **CANCEL**.
 - **SETTINGS** > **SEQ** > **Find moved files** sets what happens: **Ask**
-  (the question), **Always** (it searches without asking) or **Off** (it only
-  says how many samples are missing).
-- A plug-in that is not found shows **Plug-in missing** and its name. A
-  project file that cannot be read shows **Could not open** and its name.
+  (the question), **Always** (it searches without asking) or **Off** (no
+  question and no search, only a message with how many samples are
+  missing). Off still finds what needs no search (the list above), and
+  **FIND MISSING** still searches.
+- SD card access stops a search; it starts again when you ask.
+- A plug-in that is not found shows **Plug-in missing** and its name, or how
+  many when several are missing. A project file that cannot be read shows
+  **Could not open** and its name.
 
 ## The web page
 
