@@ -22,8 +22,8 @@ The default is the hdslave intro's cut: its wide shot (4 to 5.25 s) at 1.25 time
 from 1.8 times closer, so one short shot stands for the film's two close-ups and lands where the badge starts to
 form; the formation (5.25 to 7 s) at 1.5 times; the finished badge (7 s to the end) slowed to 0.6 times under a
 1 s VHS outro. 3.4 s, purple. The screen then holds the last (black) frame HOLD ms before it fades over the app.
-The hdslaveOS cut opens on its own rendered camera slide, moves through the formation in one second, then
-holds the finished PNG plate before tracking fails. The exact sources and speeds are listed in boot_film.h.
+The hdslaveOS cut begins on its own rendered camera slide. The crystal fronts develop during the approach,
+and the finished badge holds before tracking fails. The exact sources and speeds are listed in boot_film.h.
 
 Each frame is kept as a baseline JPEG. The repository keeps source text only, and no file over 2 MB
 (base/tools/check_private_files.py), so the frames are Base64 strings spread over as many boot_film_N.cpp files

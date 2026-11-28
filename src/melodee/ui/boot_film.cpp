@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-hdslave-Boot-Film
 // Copyright (C) 2026 hdslave. All rights reserved.
 // The boot film is not covered by the AGPL; see THIRD_PARTY.md, Boot film.
-// hdslave_boot_slide.mkv 0-2.25 s at 1.5x, hdslave_intro.ogv 5.25-7.75 s at 2.46x, 0253.png 0-1.4 s at 1x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
+// hdslave_boot_slide.mkv 0-0.9 s at 1.5x, hdslave_approach_formation.mkv 0-1.9 s at 1x, 0253.png 0-1.4 s at 1x; grade purple, VHS outro 1 s; 30 fps, zoom 1.1, JPEG quality 4, hold 0 ms.
 // Written by tools/boot_film.py; run it again rather than editing this file.
 #include "melodee/ui/boot_film.h"
 
