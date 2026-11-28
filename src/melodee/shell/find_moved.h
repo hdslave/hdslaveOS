@@ -9,6 +9,7 @@
 // Nothing here is the audio thread's, and no file is read here.
 #pragma once
 #include "melodee/shell/moved_files.h"
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -44,6 +45,8 @@ public:
             && worker.idle();
     }
     MovedFiles& files() { return worker; }
+    // Tests: whether a file found for `slot` would have its pads' frames put at the file's rate (an MPC import's slot).
+    bool rescale_pending(unsigned slot) const { return std::binary_search(mpc_slots.begin(), mpc_slots.end(), uint16_t(slot)); }
 
 private:
     enum class Phase : uint8_t { Idle, Searching };

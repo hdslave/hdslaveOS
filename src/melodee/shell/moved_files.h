@@ -95,6 +95,7 @@ public:
     // What the walk waits after each folder, microseconds (tests: a slow card).
     std::atomic<unsigned> folder_pause_us {0};
     size_t file_limit = CardIndex::max_files; // before the first job (tests)
+    std::unique_lock<std::mutex> hold_lock() const { return std::unique_lock<std::mutex>(lock); } // tests: the thread's turn
     static constexpr size_t path_room = 256;  // a slot's path, as SampleRef holds it: one longer is not taken
 
 private:

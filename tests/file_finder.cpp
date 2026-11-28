@@ -406,6 +406,48 @@ void worker() {
     CHECK(f.progress().looked > 40);
 }
 
+// A sample found by name alone, in a folder of another name, says nothing of where its kit went: the next sample of
+// its saved folder is not taken from that folder by step 4, but by its own name, where its folders match.
+void guessed_move() {
+    fresh("guess");
+    const std::string card = at("media/CARD");
+    file(card + "/Melodee/Samples/909/Kick.wav", 10);
+    file(card + "/Melodee/Samples/909/Snare.wav", 11);
+    file(card + "/New/808/Snare.wav", 12);
+    MovedFiles f;
+    f.current(1);
+    MovedFiles::Job search;
+    search.search = true; search.generation = 1; search.card = card;
+    search.slots = {{0, at("media/OLD/Drums/808/Kick.wav")}, {1, at("media/OLD/Drums/808/Snare.wav")}};
+    f.post(search);
+    auto got = answers(f);
+    CHECK(of(got, 0, MovedFiles::Answer::Kind::Found) && of(got, 0, MovedFiles::Answer::Kind::Found)->found == card + "/Melodee/Samples/909/Kick.wav");
+    CHECK(of(got, 1, MovedFiles::Answer::Kind::Found) && of(got, 1, MovedFiles::Answer::Kind::Found)->found == card + "/New/808/Snare.wav");
+}
+
+// The MIDI thread never waits on the finder's lock: held by the finder, take() says "nothing yet" at once.
+void take_never_waits() {
+    fresh("wait");
+    MovedFiles f;
+    f.current(1);
+    std::atomic<bool> held {false}, done {false};
+    std::thread finder([&] {
+        auto guard = f.hold_lock();
+        held = true;
+        while (!done) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    });
+    CHECK(wait_until([&] { return held.load(); }));
+    const auto from = std::chrono::steady_clock::now();
+    std::thread timeout([&] { std::this_thread::sleep_for(std::chrono::milliseconds(400)); done = true; });
+    MovedFiles::Answer a;
+    CHECK(!f.take(a));
+    const auto took = std::chrono::steady_clock::now() - from;
+    done = true;
+    timeout.join();
+    finder.join();
+    CHECK(took < std::chrono::milliseconds(50));
+}
+
 void too_big_and_end() {
     fresh("big");
     const std::string card = at("media/CARD");
@@ -494,6 +536,8 @@ int main() {
         worker();
         too_big_and_end();
         fold_and_memory();
+        guessed_move();
+        take_never_waits();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "FAILED %s\n", e.what());
         fs::remove_all(fs::temp_directory_path() / ("finder-" + std::to_string(::getpid())));
