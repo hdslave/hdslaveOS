@@ -10,6 +10,7 @@
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/update.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/find_moved.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/light_show.h"
 #include "melodee/shell/looper_jobs.h"
@@ -124,6 +125,9 @@ public:
     CardLink& card() { return card_link; }
     // Updates from the card (shell/update.h): written by the service thread, read by the MIDI thread.
     UpdateLink& updates() { return update_link; }
+    // hdslaveOS: find moved files (shell/find_moved.h). Its index may be dropped from any thread (moved_files().
+    // files().drop_index(): a file added from the web page, the card back from a computer); the rest is the MIDI thread's.
+    FindMoved& moved_files() { return moved_; }
 
 private:
     void button(SurfaceButton button, bool pressed);
@@ -170,6 +174,7 @@ private:
     std::unique_ptr<PatternBank> patterns_;
     UiState ui_;
     Context context_;
+    FindMoved moved_; // hdslaveOS: find moved files; its thread ends before the context goes
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
     std::atomic<bool> preview_editable_ {false};
     std::atomic<unsigned> stale_ {0};  // snapshot_stale()

@@ -105,3 +105,7 @@ $(STEMS): tools/stems/build.py tools/stems/stems_engine.c tools/stems/convert_mo
 # Exercise the same shortcut, synth rack, and preset browser as the device.
 build/test-user-presets: tests/user_presets.cpp $(OBJECTS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror $< $(filter-out build/obj/main.o,$(OBJECTS)) $(LDLIBS) -o $@
+
+# hdslaveOS: find moved files through the whole shell (tests/test_find_moved.py).
+build/test-find-moved: tests/find_moved.cpp $(OBJECTS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror $< $(filter-out build/obj/main.o,$(OBJECTS)) $(LDLIBS) -o $@

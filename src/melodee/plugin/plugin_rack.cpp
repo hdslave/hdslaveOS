@@ -20,6 +20,7 @@
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
 #include "melodee/plugin/xpl_preset.h"
+#include "melodee/shell/file_finder.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 #include <melodee_screen.h>
 #include <algorithm>
@@ -863,6 +864,9 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             }
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
+            // hdslaveOS: find moved files: found elsewhere, and the project not yet naming where (take_file_note()).
+            if (!entry.moved_from.empty() && want == entry.moved_from && id == entry.id) want = entry.path;
+            else if (want != entry.path) entry.moved_from.clear();
             // Let go: what it is now kept, for an undo that brings it back. Not when another project has just opened
             // (`reload`, set_states()): nothing of the last one's comes back in this one.
             if (want.empty() && !entry.path.empty() && !entry.reload) {
@@ -906,6 +910,7 @@ void PluginRack::set_states(PluginStates states) {
     for (unsigned e = 0; e < max_plugins; ++e) {
         entries[e].state = std::move(states[e]);
         entries[e].reload = true; // a new project: every entry it uses loads again, with its state
+        entries[e].moved_from.clear(); entries[e].missing_said.clear(); // hdslaveOS: find moved files: found again, said again
         entries[e].live_own = false;    // the plug-ins still open are the last project's
         // and so is one still opening, with the last one's state: dropped when done, never taken as this one's (the
         // next sync() opens it again). Only a load: a Sleep or an Unload still to run must still run.
@@ -1421,6 +1426,14 @@ void PluginRack::user_preset(const Job& job) {
     preset_results.push_back(std::move(result));
 }
 
+bool PluginRack::take_file_note(FileNote& note) {
+    std::lock_guard<std::mutex> held(lock);
+    if (file_notes.empty()) return false;
+    note = std::move(file_notes.front());
+    file_notes.pop_front();
+    return true;
+}
+
 bool PluginRack::take_preset_result(PresetResult& result) {
     std::lock_guard<std::mutex> held(lock);
     while (!preset_results.empty()) {
@@ -1745,6 +1758,22 @@ void PluginRack::load(const Job& job) {
     // A path relative to the card's top (a track Melodee's own synth was), or one in the card's old top-level
     // Plugins folder: on the card in now, in Melodee/Plugins.
     std::string path = card_plugin_path(top, job.path);
+    std::string moved; // hdslaveOS: find moved files: not there, it is looked for (the card renamed, Melodee/Plugins)
+    bool absent = false;
+    if (std::error_code gone; !fs::exists(path, gone)) {
+        // The first that holds the plug-in saved: with its id known (one of a bundle's several, a CLAP's), only a file
+        // that has it; a file of the same name that is another plug-in is not taken.
+        for (const auto& candidate : find_moved_plugins(job.path, top)) {
+            if (job.id != 0) {
+                const Known k = probe(describe_plugin(candidate));
+                if (std::none_of(k.classes.begin(), k.classes.end(), [&](const Class& c) { return c.id == job.id; })) continue;
+            }
+            moved = candidate;
+            break;
+        }
+        if (!moved.empty()) path = moved;
+        else absent = true;
+    }
     auto file = describe_plugin(path);
     std::vector<uint8_t> state;
     {
@@ -1753,6 +1782,14 @@ void PluginRack::load(const Job& job) {
         if (entry.generation != job.generation) return; // changed again since
         entry.file = file;
         state = entry.state;
+        if (!moved.empty()) { // the entry is the plug-in where it is now; the project follows (FileNote)
+            entry.moved_from = job.path;
+            entry.path = moved;
+            file_notes.push_back({job.entry, job.path, moved});
+        } else if (absent && entry.missing_said != job.path) {
+            entry.missing_said = job.path;
+            file_notes.push_back({job.entry, job.path, {}});
+        }
     }
     auto fail = [&](const std::string& why) {
         {

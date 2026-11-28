@@ -481,7 +481,8 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, Rechop }; // Rechop (issue 24, Context::chop_change): Chop's slices renumbered under slice hits; target how many hits // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use or over a track's other sound; `ask_name` the old plug-in's name or the track's, the plug-in asked about Context::plugin_asked (target: the picker's row then, unused) // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze, DeleteFile, ReplacePlugin, Rechop,
+                     FindMissing, FindSearching, FindResult }; // hdslaveOS: find moved files (shell/find_moved.h): the question (target how many), the search's sheet, what it did not find (target how many) // Rechop (issue 24, Context::chop_change): Chop's slices renumbered under slice hits; target how many hits // ReplacePlugin (shell/plugin_jobs.cpp): a picked plug-in over one in use or over a track's other sound; `ask_name` the old plug-in's name or the track's, the plug-in asked about Context::plugin_asked (target: the picker's row then, unused) // DeleteFile (shell/delete_jobs.h): Erase in a browser; target what it is (DeleteWhat), `ask_name` its name // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     std::array<char, 48> ask_name {}; // DeleteFile: the file's or the folder's name
@@ -584,6 +585,15 @@ struct UiState {
     uint16_t prog_rows_first = 0, prog_cursor = 0;
     uint8_t chord_index = 0, chord_root = 0, chord_type = 0, chord_invert = 0;
     ProgChord chord_before;
+    // hdslaveOS: find moved files (shell/find_moved.h), as the MIDI thread last saw it: the project's slots not found,
+    // a search under way (hidden: its sheet put away with HIDE), how many it looks for and has found (while the card
+    // is walked: names seen), the entries looked at, and whether the selected kit's last pad's sample is not found.
+    struct FindView {
+        uint16_t missing = 0, asked = 0, found = 0;
+        uint32_t looked = 0;
+        bool searching = false, hidden = false, pad_missing = false;
+    };
+    FindView find;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

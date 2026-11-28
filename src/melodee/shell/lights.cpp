@@ -277,21 +277,26 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             PrintTable prints;
             if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states, &prints).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
-                if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
+                if (!context_.kit_from.empty() && context_.kit_from == loaded->path) { // Load Kit: only its kit, onto the selected track
+                    moved_.kit(loaded->path); // hdslaveOS: find moved files: its samples looked for beside it too
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
+                }
                 else if (loaded->imported) { // not saved yet: the .xpj stays as it is (its takes wait beside the projects)
                     context_.switch_to(*project, *bank, {});
                     context_.audio_staging_from = loaded->audio_from;
                     context_.dirty = true;
                     context_.import_unsaved = true; // opening one writes nothing: no background save until it has a file
                     context_.notice(loaded->note);
+                    moved_.opened(loaded->path, now); // hdslaveOS: find moved files
                 }
                 else {
                     context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
                     read_jams(loaded->bytes, context_.jams); // jam capture: its jams (a JAMS section)
                     context_.publish_jams();
+                    moved_.opened(loaded->path, now); // hdslaveOS: find moved files
                 }
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
+            else context_.notice("Could not open " + std::filesystem::path(loaded->path).stem().string()); // hdslaveOS: find moved files
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
         if (auto note = store_->take_note()) context_.notice(*note); // an MPC 3 or Live Set export's outcome
@@ -366,6 +371,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (real && !project_->chops[slot].unwritten) project_->chops.edit(slot) = read_mpc_slices(ref.path); // the file's slices are its chop (an older project's waits to be written)
         ++context_.samples_to_load;
     }
+    moved_.tick(context_, now); // hdslaveOS: find moved files: what was found loads in, what was not is asked about
     // Long samples (read from the card as they play): the chunks where their pads start, end and loop held, a tenth of
     // a second at most after a pad changes; what no pad needs any more let go (shell/stream_holds.h).
     if (library_ && now - holds_at >= 100) {

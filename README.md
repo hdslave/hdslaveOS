@@ -46,6 +46,11 @@ up for making and playing techno.
   **Display refresh** (a 20, 30 or 60 fps cap for built-in display updates),
   **Dim after** and **Pad brightness** save battery on a long set.
   [optimization.md](optimization.md) has the details.
+- **Old projects find their files.** A project whose samples or plug-ins
+  are no longer where it saved them (the card under another name, samples
+  moved into `Melodee/Samples`, a project folder or plug-in moved) finds
+  them and plays, instead of playing silent. What it cannot find at once, it
+  offers to search the card for. [Moved files](docs/guide/projects-and-files.md#moved-files)
 - **Freeze keeps the tails.** A printed track keeps its delay repeats, reverb
   tails and kit pad sends. Deep Freeze unloads the plug-ins too, and after a
   tempo change reloads them while the print plays.

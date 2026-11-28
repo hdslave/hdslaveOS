@@ -17,6 +17,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/delete_jobs.h"
+#include "melodee/shell/find_moved.h" // hdslaveOS: find moved files
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
@@ -581,6 +582,21 @@ void Context::plugins_tick(uint32_t at) {
     split_shared_plugins();
     presets_follow(); // a shared copy's plug-in in its own entry now: an open PRESETS list follows it
     plugins->sync(project, plugins_asleep());
+    { // hdslaveOS: find moved files: a plug-in found elsewhere on the card (the project names it there now, written by
+      // the next save), or not at all
+        PluginRack::FileNote note;
+        while (plugins->take_file_note(note)) {
+            if (note.entry >= max_plugins) continue;
+            auto& ref = project.plugins[note.entry];
+            if (note.from != ref.path) continue; // another plug-in there since
+            if (!note.to.empty()) {
+                if (note.to.size() < sizeof(ref.path)) std::snprintf(ref.path, sizeof(ref.path), "%s", note.to.c_str());
+                continue;
+            }
+            const std::string name = ref.name[0] ? std::string(ref.name) : std::filesystem::path(note.from).stem().string();
+            if (moved) moved->plugin_missing(name, at); // said once the rack has had its say: one name, or how many
+        }
+    }
     PluginRack::PresetResult result;
     while (plugins->take_preset_result(result)) {
         if (!result.error.empty()) { notice(result.error); continue; }

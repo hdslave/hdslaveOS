@@ -39,7 +39,8 @@ struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume,
-                         CpuSpeed, Refresh, DimAfter, PadLevel, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow, Rows };
+                         CpuSpeed, Refresh, DimAfter, PadLevel, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbOut, FileSharingRow,
+                         FindMovedRow, Rows }; // FindMovedRow: hdslaveOS's own (shell/find_moved.h)
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -83,6 +84,11 @@ struct Settings {
     // Background save (shell/autosave.h, issue 18): On, the project saves itself a moment after the controls rest; Off,
     // only SAVE writes it, and what was not saved can be put back with REVERT or left behind (New, Load, Exit).
     bool autosave = true;
+    // hdslaveOS: find moved files (shell/find_moved.h). A project's samples not at their saved paths: Ask, the
+    // question once the quick checks have found what they could; Always, the card searched without asking; Off, a
+    // notice only (the quick checks still run). Kept as find_moved; builds without it skip the key.
+    enum : uint8_t { FindAsk, FindAlways, FindOff, FindCount };
+    uint8_t find_moved = FindAsk;
     // Step Edit and Roll while the pattern plays (shell/step_edit.cpp seq_follow): 0 Off, they stay where they are;
     // 1 Page, the caret goes to the same step of the bar that plays when a new bar starts; 2 Step, the caret on the
     // step that plays.
@@ -187,7 +193,8 @@ struct Settings {
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Mirror frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
                                     "CPU speed", "Display refresh", "Dim after", "Pad brightness",
-                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB out", "File sharing",
+                                    "Find moved files"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -242,6 +249,7 @@ struct Settings {
         case UsbDirect: return usb_direct ? "Direct" : "Tracks";
         case UsbOut: return usb_submixes ? "Submixes" : "Tracks";
         case FileSharingRow: return file_sharing ? "On" : "Off";
+        case FindMovedRow: return find_moved == FindAlways ? "Always" : find_moved == FindOff ? "Off" : "Ask";
         case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
         default: return std::to_string(screen) + " %";
         }
@@ -290,6 +298,7 @@ struct Settings {
         case UsbDirect: usb_direct = !usb_direct; break;
         case UsbOut: usb_submixes = !usb_submixes; break;
         case FileSharingRow: file_sharing = !file_sharing; break;
+        case FindMovedRow: find_moved = uint8_t(step_in(find_moved % FindCount, FindCount, way)); break;
         case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
         default: break;
         }
@@ -301,7 +310,7 @@ struct Settings {
         case Palette: return unsigned(ui::palettes.size());
         case Font: return ui::face_choices;
         case PadResponse: return 4;
-        case PadLights: case CaptureQuantize: case SeqFollow: return 3;
+        case PadLights: case CaptureQuantize: case SeqFollow: case FindMovedRow: return 3;
         case KnobTakeover: case KnobFxTakeover: case FaderTakeover: return unsigned(Takeover::Count);
         case CaptureBars: return unsigned(capture_lengths.size());
         case Screen: return 9;
@@ -365,6 +374,7 @@ struct Settings {
         case UsbDirect: return usb_direct;
         case UsbOut: return usb_submixes;
         case FileSharingRow: return file_sharing;
+        case FindMovedRow: return find_moved % FindCount;
         case DirectLevel: return direct_level % direct_levels.size();
         default: return 0;
         }
@@ -413,6 +423,7 @@ struct Settings {
         case UsbDirect: usb_direct = n; break;
         case UsbOut: usb_submixes = n; break;
         case FileSharingRow: file_sharing = n; break;
+        case FindMovedRow: find_moved = uint8_t(n); break;
         case DirectLevel: direct_level = uint8_t(n); break;
         default: break;
         }
@@ -466,7 +477,7 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\nusb_out=" << int(usb_submixes) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nfile_sharing=" << int(file_sharing)
+            << "\nfile_sharing=" << int(file_sharing) << "\nfind_moved=" << int(find_moved)
             << "\nscale_keys=" << int(scale_keys)
             << "\ncpu_speed=" << int(cpu_speed) << "\nrefresh=" << int(refresh_fps()) << "\ndim_after=" << int(dim_minutes[dim_after % dim_minutes.size()])
             << "\npad_level=" << int(pad_percent()) << '\n';
@@ -555,6 +566,7 @@ struct Settings {
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "file_sharing") file_sharing = value != 0;
+            else if (key == "find_moved") find_moved = uint8_t(std::clamp(value, 0, int(FindCount) - 1));
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
             else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
             else if (key == "cpu_speed") cpu_speed = uint8_t(std::clamp(value, 0, int(CpuCount) - 1));

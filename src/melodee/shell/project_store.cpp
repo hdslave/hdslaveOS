@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/file_finder.h" // hdslaveOS: find moved files
 #include "melodee/model/card_folders.h"
 #include "drivers/platform.h"
 #include "melodee/crash_log.h"
@@ -350,6 +351,20 @@ void clear_import_takes(const fs::path& root) {
     for (const auto& path : going) { std::error_code e; fs::remove_all(path, e); }
 }
 
+} // namespace
+
+// hdslaveOS: find moved files (shell/project_store.h).
+std::string import_note(const std::string& stem, unsigned missing, unsigned pads_gone, unsigned samples_gone, bool left_out) {
+    const unsigned takes = missing - std::min(missing, pads_gone); // what the import counted missing that no pad plays
+    if (takes) {
+        const std::string what = std::to_string(takes) + (takes == 1 ? " take missing" : " takes missing");
+        return samples_gone ? std::to_string(samples_gone) + (samples_gone == 1 ? " sample, " : " samples, ") + what : what;
+    }
+    return "Opened a copy of " + stem + (left_out ? ", some left out" : "");
+}
+
+namespace {
+
 // An MPC project read and turned into a Melodee project's bytes (on the service thread: it takes a moment).
 void import_mpc(LoadedProject& l, const std::string& root) {
     auto project = std::make_unique<Project>();
@@ -376,8 +391,19 @@ void import_mpc(LoadedProject& l, const std::string& root) {
     l.bytes = save_project(*project, *patterns);
     l.imported = true;
     l.note = "Opened a copy of " + fs::path(l.path).stem().string();
-    if (report.missing) l.note = std::to_string(report.missing) + " samples missing";
-    else if (report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out) l.note += ", some left out";
+    // hdslaveOS: find moved files: a pad's sample not in its data folder is looked for once it opens (shell/find_moved.h).
+    unsigned samples_gone = 0, pads_gone = 0;
+    if (report.missing) {
+        std::vector<bool> gone(sample_slots);
+        for (unsigned n = 0, span = unsigned(project->samples.span()); n < span; ++n) {
+            const auto& ref = project->samples[n];
+            std::error_code e;
+            if (ref.used() && ref.path[0] == '/' && !fs::exists(split_saved(ref.path).file, e)) { gone[n] = true; ++samples_gone; }
+        }
+        for (const auto& t : project->tracks) for (const auto& pad : t.pads) pads_gone += pad.used() && gone[pad.sample % sample_slots];
+    }
+    l.note = import_note(fs::path(l.path).stem().string(), report.missing, pads_gone, samples_gone,
+                         report.over_limit || report.regions_left_out || report.steps_left_out || report.songs_left_out);
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
     for (const char* tail : project_folders) {

@@ -1530,7 +1530,11 @@ the file holds, to the bit.
   never lands on a row of a listing not shown yet (`shell/files_view.h`).
   A folder listed again keeps the cursor on its file. Shift + pad loads onto the
   next empty pad. Shift + B3 STAR (its LED lit on a starred file) stars or
-  unstars the file under the cursor; a starred row shows a star. The card's
+  unstars the file under the cursor; a starred row shows a star. hdslaveOS:
+  with samples of the project not found (the header's N NOT FOUND), Shift +
+  B1 FIND MISSING searches the card anew and Shift + B2 FORGET takes them off
+  their pads; while a search runs (FINDING) Shift + B1 is CANCEL
+  (`shell/find_moved.h`). The card's
   `Melodee/Samples` and the card's top lead with two rows, STARRED (by name)
   and RECENT (the last 16 files loaded from the browser, newest first), each
   with how many it holds; Push opens one as a folder, its rows each with the

@@ -48,6 +48,7 @@ class InputRoute;
 struct CardLink;
 class UpdateLink;
 struct LoadedSample;
+class FindMoved;
 
 class Context {
 public:
@@ -562,6 +563,7 @@ public:
     std::array<TrackPrintPeaks, track_count> print_peaks {}, freeze_submitted_peaks {};
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
+    FindMoved* moved = nullptr;       // hdslaveOS: find moved files (shell/find_moved.h), the shell's
     std::vector<std::string> prog_paths; // the card's .progression files, as the Prog layout's wheel walks them (listed when first wanted)
     // Projects on the card
     ProjectStore* store = nullptr;

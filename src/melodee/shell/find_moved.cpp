@@ -1,0 +1,358 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// hdslaveOS: find moved files (shell/find_moved.h).
+#include "melodee/shell/find_moved.h"
+#include "melodee/engine/dsp.h"
+#include "melodee/shell/ask.h"
+#include "melodee/shell/card_access.h"
+#include "melodee/shell/context.h"
+#include "melodee/shell/mpc_project.h"
+#include "melodee/shell/mpc_wav_slices.h"
+#include "melodee/shell/sample_library.h"
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+
+namespace melodee {
+
+namespace {
+// "1 sample missing", "12 samples missing" (a notice holds 31 characters).
+std::string samples_text(unsigned n, const char* what) { return std::to_string(n) + (n == 1 ? " sample " : " samples ") + what; }
+// The question waits for the Loading sheet and any other sheet over the page; playback does not stop it (decision 4).
+bool may_ask(const UiState& ui) {
+    return !ui.loading && ui.ask == UiState::Ask::None && !ui.name.open() && !ui.exit_open && !card_owns_controls(ui) && !ui.update.phase
+        && !ui.sheet_open && !ui.lesson;
+}
+bool find_sheet(UiState::Ask a) { return a == UiState::Ask::FindMissing || a == UiState::Ask::FindSearching || a == UiState::Ask::FindResult; }
+// An MPC project or program: the stock importer reads a pad's frames at its file's rate, 44.1 kHz when it is missing.
+bool mpc_file(const std::string& path) {
+    std::string ext = std::filesystem::path(path).extension().string();
+    for (auto& ch : ext) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+    return ext == ".xpj" || ext == ".xpm" || ext == ".xty";
+}
+// `text` cut to `room` bytes (a whole UTF-8 character last) with an ellipsis, when it is longer.
+std::string fit(const std::string& text, size_t room) {
+    if (text.size() <= room) return text;
+    size_t cut = room - 3;
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xc0) == 0x80) --cut;
+    return text.substr(0, cut) + "\xe2\x80\xa6";
+}
+bool add_sorted(std::vector<uint16_t>& list, uint16_t v) {
+    auto at = std::lower_bound(list.begin(), list.end(), v);
+    if (at != list.end() && *at == v) return false;
+    list.insert(at, v);
+    return true;
+}
+bool take_sorted(std::vector<uint16_t>& list, uint16_t v) {
+    auto at = std::lower_bound(list.begin(), list.end(), v);
+    if (at == list.end() || *at != v) return false;
+    list.erase(at);
+    return true;
+}
+} // namespace
+
+FindMoved::FindMoved() {
+    worker.read_chop = [](const std::string& path) { return read_mpc_slices(path); };
+    worker.read_rate = [](const std::string& path) { return mpc_wav_rate(path); };
+    worker.current(generation); // the starting project's too (Load Kit into it before any project opens)
+}
+
+void FindMoved::switched() {
+    ++generation;
+    worker.current(generation); // what is left of the last project's jobs is dropped; a walk under way goes on
+    not_found.clear();
+    searched.clear();
+    mpc_slots.clear();
+    added_slots.clear();
+    quiet_slots.clear();
+    origin.clear(); added_origin.clear();
+    mpc_project = added_mpc = false;
+    check_due = ask_due = result_due = false;
+    clear_sheet = true; // a find sheet of the last project's, if one is still up, goes
+    checks_open = 0;
+    phase = Phase::Idle;
+    hidden = cancelling = false;
+    asked = result_found = result_missing = 0;
+}
+
+void FindMoved::opened(const std::string& from, uint32_t now) {
+    origin = from;
+    mpc_project = mpc_file(from);
+    check_due = true; // once the library knows the card (at start it may not yet)
+    due_at = now;
+}
+
+void FindMoved::kit(const std::string& from) {
+    added_origin = from;
+    added_mpc = mpc_file(from);
+}
+
+void FindMoved::plugin_missing(const std::string& name, uint32_t now) {
+    if (!plugins_missing++) plugin_name = name;
+    plugin_at = now;
+}
+
+bool FindMoved::missing(unsigned slot) const { return std::binary_search(not_found.begin(), not_found.end(), uint16_t(slot)); }
+
+void FindMoved::set_missing(unsigned slot, bool on) {
+    if (on) add_sorted(not_found, uint16_t(slot));
+    else take_sorted(not_found, uint16_t(slot));
+}
+
+unsigned FindMoved::unsearched() const {
+    unsigned n = 0;
+    for (uint16_t s : not_found) n += !std::binary_search(searched.begin(), searched.end(), s);
+    return n;
+}
+
+void FindMoved::post_check(Context& c, const std::vector<uint16_t>& slots, const std::string& from, bool quiet, bool mpc) {
+    MovedFiles::Job job;
+    job.quiet = quiet;
+    job.generation = generation;
+    job.origin = from;
+    job.card = card;
+    // The slots a pad plays (a layer of a kit pad, a keygroup's): one no pad plays (FORGET, a sample taken off its pad)
+    // is not asked about; the save frees it (Context::free_unused_samples).
+    std::vector<bool> played(sample_slots);
+    for (const auto& t : c.project.tracks)
+        for (const auto& pad : t.pads) {
+            if (pad.used()) played[pad.sample % sample_slots] = true;
+            for (const auto& l : pad.layers) if (l.used()) played[l.sample % sample_slots] = true;
+        }
+    for (uint16_t n : slots) {
+        const auto& ref = c.project.samples[n % sample_slots];
+        if (!ref.used() || ref.path[0] != '/' || !played[n % sample_slots]) continue;
+        job.slots.push_back({uint16_t(n % sample_slots), ref.path});
+        if (mpc) add_sorted(mpc_slots, uint16_t(n % sample_slots));
+    }
+    if (job.slots.empty()) return;
+    worker.post(std::move(job));
+    ++checks_open;
+}
+
+void FindMoved::tick(Context& c, uint32_t now) {
+    if (clear_sheet) { // a project switched to: no sheet of the last one's (switch_to starts the page's state anew too)
+        clear_sheet = false;
+        if (find_sheet(c.ui.ask)) c.ui.ask = UiState::Ask::None;
+    }
+    if (plugins_missing && now - plugin_at >= 200) { // the rack's say for this pass: one name, or how many
+        c.notice(plugins_missing == 1 ? "Plug-in missing: " + fit(plugin_name, 31 - 17) : std::to_string(plugins_missing) + " plug-ins missing");
+        plugins_missing = 0;
+    }
+    if (!c.library) return;
+    // SD card access: nothing of Melodee's reads the card while it is lent. A search stops (MelodeeApp stops the thread
+    // too as it lends); checks wait until the card is back.
+    const bool lent = card_owns_controls(c.ui);
+    if (lent && phase == Phase::Searching) cancel(c);
+    // The card's top, as the library found it, every half second (and while a check waits for it). Another card, or
+    // none: the index of this session is no longer the card's.
+    if (check_due || now - card_at >= 500) {
+        card_at = now;
+        card = c.library->card();
+        if (card != card_seen) {
+            if (!card_seen.empty()) worker.drop_index();
+            card_seen = card;
+        }
+    }
+    if (check_due && !lent && (!card.empty() || now - due_at >= 3000)) {
+        check_due = false;
+        std::vector<uint16_t> slots;
+        for (unsigned n = 0, span = unsigned(c.project.samples.span()); n < span; ++n)
+            if (c.project.samples[n].used()) slots.push_back(uint16_t(n));
+        post_check(c, slots, origin, false, mpc_project);
+    }
+    if (!added_slots.empty() && !check_due && !lent) { // Load Kit, Load Bank: their slots as the project's were
+        std::sort(added_slots.begin(), added_slots.end());
+        added_slots.erase(std::unique(added_slots.begin(), added_slots.end()), added_slots.end());
+        // beside the kit's own file (Load Kit), else the project's (Load Bank, the browser)
+        post_check(c, added_slots, added_origin.empty() ? origin : added_origin, false, added_mpc);
+        added_slots.clear();
+    }
+    if (added_slots.empty() && !c.ui.sheet_open) { added_origin.clear(); added_mpc = false; } // that kit is in, or was not taken
+    if (!quiet_slots.empty() && !check_due && !lent) {
+        post_check(c, quiet_slots, origin, true);
+        quiet_slots.clear();
+    }
+    MovedFiles::Answer a;
+    while (worker.take(a)) take(c, a);
+    if (may_ask(c.ui)) {
+        if (result_due) { // the search's result, once nothing else is over the page
+            result_due = false;
+            if (result_missing && !not_found.empty()) ask(c, UiState::Ask::FindResult, result_missing);
+        } else if (phase == Phase::Searching && !hidden && !cancelling) {
+            ask(c, UiState::Ask::FindSearching, asked); // another sheet took its place a while: it comes back
+        } else if (ask_due && phase == Phase::Idle) { // the question (Always: the search's sheet), for what no search looked for yet
+            ask_due = false;
+            if (const unsigned n = unsearched()) {
+                if (c.ui.settings.find_moved == Settings::FindAlways) search(c, false);
+                else ask(c, UiState::Ask::FindMissing, int(n));
+            }
+        }
+    }
+    // What the sheets and the Samples page show.
+    auto& v = c.ui.find;
+    const auto p = worker.progress();
+    v.missing = uint16_t(std::min<size_t>(not_found.size(), 0xffff));
+    v.searching = phase == Phase::Searching;
+    v.hidden = hidden;
+    v.asked = asked;
+    v.found = phase == Phase::Searching ? uint16_t(std::min<uint32_t>(p.matched, asked)) : result_found;
+    v.looked = p.looked;
+    const auto& t = c.project.tracks[c.ui.track % track_count];
+    const auto& pad = t.pads[t.last_pad % sampler_pads];
+    v.pad_missing = t.engine == EngineKind::Sampler && pad.used() && missing(pad.sample);
+}
+
+void FindMoved::rescale(Context& c, unsigned slot, unsigned rate) {
+    if (!rate || !take_sorted(mpc_slots, uint16_t(slot)) || rate == unsigned(dsp::model_rate)) return;
+    const double by = double(dsp::model_rate) / rate;
+    auto at = [&](uint32_t frame) { return uint32_t(std::max(std::lround(frame * by), 0l)); };
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned k = 0; k < sampler_pads; ++k) {
+            auto& pad = c.project.tracks[t].pads[k];
+            bool changed = false;
+            if (pad.used() && pad.sample == slot) { pad.start = at(pad.start); pad.end = at(pad.end); pad.loop_start = at(pad.loop_start); changed = true; }
+            for (auto& l : pad.layers) if (l.used() && l.sample == slot) { l.start = at(l.start); l.end = at(l.end); changed = true; }
+            if (changed) c.send_pad(t, k);
+        }
+}
+
+void FindMoved::take(Context& c, const MovedFiles::Answer& a) {
+    if (a.generation != generation) return; // from before another project was opened
+    if (a.kind == MovedFiles::Answer::Kind::Done) { done(c, a); return; }
+    const unsigned slot = a.slot % sample_slots;
+    const auto& ref = c.project.samples[slot];
+    if (a.saved != ref.path) return; // the slot changed since it was asked about
+    if (a.kind == MovedFiles::Answer::Kind::Missing || a.found.size() >= sizeof(SampleRef::path)) { set_missing(slot, true); return; }
+    // Found: the slot names the file where it is now (the next save writes it), loads it as Load Kit does and takes the
+    // file's slices as its chop, as a project's switch does (shell/lights.cpp).
+    set_missing(slot, false);
+    if (a.found != a.saved) std::snprintf(c.project.samples.edit(slot).path, sizeof(SampleRef::path), "%s", a.found.c_str());
+    if (!c.project.chops[slot].unwritten) c.project.chops.edit(slot) = a.chop;
+    rescale(c, slot, a.rate); // an MPC import's pads, at the rate of the file now found
+    if (slot < c.samples_to_load && !c.library->load(slot, ref.path, ref.root == root_unread)) c.slots_waiting.push_back(uint16_t(slot));
+    ++c.heavy_serial;
+}
+
+void FindMoved::done(Context& c, const MovedFiles::Answer& a) {
+    if (!a.search) {
+        if (checks_open) --checks_open;
+        if (a.quiet || !a.missing_count || not_found.empty()) return; // all of this check's in place or found
+        const unsigned n = unsigned(not_found.size());
+        if (a.indexed) { c.notice(samples_text(n, "not found")); return; } // this session's search answered: nothing to ask
+        if (c.ui.settings.find_moved == Settings::FindOff) c.notice(samples_text(n, "missing"));
+        else ask_due = true; // asked (Always: searched) once the page is free of other sheets and of a search
+        return;
+    }
+    phase = Phase::Idle;
+    cancelling = false;
+    const bool sheet = c.ui.ask == UiState::Ask::FindSearching;
+    if (sheet) c.ui.ask = UiState::Ask::None;
+    const bool told = hidden; // HIDE or CANCEL: a notice; else its result where its sheet was (or, replaced, once free)
+    hidden = false;
+    result_found = uint16_t(std::min<unsigned>(a.found_count, 0xffff));
+    if (a.failed) { c.notice("Card could not be read"); return; }
+    if (a.too_big) { // what it found in the part it walked is in; not walked again this session
+        c.notice(a.found_count ? "Card too big, found " + std::to_string(a.found_count) : std::string("Card too big to search"));
+        return;
+    }
+    if (a.cancelled) { // the rest stay as they were: not searched (no FORGET offered), FIND MISSING searches again
+        c.notice(a.found_count ? "Search stopped, found " + std::to_string(a.found_count) : std::string("Search stopped"));
+        return;
+    }
+    if (!a.missing_count) { c.notice(a.found_count == 1 ? std::string("Found 1 sample") : "Found " + std::to_string(a.found_count) + " samples"); return; }
+    if (told) { c.notice(samples_text(a.missing_count, "not found")); return; } // FORGET is on the Samples page
+    result_missing = uint16_t(std::min<unsigned>(a.missing_count, 0xffff));
+    result_due = true; // KEEP or FORGET (tick(): now, or once another sheet over it is gone)
+}
+
+void FindMoved::search(Context& c, bool fresh) {
+    if (!c.library) return;
+    MovedFiles::Job job;
+    job.search = true;
+    job.generation = generation;
+    job.origin = origin;
+    job.card = card = c.library->card();
+    job.internal = SampleLibrary::internal_tops();
+    job.fresh = fresh;
+    searched.clear();
+    for (uint16_t n : not_found) {
+        const auto& ref = c.project.samples[n];
+        if (!ref.used()) continue;
+        job.slots.push_back({n, ref.path});
+        searched.push_back(n);
+    }
+    if (job.slots.empty()) { c.notice("No samples missing"); return; }
+    asked = uint16_t(std::min<size_t>(job.slots.size(), 0xffff));
+    result_found = 0;
+    phase = Phase::Searching;
+    hidden = cancelling = result_due = false;
+    worker.post(std::move(job));
+    ask(c, UiState::Ask::FindSearching, asked);
+    c.ui.find.searching = true; c.ui.find.asked = asked; c.ui.find.found = 0; // drawn at once, before the next pass
+}
+
+void FindMoved::cancel(Context& c) {
+    if (phase != Phase::Searching || cancelling) return;
+    cancelling = true;
+    worker.cancel(); // its answer says so: "Search stopped"
+    hidden = true;
+    if (c.ui.ask == UiState::Ask::FindSearching) c.ui.ask = UiState::Ask::None;
+}
+
+void FindMoved::hide(Context& c) {
+    hidden = phase == Phase::Searching;
+    if (c.ui.ask == UiState::Ask::FindSearching) c.ui.ask = UiState::Ask::None;
+}
+
+void FindMoved::forget(Context& c) {
+    if (not_found.empty()) return;
+    auto f = std::make_unique<ForgetSamples>();
+    for (uint16_t n : not_found) f->slots.push_back({n, c.project.samples[n].path});
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& tr = c.project.tracks[t];
+        for (unsigned k = 0; k < sampler_pads; ++k) {
+            const auto& pad = tr.pads[k];
+            bool hit = pad.used() && missing(pad.sample);
+            for (const auto& l : pad.layers) hit = hit || (l.used() && missing(l.sample));
+            if (hit) f->pads.push_back({uint8_t(t), uint8_t(k), pad_state(tr, k)});
+        }
+    }
+    const unsigned n = unsigned(not_found.size());
+    Edit edit;
+    edit.what = n == 1 ? std::string("Forget 1 sample") : "Forget " + std::to_string(n) + " samples";
+    edit.track = uint8_t(c.ui.track % track_count);
+    forgot(c, *f, true);
+    edit.forget = std::move(f);
+    c.edits.push(std::move(edit));
+    c.dirty = true; // its next save, by hand or in the background, has no pad on them
+    c.notice(n == 1 ? std::string("Forgot 1 sample") : "Forgot " + std::to_string(n) + " samples");
+}
+
+void FindMoved::forgot(Context& c, const ForgetSamples& f, bool after) {
+    // A slot of this step that still names the path it named then (a search may have found its file elsewhere since)
+    // and, done again, is still not found (nor copied back where it was).
+    auto named = [&](uint16_t slot) {
+        for (const auto& [n, path] : f.slots) if (n == slot) return path == c.project.samples[slot].path;
+        return false;
+    };
+    auto forgotten = [&](uint16_t slot) { return named(slot) && missing(slot); };
+    if (after) { // its pads let go of it, all else of theirs kept
+        for (const auto& p : f.pads) {
+            PadState now = pad_state(c.project.tracks[p.track % track_count], p.pad);
+            bool changed = false;
+            if (now.sound.used() && forgotten(now.sound.sample)) { now.sound.sample = no_sample; changed = true; }
+            for (auto& l : now.sound.layers) if (l.used() && forgotten(l.sample)) { l = PadLayer {}; changed = true; }
+            if (changed) c.restore_pad(p.track, p.pad, now);
+        }
+        for (const auto& [n, path] : f.slots) if (named(n)) set_missing(n, false);
+        return;
+    }
+    // Undone: as they were, their slots looked at again (NOT FOUND again, or found meanwhile), with nothing asked.
+    for (const auto& p : f.pads) c.restore_pad(p.track, p.pad, p.before);
+    for (const auto& [n, path] : f.slots) if (named(n)) quiet_slots.push_back(n);
+}
+
+} // namespace melodee

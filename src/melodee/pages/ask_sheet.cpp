@@ -197,6 +197,40 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         verb = "UNFREEZE"; verb_glyph = Icon::Snow; accent = colour::ice;
         break;
     }
+    // hdslaveOS: find moved files (shell/find_moved.h): the question, the search under way, what it did not find.
+    case Ask::FindMissing: {
+        const unsigned n = unsigned(std::max(0, int(s.ui.ask_target)));
+        sheet.icon = Icon::Warn;
+        sheet.accent = colour::amber;
+        sheet.title = count_of(n, "sample missing", "samples missing");
+        sheet.lines = {n == 1 ? "Search the card for it?" : "Search the card for them?", "Play and Stop work meanwhile."};
+        cancel = "NOT NOW"; middle = "FORGET"; verb = "SEARCH"; verb_glyph = Icon::Card; accent = colour::amber;
+        break;
+    }
+    case Ask::FindSearching: {
+        const auto& f = s.ui.find;
+        juce::String looked = juce::String(f.looked);
+        for (int at = looked.length() - 3; at > 0; at -= 3) looked = looked.substring(0, at) + "," + looked.substring(at); // 4,210
+        sheet.icon = Icon::Card;
+        sheet.accent = colour::amber;
+        sheet.title = "Searching for " + count_of(f.asked, "sample", "samples");
+        sheet.lines = {juce::String(f.found) + " found" + juce::String::fromUTF8(" \xc2\xb7 ") + looked + " files looked at",
+                       "Play and Stop work meanwhile."};
+        verb = "HIDE"; verb_glyph = Icon::ArrowDown; accent = colour::text;
+        break;
+    }
+    case Ask::FindResult: {
+        const unsigned n = unsigned(std::max(0, int(s.ui.ask_target)));
+        const auto& f = s.ui.find;
+        sheet.icon = Icon::Warn;
+        sheet.accent = colour::amber;
+        sheet.title = count_of(n, "sample not found", "samples not found");
+        sheet.lines = {"Found " + juce::String(f.found) + " of " + juce::String(f.asked) + ". Forget " + (n == 1 ? juce::String("it") : "the " + juce::String(n)),
+                       "so this project stops asking?"};
+        sheet.undo = true;
+        cancel = "KEEP"; verb = "FORGET";
+        break;
+    }
     default: return;
     }
 
